@@ -3,12 +3,9 @@
 //  TableProTests
 //
 
-#if canImport(MySQLDriverPlugin)
 import Foundation
 import TableProPluginKit
 import Testing
-
-@testable import MySQLDriverPlugin
 
 @Suite("MariaDBFieldClassifier")
 struct MariaDBFieldClassifierTests {
@@ -82,7 +79,6 @@ struct MariaDBFieldClassifierTests {
         bytes.withUnsafeBytes { MariaDBFieldClassifier.bitFieldToString($0) }
     }
 
-
     @Test("BLOB family with binary charset routes to binary")
     func blobFamilyBinary() {
         for typeRaw: UInt32 in [249, 250, 251, 252] {
@@ -147,4 +143,3 @@ struct MariaDBFieldClassifierTests {
         #expect(!MariaDBFieldClassifier.isBinary(typeRaw: 255, charset: 63)) // GEOMETRY (handled upstream)
     }
 }
-#endif

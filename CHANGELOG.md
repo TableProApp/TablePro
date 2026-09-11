@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show invisible characters** in Settings > Editor. (#2717)
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
+- **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
 
 ### Changed
 
@@ -33,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open Project Folder… in File > Import.
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 - Beancount connections held at Safe Mode Read-Only. (#2030)
+- MySQL sessions on the server's default `utf8mb4` collation.
 
 ### Fixed
 
@@ -123,6 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
 - Stop on Cloudflare D1, libSQL and Trino cancelling a sidebar read instead of the running query.
 - Numeric-looking filter values sent unquoted to text columns when a table first opens or after a foreign key jump.
+- Garbled non-Latin text saved to MySQL and MariaDB servers that force a Latin 1 session. (#2725)
+- Garbled non-Latin text when restoring a MySQL or MariaDB SQL export through a Latin 1 client. (#2725)
+- Curly quotes, € and other Windows-1252 symbols shown as invisible characters after `SET NAMES latin1`.
+- `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
+- GEOMETRY values from a parameterized MySQL query shown as raw bytes.
 
 ### Security
 

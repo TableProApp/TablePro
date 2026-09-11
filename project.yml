@@ -476,6 +476,13 @@ targets:
       - Plugins/MongoDBDriverPlugin/MongoScriptText.swift
       - Plugins/MongoDBDriverPlugin/MongoStreamProjection.swift
       - Plugins/OracleDriverPlugin/OracleObjectQueries.swift
+      - Plugins/MySQLDriverPlugin/GeometryWKBParser.swift
+      - Plugins/MySQLDriverPlugin/MariaDBFieldClassifier.swift
+      - Plugins/MySQLDriverPlugin/MariaDBFieldMetadata.swift
+      - Plugins/MySQLDriverPlugin/MySQLCharacterSet.swift
+      - Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
+      - Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
+      - Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableSQL.swift
       - Plugins/MySQLDriverPlugin/MySQLIdleRelease.swift
@@ -563,6 +570,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
       - Plugins/SQLExportPlugin/SQLExportDDLRewriter.swift
+      - Plugins/SQLExportPlugin/SQLExportEncodingDeclaration.swift
       - Plugins/SQLExportPlugin/SQLExportFileWriter.swift
       - Plugins/SQLExportPlugin/SQLExportInsertMode.swift
       - Plugins/SQLExportPlugin/SQLExportModels.swift

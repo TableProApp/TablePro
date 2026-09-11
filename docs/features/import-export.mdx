@@ -133,6 +133,8 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
 
     Splitting writes `dump.part1.sql`, `dump.part2.sql` and so on, rotating between statements so no part ends mid-`INSERT`. Restore the parts in order. A gzipped export is one file, so the two settings do not combine and the summary says so.
 
+    A MySQL or MariaDB dump is UTF-8 and says so: every part opens with `SET NAMES utf8mb4` and ends by putting the session's character set back, as `mysqldump` does. `mysql < dump.sql` then restores Japanese, emoji and other non-Latin text intact, even from a client whose default is Latin 1.
+
     One snapshot opens `START TRANSACTION WITH CONSISTENT SNAPSHOT` on MySQL, `BEGIN ISOLATION LEVEL REPEATABLE READ` on PostgreSQL, and a deferred transaction on SQLite. It holds that transaction open for the whole export.
 
     Excluding the counter drops `AUTO_INCREMENT=<n>` from the table options and leaves the column's own `AUTO_INCREMENT` attribute alone. Restoring rows sets the counter one past the highest key in the data, so a source counter that had run ahead of its rows, after deletes or a reset, does not carry over.

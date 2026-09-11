@@ -139,7 +139,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             metadataWarnings.append(String(localized:
                 "A compressed export is written as one file, so the split size was not applied."))
         }
-        let writer = try SQLExportFileWriter(destination: actualDestination, splitSizeMegabytes: splitSize)
+        let writer = try SQLExportFileWriter(
+            destination: actualDestination,
+            splitSizeMegabytes: splitSize,
+            encodingDeclaration: .forDialect(SqlDialect.from(databaseTypeId: dataSource.databaseTypeId))
+        )
         var committed = false
         defer {
             if !committed { writer.rollback() }
@@ -478,10 +482,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(ddl)
-                if !ddl.hasSuffix(";") {
-                    try writer.write(";")
-                }
+                try writer.write(ddl.hasSuffix(";") ? ddl : ddl + ";")
                 try writer.write("\n\n")
             } catch {
                 ddlFailures.append(sanitizedName)
@@ -524,10 +525,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 guard !ddl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw SQLExportObjectError.emptyDefinition
                 }
-                try writer.write(ddl)
-                if !ddl.hasSuffix(";") {
-                    try writer.write(";")
-                }
+                try writer.write(ddl.hasSuffix(";") ? ddl : ddl + ";")
                 try writer.write("\n\n")
             } catch {
                 ddlFailures.append(sanitizedName)

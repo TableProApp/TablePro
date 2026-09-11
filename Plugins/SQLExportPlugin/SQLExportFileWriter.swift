@@ -27,20 +27,33 @@ internal final class SQLExportFileWriter {
 
     private let destination: URL
     private let splitSizeBytes: Int
+    private let encodingDeclaration: SQLExportEncodingDeclaration
 
     private var handle: FileHandle
     private var tempURL: URL
     private var bytesInCurrentPart = 0
+    private var currentPartHasStatements = false
     private var partIndex = 1
     private var pending: [(temp: URL, final: URL)] = []
     private var isCommitted = false
 
-    internal init(destination: URL, splitSizeMegabytes: Int) throws {
+    internal init(
+        destination: URL,
+        splitSizeMegabytes: Int,
+        encodingDeclaration: SQLExportEncodingDeclaration = .empty
+    ) throws {
         self.destination = destination
         self.splitSizeBytes = max(0, splitSizeMegabytes) * 1_024 * 1_024
+        self.encodingDeclaration = encodingDeclaration
         let (handle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
         self.handle = handle
         self.tempURL = tempURL
+        do {
+            try writeRaw(encodingDeclaration.prologue)
+        } catch {
+            rollback()
+            throw error
+        }
     }
 
     /// True once a second part exists, so the caller can report the split rather than leaving the
@@ -51,17 +64,20 @@ internal final class SQLExportFileWriter {
 
     internal func write(_ text: String) throws {
         let data = try text.toUTF8Data()
-        if splitSizeBytes > 0, bytesInCurrentPart > 0, bytesInCurrentPart + data.count > splitSizeBytes {
+        let partSize = bytesInCurrentPart + data.count + encodingDeclaration.epilogue.utf8.count
+        if splitSizeBytes > 0, currentPartHasStatements, partSize > splitSizeBytes {
             try rotate()
         }
         try handle.write(contentsOf: data)
         bytesInCurrentPart += data.count
+        currentPartHasStatements = true
     }
 
     /// Publishes every part and returns where they landed. An unsplit export keeps the name the
     /// user chose; a split one numbers all of its parts, so no part silently claims that name.
     @discardableResult
     internal func commit() throws -> [URL] {
+        try writeRaw(encodingDeclaration.epilogue)
         try handle.close()
         let finalURL = didSplit ? Self.partURL(for: destination, part: partIndex) : destination
         pending.append((tempURL, finalURL))
@@ -88,6 +104,7 @@ internal final class SQLExportFileWriter {
     internal var currentFileURL: URL { tempURL }
 
     private func rotate() throws {
+        try writeRaw(encodingDeclaration.epilogue)
         try handle.close()
         pending.append((tempURL, Self.partURL(for: destination, part: partIndex)))
         partIndex += 1
@@ -95,5 +112,14 @@ internal final class SQLExportFileWriter {
         handle = nextHandle
         tempURL = nextTemp
         bytesInCurrentPart = 0
+        currentPartHasStatements = false
+        try writeRaw(encodingDeclaration.prologue)
+    }
+
+    private func writeRaw(_ text: String) throws {
+        guard !text.isEmpty else { return }
+        let data = try text.toUTF8Data()
+        try handle.write(contentsOf: data)
+        bytesInCurrentPart += data.count
     }
 }

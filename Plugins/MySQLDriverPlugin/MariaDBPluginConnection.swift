@@ -11,26 +11,7 @@ import Foundation
 import OSLog
 import TableProPluginKit
 
-// MySQL/MariaDB field flag and charset constants
-internal let mysqlNotNullFlag: UInt = 0x0001
-internal let mysqlPriKeyFlag: UInt = 0x0002
-internal let mysqlBinaryFlag: UInt = 0x0080
-internal let mysqlEnumFlag: UInt = 0x0100
-internal let mysqlAutoIncrementFlag: UInt = 0x0200
-internal let mysqlSetFlag: UInt = 0x0800
-internal let mysqlBinaryCharset: UInt32 = 63
-
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
-
-internal func makeColumnMeta(name: String, typeName: String, flags: UInt) -> PluginColumnInfo {
-    PluginColumnInfo(
-        name: name,
-        dataType: typeName,
-        isNullable: (flags & mysqlNotNullFlag) == 0,
-        isPrimaryKey: (flags & mysqlPriKeyFlag) != 0,
-        identityKind: (flags & mysqlAutoIncrementFlag) != 0 ? .byDefault : nil
-    )
-}
 
 // MARK: - Error Types
 
@@ -96,60 +77,6 @@ func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
     )
 }
 
-/// Pure mapping from raw MySQL/MariaDB field type code + flags to TablePro's
-/// column-type-name string. Separated from `mysqlTypeToString` so it can be
-/// unit-tested without an actual `MYSQL_FIELD` struct.
-internal func mariaDBTypeName(
-    typeRaw: UInt32,
-    flags: UInt,
-    charsetnr: UInt32,
-    length: UInt
-) -> String {
-    // Binary flag alone is insufficient — MariaDB sets it on text columns with
-    // binary collation (e.g. utf8mb4_bin for JSON). Only charset 63 is truly binary.
-    let isBinary = (flags & mysqlBinaryFlag) != 0 && charsetnr == mysqlBinaryCharset
-
-    switch typeRaw {
-    case 0: return "DECIMAL"
-    case 1: return "TINYINT"
-    case 2: return "SMALLINT"
-    case 3: return "INT"
-    case 4: return "FLOAT"
-    case 5: return "DOUBLE"
-    case 6: return "NULL"
-    case 7: return "TIMESTAMP"
-    case 8: return "BIGINT"
-    case 9: return "MEDIUMINT"
-    case 10: return "DATE"
-    case 11: return "TIME"
-    case 12: return "DATETIME"
-    case 13: return "YEAR"
-    case 14: return "NEWDATE"
-    case 15: return "VARCHAR"
-    case 16: return "BIT"
-    case 245: return "JSON"
-    case 246: return "NEWDECIMAL"
-    case 247: return "ENUM"
-    case 248: return "SET"
-    case 249:
-        return isBinary ? "TINYBLOB" : "TINYTEXT"
-    case 250:
-        return isBinary ? "MEDIUMBLOB" : "MEDIUMTEXT"
-    case 251:
-        return isBinary ? "LONGBLOB" : "LONGTEXT"
-    case 252:
-        if isBinary {
-            return length > 65_535 ? "LONGBLOB" : "BLOB"
-        } else {
-            return length > 65_535 ? "LONGTEXT" : "TEXT"
-        }
-    case 253: return isBinary ? "VARBINARY" : "VARCHAR"
-    case 254: return isBinary ? "BINARY" : "CHAR"
-    case 255: return "GEOMETRY"
-    default: return "UNKNOWN"
-    }
-}
-
 // MARK: - Connection Class
 
 final class MariaDBPluginConnection: @unchecked Sendable {
@@ -168,6 +95,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
     private let queryTimeoutSeconds: Int
+    private let connectionEncoding: MySQLConnectionEncoding
 
     private let stateLock = NSLock()
     private let cancellationGate = PluginQueryCancellationGate()
@@ -240,7 +168,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         database: String,
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
-        queryTimeoutSeconds: Int = 0
+        queryTimeoutSeconds: Int = 0,
+        connectionEncoding: MySQLConnectionEncoding = .utf8
     ) {
         self.host = host
         self.port = UInt32(port)
@@ -250,6 +179,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
         self.queryTimeoutSeconds = queryTimeoutSeconds
+        self.connectionEncoding = connectionEncoding
     }
 
     deinit {
@@ -393,22 +323,43 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_close(mysql)
             throw error
         }
+        do {
+            try establishSessionCharacterSet(on: mysql)
+        } catch {
+            mysql_close(mysql)
+            throw error
+        }
         return mysql
     }
 
+    private func establishSessionCharacterSet(on mysql: UnsafeMutablePointer<MYSQL>) throws {
+        if mysql_set_character_set(mysql, MySQLConnectionEncoding.sessionCharacterSetName) != 0 {
+            let refusal = errorMessage(from: mysql)
+            if runSessionStatement(MySQLConnectionEncoding.sessionFallbackStatement, on: mysql) {
+                logger.notice("Server refused utf8mb4 (\(refusal, privacy: .public)), so the session uses utf8")
+            } else {
+                logger.warning("Server refused a UTF-8 session (\(refusal, privacy: .public)); keeping its own")
+            }
+        }
+        for statement in connectionEncoding.sessionStatements where !runSessionStatement(statement, on: mysql) {
+            throw readError(from: mysql)
+        }
+    }
+
+    private func runSessionStatement(_ statement: String, on mysql: UnsafeMutablePointer<MYSQL>) -> Bool {
+        let status = statement.withCString { mysql_real_query(mysql, $0, UInt(strlen($0))) }
+        if let discarded = mysql_store_result(mysql) {
+            mysql_free_result(discarded)
+        }
+        return status == 0
+    }
+
     private func readError(from mysql: UnsafeMutablePointer<MYSQL>) -> MariaDBPluginError {
-        let code = mysql_errno(mysql)
-        let message: String
-        if let msgPtr = mysql_error(mysql) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown error"
-        }
-        var sqlState: String?
-        if let statePtr = mysql_sqlstate(mysql), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
-        }
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
+        MariaDBPluginError(
+            code: mysql_errno(mysql),
+            message: mysql_error(mysql).map(decodedMessage) ?? "Unknown error",
+            sqlState: sqlState(mysql_sqlstate(mysql))
+        )
     }
 
     func disconnect() {
@@ -670,45 +621,8 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             }
         }
 
-        let numFields = Int(mysql_num_fields(resultPtr))
-        var columns: [String] = []
-        var columnTypes: [UInt32] = []
-        var columnTypeNames: [String] = []
-        var columnIsBinary: [Bool] = []
-        var columnIsBoolean: [Bool] = []
-        var columnMeta: [PluginColumnInfo] = []
-        columns.reserveCapacity(numFields)
-        columnTypes.reserveCapacity(numFields)
-        columnTypeNames.reserveCapacity(numFields)
-        columnIsBinary.reserveCapacity(numFields)
-        columnIsBoolean.reserveCapacity(numFields)
-        columnMeta.reserveCapacity(numFields)
         let sessionFlavor = flavor
-
-        if let fields = mysql_fetch_fields(resultPtr) {
-            for i in 0..<numFields {
-                let field = fields[i]
-                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
-                columns.append(columnName)
-                let fieldFlags = UInt(field.flags)
-                var fieldType = field.type.rawValue
-                if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                columnTypes.append(fieldType)
-                let isBoolean = sessionFlavor.isDatabend
-                    && DatabendResultShape.isBoolean(typeRaw: field.type.rawValue, length: field.length)
-                columnIsBoolean.append(isBoolean)
-                let typeName = isBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + i)
-                columnTypeNames.append(typeName)
-                columnIsBinary.append(
-                    MariaDBFieldClassifier.isBinary(
-                        typeRaw: field.type.rawValue,
-                        charset: field.charsetnr
-                    )
-                )
-                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
-            }
-        }
+        let columns = describeColumns(mysql_fetch_fields(resultPtr), count: Int(mysql_num_fields(resultPtr)))
 
         var rows: [[PluginCellValue]] = []
         rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
@@ -731,26 +645,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 break
             }
 
-            let lengths = mysql_fetch_lengths(resultPtr)
-
-            var row: [PluginCellValue] = []
-            row.reserveCapacity(numFields)
-
-            for i in 0..<numFields {
-                guard let fieldPtr = rowPtr[i] else {
-                    row.append(.null)
-                    continue
-                }
-                let length = Int(clamping: lengths?[i] ?? 0)
-                row.append(Self.cellValue(
-                    UnsafeRawBufferPointer(start: fieldPtr, count: length),
-                    typeRaw: columnTypes[i],
-                    isBinary: columnIsBinary[i],
-                    isBoolean: columnIsBoolean[i],
-                    flavor: sessionFlavor
-                ))
-            }
-            rows.append(row)
+            rows.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
         }
 
         let outcome = mysqlBoundedFetchOutcome(
@@ -788,7 +683,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         mysql_free_result(resultPtr)
 
-        if sessionFlavor.isDatabend, let affected = DatabendResultShape.affectedRowCount(columns: columns, rows: rows) {
+        if sessionFlavor.isDatabend, let affected = DatabendResultShape.affectedRowCount(columns: columns.names, rows: rows) {
             return MariaDBPluginQueryResult(
                 columns: [], columnTypes: [], columnTypeNames: [],
                 rows: [], affectedRows: affected, insertId: 0, isTruncated: false,
@@ -798,9 +693,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         return MariaDBPluginQueryResult(
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
             rows: rows, affectedRows: UInt64(rows.count), insertId: 0, isTruncated: truncated,
-            columnMeta: columnMeta,
+            columnMeta: columns.metadata,
             firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
     }
@@ -884,10 +779,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private func fetchResultSet(
         from stmt: UnsafeMutablePointer<MYSQL_STMT>,
         metadata: UnsafeMutablePointer<MYSQL_RES>,
-        columns: [String],
-        columnTypes: [UInt32],
-        columnTypeNames: [String],
-        columnIsBinary: [Bool],
+        columns: MySQLResultColumns,
         rowCap: Int? = nil,
         generation: Int,
         sentAt: Date
@@ -969,26 +861,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 }
             }
 
-            var row: [PluginCellValue] = []
-            for i in 0..<numFields {
-                if resultBinds[i].is_null?.pointee == 1 {
-                    row.append(.null)
-                } else {
-                    let length = Int(resultBinds[i].length?.pointee ?? 0)
-                    let buffer = resultBuffers[i].assumingMemoryBound(to: UInt8.self)
-                    let data = Data(bytes: buffer, count: length)
-                    if MariaDBFieldClassifier.isBit(typeRaw: columnTypes[i]) {
-                        row.append(.text(MariaDBFieldClassifier.bitFieldToString(data)))
-                    } else if columnIsBinary[i] {
-                        row.append(.bytes(data))
-                    } else if let str = String(data: data, encoding: .utf8) {
-                        row.append(.text(str))
-                    } else {
-                        row.append(.text(String(data: data, encoding: .isoLatin1) ?? ""))
-                    }
-                }
-            }
-            rows.append(row)
+            rows.append(columns.row(encoding: connectionEncoding) { index in
+                guard resultBinds[index].is_null?.pointee != 1 else { return nil }
+                let length = Int(resultBinds[index].length?.pointee ?? 0)
+                return UnsafeRawBufferPointer(start: resultBuffers[index], count: length)
+            })
         }
 
         let outcome = mysqlBoundedFetchOutcome(
@@ -1089,46 +966,18 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_free_result(metadata)
         }
 
-        var columns: [String] = []
-        var columnTypes: [UInt32] = []
-        var columnTypeNames: [String] = []
-        var columnIsBinary: [Bool] = []
-        var columnMeta: [PluginColumnInfo] = []
-        let numFields = Int(mysql_num_fields(metadata))
-
-        if let fields = mysql_fetch_fields(metadata) {
-            for i in 0..<numFields {
-                let field = fields[i]
-                let columnName = field.name.map { String(cString: $0) } ?? "column_\(i)"
-                columns.append(columnName)
-                let fieldFlags = UInt(field.flags)
-                var fieldType = field.type.rawValue
-                if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                columnTypes.append(fieldType)
-                let typeName = mysqlTypeToString(fields + i)
-                columnTypeNames.append(typeName)
-                columnIsBinary.append(
-                    MariaDBFieldClassifier.isBinary(
-                        typeRaw: field.type.rawValue,
-                        charset: field.charsetnr
-                    )
-                )
-                columnMeta.append(makeColumnMeta(name: columnName, typeName: typeName, flags: fieldFlags))
-            }
-        }
+        let columns = describeColumns(mysql_fetch_fields(metadata), count: Int(mysql_num_fields(metadata)))
 
         let fetchResult = try fetchResultSet(
             from: stmt, metadata: metadata,
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
-            columnIsBinary: columnIsBinary, rowCap: rowCap, generation: generation, sentAt: sentAt
+            columns: columns, rowCap: rowCap, generation: generation, sentAt: sentAt
         )
 
         return MariaDBPluginQueryResult(
-            columns: columns, columnTypes: columnTypes, columnTypeNames: columnTypeNames,
+            columns: columns.names, columnTypes: columns.typeCodes, columnTypeNames: columns.typeNames,
             rows: fetchResult.rows, affectedRows: UInt64(fetchResult.rows.count),
             insertId: 0, isTruncated: fetchResult.isTruncated,
-            columnMeta: columnMeta,
+            columnMeta: columns.metadata,
             firstRowTime: fetchResult.firstRowTime
         )
     }
@@ -1184,50 +1033,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     return
                 }
 
-                let numFields = Int(mysql_num_fields(resultPtr))
-                var columns: [String] = []
-                var columnTypes: [UInt32] = []
-                var columnTypeNames: [String] = []
-                var columnIsBinary: [Bool] = []
-                var columnIsBoolean: [Bool] = []
-                columns.reserveCapacity(numFields)
-                columnTypes.reserveCapacity(numFields)
-                columnTypeNames.reserveCapacity(numFields)
-                columnIsBinary.reserveCapacity(numFields)
-                columnIsBoolean.reserveCapacity(numFields)
-                let sessionFlavor = flavor
-
-                if let fields = mysql_fetch_fields(resultPtr) {
-                    for i in 0..<numFields {
-                        let field = fields[i]
-                        if let namePtr = field.name {
-                            columns.append(String(cString: namePtr))
-                        } else {
-                            columns.append("column_\(i)")
-                        }
-                        let fieldFlags = UInt(field.flags)
-                        var fieldType = field.type.rawValue
-                        if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
-                        if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
-                        columnTypes.append(fieldType)
-                        let isBoolean = sessionFlavor.isDatabend
-                            && DatabendResultShape.isBoolean(typeRaw: field.type.rawValue, length: field.length)
-                        columnIsBoolean.append(isBoolean)
-                        columnTypeNames.append(
-                            isBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + i)
-                        )
-                        columnIsBinary.append(
-                            MariaDBFieldClassifier.isBinary(
-                                typeRaw: field.type.rawValue,
-                                charset: field.charsetnr
-                            )
-                        )
-                    }
-                }
+                let columns = describeColumns(
+                    mysql_fetch_fields(resultPtr),
+                    count: Int(mysql_num_fields(resultPtr))
+                )
 
                 continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames,
+                    columns: columns.names,
+                    columnTypeNames: columns.typeNames,
                     estimatedRowCount: nil
                 )))
 
@@ -1247,27 +1060,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         return
                     }
 
-                    let lengths = mysql_fetch_lengths(resultPtr)
-
-                    var row: [PluginCellValue] = []
-                    row.reserveCapacity(numFields)
-
-                    for i in 0..<numFields {
-                        guard let fieldPtr = rowPtr[i] else {
-                            row.append(.null)
-                            continue
-                        }
-                        let length = Int(clamping: lengths?[i] ?? 0)
-                        row.append(Self.cellValue(
-                            UnsafeRawBufferPointer(start: fieldPtr, count: length),
-                            typeRaw: columnTypes[i],
-                            isBinary: columnIsBinary[i],
-                            isBoolean: columnIsBoolean[i],
-                            flavor: sessionFlavor
-                        ))
-                    }
-
-                    batch.append(row)
+                    batch.append(textProtocolRow(rowPtr, lengths: mysql_fetch_lengths(resultPtr), columns: columns))
                     if batch.count >= batchSize {
                         continuation.yield(.rows(batch))
                         batch.removeAll(keepingCapacity: true)
@@ -1296,77 +1089,83 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         _cachedServerVersion
     }
 
-    private static func cellValue(
-        _ buffer: UnsafeRawBufferPointer,
-        typeRaw: UInt32,
-        isBinary: Bool,
-        isBoolean: Bool,
-        flavor: MySQLServerFlavor
-    ) -> PluginCellValue {
-        if flavor.isDatabend {
-            if isBoolean {
-                return .text(DatabendResultShape.booleanText(fromWireText: String(bytes: buffer, encoding: .utf8) ?? ""))
-            }
-            if isBinary {
-                return .bytes(DatabendResultShape.binaryValue(fromWireText: Data(buffer)))
-            }
-            if typeRaw == 255 {
-                return .text(String(bytes: buffer, encoding: .utf8) ?? "")
-            }
-        }
-        if typeRaw == 255 {
-            return .text(GeometryWKBParser.parse(buffer))
-        }
-        if MariaDBFieldClassifier.isBit(typeRaw: typeRaw) {
-            return .text(MariaDBFieldClassifier.bitFieldToString(buffer))
-        }
-        if isBinary {
-            return .bytes(Data(buffer))
-        }
-        if let text = String(bytes: buffer, encoding: .utf8) {
-            return .text(text)
-        }
-        return .text(String(bytes: buffer, encoding: .isoLatin1) ?? "")
-    }
-
     // MARK: - Private Helpers
 
     private func getError() -> MariaDBPluginError {
         guard let mysql = mysql else {
             return MariaDBPluginError.notConnected
         }
-
-        let code = mysql_errno(mysql)
-        let message: String
-        if let msgPtr = mysql_error(mysql) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown error"
-        }
-
-        var sqlState: String?
-        if let statePtr = mysql_sqlstate(mysql), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
-        }
-
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
+        return readError(from: mysql)
     }
 
     private func getStmtError(_ stmt: UnsafeMutablePointer<MYSQL_STMT>) -> MariaDBPluginError {
-        let code = mysql_stmt_errno(stmt)
-        let message: String
-        if let msgPtr = mysql_stmt_error(stmt) {
-            message = String(cString: msgPtr)
-        } else {
-            message = "Unknown statement error"
-        }
+        MariaDBPluginError(
+            code: mysql_stmt_errno(stmt),
+            message: mysql_stmt_error(stmt).map(decodedMessage) ?? "Unknown statement error",
+            sqlState: sqlState(mysql_stmt_sqlstate(stmt))
+        )
+    }
 
-        var sqlState: String?
-        if let statePtr = mysql_stmt_sqlstate(stmt), statePtr[0] != 0 {
-            sqlState = String(cString: statePtr)
-        }
+    private func decodedMessage(_ message: UnsafePointer<CChar>) -> String {
+        mysqlSessionText(cString: message, encoding: connectionEncoding)
+    }
 
-        return MariaDBPluginError(code: code, message: message, sqlState: sqlState)
+    private func sqlState(_ state: UnsafePointer<CChar>?) -> String? {
+        guard let state, state[0] != 0 else { return nil }
+        return String(cString: state)
+    }
+
+    private func describeColumns(_ fields: UnsafeMutablePointer<MYSQL_FIELD>?, count: Int) -> MySQLResultColumns {
+        var columns = MySQLResultColumns()
+        guard let fields else { return columns }
+        let sessionFlavor = flavor
+        for index in 0..<count {
+            let field = fields[index]
+            let flags = UInt(field.flags)
+            let decoding = MySQLColumnDecoding(
+                typeRaw: field.type.rawValue,
+                length: field.length,
+                charsetnr: field.charsetnr,
+                characterSetName: Self.characterSetName(forCollation: field.charsetnr),
+                flavor: sessionFlavor
+            )
+            columns.append(
+                name: columnName(of: field, at: index),
+                typeCode: Self.typeCode(of: field, flags: flags),
+                typeName: decoding == .databendBoolean ? DatabendResultShape.booleanTypeName : mysqlTypeToString(fields + index),
+                decoding: decoding,
+                flags: flags
+            )
+        }
+        return columns
+    }
+
+    private func columnName(of field: MYSQL_FIELD, at index: Int) -> String {
+        guard let name = field.name else { return "column_\(index)" }
+        let bytes = UnsafeRawBufferPointer(start: name, count: strnlen(name, Int(field.name_length)))
+        return mysqlSessionText(bytes, encoding: connectionEncoding)
+    }
+
+    private static func typeCode(of field: MYSQL_FIELD, flags: UInt) -> UInt32 {
+        if (flags & mysqlSetFlag) != 0 { return 248 }
+        if (flags & mysqlEnumFlag) != 0 { return 247 }
+        return field.type.rawValue
+    }
+
+    private static func characterSetName(forCollation collation: UInt32) -> String? {
+        guard let info = mariadb_get_charset_by_nr(collation), let name = info.pointee.csname else { return nil }
+        return String(cString: name)
+    }
+
+    private func textProtocolRow(
+        _ row: MYSQL_ROW,
+        lengths: UnsafeMutablePointer<UInt>?,
+        columns: MySQLResultColumns
+    ) -> [PluginCellValue] {
+        columns.row(encoding: connectionEncoding) { index in
+            guard let value = row[index] else { return nil }
+            return UnsafeRawBufferPointer(start: value, count: Int(clamping: lengths?[index] ?? 0))
+        }
     }
 }
 

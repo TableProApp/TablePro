@@ -124,7 +124,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             database: _activeDatabase,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
-            queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0
+            queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
+            connectionEncoding: MySQLConnectionEncoding(
+                fieldValue: config.additionalFields[MySQLConnectionEncoding.fieldId]
+            )
         )
 
         try await conn.connect()

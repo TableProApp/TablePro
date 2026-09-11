@@ -30,7 +30,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "0",
             fieldType: .stepper(range: ConnectionField.IntRange(0...240)),
             section: .advanced
-        )
+        ),
+        MySQLConnectionEncoding.connectionField
         ]
     static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend"]
 

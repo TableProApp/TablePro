@@ -223,6 +223,16 @@ extension PluginMetadataRegistry {
             section: .advanced
         )
 
+        let mysqlEncodingField = ConnectionField(
+            id: "mysqlConnectionEncoding",
+            label: String(localized: "Encoding"),
+            fieldType: .dropdown(options: [
+                .init(value: "", label: "UTF-8"),
+                .init(value: "utf8ViaLatin1", label: String(localized: "UTF-8 via Latin 1"))
+            ]),
+            section: .advanced
+        )
+
         let defaults: [(typeId: String, snapshot: PluginMetadataSnapshot)] = [
             ("MySQL", PluginMetadataSnapshot(
                 displayName: "MySQL", iconName: "mysql-icon", defaultPort: 3_306,
@@ -282,7 +292,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField],
+                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Most popular open-source SQL database"),
                     defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"
@@ -346,7 +356,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: mysqlColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField],
+                    additionalConnectionFields: awsIAMFields + [mysqlIdleReleaseField, mysqlEncodingField],
                     category: .relational,
                     tagline: String(localized: "Open-source fork of MySQL"),
                     defaultUnixSocketPath: "/var/run/mysqld/mysqld.sock"

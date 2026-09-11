@@ -3,10 +3,7 @@
 //  TableProTests
 //
 
-#if canImport(MySQLDriverPlugin)
 import Testing
-
-@testable import MySQLDriverPlugin
 
 @Suite("MariaDB type name resolution")
 struct MariaDBTypeNameTests {
@@ -117,4 +114,3 @@ struct MariaDBTypeNameTests {
         #expect(resolve(typeRaw: 252, charsetnr: 33, flags: 0, length: 100_000) == "LONGTEXT")
     }
 }
-#endif

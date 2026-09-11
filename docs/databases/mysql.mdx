@@ -26,7 +26,7 @@ MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no au
 | **Password** | empty | Stored in the macOS Keychain |
 | **Database** | empty | Optional. Leave it empty to browse every database |
 
-The session character set is `utf8mb4`, so emoji and non-Latin text round-trip untouched. A connect attempt gives up after 10 seconds.
+Every connection sets its session character set to `utf8mb4` once it logs in, over any `init_connect` the server runs, so emoji and non-Latin text round-trip untouched. A connect attempt gives up after 10 seconds.
 
 ## Connection URL
 
@@ -75,6 +75,40 @@ To stop the check itself, set **Check connections** to **Only when I use the con
 Reconnecting costs a TCP connect, the TLS handshake and authentication: measured at 2ms against a server on the same machine and 800ms to 1.9s across the internet. That cost lands on the first query after an idle period, so leave this at `0` for a remote server unless the slot matters more than the wait.
 
 A release is refused, with the reason, while the session holds anything a reconnect would destroy: an open transaction, a temporary table, a prepared statement, a `GET_LOCK`, `LOCK TABLES`, a user variable, a changed session setting, or a stored routine call, whose body is opaque.
+
+## Garbled non-Latin text
+
+A comment or value that reads `ãƒ¡ãƒ¼ãƒ«` where `メール` belongs was written by a client that sent UTF-8 while telling the server it was sending Latin 1. A `mysql` command-line client without a UTF-8 locale does that, and so does a MySQL 5.7 container loading its `docker-entrypoint-initdb.d` scripts, and so does any client on a server whose `init_connect` runs `SET NAMES latin1`. The server stored the garbled form, so every UTF-8 client shows the same thing.
+
+To work with such a database the way that client did, set **Encoding** to **UTF-8 via Latin 1** in **Options** and reconnect. Text written through Latin 1 then reads correctly, text stored correctly still reads correctly, and whatever you save is stored the way the old client stored it, so the application that wrote the data keeps reading it.
+
+<Warning>
+With **UTF-8 via Latin 1**, a correctly stored value you edit is saved in the garbled form, and a table or column whose non-Latin name was stored correctly cannot be opened. Use it on a database written through Latin 1, never on one where applications write UTF-8.
+</Warning>
+
+An SQL export taken with **UTF-8 via Latin 1** holds the text as it reads, in UTF-8. Restoring it gives a database with the text fixed, which the old client then reads as `?`. Restore it where you are moving off that client, not as a backup of the database it still writes to.
+
+To fix the stored text instead, convert it in place. The `WHERE` clause skips values that were stored correctly:
+
+```sql
+UPDATE orders
+SET note = CONVERT(CAST(CONVERT(note USING latin1) AS BINARY) USING utf8mb4)
+WHERE note = CONVERT(CONVERT(note USING latin1) USING utf8mb4)
+  AND CONVERT(CAST(CONVERT(note USING latin1) AS BINARY) USING utf8mb4) IS NOT NULL;
+```
+
+Table comments take one `ALTER TABLE` each. This query writes them for the current database; run the statements it returns:
+
+```sql
+SELECT CONCAT('ALTER TABLE `', TABLE_NAME, '` COMMENT = ',
+  QUOTE(CONVERT(CAST(CONVERT(TABLE_COMMENT USING latin1) AS BINARY) USING utf8mb4)), ';')
+FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COMMENT <> ''
+  AND TABLE_COMMENT = CONVERT(CONVERT(TABLE_COMMENT USING latin1) USING utf8mb4)
+  AND CONVERT(CAST(CONVERT(TABLE_COMMENT USING latin1) AS BINARY) USING utf8mb4) IS NOT NULL;
+```
+
+A column comment is part of the column's definition. Copy it from the **Structure** tab while **UTF-8 via Latin 1** is on, then switch back to **UTF-8**, reconnect, and paste it into the same column.
 
 ## SSL/TLS
 
