@@ -110,10 +110,10 @@ struct MySQLSessionFootprintTests {
         #expect(footprint(after: "SELECT @counter := 1").hasUserVariables)
     }
 
-    /// mysqldump writes its whole preamble as version-gated comments, which MySQL executes. They
-    /// read as comments, so the statement splitter used to drop them and a restore run from the
-    /// editor left the session holding six user variables and two session settings that the
-    /// footprint reported as nothing.
+    /// mysqldump writes its whole preamble as version-gated comments, which MySQL executes: eight
+    /// `@OLD_` variables and the character set, time zone and check settings, plus one
+    /// `@saved_cs_client` per table. They read as comments, so the statement splitter used to
+    /// drop them and a restore run from the editor left a session the footprint called clean.
     @Test("A version-gated comment sets session state, and is seen")
     func versionGatedCommentsAreSeen() {
         let preamble = """
@@ -147,6 +147,99 @@ struct MySQLSessionFootprintTests {
         #expect(result.hasChangedDatabase)
         #expect(result.blockingReason != nil)
         #expect(footprint(after: "SELECT * FROM t USE INDEX (i)").isClean)
+    }
+
+    /// The two gates read different things: the replay asks `isClean` and the idle release asks
+    /// `blockingReason`. A flag added without an arm in the ladder would tighten one and leave
+    /// the other handing the connection back.
+    @Test("Every flag that makes the footprint dirty also gives a reason")
+    func everyFlagGivesAReason() {
+        for statement in [
+            "CREATE TEMPORARY TABLE staging (a INT)",
+            "SET @total = 5",
+            "PREPARE stmt FROM 'SELECT 1'",
+            "SELECT GET_LOCK('job', 10)",
+            "LOCK TABLES users WRITE",
+            "FLUSH TABLES WITH READ LOCK",
+            "HANDLER users OPEN",
+            "SET SESSION sql_mode = 'ANSI'",
+            "USE reporting",
+            "CALL rebuild_report()",
+        ] {
+            let result = footprint(after: statement)
+            #expect(result.isClean == (result.blockingReason == nil), "\(statement)")
+            #expect(!result.isClean, "\(statement)")
+        }
+        var open = MySQLSessionFootprint()
+        open.observeServerTransaction(isOpen: true)
+        #expect(open.isClean == (open.blockingReason == nil))
+    }
+
+    /// The server answers this one itself, in the status flags of every reply, and it is exact
+    /// where the text is a guess. Measured on MySQL 8.4.11: `SET autocommit = 0` followed by a
+    /// plain `SELECT` reports a transaction that appears nowhere in the statements.
+    @Test("The server's own transaction flag wins over what the text said")
+    func serverTransactionFlagWins() {
+        var result = footprint(after: "SELECT 1")
+        result.observeServerTransaction(isOpen: true)
+        #expect(result.hasOpenTransaction)
+        #expect(!result.isClean)
+
+        var closed = footprint(after: "BEGIN")
+        #expect(closed.hasOpenTransaction)
+        closed.observeServerTransaction(isOpen: false)
+        #expect(closed.isClean)
+    }
+
+    /// A transaction opened inside a version-gated comment runs on the server. Measured on MySQL
+    /// 8.4.11 through `information_schema.INNODB_TRX`: `/*!40101 BEGIN */` then an `INSERT` leaves
+    /// one transaction open, and a `ROLLBACK` discards the row.
+    @Test("A transaction opened inside a version-gated comment is seen")
+    func versionGatedTransactionsAreSeen() {
+        #expect(footprint(after: "/*!40101 BEGIN */").hasOpenTransaction)
+        #expect(footprint(after: "/*!40101 START TRANSACTION */").hasOpenTransaction)
+        #expect(footprint(after: "/*!40101 BEGIN */", "/*!40101 COMMIT */").isClean)
+    }
+
+    /// `FLUSH TABLES WITH READ LOCK` takes a lock that is the session's alone, and the session
+    /// holding one is idle by design while a backup copies files, which is exactly when the idle
+    /// release fires. Measured on MySQL 8.4.11: a writer got error 1205 while it was held, and
+    /// the same write went through the moment the holding connection was killed.
+    @Test("A global read lock and an open HANDLER block a release")
+    func locksOutsideLockTablesAreTracked() {
+        #expect(footprint(after: "FLUSH TABLES WITH READ LOCK").hasLockedTables)
+        #expect(footprint(after: "FLUSH TABLES users, orders FOR EXPORT").hasLockedTables)
+        #expect(footprint(after: "FLUSH PRIVILEGES").isClean)
+        #expect(footprint(after: "HANDLER users OPEN").hasOpenHandlers)
+        #expect(footprint(after: "HANDLER users READ FIRST").hasOpenHandlers)
+    }
+
+    /// The prefix checks used to run against the raw text, so one extra space or a line break
+    /// between the keywords hid the statement completely.
+    @Test("Whitespace between the keywords does not hide a statement")
+    func whitespaceDoesNotHideAStatement() {
+        #expect(footprint(after: "CREATE  TEMPORARY TABLE staging (a INT)").hasTemporaryTables)
+        #expect(footprint(after: "CREATE TEMPORARY\nTABLE staging (a INT)").hasTemporaryTables)
+        #expect(footprint(after: "PREPARE\n stmt FROM 'SELECT 1'").hasPreparedStatements)
+        #expect(footprint(after: "SET\n  @x = 1").hasUserVariables)
+    }
+
+    /// A dump line that carries a note after its version-gated comment, or two of them on one
+    /// line, is still a statement the server runs.
+    @Test("Text after a version-gated comment does not hide what it ran")
+    func trailingTextAfterAVersionGatedComment() {
+        #expect(footprint(after: "/*!40101 SET @x = 1 */ -- saved").hasUserVariables)
+        #expect(footprint(after: "/*!40101 SET @x = 1 */ /*!40103 SET @y = 2 */").hasUserVariables)
+        #expect(footprint(after: "/*!40101 SET @x = 1").isClean)
+    }
+
+    /// `@@` is a system variable under another spelling. The release is blocked either way; the
+    /// reason the user reads should be the right one.
+    @Test("A system variable set with @@ reads as a session setting")
+    func systemVariablesAreNotUserVariables() {
+        let result = footprint(after: "SET @@SESSION.sql_mode = 'ANSI'")
+        #expect(result.hasSessionSettings)
+        #expect(!result.hasUserVariables)
     }
 
     @Test("A reset clears everything, for a session that is genuinely new")

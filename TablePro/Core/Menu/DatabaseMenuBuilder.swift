@@ -67,6 +67,24 @@ enum DatabaseMenuBuilder {
                 String(localized: "Edit View Definition…"),
                 action: #selector(MainSplitViewController.editViewDefinition(_:))
             ),
+            /// The sidebar's own per-object commands, mirrored so each is reachable from the menu
+            /// bar and the keyboard, and spelled exactly as the sidebar spells them.
+            MenuItemFactory.item(
+                String(localized: "Show DDL"),
+                action: #selector(MainSplitViewController.showObjectDDL(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Copy DDL"),
+                action: #selector(MainSplitViewController.copyObjectDDL(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Refresh Materialized View…"),
+                action: #selector(MainSplitViewController.refreshMaterializedView(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Edit Comment…"),
+                action: #selector(MainSplitViewController.editObjectComment(_:))
+            ),
             schemaSubmenu(),
             sessionContextSubmenu(),
             safeModeSubmenu(),

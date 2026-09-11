@@ -18,7 +18,10 @@ struct FilterSQLGeneratorMSSQLTests {
         likeEscapeStyle: .explicit, paginationStyle: .offsetFetch
     )
 
-    private let generator = FilterSQLGenerator(dialect: Self.mssqlDialect)
+    private let generator = FilterSQLGenerator(
+        dialect: Self.mssqlDialect,
+        stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(.mssql)
+    )
 
     // MARK: - Helpers
 
@@ -37,21 +40,21 @@ struct FilterSQLGeneratorMSSQLTests {
     func equalOperator() {
         let filter = makeFilter(op: .equal)
         let result = generator.generateCondition(from: filter)
-        #expect(result == "[name] = 'test'")
+        #expect(result == "[name] = N'test'")
     }
 
     @Test("Not equal operator uses bracket-quoted column")
     func notEqualOperator() {
         let filter = makeFilter(op: .notEqual)
         let result = generator.generateCondition(from: filter)
-        #expect(result == "[name] != 'test'")
+        #expect(result == "[name] != N'test'")
     }
 
     @Test("Contains operator generates LIKE with ESCAPE clause")
     func containsOperator() {
         let filter = makeFilter(op: .contains)
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("[name] LIKE '%test%'") == true)
+        #expect(result?.contains("[name] LIKE N'%test%'") == true)
         #expect(result?.contains("ESCAPE") == true)
     }
 
@@ -59,7 +62,7 @@ struct FilterSQLGeneratorMSSQLTests {
     func notContainsOperator() {
         let filter = makeFilter(op: .notContains)
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("[name] NOT LIKE '%test%'") == true)
+        #expect(result?.contains("[name] NOT LIKE N'%test%'") == true)
         #expect(result?.contains("ESCAPE") == true)
     }
 
@@ -67,7 +70,7 @@ struct FilterSQLGeneratorMSSQLTests {
     func startsWithOperator() {
         let filter = makeFilter(op: .startsWith)
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("[name] LIKE 'test%'") == true)
+        #expect(result?.contains("[name] LIKE N'test%'") == true)
         #expect(result?.contains("ESCAPE") == true)
     }
 
@@ -75,7 +78,7 @@ struct FilterSQLGeneratorMSSQLTests {
     func endsWithOperator() {
         let filter = makeFilter(op: .endsWith)
         let result = generator.generateCondition(from: filter)
-        #expect(result?.contains("[name] LIKE '%test'") == true)
+        #expect(result?.contains("[name] LIKE N'%test'") == true)
         #expect(result?.contains("ESCAPE") == true)
     }
 
@@ -130,7 +133,7 @@ struct FilterSQLGeneratorMSSQLTests {
     func singleQuoteEscaping() {
         let filter = makeFilter(column: "name", op: .equal, value: "O'Brien")
         let result = generator.generateCondition(from: filter)
-        #expect(result == "[name] = 'O''Brien'")
+        #expect(result == "[name] = N'O''Brien'")
     }
 
     // MARK: - WHERE Clause Tests
@@ -144,7 +147,7 @@ struct FilterSQLGeneratorMSSQLTests {
         let result = generator.generateWhereClause(from: filters, logicMode: .and)
         #expect(result.contains("WHERE"))
         #expect(result.contains("AND"))
-        #expect(result.contains("[name] = 'Alice'"))
+        #expect(result.contains("[name] = N'Alice'"))
         #expect(result.contains("[age] > 18"))
     }
 
@@ -157,8 +160,8 @@ struct FilterSQLGeneratorMSSQLTests {
         let result = generator.generateWhereClause(from: filters, logicMode: .or)
         #expect(result.contains("WHERE"))
         #expect(result.contains("OR"))
-        #expect(result.contains("[name] = 'Alice'"))
-        #expect(result.contains("[name] = 'Bob'"))
+        #expect(result.contains("[name] = N'Alice'"))
+        #expect(result.contains("[name] = N'Bob'"))
     }
 
     // MARK: - Identifier Quoting Tests
@@ -168,5 +171,46 @@ struct FilterSQLGeneratorMSSQLTests {
         let filter = makeFilter(column: "user_name", op: .equal, value: "test")
         let result = generator.generateCondition(from: filter)
         #expect(result?.hasPrefix("[user_name]") == true)
+    }
+
+    // MARK: - Unicode Literals
+
+    @Test("A non-ASCII value is an nvarchar literal, so a non-Unicode collation cannot flatten it")
+    func nonAsciiValueIsANationalLiteral() {
+        let filter = makeFilter(op: .equal, value: "日本語メール")
+        #expect(generator.generateCondition(from: filter) == "[name] = N'日本語メール'")
+    }
+
+    @Test("Every value-carrying operator writes a national literal")
+    func everyValueOperatorWritesANationalLiteral() {
+        let operators: [FilterOperator] = [
+            .equal, .notEqual, .contains, .notContains, .startsWith, .endsWith, .regex
+        ]
+        for op in operators {
+            let result = generator.generateCondition(from: makeFilter(op: op, value: "メール")) ?? ""
+            let body = result.replacingOccurrences(of: " ESCAPE '!'", with: "")
+            #expect(body.contains("N'"), "\(op) wrote no national literal")
+            #expect(!body.contains(" '"), "\(op) wrote a plain literal: \(result)")
+        }
+    }
+
+    @Test("An IN list prefixes every element")
+    func inListPrefixesEveryElement() {
+        let filter = makeFilter(op: .inList, value: "メール,alpha")
+        let result = generator.generateCondition(from: filter)
+        #expect(result == "[name] IN (N'メール', N'alpha')")
+    }
+
+    @Test("Numbers and NULL never take the prefix")
+    func numbersAndNullAreNotPrefixed() {
+        #expect(generator.generateCondition(from: makeFilter(column: "age", op: .greaterThan, value: "30"))
+            == "[age] > 30")
+        #expect(generator.generateCondition(from: makeFilter(op: .isNull)) == "[name] IS NULL")
+    }
+
+    @Test("A driver with no prefix is untouched")
+    func otherEnginesKeepPlainLiterals() {
+        let plain = FilterSQLGenerator(dialect: Self.mssqlDialect)
+        #expect(plain.generateCondition(from: makeFilter(op: .equal)) == "[name] = 'test'")
     }
 }

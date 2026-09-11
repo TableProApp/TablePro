@@ -23,6 +23,9 @@ internal enum SidebarMenuCommand: Equatable {
     case showAllDatabases
     case openInNewTab(DatabaseTreeTableRef)
     case editViewDefinition(DatabaseTreeTableRef)
+    case copyDDL(DatabaseTreeTableRef)
+    case refreshMaterializedView(DatabaseTreeTableRef)
+    case editComment(DatabaseTreeTableRef)
     case showStructure(DatabaseTreeTableRef)
     case showERDiagram
     case copyTableNames([String])

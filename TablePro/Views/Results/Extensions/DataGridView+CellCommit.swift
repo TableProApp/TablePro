@@ -60,8 +60,8 @@ extension TableViewCoordinator {
 
         var delta: Delta = .none
         if let storageRow {
-            tableRowsMutator { tableRows in
-                delta = tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
+            delta = tableRowsMutator { tableRows in
+                tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }
         }
         cellCommitLogger.debug("recordCellEdit - about to call delegate.dataGridDidEditCell, delegate=\(self.delegate == nil ? "nil" : "present", privacy: .public)")

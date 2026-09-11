@@ -37,11 +37,11 @@ public enum ClickHouseResponseClassifier {
         if let format = headerValue(headers, named: formatHeaderName), format != requestedFormat {
             return rawOutcome(body: body)
         }
-        let text = decodedText(body)
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let bytes = [UInt8](body)
+        guard !ClickHouseTabSeparatedBytes.isAsciiWhitespace(bytes) else {
             return noResultSetOutcome(headers: headers)
         }
-        let lines = text.components(separatedBy: "\n")
+        let lines = ClickHouseTabSeparatedBytes.lines(bytes)
         guard lines.count >= 2 else {
             return rawOutcome(body: body)
         }
@@ -58,30 +58,8 @@ public enum ClickHouseResponseClassifier {
     }
 
     public static func unescapeTsvField(_ field: String) -> String {
-        var result = ""
-        result.reserveCapacity((field as NSString).length)
-        var iterator = field.makeIterator()
-
-        while let char = iterator.next() {
-            if char == "\\" {
-                if let next = iterator.next() {
-                    switch next {
-                    case "\\": result.append("\\")
-                    case "t": result.append("\t")
-                    case "n": result.append("\n")
-                    default:
-                        result.append("\\")
-                        result.append(next)
-                    }
-                } else {
-                    result.append("\\")
-                }
-            } else {
-                result.append(char)
-            }
-        }
-
-        return result
+        let bytes = Array(field.utf8)
+        return String(decoding: ClickHouseTabSeparatedBytes.unescape(bytes[...]), as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
     }
 
     private static func noResultSetOutcome(headers: [String: String]) -> Outcome {
@@ -94,31 +72,49 @@ public enum ClickHouseResponseClassifier {
         )
     }
 
+    /// A body the server wrote in a format the user asked for is one opaque value. It is text when
+    /// it decodes as text and bytes when it does not, because a `Native` or `Parquet` body read as
+    /// Latin-1 is mojibake that cannot be copied back out.
     private static func rawOutcome(body: Data) -> Outcome {
         let isTruncated = body.count > rawBodyByteCap
-        let text = decodedText(body.prefix(rawBodyByteCap))
+        let capped = [UInt8](body.prefix(rawBodyByteCap))
+        let decodable = isTruncated ? Array(droppingCutSequence(capped)) : capped
+        let value: PluginCellValue = utf8Text(decodable).map { .text($0) } ?? .bytes(Data(capped))
         return Outcome(
             columns: [String(localized: "Output")],
             columnTypeNames: ["String"],
-            rows: [[.text(text)]],
+            rows: [[value]],
             affectedRows: 1,
             isTruncated: isTruncated
         )
     }
 
-    private static func tabSeparatedOutcome(lines: [String], rowLimit: Int) -> Outcome {
-        let columns = lines[0].components(separatedBy: "\t")
-        let columnTypeNames = lines[1].components(separatedBy: "\t")
+    private static func tabSeparatedOutcome(lines: [ArraySlice<UInt8>], rowLimit: Int) -> Outcome {
+        let columns = ClickHouseTabSeparatedBytes.fields(lines[0]).map(ClickHouseTabSeparatedBytes.headerText)
+        let columnTypeNames = ClickHouseTabSeparatedBytes.fields(lines[1]).map(ClickHouseTabSeparatedBytes.headerText)
 
         var rows: [[PluginCellValue]] = []
+        var binaryColumns = Set<Int>()
         var isTruncated = false
         for index in 2..<lines.count {
             let line = lines[index]
             if line.isEmpty { continue }
 
-            let fields = line.components(separatedBy: "\t")
-            let row: [PluginCellValue] = fields.map { field in
-                field == "\\N" ? .null : .text(unescapeTsvField(field))
+            let fields = ClickHouseTabSeparatedBytes.fields(line)
+            var row: [PluginCellValue] = []
+            row.reserveCapacity(fields.count)
+            for (column, field) in fields.enumerated() {
+                if ClickHouseTabSeparatedBytes.isNullMarker(field) {
+                    row.append(.null)
+                    continue
+                }
+                let value = ClickHouseTabSeparatedBytes.unescape(field)
+                guard let text = utf8Text(value) else {
+                    binaryColumns.insert(column)
+                    row.append(.bytes(Data(value)))
+                    continue
+                }
+                row.append(.text(text))
             }
             rows.append(row)
             if rows.count >= rowLimit {
@@ -130,19 +126,52 @@ public enum ClickHouseResponseClassifier {
         return Outcome(
             columns: columns,
             columnTypeNames: columnTypeNames,
-            rows: rows,
+            rows: demoteBinaryColumns(binaryColumns, in: rows),
             affectedRows: rows.count,
             isTruncated: isTruncated
         )
     }
 
-    private static func decodedText(_ data: Data) -> String {
-        for suffixLength in 0...3 where data.count >= suffixLength {
-            if let text = String(bytes: data.dropLast(suffixLength), encoding: .utf8) {
-                return text
+    /// One value that is not text makes the whole column binary. A `FixedString(16)` of raw UUIDs
+    /// decodes on the rows whose bytes happen to be valid UTF-8 and not on the rest, and a column
+    /// that renders as hex on some rows and as mojibake on others is the worse answer. Re-encoding
+    /// a decoded value is exact: UTF-8 round-trips whenever the decode succeeded.
+    private static func demoteBinaryColumns(
+        _ binaryColumns: Set<Int>,
+        in rows: [[PluginCellValue]]
+    ) -> [[PluginCellValue]] {
+        guard !binaryColumns.isEmpty else { return rows }
+        return rows.map { row in
+            row.enumerated().map { column, value in
+                guard binaryColumns.contains(column), case .text(let text) = value else { return value }
+                return .bytes(Data(text.utf8))
             }
         }
-        return String(bytes: data, encoding: .isoLatin1) ?? ""
+    }
+
+    private static func utf8Text(_ bytes: [UInt8]) -> String? {
+        String(bytes: bytes, encoding: .utf8)
+    }
+
+    /// The byte cap can stop inside a multi-byte character, so a truncated body sheds that one
+    /// incomplete sequence and nothing else. Dropping trailing bytes until the rest decodes would
+    /// call a short binary body text, and a field is never cut, so it never comes through here.
+    private static func droppingCutSequence(_ bytes: [UInt8]) -> ArraySlice<UInt8> {
+        guard !bytes.isEmpty else { return bytes[...] }
+        for offset in 1...min(3, bytes.count) {
+            let index = bytes.count - offset
+            let byte = bytes[index]
+            if byte & 0xC0 == 0x80 { continue }
+            let sequenceLength: Int
+            switch byte {
+            case 0xC0...0xDF: sequenceLength = 2
+            case 0xE0...0xEF: sequenceLength = 3
+            case 0xF0...0xF7: sequenceLength = 4
+            default: return bytes[...]
+            }
+            return offset < sequenceLength ? bytes[..<index] : bytes[...]
+        }
+        return bytes[...]
     }
 
     private static func headerValue(_ headers: [String: String], named name: String) -> String? {

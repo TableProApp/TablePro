@@ -29,8 +29,14 @@ extension DatabaseTreeOutlineCoordinator {
             }
         case .editViewDefinition(let ref):
             activateThen(ref) { [weak self] in
-                self?.mainCoordinator?.editViewDefinition(ref.table.name)
+                self?.mainCoordinator?.editViewDefinition(ref)
             }
+        case .copyDDL(let ref):
+            mainCoordinator?.copyDDL(of: ref)
+        case .refreshMaterializedView(let ref):
+            mainCoordinator?.refreshMaterializedView(ref)
+        case .editComment(let ref):
+            mainCoordinator?.editComment(of: ref)
         case .showStructure(let ref):
             activateThen(ref) { [weak self] in
                 self?.mainCoordinator?.openTableTab(

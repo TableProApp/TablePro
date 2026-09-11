@@ -88,7 +88,7 @@ struct MainContentCoordinatorDisplayStateTests {
         seedRows(coordinator, for: tab.id)
         let before = coordinator.displayState(for: tabManager.tabs[0])
 
-        coordinator.tabSessionRegistry.updateTableRows(for: tab.id) { _ in }
+        coordinator.tabSessionRegistry.updateTableRows(for: tab.id) { _ in .none }
         #expect(coordinator.displayState(for: tabManager.tabs[0]) === before)
     }
 

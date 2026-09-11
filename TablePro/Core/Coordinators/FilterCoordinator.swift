@@ -633,7 +633,8 @@ final class FilterCoordinator {
         let generator = FilterSQLGenerator(
             dialect: dialect,
             columns: queryColumns?.columns ?? [],
-            columnTypes: queryColumns?.columnTypes ?? []
+            columnTypes: queryColumns?.columnTypes ?? [],
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
         )
         let filtersToPreview = filtersForPreview(in: state)
 

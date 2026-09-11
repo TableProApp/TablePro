@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
 - **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
+- **Refresh Materialized View…** on PostgreSQL, with a concurrent refresh where the view qualifies. (#2726)
+- **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
+- **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
 - UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
 
 ### Changed
@@ -53,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
+- PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
 - Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
 - Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.
@@ -67,7 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
 - Dragging a connection in filtered welcome window results snapping back without moving it.
 - Welcome window context menu leaving linked connections out of a mixed selection.
-
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)
 - Password prompt raised by a background reconnect, on whichever window was in front. (#2700)
@@ -150,15 +153,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
 - GEOMETRY values from a parameterized MySQL query shown as raw bytes.
 - Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
+- Wrong row deleted or updated after an edit took a row out of a column value filter.
 - Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 - Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- PostgreSQL view definitions without `security_barrier`, `security_invoker` or the check option. (#2726)
+- PostgreSQL view definitions that bind to another schema's tables when run elsewhere. (#2726)
+- `CREATE TABLE` in Structure > DDL for a PostgreSQL view or materialized view. (#2726)
+- **Edit View Definition** in the Database menu opening a same-named view from the browsed schema. (#2726)
+- **Edit View Definition** enabled in the Database menu on a read-only connection. (#2726)
+- Enum types and sequences written in front of a PostgreSQL view's DDL. (#2726)
+- Display As formats lost on a rename, and kept with column layouts after deleting a connection.
+- Garbled ClickHouse text whenever another value in the same result held binary data.
+- Carriage returns, quotes, NUL bytes and Enum type names shown with backslash escapes on ClickHouse.
+- Edits and deletes matching no row on ClickHouse tables with a binary value in the row.
+- Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
+- Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
+- Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
 
 ### Security
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
-- SQL injection and mangled backslashes in PostgreSQL literals when `standard_conforming_strings` is off.
+- PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
+- PostgreSQL comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
 
 ## [0.73.0] - 2026-09-09
 

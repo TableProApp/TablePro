@@ -567,6 +567,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _cachedServerVersionNumber
     }
 
+    /// Whether the session is inside a transaction block, including one a failed statement has
+    /// aborted. A statement sent now joins that block rather than running on its own.
+    ///
+    /// Read on the connection's own queue, like every other libpq call here: one `PGconn` may not
+    /// be used from two threads at once, and the lock alone guards the pointer rather than the call.
+    var isInsideTransactionBlock: Bool {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return false }
+        return queue.sync {
+            let status = PQtransactionStatus(conn)
+            return status == PQTRANS_INTRANS || status == PQTRANS_INERROR
+        }
+    }
+
     func currentDatabase() -> String {
         database
     }
@@ -586,6 +602,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         defer { cancellationGate.endQuery(generation) }
         defer { refreshStandardConformingStrings(from: conn) }
 
+        let cancelsOutput = cancelsAbandonedOutput(conn)
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
             PQexec(conn, queryPtr)
@@ -618,6 +635,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
+            if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+            }
             let error = getResultError(from: result)
             PQclear(result)
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
@@ -648,14 +669,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
         /// Started before the drain, so a result the previous statement abandoned is charged to the
         /// time before the first row rather than appearing as this query's row transfer.
         let sentAt = Date()
-        while let stale = PQgetResult(conn) { PQclear(stale) }
 
         /// Cancelling a statement inside a transaction block puts the transaction into the aborted
         /// state, and every later command fails until ROLLBACK. Reading the tail of one result costs
         /// less than throwing away the transaction the user opened, so the cancel is withheld here
         /// and the connection is drained instead.
-        let insideTransaction = PQtransactionStatus(conn) == PQTRANS_INTRANS
-        let suppressCancel = suppressServerSideCancel || insideTransaction
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        let suppressCancel = !cancelsOutput
+        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
 
         let localQuery = String(query)
         let sendOk = localQuery.withCString { queryPtr in
@@ -664,7 +685,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard sendOk != 0 else { throw getError(from: conn) }
 
         guard PQsetSingleRowMode(conn) != 0 else {
-            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
         }
 
@@ -699,7 +720,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     throw CancellationError()
                 }
                 if rows.count > rowCap {
@@ -722,22 +743,27 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 continue
             }
 
+            if let copy = LibPQCopyState.copy(of: result) {
+                pendingError = Self.unsupportedCopyError(copy)
+                PQclear(result)
+                break
+            }
+
             pendingError = getResultError(from: result)
             PQclear(result)
             break
         }
 
-        if truncated {
-            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-        } else {
-            while let trailing = PQgetResult(conn) { PQclear(trailing) }
-        }
+        let outcome = truncated
+            ? cancelAndDrain(conn, suppressCancel: suppressCancel)
+            : finishPendingResults(conn, cancellingOutput: cancelsOutput)
 
         if let pendingError {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw pendingError
         }
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        if let abandoned = abandonedCopyError(outcome, generation: generation) { throw abandoned }
 
         if truncated { rows.removeLast() }
 
@@ -769,6 +795,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         defer { cancellationGate.endQuery(generation) }
         defer { refreshStandardConformingStrings(from: conn) }
 
+        let cancelsOutput = cancelsAbandonedOutput(conn)
         var paramValues: [UnsafePointer<CChar>?] = []
         var paramLengths: [Int32] = []
         var paramFormats: [Int32] = []
@@ -858,6 +885,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
+            if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+            }
             let error = getResultError(from: result)
             PQclear(result)
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
@@ -865,9 +896,52 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // MARK: - Pending Results
+
+    /// A statement the user did not get to see is worse than a slow one, so a COPY ended by any
+    /// drain is reported rather than swallowed: `INSERT INTO t VALUES (1); COPY t FROM STDIN` used
+    /// to come back as "INSERT 0 1" with the COPY discarded.
+    private func abandonedCopyError(_ outcome: LibPQDrainOutcome, generation: Int) -> Error? {
+        guard let copy = outcome.abandonedCopy else { return nil }
+        if cancellationGate.isCancelled(generation) { return CancellationError() }
+        return Self.unsupportedCopyError(copy)
+    }
+
+    private func abandonedCopyError(
+        _ copy: LibPQCopy,
+        conn: OpaquePointer,
+        cancellingOutput: Bool,
+        generation: Int
+    ) -> Error {
+        _ = finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        if cancellationGate.isCancelled(generation) { return CancellationError() }
+        return Self.unsupportedCopyError(copy)
+    }
+
+    private static func unsupportedCopyError(_ copy: LibPQCopy) -> LibPQPluginError {
+        LibPQPluginError(message: copy.direction.unsupportedMessage, sqlState: nil, detail: nil)
+    }
+
+    /// Reading `COPY TO STDOUT` to its end defeats the row cap the bounded read exists for, so the
+    /// statement is cancelled first wherever a cancel is safe. Inside a transaction block it is not,
+    /// because a cancel aborts the transaction the user opened.
+    private func cancelsAbandonedOutput(_ conn: OpaquePointer) -> Bool {
+        !suppressServerSideCancel && PQtransactionStatus(conn) != PQTRANS_INTRANS
+    }
+
+    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        guard let stuck = outcome.stuckInCopy else { return outcome }
+        logger.fault(
+            "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
+        )
+        disconnect()
+        return outcome
+    }
+
     // MARK: - Streaming Query
 
-    private static func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) {
+    private func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) -> LibPQDrainOutcome {
         if !suppressCancel {
             let cancelObj = PQgetCancel(conn)
             if let cancelObj {
@@ -876,7 +950,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 PQfreeCancel(cancelObj)
             }
         }
-        while let res = PQgetResult(conn) { PQclear(res) }
+        return finishPendingResults(conn, cancellingOutput: false)
     }
 
     /// The abort is polled by the producer rather than acted on from `onTermination`, because both
@@ -907,12 +981,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     return
                 }
 
-                while let res = PQgetResult(conn) { PQclear(res) }
-
                 /// Read before the query goes out: once it is in flight the status is
                 /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
-                let suppressCancel = suppressServerSideCancel
-                    || PQtransactionStatus(conn) == PQTRANS_INTRANS
+                let cancelsOutput = cancelsAbandonedOutput(conn)
+                let suppressCancel = !cancelsOutput
+                _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
 
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
@@ -924,7 +997,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 }
 
                 if PQsetSingleRowMode(conn) == 0 {
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     continuation.finish(throwing: LibPQPluginError(
                         message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
                     return
@@ -992,7 +1065,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
-                            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                             continuation.finish(throwing: CancellationError())
                             return
                         }
@@ -1003,10 +1076,15 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         lastCommandTag = getCommandTag(from: result)
                         PQclear(result)
                         break
+                    } else if let copy = LibPQCopyState.copy(of: result) {
+                        PQclear(result)
+                        continuation.finish(throwing: abandonedCopyError(
+                            copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation))
+                        return
                     } else {
                         let error = getResultError(from: result)
                         PQclear(result)
-                        while let res = PQgetResult(conn) { PQclear(res) }
+                        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
                         if cancellationGate.isCancelled(generation) {
                             continuation.finish(throwing: CancellationError())
                             return
@@ -1020,7 +1098,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.yield(.rows(batch))
                 }
 
-                while let res = PQgetResult(conn) { PQclear(res) }
+                let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
                 /// The header went out with the first row, so this stream keeps what it said;
                 /// the lookup is for the results that follow.
                 let missing = unresolvedOids(in: columnOids)
@@ -1028,6 +1106,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     learnTypeNames(for: missing, conn: conn)
                 }
                 noteCommandTag(lastCommandTag, conn: conn)
+                if let abandoned = abandonedCopyError(outcome, generation: generation) {
+                    continuation.finish(throwing: abandoned)
+                    return
+                }
                 continuation.finish()
             }
         }

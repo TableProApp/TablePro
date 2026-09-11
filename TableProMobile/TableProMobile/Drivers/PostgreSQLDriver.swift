@@ -1,5 +1,6 @@
 import CLibPQ
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 
@@ -94,6 +95,10 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                     let beginResult = try await actor.beginStream(query: query)
                     switch beginResult {
                     case .commandOk(let affectedRows):
+                        if let abandoned = await actor.takeAbandonedCopyError() {
+                            continuation.finish(throwing: abandoned)
+                            return
+                        }
                         if affectedRows != 0 {
                             continuation.yield(.rowsAffected(affectedRows))
                         }
@@ -115,6 +120,10 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                             continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                         }
                         await actor.endStream()
+                        if let abandoned = await actor.takeAbandonedCopyError() {
+                            continuation.finish(throwing: abandoned)
+                            return
+                        }
                         continuation.finish()
                     }
                 } catch is CancellationError {
@@ -479,12 +488,18 @@ private actor PostgreSQLActor {
         guard let conn else { throw PostgreSQLError.notConnected }
 
         let start = Date()
+        let cancelsOutput = cancelsAbandonedOutput(conn)
         let result = PQexec(conn, query)
         defer {
             if result != nil { PQclear(result) }
         }
 
         let status = PQresultStatus(result)
+
+        if let copy = result.flatMap(LibPQCopyState.copy(of:)) {
+            _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+            throw PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+        }
 
         if status == PGRES_FATAL_ERROR {
             let msg = result.flatMap { String(cString: PQresultErrorMessage($0)) } ?? "Unknown error"
@@ -546,10 +561,14 @@ private actor PostgreSQLActor {
 
     private var pendingResult: OpaquePointer?
     private var streamingFinished = true
+    private var abandonedCopy: LibPQCopy?
+    private var streamCancelsAbandonedOutput = false
 
     func beginStream(query: String) throws -> PGBeginStreamResult {
         guard let conn else { throw PostgreSQLError.notConnected }
+        streamCancelsAbandonedOutput = cancelsAbandonedOutput(conn)
         endStream()
+        abandonedCopy = nil
 
         guard PQsendQuery(conn, query) == 1 else {
             throw PostgreSQLError.queryFailed(String(cString: PQerrorMessage(conn)))
@@ -566,6 +585,12 @@ private actor PostgreSQLActor {
         }
 
         let status = PQresultStatus(firstResult)
+        if let copy = LibPQCopyState.copy(of: firstResult) {
+            PQclear(firstResult)
+            drainResults()
+            abandonedCopy = nil
+            throw PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+        }
         switch status {
         case PGRES_COMMAND_OK:
             let affectedStr = String(cString: PQcmdTuples(firstResult))
@@ -654,10 +679,36 @@ private actor PostgreSQLActor {
             pendingResult = nil
         }
         guard let conn else { return }
-        while let extra = PQgetResult(conn) {
-            PQclear(extra)
-        }
+        let outcome = finishPendingResults(conn, cancellingOutput: streamCancelsAbandonedOutput)
+        guard let copy = outcome.abandonedCopy, abandonedCopy == nil else { return }
+        abandonedCopy = copy
     }
+
+    /// A COPY the drain ended is reported, never swallowed: `INSERT INTO t VALUES (1); COPY t FROM
+    /// STDIN` used to stream as a plain "INSERT 0 1" with the COPY silently discarded.
+    func takeAbandonedCopyError() -> PostgreSQLError? {
+        guard let copy = abandonedCopy else { return nil }
+        abandonedCopy = nil
+        return PostgreSQLError.unsupported(copy.direction.unsupportedMessage)
+    }
+
+    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        guard let stuck = outcome.stuckInCopy else { return outcome }
+        Self.logger.fault(
+            "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
+        )
+        close()
+        return outcome
+    }
+
+    /// Cancelling inside a transaction block aborts it, so the cancel that keeps a `COPY TO STDOUT`
+    /// from transferring the whole table is sent only outside one.
+    private func cancelsAbandonedOutput(_ conn: OpaquePointer) -> Bool {
+        PQtransactionStatus(conn) != PQTRANS_INTRANS
+    }
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLActor")
 
     private func parseColumns(_ result: OpaquePointer) -> [ColumnInfo] {
         let colCount = Int(PQnfields(result))

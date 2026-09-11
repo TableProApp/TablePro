@@ -24,7 +24,7 @@ extension PostgreSQLPluginDriver {
             "GRANT \(quoteIdentifier($0)) TO \(role)"
         })
         if let comment = definition.comment, !comment.isEmpty {
-            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLObjectQueries.quoteLiteral(comment))")
+            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLRelationSQL.commentValue(comment))")
         }
         return statements
     }
@@ -51,9 +51,7 @@ extension PostgreSQLPluginDriver {
         statements.append(contentsOf: membershipStatements(old: old, new: new, role: role))
 
         if old.comment != new.comment {
-            let comment = new.comment ?? ""
-            let value = comment.isEmpty ? "NULL" : PostgreSQLObjectQueries.quoteLiteral(comment)
-            statements.append("COMMENT ON ROLE \(role) IS \(value)")
+            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLRelationSQL.commentValue(new.comment))")
         }
         if old.ref.name != new.ref.name {
             statements.append("ALTER ROLE \(role) RENAME TO \(quoteIdentifier(new.ref.name))")

@@ -23,6 +23,12 @@ internal func mysqlStatementIsReadOnly(_ query: String) -> Bool {
 /// re-run burns a second sequence value while the grid shows one, and `SELECT GET_LOCK(...)` takes
 /// the lock again. Neither reports anything: the retry looks like a connection that healed itself.
 ///
+/// The last four change nothing and are here for the other half of the same problem: their answer
+/// belongs to the session that ran the statement before them, and the replay runs on a new one.
+/// Measured on MySQL 8.4.11, a fresh connection answers `SELECT LAST_INSERT_ID()` with `0`, so an
+/// `INSERT` followed by a dropped connection and a replayed `SELECT LAST_INSERT_ID()` showed `0`
+/// for a row that had an id. The footprint cannot cover these: an `INSERT` leaves it clean.
+///
 /// The scan is deliberately crude and only ever errs toward "do not replay", which costs the user a
 /// connection error where they would have got a transparent retry. It cannot see inside a stored
 /// function, so a `SELECT my_function()` that writes is still replayable.
@@ -33,6 +39,7 @@ private let mysqlSideEffectingMarkers: [String] = [
     "FOR UPDATE", "FOR SHARE", "LOCK IN SHARE MODE",
     "UUID_SHORT", "MASTER_POS_WAIT", "SOURCE_POS_WAIT",
     "BENCHMARK", "SLEEP", ":=",
+    "LAST_INSERT_ID", "ROW_COUNT", "FOUND_ROWS", "CONNECTION_ID",
 ]
 
 /// Whether a statement the server dropped the connection under can be run again on the session

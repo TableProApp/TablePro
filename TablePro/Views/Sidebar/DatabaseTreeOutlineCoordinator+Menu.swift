@@ -86,7 +86,8 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
             canBackUp: backupIsAvailable(),
-            canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil
+            canCreateType: DatabaseManager.shared.driver(for: connectionId)?.createTypeTemplate(schema: nil) != nil,
+            objectToolSupport: .of(DatabaseManager.shared.driver(for: connectionId))
         )
     }
 

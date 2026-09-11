@@ -286,8 +286,8 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let startTime = Date()
         let queryId = UUID().uuidString
-        let (convertedQuery, paramMap) = Self.buildClickHouseParams(query: query, parameters: parameters)
-        let result = try await executeRawWithParams(convertedQuery, params: paramMap, queryId: queryId)
+        let bound = ClickHouseParameterBinding.bind(query: query, parameters: parameters)
+        let result = try await executeRawWithParams(bound.query, params: bound.params, queryId: queryId)
         let executionTime = Date().timeIntervalSince(startTime)
 
         return PluginQueryResult(

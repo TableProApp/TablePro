@@ -112,4 +112,12 @@ struct TableQueryBuilderMSSQLTests {
         let query = fallback.buildBaseQuery(tableName: "users")
         #expect(query == "SELECT * FROM [users] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY")
     }
+
+    @Test("The filtered row count spells a non-ASCII value the way the browse query does")
+    func filteredCountUsesNationalLiterals() {
+        let filters = [TestFixtures.makeTableFilter(column: "name", op: .equal, value: "日本語メール")]
+        let count = builder.buildFilteredCountQuery(tableName: "users", filters: filters, columns: ["name"])
+        #expect(count?.contains("[name] = N'日本語メール'") == true)
+        #expect(count?.contains("= '日本語メール'") == false)
+    }
 }

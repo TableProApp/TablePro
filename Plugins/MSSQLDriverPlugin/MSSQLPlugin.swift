@@ -273,7 +273,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if MSSQLCapabilities.parse(serverVersion).hasCreateOrAlterView {
             return "CREATE OR ALTER VIEW \(quoted) AS\nSELECT * FROM table_name;"
         }
-        return "IF OBJECT_ID('\(viewName)', 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
+        let viewLiteral = MSSQLStringLiteral.quoted(viewName)
+        return "IF OBJECT_ID(\(viewLiteral), 'V') IS NOT NULL DROP VIEW \(quoted);\nCREATE VIEW \(quoted) AS\nSELECT * FROM table_name;"
     }
 
     func castColumnToText(_ column: String) -> String {
@@ -283,10 +284,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.config = config
         self._currentSchema = config.additionalFields["mssqlSchema"].flatMap { $0.isEmpty ? nil : $0 } ?? "dbo"
-    }
-
-    private var escapedSchema: String {
-        _currentSchema.replacingOccurrences(of: "'", with: "''")
     }
 
     // MARK: - Connection
@@ -686,13 +683,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let esc = effectiveSchemaEscaped(schema)
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let objectName = "[\(esc)].[\(escapedTable)]"
+        let objectLiteral = MSSQLStringLiteral.quoted(
+            MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
             SELECT SUM(p.rows)
             FROM sys.partitions p
-            WHERE p.object_id = OBJECT_ID(N'\(objectName)') AND p.index_id IN (0, 1)
+            WHERE p.object_id = OBJECT_ID(\(objectLiteral)) AND p.index_id IN (0, 1)
             """
         let result = try await execute(query: sql)
         if let row = result.rows.first, let cell = row.first, let str = cell.asText {
@@ -774,16 +770,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        let whereClause = PluginSQLFilter.buildWhereClause(
-            filters: filters,
-            logicMode: logicMode,
-            columnKinds: columnKinds,
-            quoteIdentifier: mssqlQuoteIdentifier,
-            escapeTypedValue: mssqlEscapeValue,
-            regexCondition: { quoted, value in
-                "\(quoted) LIKE '%\(value.replacingOccurrences(of: "'", with: "''"))%'"
-            }
-        )
+        let whereClause = mssqlWhereClause(filters: filters, logicMode: logicMode, columnKinds: columnKinds)
         let orderBy = PluginSQLFilter.buildOrderByClause(
             sortColumns: sortColumns, columns: columns, quoteIdentifier: mssqlQuoteIdentifier
         ) ?? "ORDER BY (SELECT NULL)"
@@ -799,13 +786,43 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
+    /// The shared builder writes the `LIKE` arms' literal itself rather than asking for one, so
+    /// SQL Server answers those arms first and lets every other operator fall through to it.
+    private func mssqlWhereClause(
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String {
+        let conditions = filters.compactMap { filter -> String? in
+            let quoted = mssqlQuoteIdentifier(filter.column)
+            if let like = MSSQLStringLiteral.likeCondition(
+                quotedColumn: quoted, op: filter.op, value: filter.value
+            ) {
+                return like
+            }
+            return PluginSQLFilter.buildFilterCondition(
+                column: filter.column,
+                op: filter.op,
+                value: filter.value,
+                kind: columnKinds[filter.column],
+                quoteIdentifier: mssqlQuoteIdentifier,
+                escapeTypedValue: mssqlEscapeValue,
+                regexCondition: { quoted, value in
+                    "\(quoted) LIKE \(MSSQLStringLiteral.quoted("%\(value)%"))"
+                }
+            )
+        }
+        guard !conditions.isEmpty else { return "" }
+        return conditions.joined(separator: logicMode == "and" ? " AND " : " OR ")
+    }
+
     private func mssqlEscapeValue(_ value: String, kind: PluginColumnKind?) -> String {
         PluginSQLLiteral.escapedLiteral(
             value,
             kind: kind,
             trueLiteral: "1",
             falseLiteral: "0",
-            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            quote: MSSQLStringLiteral.quoted
         )
     }
 
@@ -881,8 +898,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return schema
     }
 
-    func effectiveSchemaEscaped(_ schema: String?) -> String {
-        MSSQLSchemaQueries.escape(effectiveSchema(schema))
+    func effectiveSchemaQuoted(_ schema: String?) -> String {
+        MSSQLStringLiteral.quoted(effectiveSchema(schema))
     }
 
 }

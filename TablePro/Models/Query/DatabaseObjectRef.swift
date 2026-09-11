@@ -2,7 +2,7 @@
 //  DatabaseObjectRef.swift
 //  TablePro
 //
-//  Everything needed to find one routine, trigger or type again and read its source.
+//  Everything needed to find one routine, trigger, type or view again and read its source.
 //
 
 import Foundation
@@ -12,13 +12,26 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
     case function
     case trigger
     case userType
+    case view
+    case materializedView
 
     var sidebarObjectKind: SidebarObjectKind {
         switch self {
-        case .procedure: return .procedure
-        case .function:  return .function
-        case .trigger:   return .trigger
-        case .userType:  return .type
+        case .procedure:        return .procedure
+        case .function:         return .function
+        case .trigger:          return .trigger
+        case .userType:         return .type
+        case .view:             return .view
+        case .materializedView: return .materializedView
+        }
+    }
+
+    /// The kind a table listing row opens as, or nil for a row whose source is its table DDL.
+    init?(tableType: TableInfo.TableType) {
+        switch tableType {
+        case .view: self = .view
+        case .materializedView: self = .materializedView
+        case .table, .foreignTable, .systemTable, .partitionedTable, .externalTable: return nil
         }
     }
 
@@ -100,6 +113,12 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         )
     }
 
+    /// A view or materialized view, whose source is read the way the Structure tab reads it.
+    init?(relation table: TableInfo, database: String, schema: String?) {
+        guard let kind = DatabaseObjectKind(tableType: table.type) else { return nil }
+        self.init(kind: kind, name: table.name, database: database, schema: schema)
+    }
+
     init(userType: UserDefinedTypeInfo, database: String) {
         self.init(
             kind: .userType,
@@ -122,7 +141,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
         case .trigger:
             guard let table, !table.isEmpty else { return qualifiedName }
             return String(format: String(localized: "%1$@ on %2$@"), qualifiedName, table)
-        case .userType:
+        case .userType, .view, .materializedView:
             return qualifiedName
         }
     }
@@ -171,7 +190,7 @@ struct DatabaseObjectRef: Hashable, Codable, Sendable {
                 argumentSignature: argumentSignature,
                 identity: identity
             )
-        case .trigger, .userType:
+        case .trigger, .userType, .view, .materializedView:
             return nil
         }
     }

@@ -403,6 +403,7 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseParameterBinding.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePlugin.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Http.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
@@ -511,6 +512,8 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQCellDecoding.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQConnectionString.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQCopyDirection+UnsupportedMessage.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQPendingResultDrain.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQPluginError.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
@@ -520,6 +523,8 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogTypeNames.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift

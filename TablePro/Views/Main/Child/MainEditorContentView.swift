@@ -892,10 +892,7 @@ struct MainEditorContentView: View {
                 coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
             },
             tableRowsMutator: { [coordinator] mutate in
-                coordinator.mutateActiveTableRows(for: tabId) { rows in
-                    mutate(&rows)
-                    return .none
-                }
+                coordinator.mutateActiveTableRows(for: tabId) { rows in mutate(&rows) }
             },
             paginationOffsetProvider: { [coordinator] in
                 coordinator.tabManager.tabs.first(where: { $0.id == tabId })?.pagination.currentOffset ?? 0
@@ -925,6 +922,9 @@ struct MainEditorContentView: View {
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab),
             valueFilter: valueFilterBinding(for: tab),
+            displayOrderProvider: { [coordinator] in
+                coordinator.displayIDs(forTab: tabId)
+            },
             displayState: coordinator.displayState(for: tab),
             restoredRowSelection: tab.selectedRowIndices,
             restoredCellSelection: tab.cellSelection,
