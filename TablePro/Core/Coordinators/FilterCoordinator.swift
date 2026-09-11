@@ -37,15 +37,15 @@ final class FilterCoordinator {
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
 
             let tab = parent.tabManager.tabs[capturedTabIndex]
-            let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
+            let queryColumns = parent.queryColumns(for: tab)
             let newQuery = parent.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
                 schemaName: tab.tableContext.schemaName,
                 filters: capturedFilters,
                 logicMode: tab.filterState.filterLogicMode,
                 sortState: tab.sortState,
-                columns: buffer.columns,
-                columnTypes: buffer.columnTypes,
+                columns: queryColumns.columns,
+                columnTypes: queryColumns.columnTypes,
                 selectColumns: parent.selectColumns(for: tab),
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
@@ -174,11 +174,8 @@ final class FilterCoordinator {
               let tableName = parent.tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = parent.tabManager.tabs[tabIndex]
-        let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
         let hasFilters = tab.filterState.hasAppliedFilters
-        let hasBufferedColumns = !buffer.columns.isEmpty
-        let columns = hasBufferedColumns ? buffer.columns : parent.effectiveResultColumns(for: tab)
-        let columnTypes = hasBufferedColumns ? buffer.columnTypes : []
+        let (columns, columnTypes) = parent.queryColumns(for: tab)
 
         let newQuery: String
         if usesBrowseSearch, tab.filterState.hasActiveBrowseSearch {
@@ -632,11 +629,11 @@ final class FilterCoordinator {
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
             return "-- Filters are applied natively"
         }
-        let buffer = parent.tabManager.selectedTab.map { parent.tabSessionRegistry.tableRows(for: $0.id) }
+        let queryColumns = parent.tabManager.selectedTab.map { parent.queryColumns(for: $0) }
         let generator = FilterSQLGenerator(
             dialect: dialect,
-            columns: buffer?.columns ?? [],
-            columnTypes: buffer?.columnTypes ?? []
+            columns: queryColumns?.columns ?? [],
+            columnTypes: queryColumns?.columnTypes ?? []
         )
         let filtersToPreview = filtersForPreview(in: state)
 

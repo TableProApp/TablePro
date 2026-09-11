@@ -46,6 +46,7 @@ struct ParsedSchemaMetadata {
     /// to carry. Only the schema knows which columns the server owns, so a command that stages a
     /// value from that knowledge waits for it rather than guessing from an empty set.
     let isAuthoritative: Bool
+    var rowMatchExcludedColumns: Set<String> = []
 
     /// The metadata a tab already holds, captured at the moment the cache decision is made.
     ///
@@ -63,7 +64,8 @@ struct ParsedSchemaMetadata {
             approximateRowCount: nil,
             columnEnumValues: rows.columnEnumValues,
             columnComments: rows.columnComments,
-            isAuthoritative: rows.hasAuthoritativeSchema
+            isAuthoritative: rows.hasAuthoritativeSchema,
+            rowMatchExcludedColumns: rows.rowMatchExcludedColumns
         )
     }
 }
@@ -219,7 +221,10 @@ final class QueryExecutor {
         }
     }
 
-    static func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
+    static func parseSchemaMetadata(
+        _ schema: FetchedTableSchema,
+        rowMatchExcludedTypePrefixes: [String] = []
+    ) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
         var nullable: [String: Bool] = [:]
         var identity: [String: IdentityKind] = [:]
@@ -262,8 +267,19 @@ final class QueryExecutor {
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues,
             columnComments: comments,
-            isAuthoritative: true
+            isAuthoritative: true,
+            rowMatchExcludedColumns: rowMatchExcludedColumns(
+                in: schema.columns, typePrefixes: rowMatchExcludedTypePrefixes
+            )
         )
+    }
+
+    static func rowMatchExcludedColumns(in columns: [ColumnInfo], typePrefixes: [String]) -> Set<String> {
+        guard !typePrefixes.isEmpty else { return [] }
+        return Set(columns.filter { column in
+            let dataType = column.dataType.uppercased()
+            return typePrefixes.contains { dataType.hasPrefix($0) }
+        }.map(\.name))
     }
 
     static func inlineMetadata(from meta: [ResultColumnMeta]?, columns: [String]) -> ParsedSchemaMetadata? {

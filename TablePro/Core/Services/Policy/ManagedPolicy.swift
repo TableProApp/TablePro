@@ -78,21 +78,11 @@ internal enum ManagedPolicyResolver {
         connectionLevel: SafeModeLevel,
         policy: any ManagedPolicyReading
     ) -> SafeModeLevel {
-        guard let raw = policy.string(.minimumSafeModeLevel),
-              let floor = SafeModeLevel(rawValue: raw)
-        else { return connectionLevel }
-        return strictness(floor) > strictness(connectionLevel) ? floor : connectionLevel
+        guard let floor = minimumSafeModeLevel(policy: policy) else { return connectionLevel }
+        return floor.strictness > connectionLevel.strictness ? floor : connectionLevel
     }
 
-    /// Ordered weakest to strongest by what each level actually prevents, not by declaration order.
-    private static func strictness(_ level: SafeModeLevel) -> Int {
-        switch level {
-        case .silent: 0
-        case .alert: 1
-        case .alertFull: 2
-        case .safeMode: 3
-        case .safeModeFull: 4
-        case .readOnly: 5
-        }
+    internal static func minimumSafeModeLevel(policy: any ManagedPolicyReading) -> SafeModeLevel? {
+        policy.string(.minimumSafeModeLevel).flatMap(SafeModeLevel.init(rawValue:))
     }
 }

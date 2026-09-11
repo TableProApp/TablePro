@@ -123,7 +123,8 @@ extension MainContentCoordinator {
             columns: resultSet.resultColumns,
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
-            generatedColumns: tabSessionRegistry.tableRows(for: tab.id).generatedColumns
+            generatedColumns: tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
+            rowMatchExcludedColumns: tabSessionRegistry.tableRows(for: tab.id).rowMatchExcludedColumns
         )
     }
 

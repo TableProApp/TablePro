@@ -19,9 +19,10 @@ extension PluginMetadataRegistry {
     /// takes the plugin's editor config, and the curated entry keeps only the facts it states
     /// deliberately, meaning the ones where it differs from the curated primary.
     ///
-    /// Today that is case-insensitive matching alone, which is why Redshift is spelled
-    /// `postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)`. A second such fact needs
-    /// its own named adoption here rather than a value comparison: `SQLDialectDescriptor` is not
+    /// Two facts qualify: case-insensitive matching, which is why Redshift is spelled
+    /// `postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)`, and the column type list,
+    /// which TiDB narrows (no spatial types) and Databend replaces with its own. Each has its own
+    /// named adoption here rather than a value comparison: `SQLDialectDescriptor` is not
     /// `Equatable`, and a whole-descriptor diff would report "differs" for Redshift and hand it
     /// the stub back.
     static func adoptPluginEditorConfig(
@@ -31,7 +32,17 @@ extension PluginMetadataRegistry {
     ) {
         guard let pluginDialect = pluginSnapshot.editor.sqlDialect else { return }
         let curatedDialect = snapshot.editor.sqlDialect
+        let curatedColumnTypes = snapshot.editor.columnTypesByCategory
         snapshot.editor = pluginSnapshot.editor
+
+        if let primaryColumnTypes = curatedPrimary?.editor.columnTypesByCategory,
+           curatedColumnTypes != primaryColumnTypes {
+            snapshot.editor = PluginMetadataSnapshot.EditorConfig(
+                sqlDialect: snapshot.editor.sqlDialect,
+                statementCompletions: snapshot.editor.statementCompletions,
+                columnTypesByCategory: curatedColumnTypes
+            )
+        }
 
         guard let curatedDialect,
               let primaryDialect = curatedPrimary?.editor.sqlDialect,

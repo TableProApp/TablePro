@@ -9,13 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TiDB and Databend connection types on the MySQL driver. (#1066, #2514)
 - Empty state in the inspector and the assistant for a connection that is not up.
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
+- Cloudflare R2 SQL driver, read-only, for Iceberg tables in R2 Data Catalog. (#2030)
 - Tips for preview tabs, Open Quickly, and query history.
 - **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
 - Invisible characters shown in the SQL editor: control characters, zero-width spaces, bidi controls and special spaces. (#2717)
 - **Remove Invisible Characters** in the Query menu. (#2717)
 - **Show invisible characters** in Settings > Editor. (#2717)
+- Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 
 ### Changed
 
@@ -26,9 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New Connection… and Import on the welcome window, named as in the File menu.
 - Open Project Folder… in File > Import.
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
+- Beancount connections held at Safe Mode Read-Only. (#2030)
 
 ### Fixed
 
+- Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
+- Stop not ending queries on MySQL and MariaDB servers without TLS.
+- Users & Roles failing, Stop not ending queries and sequences listed as tables on TiDB servers opened as MySQL.
 - Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Blank welcome window list when a search matched nothing and a favorite existed.
 - Welcome window reading No Connections while a tag filter hid every connection.
@@ -47,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Table transfer abortable by Stop from an unrelated tab, part-applied. (#2700)
 - SQLite, DuckDB and Teradata connections pinged every 30 seconds despite opting out of health checks. (#2700)
 - Data grid dropping the UTC offset from a `timestamp with time zone` value. (#2702)
+- Edits accepted on a SQLite remote file, which only ever changed the local copy. (#2030)
 - Oracle `TIMESTAMP` values carrying a `Z` the column never stored. (#2702)
 - Timestamp shown an hour late, and its time lost on an edit, when the value falls in the reader's daylight-saving gap. (#2702)
 - Timestamp stored on a day the reader's time zone skipped rendering as raw text with no date picker. (#2702)
@@ -101,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Option and Control chords editing text in Vim Normal and Visual mode, and Vim's Ctrl commands never running. (#2717)
 - Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
 - Stop on Cloudflare D1, libSQL and Trino cancelling a sidebar read instead of the running query.
+- Numeric-looking filter values sent unquoted to text columns when a table first opens or after a foreign key jump.
 
 ## [0.73.0] - 2026-09-09
 

@@ -12,6 +12,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let password: String
     private let database: String
     let ssl: DriverSSLConfiguration
+    let databaseType: DatabaseType
 
     var supportsSchemas: Bool { false }
     var currentSchema: String? { nil }
@@ -24,13 +25,22 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     // Set once during connect() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var serverVersion: String?
 
-    init(host: String, port: Int, user: String, password: String, database: String, ssl: DriverSSLConfiguration = .disabled) {
+    init(
+        host: String,
+        port: Int,
+        user: String,
+        password: String,
+        database: String,
+        ssl: DriverSSLConfiguration = .disabled,
+        databaseType: DatabaseType = .mysql
+    ) {
         self.host = host
         self.port = port
         self.user = user
         self.password = password
         self.database = database
         self.ssl = ssl
+        self.databaseType = databaseType
     }
 
     // MARK: - Connection
@@ -127,12 +137,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let raw = try await actor.execute("SHOW FULL TABLES")
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 2, let name = row[0], let typeStr = row[1] else { return nil }
-            let kind: TableInfo.TableKind = typeStr.uppercased() == "VIEW" ? .view : .table
-            return TableInfo(name: name, type: kind, rowCount: nil, dataSize: nil, comment: nil)
-        }
+        return MySQLTableListing.tables(fromShowFullTables: raw.rows, databaseType: databaseType)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {

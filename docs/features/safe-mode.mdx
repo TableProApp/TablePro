@@ -20,6 +20,16 @@ New connections start at **Silent**, which is the right choice for a local datab
 
 Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
 
+## Connections that are always read-only
+
+A connection that cannot take a write runs at **Read-Only** whatever level it was given. Its edit form shows the level as fixed text, and every other level is dimmed in the toolbar padlock and in **Database > Safe Mode Level**. The level you chose stays saved and applies again once the condition no longer holds.
+
+| Connection | Condition |
+|------------|-----------|
+| [Beancount](/databases/beancount) | The ledger is a projection of text files, and nothing writes it back |
+| [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) | The engine runs read queries only |
+| [SQLite](/databases/sqlite) with **Remote File** | The file is a copy fetched over SFTP, and nothing writes it back |
+
 ## What the level gates
 
 Safe Mode sits in front of query execution, saving cell edits, structure and table changes, sidebar operations, imports, and maintenance jobs, including the ones the [AI assistant](/features/ai-assistant) and the MCP tools ask for.
@@ -78,7 +88,7 @@ An administrator can impose a minimum level through a macOS configuration profil
 |---|---|---|
 | `com.TablePro.policy.minimumSafeModeLevel` | String | `silent`, `alert`, `alertFull`, `safeMode`, `safeModeFull`, or `readOnly` |
 
-A connection set below the floor is raised to it, and a stricter choice is left alone: the policy is a floor, never a ceiling. A value TablePro does not recognize imposes no floor at all. While the policy is in force the matching control appears dimmed.
+A connection set below the floor runs at it, and a stricter choice is left alone: the policy is a floor, never a ceiling. A value TablePro does not recognize imposes no floor at all. While the policy is in force, the levels below the floor are dimmed in the toolbar padlock and in **Database > Safe Mode Level**, and the connection form lists only the levels at or above it. The level you chose stays saved and applies again once the profile is removed.
 
 This is a floor on TablePro's own behavior, not on the database. It stops the app issuing a write; it does not stop the same person connecting with `psql`. Pair it with server-side privileges for anything that has to hold.
 

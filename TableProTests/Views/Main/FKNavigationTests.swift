@@ -92,6 +92,45 @@ struct FKNavigationTests {
         #expect(tabManager.selectedTab?.tableContext.tableName == "users")
     }
 
+    /// The target table has no rows yet, so the only thing that can type the value is its schema.
+    /// Built from the empty buffer instead, `0123` went to a text key as the number `0123`, which
+    /// MySQL compares numerically and PostgreSQL rejects outright.
+    @Test("An in-place hop types the reference value from the target table's columns")
+    @MainActor
+    func inPlaceHopTypesTheValueFromTheTargetSchema() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+        coordinator.schemaColumns.store(
+            SchemaColumnStore.Entry(
+                columns: ["id", "code"],
+                primaryKeys: ["id"],
+                columnTypes: ["id": .integer(rawType: "INT"), "code": .text(rawType: "VARCHAR(20)")]
+            ),
+            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "code")
+        coordinator.navigateToFKReference(value: "0123", fkInfo: fkInfo, openInNewTab: false)
+
+        let query = try #require(tabManager.selectedTab?.content.query)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(query.contains("'0123'"))
+        #expect(!query.contains("= 0123"))
+    }
+
     @Test("FK navigation with no referenced schema resolves the session's current schema")
     @MainActor
     func nilReferencedSchemaResolvesActiveSchema() throws {

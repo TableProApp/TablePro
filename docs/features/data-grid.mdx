@@ -115,6 +115,8 @@ A large table shows an estimated total prefixed with `~` instead of running a sl
 
 A query tab does not page. It stops at the [row cap](/customization/data-settings) instead and offers **Fetch All** to load the rest, and a query carrying its own `LIMIT`, `FETCH FIRST`, or `TOP` is never capped. `Cmd+.` cancels a running query or a Fetch All.
 
+Some engines cannot skip rows and return a fixed maximum from one query. On those, a table tab shows its leading rows only: First, Previous, Next, Last and **All rows…** are gone, the rows-per-page menu stops at the engine's maximum, and the total is counted only when you click **Count Exactly**. Filter or sort to decide which rows load. [Cloudflare R2 SQL](/databases/cloudflare-r2-sql#pagination) works this way.
+
 ## Copying
 
 Click a cell to select it, drag or `Shift`-click for a range, and click a row number for a whole row. The row-number gutter stays at the left edge on a table wider than the window, so whole rows are still selectable when the columns have scrolled past it. `Shift+Space` widens whatever is selected to every row it touches. Copy acts on the whole selection.

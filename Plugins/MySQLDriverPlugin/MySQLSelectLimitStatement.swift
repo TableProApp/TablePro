@@ -18,20 +18,6 @@ internal struct MySQLBoundedFetchOutcome: Equatable {
     let serverIgnoredLimit: Bool
 }
 
-internal func mysqlSelectLimitStatement(rows: UInt64) -> String {
-    "SET SQL_SELECT_LIMIT = \(rows)"
-}
-
-internal func mysqlSelectLimitResetStatement() -> String {
-    "SET SQL_SELECT_LIMIT = DEFAULT"
-}
-
-/// The explicit `LIMIT` is what lets the probe answer while the session limit is 0, where an
-/// unbounded `SELECT` would return no rows at all and read as a failed probe.
-internal func mysqlSelectLimitProbeStatement() -> String {
-    "SELECT @@sql_select_limit LIMIT 1"
-}
-
 internal func mysqlSelectLimitAction(applied: UInt64?, desired: UInt64?) -> MySQLSelectLimitAction {
     guard applied != desired else { return .none }
     guard let desired else { return .reset }

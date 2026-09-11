@@ -199,7 +199,7 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        state.warnings = result.warnings
+        state.warnings = result.warnings + dataSource.cappedTableWarnings
     }
 
     // MARK: - Statement Timeout
@@ -316,7 +316,7 @@ final class ExportService {
         }
 
         let dataSource = StreamingQueryExportDataSource(
-            query: query,
+            query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
             driver: driver,
             databaseType: databaseType
         )
@@ -353,7 +353,21 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        state.warnings = result.warnings
+        let capWarning = Self.leadingRowsCapWarning(
+            exportedRows: progress.processedRows,
+            pagination: PaginationCapability.of(databaseType)
+        )
+        state.warnings = result.warnings + [capWarning].compactMap { $0 }
+    }
+
+    /// A query result exported from an engine that returns only its leading rows stops at the
+    /// engine's ceiling, so a file that reached it is named as partial rather than passing as whole.
+    static func leadingRowsCapWarning(exportedRows: Int, pagination: PaginationCapability) -> String? {
+        guard let maximum = pagination.maximumRows, exportedRows >= maximum else { return nil }
+        return String(
+            format: String(localized: "Only the first %lld rows were exported, the most this database returns from one query."),
+            maximum
+        )
     }
 
     // MARK: - Row Count Fetching

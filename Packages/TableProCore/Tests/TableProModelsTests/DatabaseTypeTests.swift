@@ -8,6 +8,8 @@ struct DatabaseTypeTests {
     func staticConstants() {
         #expect(DatabaseType.mysql.rawValue == "MySQL")
         #expect(DatabaseType.mariadb.rawValue == "MariaDB")
+        #expect(DatabaseType.tidb.rawValue == "TiDB")
+        #expect(DatabaseType.databend.rawValue == "Databend")
         #expect(DatabaseType.postgresql.rawValue == "PostgreSQL")
         #expect(DatabaseType.sqlite.rawValue == "SQLite")
         #expect(DatabaseType.redis.rawValue == "Redis")
@@ -24,6 +26,8 @@ struct DatabaseTypeTests {
     func pluginTypeIdMapping() {
         #expect(DatabaseType.mysql.pluginTypeId == "MySQL")
         #expect(DatabaseType.mariadb.pluginTypeId == "MySQL")
+        #expect(DatabaseType.tidb.pluginTypeId == "MySQL")
+        #expect(DatabaseType.databend.pluginTypeId == "MySQL")
         #expect(DatabaseType.postgresql.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.sqlite.pluginTypeId == "SQLite")
@@ -54,8 +58,10 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 24)
+        #expect(DatabaseType.allKnownTypes.count == 27)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
+        #expect(DatabaseType.allKnownTypes.contains(.tidb))
+        #expect(DatabaseType.allKnownTypes.contains(.databend))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))
         #expect(DatabaseType.allKnownTypes.contains(.libsql))
@@ -65,6 +71,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.allKnownTypes.contains(.trino))
         #expect(DatabaseType.allKnownTypes.contains(.dameng))
         #expect(DatabaseType.allKnownTypes.contains(.kafka))
+        #expect(DatabaseType.allKnownTypes.contains(.cloudflareR2SQL))
     }
 
     /// The list has no duplicates, which a count alone would not catch: adding a type twice
@@ -73,6 +80,13 @@ struct DatabaseTypeTests {
     func allKnownTypesAreUnique() {
         let raw = DatabaseType.allKnownTypes.map(\.rawValue)
         #expect(Set(raw).count == raw.count)
+    }
+
+    @Test("Cloudflare R2 SQL resolves its icon and plugin type id")
+    func cloudflareR2SQLIdentity() {
+        #expect(DatabaseType.cloudflareR2SQL.rawValue == "Cloudflare R2 SQL")
+        #expect(DatabaseType.cloudflareR2SQL.iconName == "cloudflare-r2-sql-icon")
+        #expect(DatabaseType.cloudflareR2SQL.pluginTypeId == "Cloudflare R2 SQL")
     }
 
     @Test("Hashable conformance")

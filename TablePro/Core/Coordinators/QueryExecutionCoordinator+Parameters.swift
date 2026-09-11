@@ -20,6 +20,10 @@ private struct BoundParameterValues: @unchecked Sendable {
 private struct PreparedStatement: @unchecked Sendable {
     let originalSQL: String
     let executableSQL: String
+    /// `executableSQL` with the LIMIT an engine that caps its rows is always sent. Kept apart
+    /// because Fetch All re-runs `executableSQL`, and re-running the limited text would fetch the
+    /// same trimmed rows again.
+    let sentSQL: String
     let parameterValues: [Any?]?
     let rowCap: Int?
     let anchor: StatementAnchor?
@@ -120,7 +124,8 @@ extension QueryExecutionCoordinator {
         let tabId = parent.tabManager.tabs[index].id
         let claim = parent.tabExecution.claim(tabId)
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let rowCap = statement.rowCap
         let (tableName, isEditable) = parent.resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -154,7 +159,7 @@ extension QueryExecutionCoordinator {
                 ) { [queryExecutor = parent.queryExecutor, boundValues] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
-                        sql: sql,
+                        sql: statement.sql,
                         parameters: boundValues.values,
                         rowCap: rowCap
                     )
@@ -357,11 +362,13 @@ extension QueryExecutionCoordinator {
             ? nil
             : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style)
         let executableSQL = conversion?.sql ?? sql
+        let bounded = resolveStatement(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit)
         return PreparedStatement(
             originalSQL: sql,
             executableSQL: executableSQL,
+            sentSQL: bounded.sql,
             parameterValues: conversion?.values,
-            rowCap: resolveRowCap(sql: executableSQL, tabType: tabType, bypassLimit: bypassRowLimit),
+            rowCap: bounded.rowCap,
             anchor: StatementAnchor(statement)
         )
     }
@@ -417,7 +424,7 @@ extension QueryExecutionCoordinator {
             do {
                 results.append(try await executeStatement(
                     rowCap: statement.rowCap,
-                    originalSQL: statement.executableSQL,
+                    originalSQL: statement.sentSQL,
                     driver: driver,
                     parameters: statement.parameterValues
                 ))

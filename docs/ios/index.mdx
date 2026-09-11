@@ -1,6 +1,6 @@
 ---
 title: iPhone and iPad
-description: Browse tables, run queries, and edit rows on eight database engines from a synced connection list
+description: Browse tables, run queries, and edit rows on nine database engines from a synced connection list
 ---
 
 You need iOS 18 or later. Builds ship on their own schedule, so a feature in a Mac release note may not be on your phone yet. Your version and build are under **Settings > About**. Connections saved on a Mac come over iCloud; the rest of your Mac setup stays on the Mac.
@@ -12,11 +12,12 @@ You need iOS 18 or later. Builds ship on their own schedule, so a feature in a M
 
 ## Supported databases
 
-Every driver is compiled in, so there is no plugin system and nothing to install. The type picker offers these eight:
+Every driver is compiled in, so there is no plugin system and nothing to install. The type picker offers these nine:
 
 | Type | Notes |
 | --- | --- |
 | **MySQL** / **MariaDB** | Port 3306 by default |
+| **TiDB** | Port 4000 by default. Sequences are not listed as tables |
 | **PostgreSQL** | Port 5432 by default |
 | **SQL Server** | TDS, including Microsoft Entra ID sign-in on a connection synced from the Mac |
 | **Oracle** | Service name or SID |

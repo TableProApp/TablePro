@@ -11,6 +11,8 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
 
     public static let mysql = DatabaseType(rawValue: "MySQL")
     public static let mariadb = DatabaseType(rawValue: "MariaDB")
+    public static let tidb = DatabaseType(rawValue: "TiDB")
+    public static let databend = DatabaseType(rawValue: "Databend")
     public static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     public static let sqlite = DatabaseType(rawValue: "SQLite")
     public static let redis = DatabaseType(rawValue: "Redis")
@@ -36,12 +38,13 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let teradata = DatabaseType(rawValue: "Teradata")
     public static let trino = DatabaseType(rawValue: "Trino")
     public static let kafka = DatabaseType(rawValue: "Kafka")
+    public static let cloudflareR2SQL = DatabaseType(rawValue: "Cloudflare R2 SQL")
 
     public static let allKnownTypes: [DatabaseType] = [
-        .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
+        .mysql, .mariadb, .tidb, .databend, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .snowflake, .libsql, .beancount,
-        .surrealdb, .teradata, .trino, .kafka
+        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -49,6 +52,8 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         switch self {
         case .mysql: return "mysql-icon"
         case .mariadb: return "mariadb-icon"
+        case .tidb: return "tidb-icon"
+        case .databend: return "databend-icon"
         case .postgresql: return "postgresql-icon"
         case .redshift: return "redshift-icon"
         case .sqlite: return "sqlite-icon"
@@ -71,13 +76,14 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .teradata: return "teradata-icon"
         case .trino: return "trino-icon"
         case .kafka: return "kafka-icon"
+        case .cloudflareR2SQL: return "cloudflare-r2-sql-icon"
         default: return "externaldrive"
         }
     }
 
     public var pluginTypeId: String {
         switch self {
-        case .mariadb: return DatabaseType.mysql.rawValue
+        case .mariadb, .tidb, .databend: return DatabaseType.mysql.rawValue
         case .redshift: return DatabaseType.postgresql.rawValue
         default: return rawValue
         }

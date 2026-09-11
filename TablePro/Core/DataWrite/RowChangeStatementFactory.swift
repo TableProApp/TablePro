@@ -20,6 +20,7 @@ struct RowChangeStatementFactory {
     let columns: [String]
     let primaryKeyColumns: [String]
     let generatedColumns: Set<String>
+    let rowMatchExcludedColumns: Set<String>
     let databaseType: DatabaseType
     let pluginDriver: (any PluginDatabaseDriver)?
 
@@ -29,6 +30,7 @@ struct RowChangeStatementFactory {
         columns: [String],
         primaryKeyColumns: [String],
         generatedColumns: Set<String> = [],
+        rowMatchExcludedColumns: Set<String> = [],
         databaseType: DatabaseType,
         pluginDriver: (any PluginDatabaseDriver)?
     ) {
@@ -37,6 +39,7 @@ struct RowChangeStatementFactory {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
+        self.rowMatchExcludedColumns = rowMatchExcludedColumns
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
     }
@@ -102,6 +105,11 @@ struct RowChangeStatementFactory {
             insertedRowIndices: insertedRowIndices
         )
         try validate(statements.map(\.statement), against: changes, deletedRowIndices: deletedRowIndices)
+        let deletableCount = changes.count { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) }
+        let identifiedDeletes = statements.filter { $0.kind == .delete }.reduce(0) { $0 + $1.rowCount }
+        if identifiedDeletes < deletableCount {
+            throw DataWriteError.rowsNotIdentifiable(tableName, .delete)
+        }
         return statements
     }
 
@@ -191,6 +199,7 @@ struct RowChangeStatementFactory {
             primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             generatedColumns: generatedColumns,
+            rowMatchExcludedColumns: rowMatchExcludedColumns,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )

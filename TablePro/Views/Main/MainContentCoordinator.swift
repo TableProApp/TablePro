@@ -124,8 +124,8 @@ final class MainContentCoordinator {
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
-        toolbarState.safeModeLevel = level
-        services.databaseManager.setSafeModeLevel(level, for: connectionId)
+        services.databaseManager.chooseSafeModeLevel(level, for: connectionId)
+        toolbarState.safeModeLevel = services.databaseManager.session(for: connectionId)?.safeModeLevel ?? level
     }
     let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
@@ -657,6 +657,7 @@ final class MainContentCoordinator {
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
+            pagination: services.pluginManager.paginationCapability(for: connection.type),
             dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
@@ -1304,7 +1305,8 @@ final class MainContentCoordinator {
         let traceToken = adoptOrBeginExecutionTrace(tabId: tabId)
         traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let rowCap = statement.rowCap
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -1365,7 +1367,7 @@ final class MainContentCoordinator {
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
-                        sql: sql,
+                        sql: statement.sql,
                         parameters: nil,
                         rowCap: rowCap
                     )

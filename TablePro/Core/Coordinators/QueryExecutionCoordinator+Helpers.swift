@@ -29,8 +29,20 @@ extension QueryExecutionCoordinator {
         return cap
     }
 
+    /// The text to send for a tab's read and the cap the app keeps on its result.
+    func resolveStatement(sql: String, tabType: TabType, bypassLimit: Bool = false) -> LeadingRowsStatement {
+        LeadingRowsStatement.resolve(
+            sql,
+            rowCap: resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit),
+            databaseType: parent.connection.type
+        )
+    }
+
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
-        QueryExecutor.parseSchemaMetadata(schema)
+        QueryExecutor.parseSchemaMetadata(
+            schema,
+            rowMatchExcludedTypePrefixes: PluginManager.shared.rowMatchExcludedTypePrefixes(for: parent.connection.type)
+        )
     }
 
     /// History belongs to the database the tab actually ran on, not to wherever the
@@ -103,6 +115,7 @@ extension QueryExecutionCoordinator {
         var columnComments: [String: String] = [:]
         var columnIdentity: [String: IdentityKind] = [:]
         var generatedColumns: Set<String> = []
+        var rowMatchExcludedColumns: Set<String> = []
         var hasAuthoritativeSchema = false
         var foreignKeysFetched = false
     }
@@ -135,6 +148,7 @@ extension QueryExecutionCoordinator {
             resolved.columnComments = metadata.columnComments
             resolved.columnIdentity = metadata.columnIdentity
             resolved.generatedColumns = metadata.generatedColumns
+            resolved.rowMatchExcludedColumns = metadata.rowMatchExcludedColumns
             resolved.hasAuthoritativeSchema = metadata.isAuthoritative
             resolved.foreignKeysFetched = metadata.columnForeignKeys != nil
             for (col, vals) in metadata.columnEnumValues {
@@ -213,6 +227,7 @@ extension QueryExecutionCoordinator {
             columnComments: resolved.columnComments,
             columnIdentity: resolved.columnIdentity,
             generatedColumns: generatedColumns,
+            rowMatchExcludedColumns: resolved.rowMatchExcludedColumns,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched
         )
@@ -292,7 +307,8 @@ extension QueryExecutionCoordinator {
                 columns: columns,
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type,
-                generatedColumns: generatedColumns
+                generatedColumns: generatedColumns,
+                rowMatchExcludedColumns: resolved.rowMatchExcludedColumns
             )
         }
 
@@ -492,7 +508,7 @@ extension QueryExecutionCoordinator {
         tableName: String,
         resultSetId: UUID?
     ) {
-        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        let parsed = parseSchemaMetadata(schema)
         guard resultStillActive(tabId, resultSetId) else {
             /// The result this was fetched for is still there, the user is just looking at another
             /// one. Dropping the metadata left it with no account of which columns the server owns,
@@ -521,6 +537,7 @@ extension QueryExecutionCoordinator {
             columnComments: parsed.columnComments,
             columnIdentity: parsed.columnIdentity,
             generatedColumns: parsed.generatedColumns,
+            rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
             hasAuthoritativeSchema: parsed.isAuthoritative
         )
         if !parsed.primaryKeyColumns.isEmpty {
@@ -565,6 +582,7 @@ extension QueryExecutionCoordinator {
                 columnComments: parsed.columnComments,
                 columnIdentity: parsed.columnIdentity,
                 generatedColumns: parsed.generatedColumns,
+                rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
                 hasAuthoritativeSchema: parsed.isAuthoritative
             )
         }
@@ -588,6 +606,7 @@ extension QueryExecutionCoordinator {
 
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.setGeneratedColumns(parsed.generatedColumns)
+            parent.changeManager.setRowMatchExcludedColumns(parsed.rowMatchExcludedColumns)
         }
 
         let refreshed = isActiveTab(tabId)
@@ -620,6 +639,7 @@ extension QueryExecutionCoordinator {
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+        let countsAutomatically = PluginManager.shared.paginationCapability(for: connectionType).allowsSeeking
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
 
@@ -638,17 +658,18 @@ extension QueryExecutionCoordinator {
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
-                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
+                    countsAutomatically: countsAutomatically
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
-                let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
+                let queryColumns = parent.queryColumns(for: tab)
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
                     tableName: tableName,
                     schemaName: tab.tableContext.schemaName,
                     filters: filtered ? tab.filterState.appliedFilters : [],
                     logicMode: tab.filterState.filterLogicMode,
-                    columns: buffer.columns,
-                    columnTypes: buffer.columnTypes
+                    columns: queryColumns.columns,
+                    columnTypes: queryColumns.columnTypes
                 )
                 return (plan, sql, scope)
             }
@@ -719,12 +740,18 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    /// An engine that cannot skip rows has no pages for a total to bound, so it is only counted
+    /// when the user asks: each automatic count would be a full scan the engine may bill for.
     static func rowCountPlan(
         isNonSQL: Bool,
         filterState: TabFilterState,
         approximateRowCount: Int?,
-        threshold: Int
+        threshold: Int,
+        countsAutomatically: Bool = true
     ) -> RowCountPlan {
+        guard countsAutomatically else {
+            return filterState.hasAppliedFilters ? .clear : .skip
+        }
         if isNonSQL {
             return filterState.hasAppliedFilters
                 ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)

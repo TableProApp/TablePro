@@ -473,6 +473,15 @@ extension PluginManager {
             .capabilities.supportsReadOnlyMode ?? true
     }
 
+    func paginationCapability(for databaseType: DatabaseType) -> PaginationCapability {
+        PaginationCapability.of(databaseType)
+    }
+
+    func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.isEngineReadOnly ?? false
+    }
+
     func defaultSchemaName(for databaseType: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .schema.defaultSchemaName ?? "public"
@@ -574,6 +583,15 @@ extension PluginManager {
     func supportsRenameSchema(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsRenameSchema ?? false
+    }
+
+    func rowMatchExcludedTypePrefixes(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchExcludedTypePrefixes ?? []
+    }
+
+    func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsPrincipalConnectionLimit ?? true
     }
 
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {

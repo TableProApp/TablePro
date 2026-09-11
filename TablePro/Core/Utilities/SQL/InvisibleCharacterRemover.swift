@@ -5,7 +5,6 @@
 
 import CodeEditTextView
 import Foundation
-import TableProPluginKit
 
 internal enum InvisibleCharacterRemover {
     private static let lineBreaks: Set<UInt32> = [0x85, 0x2028, 0x2029]
@@ -15,14 +14,14 @@ internal enum InvisibleCharacterRemover {
         in text: NSString,
         scope: NSRange,
         skippingLiteralsAndComments: Bool,
-        dialect: SqlDialect,
+        rules: SQLLexicalRules,
         lineEnding: String
     ) -> [TextReplacement] {
         let end = min(NSMaxRange(scope), text.length)
         var replacements: [TextReplacement] = []
         var index = max(scope.location, 0)
         while index < end {
-            if skippingLiteralsAndComments, let skipTo = endOfLiteralOrComment(at: index, in: text, dialect: dialect) {
+            if skippingLiteralsAndComments, let skipTo = SQLNonCodeSpan.end(at: index, in: text, rules: rules) {
                 index = skipTo
                 continue
             }
@@ -60,29 +59,5 @@ internal enum InvisibleCharacterRemover {
             return " "
         }
         return ""
-    }
-
-    private static func endOfLiteralOrComment(at index: Int, in text: NSString, dialect: SqlDialect) -> Int? {
-        let length = text.length
-        let character = text.character(at: index)
-        if SqlLexer.startsLineComment(text, at: index, length: length)
-            || (dialect.supportsHashLineComments && character == SqlLexer.hash) {
-            return SqlLexer.endOfLine(text, from: index, length: length)
-        }
-        if SqlLexer.startsBlockComment(text, at: index, length: length) {
-            guard !(dialect == .mysql && SqlLexer.startsConditionalComment(text, at: index, length: length)) else {
-                return nil
-            }
-            return SqlLexer.skipBlockComment(text, from: index, length: length).next
-        }
-        if SqlLexer.isQuote(character) {
-            return SqlLexer.skipQuotedString(text, from: index, quote: character, length: length, dialect: dialect).next
-        }
-        guard dialect.supportsDollarQuotes, character == SqlDollarQuote.dollar,
-              case .opener(let openerLength, let tag) = SqlDollarQuote.scanOpener(at: index, in: text, bufLen: length)
-        else {
-            return nil
-        }
-        return SqlLexer.skipDollarQuotedBody(text, from: index + openerLength, tag: tag, length: length).span.next
     }
 }

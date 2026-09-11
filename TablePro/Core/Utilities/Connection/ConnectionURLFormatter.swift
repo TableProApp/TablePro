@@ -14,7 +14,8 @@ struct ConnectionURLFormatter {
         sshPassword: String?,
         sshProfile: SSHProfile? = nil
     ) -> String {
-        let scheme = urlScheme(for: connection.type)
+        let schemeType = urlSchemeType(for: connection.type)
+        let scheme = urlScheme(for: schemeType)
 
         if connection.type == .sqlite {
             return formatSQLite(connection.database)
@@ -26,10 +27,13 @@ struct ConnectionURLFormatter {
 
         let ssh = connection.resolvedSSHConfig
         if ssh.enabled {
-            return formatSSH(connection, sshConfig: ssh, scheme: scheme, password: password, sshPassword: sshPassword)
+            return formatSSH(
+                connection, sshConfig: ssh, scheme: scheme, defaultPort: schemeType.defaultPort,
+                password: password, sshPassword: sshPassword
+            )
         }
 
-        return formatStandard(connection, scheme: scheme, password: password)
+        return formatStandard(connection, scheme: scheme, defaultPort: schemeType.defaultPort, password: password)
     }
 
     // MARK: - Private
@@ -37,6 +41,12 @@ struct ConnectionURLFormatter {
     private static func urlScheme(for type: DatabaseType) -> String {
         PluginMetadataRegistry.shared.snapshot(for: type)?.primaryUrlScheme
             ?? type.rawValue.lowercased()
+    }
+
+    private static func urlSchemeType(for type: DatabaseType) -> DatabaseType {
+        guard urlScheme(for: type).isEmpty else { return type }
+        let driverType = DatabaseType(rawValue: type.pluginTypeId)
+        return urlScheme(for: driverType).isEmpty ? type : driverType
     }
 
     private static func formatSQLite(_ database: String) -> String {
@@ -76,6 +86,7 @@ struct ConnectionURLFormatter {
         _ connection: DatabaseConnection,
         sshConfig ssh: SSHConfiguration,
         scheme: String,
+        defaultPort: Int,
         password: String?,
         sshPassword: String?
     ) -> String {
@@ -104,7 +115,7 @@ struct ConnectionURLFormatter {
         }
 
         result += connection.host
-        if connection.port != connection.type.defaultPort {
+        if connection.port != defaultPort {
             result += ":\(connection.port)"
         }
 
@@ -127,6 +138,7 @@ struct ConnectionURLFormatter {
     private static func formatStandard(
         _ connection: DatabaseConnection,
         scheme: String,
+        defaultPort: Int,
         password: String?
     ) -> String {
         var result = "\(scheme)://"
@@ -144,7 +156,7 @@ struct ConnectionURLFormatter {
             result += mongoHosts
         } else {
             result += connection.host
-            if connection.port != connection.type.defaultPort {
+            if connection.port != defaultPort {
                 result += ":\(connection.port)"
             }
         }

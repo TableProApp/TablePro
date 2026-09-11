@@ -47,7 +47,7 @@ A new connection starts on the mode that matches the driver's own default, and t
 | etcd | Disabled | Nothing. The driver never reads these fields. Set **TLS Mode** on the Options section instead, and see [etcd](/databases/etcd) |
 | Trino | Disabled | Sends every request over HTTPS with no fallback, again like Required |
 | Oracle | Disabled | Connects in plain TCP, so it behaves like Disabled. A red warning appears under the picker; use Required to enforce TCPS |
-| Snowflake, BigQuery, DynamoDB, Cloudflare D1, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
+| Snowflake, BigQuery, DynamoDB, Cloudflare D1, Cloudflare R2 SQL, libSQL / Turso | Always encrypted | These drivers are HTTPS and manage TLS themselves. No SSL/TLS section |
 | SQLite, DuckDB, Beancount, PGlite | None | Local files or an in-process engine. No SSL/TLS section |
 
 ## Behind a tunnel

@@ -99,6 +99,7 @@ struct ClipboardExporterFidelityTests {
     @Test("MySQL escapes a backslash, ANSI dialects do not")
     func literalEscaping() {
         #expect(insert(["1", #"a\b"#, "c"], .mysql).contains(#"'a\\b'"#))
+        #expect(insert(["1", #"a\b"#, "c"], .tidb).contains(#"'a\\b'"#))
         #expect(insert(["1", #"a\b"#, "c"], .postgresql).contains(#"'a\b'"#))
         #expect(insert(["1", "it's", "c"], .postgresql).contains("'it''s'"))
     }

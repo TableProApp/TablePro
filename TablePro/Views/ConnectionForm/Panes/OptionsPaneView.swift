@@ -96,11 +96,7 @@ struct OptionsPaneView: View {
 
     private var safetySection: some View {
         Section {
-            Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
-                ForEach(SafeModeLevel.allCases) { level in
-                    Text(level.displayName).tag(level)
-                }
-            }
+            safeModeRow
             if aiIsEnabled {
                 Picker(String(localized: "AI Policy"), selection: $coordinator.advanced.aiPolicy) {
                     Text(String(localized: "Use Default"))
@@ -125,8 +121,25 @@ struct OptionsPaneView: View {
     }
 
     @ViewBuilder
+    private var safeModeRow: some View {
+        let levels = SafeModeFloor.levels(allowedBy: coordinator.safeModeFloor)
+        if levels.count == 1 {
+            LabeledContent(String(localized: "Safe Mode"), value: coordinator.effectiveSafeModeLevel.displayName)
+        } else {
+            Picker(String(localized: "Safe Mode"), selection: $coordinator.effectiveSafeModeLevel) {
+                ForEach(levels) { level in
+                    Text(level.displayName).tag(level)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private var accessFooter: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 4) {
+            if let floor = coordinator.safeModeFloor {
+                Text(floor.explanation)
+            }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "AI Policy controls in-app AI agents. External Clients controls Raycast, Cursor, Claude Desktop, other MCP clients, and AppleScript. Effective scope is the minimum of the requesting token's scope and the External Clients level."))

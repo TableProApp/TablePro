@@ -2,7 +2,19 @@ import Foundation
 
 @MainActor
 final class SchemaColumnStore {
-    typealias Entry = (columns: [String], primaryKeys: [String])
+    struct Entry: Equatable, Sendable {
+        let columns: [String]
+        let primaryKeys: [String]
+        let columnTypes: [String: ColumnType]
+
+        /// Positional, because `FilterSQLGenerator` pairs names and types by index. A name this
+        /// table does not have returns no types at all, since a shorter list would type every
+        /// value after the gap against the wrong column.
+        func columnTypes(aligningWith names: [String]) -> [ColumnType] {
+            let aligned = names.compactMap { columnTypes[$0] }
+            return aligned.count == names.count ? aligned : []
+        }
+    }
 
     /// One fetch shared by every caller asking for the same key while it is in flight.
     ///
@@ -103,5 +115,20 @@ final class SchemaColumnStore {
         loads[key] = load
         guard load.liveWaiters <= 0 else { return }
         load.task.cancel()
+    }
+}
+
+extension SchemaColumnStore.Entry {
+    /// Classified by the same `ColumnTypeClassifier` the result path uses, so a filter typed from
+    /// the schema before any rows load reads a column the way it will once they have.
+    init(fetchedColumns: [ColumnInfo], classifier: ColumnTypeClassifier = ColumnTypeClassifier()) {
+        self.init(
+            columns: fetchedColumns.map(\.name),
+            primaryKeys: fetchedColumns.filter(\.isPrimaryKey).map(\.name),
+            columnTypes: Dictionary(
+                fetchedColumns.map { ($0.name, classifier.classify(rawTypeName: $0.dataType)) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
     }
 }

@@ -5,6 +5,8 @@ extension DatabaseType {
     var defaultPort: String {
         switch self {
         case .mysql, .mariadb: return "3306"
+        case .tidb: return "4000"
+        case .databend: return "3307"
         case .postgresql: return "5432"
         case .redshift: return "5439"
         case .redis: return "6379"
@@ -19,6 +21,8 @@ extension DatabaseType {
         switch self {
         case .mysql: "MySQL"
         case .mariadb: "MariaDB"
+        case .tidb: "TiDB"
+        case .databend: "Databend"
         case .postgresql: "PostgreSQL"
         case .redshift: "Redshift"
         case .sqlite: "SQLite"
@@ -33,6 +37,7 @@ extension DatabaseType {
     static let mobileSupportedTypes: [DatabaseType] = [
         .mysql,
         .mariadb,
+        .tidb,
         .postgresql,
         .sqlite,
         .duckdb,

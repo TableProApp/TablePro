@@ -29,14 +29,33 @@ enum MySQLServerVersion {
 
     /// MySQL parsed and ignored CHECK before 8.0.16; MariaDB enforces it from 10.2.1.
     /// `INFORMATION_SCHEMA.CHECK_CONSTRAINTS` appears with that support on both.
-    static func hasCheckConstraints(banner: String?, isMariaDB: Bool) -> Bool {
-        isAtLeast(isMariaDB ? (10, 2, 1) : (8, 0, 16), banner: banner)
+    static func hasCheckConstraints(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql:
+            return isAtLeast((8, 0, 16), banner: banner)
+        case .mariadb:
+            return isAtLeast((10, 2, 1), banner: banner)
+        case .tidb(let version):
+            guard let version else { return false }
+            return version >= MySQLEngineVersion(major: 7, minor: 2, patch: 0)
+        case .databend:
+            return false
+        }
     }
 
     /// `COLUMNS.GENERATION_EXPRESSION` arrived with generated columns: MySQL 5.7.6, MariaDB 10.2.
     /// MariaDB 10.1 has the columns but not the catalog column.
-    static func hasGenerationExpression(banner: String?, isMariaDB: Bool) -> Bool {
-        isAtLeast(isMariaDB ? (10, 2, 0) : (5, 7, 6), banner: banner)
+    static func hasGenerationExpression(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql:
+            return isAtLeast((5, 7, 6), banner: banner)
+        case .mariadb:
+            return isAtLeast((10, 2, 0), banner: banner)
+        case .tidb:
+            return true
+        case .databend:
+            return false
+        }
     }
 
     /// Whether a literal default comes back from the catalog already quoted.
@@ -44,7 +63,7 @@ enum MySQLServerVersion {
     /// MariaDB began quoting `COLUMN_DEFAULT` in 10.2.7, alongside expression defaults. Before that,
     /// and on every MySQL, a literal arrives bare and is indistinguishable from an expression by its
     /// text alone. MySQL never quotes, and marks an expression `DEFAULT_GENERATED` in `EXTRA` instead.
-    static func quotesColumnDefault(banner: String?, isMariaDB: Bool) -> Bool {
-        isMariaDB && isAtLeast((10, 2, 7), banner: banner)
+    static func quotesColumnDefault(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
     }
 }

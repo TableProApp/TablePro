@@ -6,6 +6,10 @@
 import Foundation
 
 extension MainContentCoordinator {
+    var paginationCapability: PaginationCapability {
+        services.pluginManager.paginationCapability(for: connection.type)
+    }
+
     func goToNextPage() {
         paginationCoordinator.goToNextPage()
     }

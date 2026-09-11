@@ -19,10 +19,12 @@ struct StructureColumnFieldRegistrationTests {
     func mysqlAndMariaDBAgree() {
         let mysql = PluginManager.shared.structureColumnFields(for: .mysql)
         let mariadb = PluginManager.shared.structureColumnFields(for: .mariadb)
+        let tidb = PluginManager.shared.structureColumnFields(for: .tidb)
         #expect(Set(mysql) == Set(mariadb))
+        #expect(Set(mysql) == Set(tidb))
     }
 
-    @Test("MySQL and MariaDB both offer the on update field", arguments: [DatabaseType.mysql, .mariadb])
+    @Test("MySQL-protocol engines with on update offer it", arguments: [DatabaseType.mysql, .mariadb, .tidb])
     func onUpdateIsOffered(databaseType: DatabaseType) {
         #expect(PluginManager.shared.structureColumnFields(for: databaseType).contains(.onUpdate))
     }
@@ -53,7 +55,7 @@ struct StructureColumnFieldRegistrationTests {
 
     @Test("Engines that do not support the attribute never offer it")
     func onUpdateIsEngineScoped() {
-        for databaseType in [DatabaseType.postgresql, .sqlite, .clickhouse] {
+        for databaseType in [DatabaseType.postgresql, .sqlite, .clickhouse, .databend] {
             #expect(!PluginManager.shared.structureColumnFields(for: databaseType).contains(.onUpdate))
         }
     }

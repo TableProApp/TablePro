@@ -192,6 +192,8 @@ struct ResultStatusBar: View {
             pagination: snapshot.pagination,
             loadedRowCount: snapshot.rowCount,
             tabId: snapshot.tabId,
+            showsPageNavigation: model.controls.showsPageNavigation,
+            maximumPageSize: snapshot.paginationCapability.maximumRows,
             onFirst: paginationCallbacks.onFirst,
             onPrevious: paginationCallbacks.onPrevious,
             onNext: paginationCallbacks.onNext,

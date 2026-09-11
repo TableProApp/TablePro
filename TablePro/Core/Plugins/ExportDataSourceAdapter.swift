@@ -20,10 +20,13 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     /// construction, on the main actor, because the registry lives there and this is asked for from
     /// the export plugin's own thread.
     let supportsCascadeDrop: Bool
+    private let pagination: PaginationCapability
+    private let cappedTables = OSAllocatedUnfairLock<[String]>(initialState: [])
 
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         self.supportsCascadeDrop = PluginMetadataRegistry.shared
             .snapshot(for: databaseType)?.capabilities.supportsCascadeDrop ?? false
+        self.pagination = PaginationCapability.of(databaseType)
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
@@ -33,17 +36,71 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         (driver as? PluginDriverAdapter)?.schemaPluginDriver
     }
 
+    /// One line per table that stopped at the engine's row ceiling, so a partial copy is never
+    /// reported as the whole table.
+    var cappedTableWarnings: [String] {
+        guard let maximum = pagination.maximumRows else { return [] }
+        return cappedTables.withLock { $0 }.map { table in
+            String(
+                format: String(localized: "%1$@: only the first %2$lld rows were read, the most this database returns from one query."),
+                table,
+                maximum
+            )
+        }
+    }
+
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pluginDriver else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        let query: String
         if let customQuery = pluginDriver.defaultExportQuery(table: table, schema: exportSchema(for: databaseName)) {
-            query = customQuery
-        } else {
-            query = "SELECT * FROM \(qualifiedTableRef(table: table, databaseName: databaseName))"
+            return pluginDriver.streamRows(query: customQuery)
         }
-        return pluginDriver.streamRows(query: query)
+        let query = "SELECT * FROM \(qualifiedTableRef(table: table, databaseName: databaseName))"
+        return streamLeadingRows(query: limitedToLeadingRows(query, limit: nil, driver: pluginDriver), table: table)
+    }
+
+    /// An engine that caps its rows answers a statement with no LIMIT with a smaller default of its
+    /// own, so every read here states a limit, and a limit past the ceiling is lowered to it.
+    private func limitedToLeadingRows(_ query: String, limit: Int?, driver: any PluginDatabaseDriver) -> String {
+        guard let rowLimit = Self.rowLimit(requested: limit, pagination: pagination) else { return query }
+        return driver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
+    }
+
+    static func rowLimit(requested: Int?, pagination: PaginationCapability) -> Int? {
+        requested.map(pagination.clampedRowCount) ?? pagination.maximumRows
+    }
+
+    /// Streams through the adapter rather than the plugin, so the statement text is validated the
+    /// way every other statement is: a row scope carries a filter the user typed.
+    private func streamLeadingRows(
+        query: String,
+        table: String
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let adapter = driver as? PluginDriverAdapter else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
+        let stream = adapter.streamRows(query: query)
+        guard let maximum = pagination.maximumRows else { return stream }
+        let cappedTables = cappedTables
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                var rowCount = 0
+                do {
+                    for try await element in stream {
+                        if case .rows(let rows) = element { rowCount += rows.count }
+                        continuation.yield(element)
+                    }
+                    if rowCount >= maximum {
+                        cappedTables.withLock { $0.append(table) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     /// The row limit goes through the driver's own `injectRowLimit`, because `LIMIT` is not the
@@ -65,13 +122,8 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         if !filter.isEmpty {
             query += " WHERE \(filter)"
         }
-        if let rowLimit = scope.rowLimit {
-            query = pluginDriver.injectRowLimit(query, limit: rowLimit) ?? "\(query) LIMIT \(rowLimit)"
-        }
-        guard let adapter = driver as? PluginDriverAdapter else {
-            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
-        }
-        return adapter.streamRows(query: query)
+        query = limitedToLeadingRows(query, limit: scope.rowLimit, driver: pluginDriver)
+        return streamLeadingRows(query: query, table: object.name)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {

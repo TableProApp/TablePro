@@ -21,8 +21,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
 
-    /// Detected server type from version string after connecting
-    private var isMariaDB = false
+    private var _flavor: MySQLServerFlavor
+
+    var flavor: MySQLServerFlavor { sessionLock.withLock { _flavor } }
 
     /// What the session is holding that a reconnect would destroy. Tracked from the statements
     /// that go through the driver, because MySQL will not answer the question: measured on 8.4.11,
@@ -40,7 +41,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private let idleReleaseTimer = MySQLIdleReleaseTimer()
 
-    /// Guards `footprint`, `appliedQueryTimeoutSeconds`, `isReleased` and `lastActivity`. The
+    /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased` and `lastActivity`. The
     /// driver is `@unchecked Sendable` and the idle timer runs on its own task, so the release
     /// decision and a query arriving would otherwise read and write them at the same time.
     private let sessionLock = NSLock()
@@ -65,14 +66,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { _serverVersion }
 
     private var catalogQuotesDefaults: Bool {
-        MySQLServerVersion.quotesColumnDefault(banner: _serverVersion, isMariaDB: isMariaDB)
+        MySQLServerVersion.quotesColumnDefault(banner: _serverVersion, flavor: flavor)
     }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
     var requiresBackslashEscapingInLiterals: Bool { true }
 
     var capabilities: PluginCapabilities {
-        [
+        guard !flavor.isDatabend else { return Self.databendCapabilities }
+        return [
             .parameterizedQueries,
             .transactions,
             .alterTableDDL,
@@ -87,7 +89,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        mysqlQuoteIdentifier(name)
+        flavor.isDatabend ? DatabendCatalog.quoteIdentifier(name) : mysqlQuoteIdentifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
@@ -99,6 +101,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     init(config: DriverConnectionConfig) {
         self.config = config
         self._activeDatabase = config.database
+        self._flavor = Self.initialFlavor(for: config)
     }
 
     /// The timer's task outlives the driver it was started for, so a driver dropped without
@@ -125,13 +128,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
 
         try await conn.connect()
-        mariadbConnection = conn
-
-        if let version = conn.serverVersion() {
-            _serverVersion = version
-            isMariaDB = version.lowercased().contains("mariadb")
+        let resolvedFlavor: MySQLServerFlavor
+        do {
+            resolvedFlavor = try await resolveFlavor(on: conn, variant: config.additionalFields["driverVariant"])
+        } catch {
+            conn.disconnect()
+            throw error
         }
+        conn.adopt(flavor: resolvedFlavor, killTarget: await killTarget(for: resolvedFlavor, on: conn))
+        mariadbConnection = conn
+        _serverVersion = conn.serverVersion()
         sessionLock.withLock {
+            _flavor = resolvedFlavor
             isReleased = false
             isDisconnected = false
             lastActivity = ContinuousClock.now
@@ -145,8 +153,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mariadbConnection?.disconnect()
         mariadbConnection = nil
         _serverVersion = nil
-        isMariaDB = false
+        let initialFlavor = Self.initialFlavor(for: config)
         let inFlight = sessionLock.withLock { () -> Task<Void, Error>? in
+            _flavor = initialFlavor
             isReleased = false
             isDisconnected = true
             footprint.reset()
@@ -190,7 +199,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func beginTransaction(mode: PluginTransactionAccessMode) async throws {
-        _ = try await execute(query: mysqlBeginTransactionStatement(mode: mode))
+        _ = try await execute(query: flavor.beginTransactionStatement(mode: mode))
     }
 
     // MARK: - Query Execution
@@ -482,6 +491,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
+            guard flavor.listsSequencesAsTables || typeStr != "SEQUENCE" else { return nil }
             let isView = typeStr.contains("VIEW")
             let type = isView ? "VIEW" : "TABLE"
             let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
@@ -490,8 +500,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = table.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "SHOW FULL COLUMNS FROM `\(safeTable)`")
+        guard !flavor.isDatabend else { return try await databendColumns(table: table) }
+        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(quoteIdentifier(table))")
         let generationExpressions = try await fetchGenerationExpressions(table: table)
 
         return result.rows.compactMap { row in
@@ -539,7 +549,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchGenerationExpressions(table: String) async throws -> [String: String] {
-        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, isMariaDB: isMariaDB) else {
+        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, flavor: flavor) else {
             return [:]
         }
         let query = """
@@ -564,13 +574,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// directly. Neither exposes the columns a check touches, so `columns` stays empty rather than
     /// being guessed from the expression.
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, isMariaDB: isMariaDB) else {
+        let flavor = self.flavor
+        guard !flavor.isDatabend else { return try await databendCheckConstraints(table: table) }
+        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, flavor: flavor) else {
             return []
         }
+        guard !flavor.isTiDB else { return try await tidbCheckConstraints(table: table) }
         let database = mysqlEscapeStringLiteral(_activeDatabase)
         let safeTable = mysqlEscapeStringLiteral(table)
         let query: String
-        if isMariaDB {
+        if flavor.isMariaDB {
             query = """
                 SELECT CONSTRAINT_NAME, CHECK_CLAUSE
                 FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
@@ -603,10 +616,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// column the two reads disagree on generated columns alone, and a schema comparison built on
     /// the bulk read reports a changed generation expression as no difference at all.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        guard !flavor.isDatabend else { return try await databendAllColumns() }
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
         let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
-            banner: _serverVersion, isMariaDB: isMariaDB
+            banner: _serverVersion, flavor: flavor
         )
         let generationProjection = hasGenerationExpression ? "GENERATION_EXPRESSION" : "NULL"
         let query = """
@@ -672,8 +686,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = table.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "SHOW INDEX FROM `\(safeTable)`")
+        guard !flavor.isDatabend else { return [] }
+        let result = try await execute(query: "SHOW INDEX FROM \(quoteIdentifier(table))")
 
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let indexName = row[safe: 2]?.asText,
@@ -692,6 +706,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
+        guard !flavor.isDatabend else { return [] }
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
@@ -738,6 +753,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
+        guard !flavor.isDatabend else { return [] }
         let dbName = schema?.isEmpty == false ? (schema ?? _activeDatabase) : _activeDatabase
         let triggers = try await triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
@@ -745,7 +761,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
-        """
+        guard !flavor.isDatabend else { return nil }
+        return """
         CREATE TRIGGER \(quoteIdentifier("trigger_name")) BEFORE INSERT
         ON \(quoteIdentifier(table)) FOR EACH ROW
         BEGIN
@@ -763,6 +780,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
+        guard !flavor.isDatabend else { return [:] }
         let dbName = _activeDatabase
         let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
 
@@ -829,8 +847,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let safeTable = table.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "SHOW CREATE TABLE `\(safeTable)`")
+        let result = try await execute(query: "SHOW CREATE TABLE \(quoteIdentifier(table))")
 
         guard let firstRow = result.rows.first,
               let ddl = firstRow[safe: 1]?.asText
@@ -844,6 +861,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Scheduled events. `information_schema.EVENTS` lists them for the current database, and
     /// `SHOW CREATE EVENT` is the only thing that produces a runnable definition.
     func fetchEvents(schema: String?) async throws -> [PluginEventInfo] {
+        guard !flavor.isDatabend else { return [] }
         let result = try await execute(query: """
             SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
             FROM information_schema.EVENTS
@@ -871,6 +889,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
+        guard !flavor.isDatabend else { return try await databendViewDefinition(view: view) }
         let safeView = view.replacingOccurrences(of: "`", with: "``")
         let result = try await execute(query: "SHOW CREATE VIEW `\(safeView)`")
 
@@ -884,6 +903,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        guard !flavor.isDatabend else { return try await databendTableMetadata(table: table) }
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let result = try await execute(query: "SHOW TABLE STATUS WHERE Name = '\(escapedTable)'")
 
@@ -938,8 +958,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let tableCount = Int(row?[safe: 0]?.asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[safe: 1]?.asText ?? "0") ?? 0
 
-        let systemDatabases = ["information_schema", "mysql", "performance_schema", "sys"]
-        let isSystem = systemDatabases.contains(database)
+        let isSystem = flavor.systemDatabaseNames.contains(database)
 
         return PluginDatabaseMetadata(
             name: database,
@@ -950,7 +969,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = ["information_schema", "mysql", "performance_schema", "sys"]
+        let systemDatabases = flavor.systemDatabaseNames
 
         let query = """
             SELECT TABLE_SCHEMA, COUNT(*), COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0)
@@ -979,24 +998,28 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func dropDatabase(name: String) async throws {
-        let escapedName = name.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     /// `RENAME TABLE` rather than `ALTER TABLE ... RENAME TO`, because it is the only form that
     /// takes a view, and both sides are qualified with the same schema so the statement cannot
     /// move the object anywhere.
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {
-        let old = MySQLObjectQueries.qualifiedIdentifier(schema: schema, name: name)
-        let new = MySQLObjectQueries.qualifiedIdentifier(schema: schema, name: newName)
+        let old = qualifiedIdentifier(schema: schema, name: name)
+        let new = qualifiedIdentifier(schema: schema, name: newName)
         _ = try await execute(query: "RENAME TABLE \(old) TO \(new)")
+    }
+
+    private func qualifiedIdentifier(schema: String?, name: String) -> String {
+        guard flavor.isDatabend else { return MySQLObjectQueries.qualifiedIdentifier(schema: schema, name: name) }
+        guard let schema, !schema.isEmpty else { return quoteIdentifier(name) }
+        return "\(quoteIdentifier(schema)).\(quoteIdentifier(name))"
     }
 
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
-        let escaped = database.replacingOccurrences(of: "`", with: "``")
-        _ = try await execute(query: "USE `\(escaped)`")
+        _ = try await execute(query: "USE \(quoteIdentifier(database))")
         _activeDatabase = database
     }
 
@@ -1011,7 +1034,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
         do {
             _ = try await executeWithReconnect(
-                query: mysqlQueryTimeoutStatement(seconds: seconds, isMariaDB: isMariaDB),
+                query: flavor.queryTimeoutStatement(seconds: seconds),
                 isRetry: false,
                 countsAsActivity: false
             )
@@ -1029,11 +1052,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
-        ["OPTIMIZE TABLE", "ANALYZE TABLE", "CHECK TABLE", "REPAIR TABLE"]
+        flavor.maintenanceOperations
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
-        guard let table else { return nil }
+        guard let table, flavor.maintenanceOperations.contains(operation) else { return nil }
         let quoted = quoteIdentifier(table)
         switch operation {
         case "OPTIMIZE TABLE": return ["OPTIMIZE TABLE \(quoted)"]
@@ -1049,35 +1072,45 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        mysqlCreateTableSQL(definition: definition, isMariaDB: isMariaDB)
+        guard !flavor.isDatabend else { return DatabendCatalog.createTableSQL(definition: definition) }
+        return mysqlCreateTableSQL(definition: definition, isMariaDB: flavor.isMariaDB)
     }
 
     // MARK: - Definition SQL (clipboard copy)
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)
+        guard !flavor.isDatabend else { return DatabendCatalog.columnDefinitionSQL(column) }
+        return mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
-        mysqlIndexDefinitionSQL(index)
+        guard !flavor.isDatabend else { return nil }
+        return mysqlIndexDefinitionSQL(index)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
-        mysqlForeignKeyDefinitionSQL(fk)
+        guard !flavor.isDatabend else { return nil }
+        return mysqlForeignKeyDefinitionSQL(fk)
     }
 
     // MARK: - ALTER TABLE DDL
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB))"
+        let definition = flavor.isDatabend
+            ? DatabendCatalog.columnDefinitionSQL(column)
+            : mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(definition)"
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        guard !flavor.isDatabend else {
+            return DatabendCatalog.modifyColumnSQL(table: table, oldColumn: oldColumn, newColumn: newColumn)
+        }
         let tableName = quoteIdentifier(table)
         if oldColumn.name != newColumn.name {
-            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: isMariaDB))"
+            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB))"
         }
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: isMariaDB))"
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(newColumn, isMariaDB: flavor.isMariaDB))"
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {
@@ -1085,19 +1118,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))"
+        guard !flavor.isDatabend else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))"
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+        guard !flavor.isDatabend else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlForeignKeyDefinitionSQL(fk))"
+        guard !flavor.isDatabend else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlForeignKeyDefinitionSQL(fk))"
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
-        "ALTER TABLE \(quoteIdentifier(table)) DROP FOREIGN KEY \(quoteIdentifier(constraintName))"
+        guard !flavor.isDatabend else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) DROP FOREIGN KEY \(quoteIdentifier(constraintName))"
     }
 
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
@@ -1113,6 +1150,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
+        guard !flavor.isDatabend else { return nil }
         let tableName = quoteIdentifier(table)
         var stmts: [String] = []
         if !oldColumns.isEmpty {
@@ -1128,13 +1166,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Column Reorder DDL
 
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {
+        guard !flavor.isDatabend else { return nil }
         let tableName = quoteIdentifier(table)
         let position = afterColumn.map { "AFTER \(quoteIdentifier($0))" } ?? "FIRST"
         /// The same builder `ADD COLUMN` uses, rather than the attribute list alone. `MODIFY`
         /// replaces the whole definition, and the attribute list does not carry
         /// `GENERATED ALWAYS AS`, so moving a generated column with it dropped the expression and
         /// left a plain column of stored defaults behind.
-        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: isMariaDB)) \(position)"
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)) \(position)"
     }
 
     /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
@@ -1145,6 +1184,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
+        guard !flavor.isDatabend else { return nil }
         let byName = Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         let statements = PluginColumnReorderPlanner
             .moves(from: columns.map(\.name), to: desiredOrder)
@@ -1174,17 +1214,18 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Foreign Key Checks
 
     func foreignKeyDisableStatements() -> [String]? {
-        ["SET FOREIGN_KEY_CHECKS=0"]
+        flavor.isDatabend ? nil : ["SET FOREIGN_KEY_CHECKS=0"]
     }
 
     func foreignKeyEnableStatements() -> [String]? {
-        ["SET FOREIGN_KEY_CHECKS=1"]
+        flavor.isDatabend ? nil : ["SET FOREIGN_KEY_CHECKS=1"]
     }
 
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        """
+        guard !flavor.isDatabend else { return DatabendCatalog.allTablesMetadataSQL }
+        return """
         SELECT
             TABLE_SCHEMA as `schema`,
             TABLE_NAME as name,
@@ -1215,8 +1256,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func fetchColumnNames(for tableName: String) async throws -> [String] {
-        let safeName = tableName.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "DESCRIBE `\(safeName)`")
+        let result = try await execute(query: "DESCRIBE \(quoteIdentifier(tableName))")
 
         var columns: [String] = []
         for row in result.rows {

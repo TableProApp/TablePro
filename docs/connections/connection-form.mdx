@@ -109,6 +109,8 @@ Metadata connections, the extra ones TablePro opens to read a database's object 
 |----------|-------------|-----------|---------|-------------------|-----------------|-------------|----------------|
 | [MySQL](/databases/mysql) | 3306 | Yes | Yes | Yes | Yes | Yes | Yes |
 | [MariaDB](/databases/mariadb) | 3306 | Yes | Yes | Yes | No | Yes | Yes |
+| [TiDB](/databases/tidb) | 4000 | Yes | Yes | Yes | No | Yes | Yes |
+| [Databend](/databases/databend) | 3307 | Yes | Yes | Yes | No | Yes | Yes |
 | [PostgreSQL](/databases/postgresql) | 5432 | Yes | Yes | Yes | Yes | Yes | Yes |
 | [Amazon Redshift](/databases/redshift) | 5439 | Yes | Yes | Yes | No | Yes | Yes |
 | [CockroachDB](/databases/cockroachdb) | 26257 | Yes | Yes | Yes | No | Yes | Yes |
@@ -133,6 +135,7 @@ Metadata connections, the extra ones TablePro opens to read a database's object 
 | [DynamoDB](/databases/dynamodb) | AWS API | No | No | No | No | No | No |
 | [BigQuery](/databases/bigquery) | Cloud API | No | No | No | No | No | No |
 | [Cloudflare D1](/databases/cloudflare-d1) | Cloud API | No | No | No | No | No | No |
+| [Cloudflare R2 SQL](/databases/cloudflare-r2-sql) | Cloud API | No | No | No | No | No | No |
 | [libSQL / Turso](/databases/libsql) | URL | No | No | No | No | No | No |
 
 SQLite is the one driver offering **Remote Database File**; it reaches an SSH server without forwarding a port. A driver with no SSL/TLS column is either a local file or an HTTPS API that manages its own encryption. [SSL/TLS](/connections/ssl) has the per-driver defaults.

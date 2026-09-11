@@ -10,13 +10,23 @@ import Testing
 struct MySQLSelectLimitTests {
     @Test("The statement asks for one row past the cap")
     func statementAsksForOneRowPastTheCap() {
-        let statement = mysqlSelectLimitStatement(rows: mysqlSelectLimitRows(forRowCap: 1_000))
+        let statement = MySQLServerFlavor.mysql.selectLimitStatement(rows: mysqlSelectLimitRows(forRowCap: 1_000))
         #expect(statement == "SET SQL_SELECT_LIMIT = 1001")
     }
 
     @Test("The reset restores the server default rather than a number")
     func resetRestoresTheServerDefault() {
-        #expect(mysqlSelectLimitResetStatement() == "SET SQL_SELECT_LIMIT = DEFAULT")
+        #expect(MySQLServerFlavor.mysql.selectLimitResetStatement == "SET SQL_SELECT_LIMIT = DEFAULT")
+    }
+
+    @Test("Databend caps rows through max_result_rows, which it honours where it ignores SQL_SELECT_LIMIT")
+    func databendCapsThroughMaxResultRows() {
+        #expect(MySQLServerFlavor.databend.selectLimitStatement(rows: 1_001) == "SET max_result_rows = 1001")
+        #expect(MySQLServerFlavor.databend.selectLimitResetStatement == "SET max_result_rows = 0")
+        #expect(
+            MySQLServerFlavor.databend.selectLimitProbeStatement
+                == "SELECT value FROM system.settings WHERE name = 'max_result_rows'"
+        )
     }
 
     @Test("A cap is clamped to the emergency ceiling and a missing cap stays missing")
@@ -162,6 +172,7 @@ struct MySQLSelectLimitTests {
     /// unbounded read would return no rows and read as a failed probe.
     @Test("The baseline probe carries its own LIMIT")
     func baselineProbeCarriesItsOwnLimit() {
-        #expect(mysqlSelectLimitProbeStatement() == "SELECT @@sql_select_limit LIMIT 1")
+        #expect(MySQLServerFlavor.mysql.selectLimitProbeStatement == "SELECT @@sql_select_limit LIMIT 1")
+        #expect(MySQLServerFlavor.tidb(version: nil).selectLimitProbeStatement == "SELECT @@sql_select_limit LIMIT 1")
     }
 }

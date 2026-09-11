@@ -220,7 +220,7 @@ extension DatabaseManager {
     internal func resolvedConnectionDefinition(for connection: DatabaseConnection) -> DatabaseConnection {
         guard let stored = connectionStorage.loadConnection(id: connection.id) else { return connection }
         var resolved = connection
-        resolved.safeModeLevel = stored.safeModeLevel
+        resolved.preferredSafeModeLevel = stored.preferredSafeModeLevel
         return resolved
     }
 
@@ -557,7 +557,7 @@ extension DatabaseManager {
             guard let session = activeSessions[id],
                   let stored = connectionStorage.loadConnection(id: id) else { continue }
             adoptDisplayFields(from: stored, into: session, for: id)
-            setSafeModeLevel(stored.safeModeLevel, for: id)
+            setSafeModeLevel(stored.preferredSafeModeLevel, for: id)
         }
     }
 
@@ -588,11 +588,26 @@ extension DatabaseManager {
         setSession(updated, for: connectionId)
     }
 
+    /// The user picking a level from the toolbar or the Database menu.
+    ///
+    /// A level below the connection's floor is not on offer, and picking the level already in
+    /// force changes nothing: writing it would replace the level the user saved, which is the one
+    /// that comes back once the floor lifts.
+    func chooseSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
+        guard let connection = activeSessions[connectionId]?.connection,
+              level != connection.safeModeLevel,
+              connection.safeModeFloor?.allows(level) ?? true
+        else { return }
+        setSafeModeLevel(level, for: connectionId)
+    }
+
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard var session = activeSessions[connectionId] else { return }
-        guard session.safeModeLevel != level || session.connection.safeModeLevel != level else { return }
-        session.safeModeLevel = level
-        session.connection.safeModeLevel = level
+        guard session.connection.preferredSafeModeLevel != level
+            || session.safeModeLevel != session.connection.safeModeLevel
+        else { return }
+        session.connection.preferredSafeModeLevel = level
+        session.safeModeLevel = session.connection.safeModeLevel
         setSession(session, for: connectionId)
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }

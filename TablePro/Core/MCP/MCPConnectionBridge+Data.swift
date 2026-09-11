@@ -80,6 +80,8 @@ extension MCPConnectionBridge {
         let databaseType = try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let dialect = try? resolveSQLDialect(for: databaseType)
+        let pagination = PaginationCapability.of(databaseType)
+        let limit = try MCPConnectionBridge.browseLimit(for: request, pagination: pagination)
 
         let sql = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver -> String in
             let columnInfos = try await driver.fetchColumns(table: request.table, schema: schema)
@@ -94,7 +96,8 @@ extension MCPConnectionBridge {
             let builder = TableQueryBuilder(
                 databaseType: databaseType,
                 pluginDriver: driver.queryBuildingPluginDriver,
-                dialect: dialect
+                dialect: dialect,
+                pagination: pagination
             )
             let sortState = MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
@@ -114,7 +117,7 @@ extension MCPConnectionBridge {
                     sortState: sortState,
                     columns: names,
                     selectColumns: selected,
-                    limit: request.limit,
+                    limit: limit,
                     offset: request.offset
                 )
             }
@@ -127,7 +130,7 @@ extension MCPConnectionBridge {
                 columns: names,
                 columnTypes: types,
                 selectColumns: selected,
-                limit: request.limit,
+                limit: limit,
                 offset: request.offset
             )
         }
@@ -135,17 +138,32 @@ extension MCPConnectionBridge {
         var payload = try await executeQuery(
             scope: scope,
             query: sql,
-            maxRows: request.limit,
+            maxRows: limit,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation
         )
         if case .object(var fields) = payload {
             fields["table"] = .string(request.table)
             fields["offset"] = .int(request.offset)
-            fields["limit"] = .int(request.limit)
+            fields["limit"] = .int(limit)
+            if limit < request.limit, case .int(let rowCount)? = fields["row_count"], rowCount >= limit {
+                fields["is_truncated"] = .bool(true)
+            }
             payload = .object(fields)
         }
         return payload
+    }
+
+    /// The row count a browse may ask for. An engine that cannot skip rows serves only the leading
+    /// ones, so an offset is refused rather than quietly answered with the first page again, and a
+    /// limit past the engine's ceiling is lowered to it.
+    static func browseLimit(for request: MCPBrowseRequest, pagination: PaginationCapability) throws -> Int {
+        guard pagination.allowsSeeking || request.offset == 0 else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "This database cannot skip rows, so offset must be 0. Narrow the rows with filters or a sort instead.")
+            )
+        }
+        return pagination.clampedRowCount(request.limit)
     }
 
     func searchSchema(scope: DatabaseScope, term: String, limit: Int) async throws -> JsonValue {

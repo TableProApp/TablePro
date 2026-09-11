@@ -8,6 +8,8 @@
 	<array>
 		<string>MySQL</string>
 		<string>MariaDB</string>
+		<string>TiDB</string>
+		<string>Databend</string>
 	</array>
 </dict>
 </plist>

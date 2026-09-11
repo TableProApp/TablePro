@@ -21,7 +21,8 @@ let package = Package(
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
-        .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"])
+        .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
+        .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"])
     ],
     targets: [
         .target(
@@ -89,6 +90,11 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProTrinoCore"
         ),
+        .target(
+            name: "TableProR2SQLCore",
+            dependencies: [],
+            path: "Sources/TableProR2SQLCore"
+        ),
         .testTarget(
             name: "TableProNumberFormattingTests",
             dependencies: ["TableProNumberFormatting"],
@@ -133,6 +139,11 @@ let package = Package(
             name: "TableProTrinoCoreTests",
             dependencies: ["TableProTrinoCore"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProR2SQLCoreTests",
+            dependencies: ["TableProR2SQLCore"],
+            path: "Tests/TableProR2SQLCoreTests"
         ),
         .testTarget(
             name: "TableProSyncTests",

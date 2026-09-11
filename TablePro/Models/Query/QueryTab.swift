@@ -284,7 +284,8 @@ struct QueryTab: Identifiable, Equatable {
         schemaName: String? = nil,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws -> String {
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pagination = PluginManager.shared.paginationCapability(for: databaseType)
+        let pageSize = pagination.clampedRowCount(AppSettingsManager.shared.dataGrid.defaultPageSize)
 
         if let pluginDriver = PluginManager.shared.queryBuildingDriver(for: databaseType),
            let pluginQuery = pluginDriver.buildBrowseQuery(
@@ -305,6 +306,7 @@ struct QueryTab: Identifiable, Equatable {
                 databaseType: databaseType,
                 pluginDriver: nil,
                 dialect: dialect,
+                pagination: pagination,
                 dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
             )
             return builder.buildBaseQuery(

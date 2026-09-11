@@ -226,29 +226,14 @@ extension MainContentCoordinator {
             return
         }
 
-        let tabId = replacedTab.id
-        cancelTableLoad(for: tabId)
-        toolbarState.isTableTab = true
-        setActiveTableRows(TableRows(), for: tabId)
-        tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
+        /// The load goes through the first-load path like every other retarget, because the new
+        /// table has no rows to type the filter value from and that path waits for its schema.
+        cancelTableLoad(for: replacedTab.id)
+        discardRowsForRetarget()
         restoreLastHiddenColumnsForTable()
-
-        guard let pagination = tabManager.selectedTab?.pagination else { return }
-        let tableRows = tabSessionRegistry.tableRows(for: tabId)
-        let filteredQuery = queryBuilder.buildFilteredQuery(
-            tableName: referencedTable,
-            schemaName: schemaName,
-            filters: [filter],
-            columns: tableRows.columns,
-            columnTypes: tableRows.columnTypes,
-            limit: pagination.pageSize,
-            offset: pagination.currentOffset
-        )
-        tabManager.mutate(at: tabIndex) { $0.content.query = filteredQuery }
-
         updateFilterState(filter, for: referencedTable)
-
-        runQuery()
+        rebuildTableQuery(at: tabIndex)
+        lazyLoadCurrentTabIfNeeded()
     }
 
     private func applyFKFilter(_ filter: TableFilter, for tableName: String) {

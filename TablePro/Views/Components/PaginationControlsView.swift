@@ -11,6 +11,9 @@ struct PaginationControlsView: View {
     /// Identity of the tab these controls describe. Not used for display: a change to it is what
     /// discards a half-typed page number so it cannot be submitted against the next tab.
     let tabId: UUID?
+    var showsPageNavigation = true
+    /// The most rows the engine returns from one statement, when it caps them.
+    var maximumPageSize: Int?
     let onFirst: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -32,10 +35,21 @@ struct PaginationControlsView: View {
     /// `9223372036854775807` set the page size to `Int.max` and the next status-bar render trapped.
     static let maximumPageSize = 1_000_000
 
+    static func pageSizePresets(upTo maximum: Int?) -> [Int] {
+        guard let maximum else { return pageSizePresets }
+        return pageSizePresets.filter { $0 <= maximum }
+    }
+
+    private var customPageSizeLimit: Int {
+        min(maximumPageSize ?? Self.maximumPageSize, Self.maximumPageSize)
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             pageSizeMenu
-            navigationCluster
+            if showsPageNavigation {
+                navigationCluster
+            }
         }
         .onChange(of: tabId) { _, _ in
             showJumpPopover = false
@@ -53,7 +67,7 @@ struct PaginationControlsView: View {
     private var pageSizeMenu: some View {
         Menu {
             Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
-                ForEach(Self.pageSizePresets, id: \.self) { size in
+                ForEach(Self.pageSizePresets(upTo: maximumPageSize), id: \.self) { size in
                     Text(size.formatted()).tag(size)
                 }
             }
@@ -61,8 +75,10 @@ struct PaginationControlsView: View {
 
             Divider()
 
-            Button(String(localized: "All rows…")) { onShowAll() }
-                .disabled(!pagination.hasExactRowCount)
+            if showsPageNavigation {
+                Button(String(localized: "All rows…")) { onShowAll() }
+                    .disabled(!pagination.hasExactRowCount)
+            }
             Button(String(localized: "Custom…")) {
                 customPageSize = pagination.pageSize
                 showCustomPopover = true
@@ -217,7 +233,7 @@ struct PaginationControlsView: View {
             caption: String(localized: "Rows per page"),
             value: $customPageSize,
             minimum: 1,
-            maximum: Self.maximumPageSize,
+            maximum: customPageSizeLimit,
             fieldWidth: 90,
             isFocused: $isCustomFocused,
             fieldAccessibilityLabel: String(localized: "Rows per page"),

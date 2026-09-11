@@ -272,6 +272,8 @@ struct SQLFileParserTests {
         #expect(SqlDialect.from(databaseTypeId: "PGlite") == .postgres)
         #expect(SqlDialect.from(databaseTypeId: "MySQL") == .mysql)
         #expect(SqlDialect.from(databaseTypeId: "MariaDB") == .mysql)
+        #expect(SqlDialect.from(databaseTypeId: "TiDB") == .mysql)
+        #expect(SqlDialect.from(databaseTypeId: "Databend") == .generic)
         #expect(SqlDialect.from(databaseTypeId: "SQLite") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "DuckDB") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "Cloudflare D1") == .sqlite)

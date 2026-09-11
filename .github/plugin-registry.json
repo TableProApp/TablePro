@@ -88,6 +88,20 @@
       "category": "database-driver",
       "homepage": "https://docs.tablepro.app/databases/cloudflare-d1"
     },
+    "cloudflare-r2-sql": {
+      "target": "CloudflareR2SQLDriverPlugin",
+      "bundleName": "CloudflareR2SQLDriverPlugin",
+      "bundleId": "com.TablePro.CloudflareR2SQLDriverPlugin",
+      "bundled": false,
+      "displayName": "Cloudflare R2 SQL Driver",
+      "summary": "Read-only Cloudflare R2 SQL driver for Iceberg tables in R2 Data Catalog via REST API",
+      "databaseTypeIds": [
+        "Cloudflare R2 SQL"
+      ],
+      "icon": "cloudflare-r2-sql-icon",
+      "category": "database-driver",
+      "homepage": "https://docs.tablepro.app/databases/cloudflare-r2-sql"
+    },
     "dameng": {
       "target": "DamengDriver",
       "bundleName": "DamengDriver",

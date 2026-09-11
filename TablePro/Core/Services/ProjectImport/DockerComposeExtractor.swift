@@ -65,8 +65,20 @@ enum DockerComposeExtractor {
         )
     }
 
+    private static let databendRepositories: Set<String> = [
+        "datafuselabs/databend", "databendlabs/databend",
+        "datafuselabs/databend-query", "databendlabs/databend-query",
+    ]
+
     static func databaseKind(for image: String) -> ServiceDatabase? {
         let name = image.lowercased()
+        let repositoryPath = repositoryComponents(of: name)
+        if repositoryPath.last == "tidb" {
+            return ServiceDatabase(type: .tidb, defaultPort: 4_000)
+        }
+        if databendRepositories.contains(repositoryPath.suffix(2).joined(separator: "/")) {
+            return ServiceDatabase(type: .databend, defaultPort: 3_307)
+        }
         if name.contains("postgres"), !name.contains("postgrest") {
             return ServiceDatabase(type: .postgresql, defaultPort: 5_432)
         }
@@ -89,6 +101,17 @@ enum DockerComposeExtractor {
             return ServiceDatabase(type: .mssql, defaultPort: 1_433)
         }
         return nil
+    }
+
+    static func repositoryComponents(of image: String) -> [String] {
+        let withoutDigest = image.split(separator: "@", maxSplits: 1).first.map(String.init) ?? image
+        var components = withoutDigest.split(separator: "/").map(String.init)
+        guard let last = components.popLast() else {
+            return []
+        }
+        let repository = last.split(separator: ":", maxSplits: 1).first.map(String.init) ?? last
+        components.append(repository)
+        return components
     }
 
     static func environmentVariables(_ value: Any?) -> [String: String] {
@@ -148,6 +171,14 @@ enum DockerComposeExtractor {
             fields.username = variables["POSTGRES_USER"] ?? "postgres"
             fields.password = variables["POSTGRES_PASSWORD"] ?? ""
             fields.database = variables["POSTGRES_DB"] ?? fields.username
+        case .tidb:
+            fields.username = "root"
+            fields.password = ""
+            fields.database = ""
+        case .databend:
+            fields.username = variables["QUERY_DEFAULT_USER"] ?? "root"
+            fields.password = variables["QUERY_DEFAULT_PASSWORD"] ?? ""
+            fields.database = "default"
         case .mariadb, .mysql:
             let prefix = variables["MARIADB_PASSWORD"] != nil || variables["MARIADB_DATABASE"] != nil
                 ? "MARIADB"

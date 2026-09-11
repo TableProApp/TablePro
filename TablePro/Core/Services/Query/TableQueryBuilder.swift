@@ -16,6 +16,7 @@ struct TableQueryBuilder {
     private let databaseType: DatabaseType
     private var pluginDriver: (any PluginDatabaseDriver)?
     private let dialect: SQLDialectDescriptor?
+    private let pagination: PaginationCapability
     private let dialectQuote: (String) -> String
 
     // MARK: - Initialization
@@ -24,11 +25,13 @@ struct TableQueryBuilder {
         databaseType: DatabaseType,
         pluginDriver: (any PluginDatabaseDriver)? = nil,
         dialect: SQLDialectDescriptor? = nil,
+        pagination: PaginationCapability,
         dialectQuote: ((String) -> String)? = nil
     ) {
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.dialect = dialect
+        self.pagination = pagination
         self.dialectQuote = dialectQuote ?? { name in
             let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
@@ -219,6 +222,9 @@ struct TableQueryBuilder {
     }
 
     private func buildPaginationClause(limit: Int, offset: Int) -> String {
+        guard pagination.allowsSeeking else {
+            return "LIMIT \(pagination.clampedRowCount(limit))"
+        }
         if let dialect, dialect.paginationStyle == .offsetFetch {
             return "OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
         }

@@ -23,7 +23,7 @@ struct TableQueryBuilderFilteredQueryTests {
         likeEscapeStyle: .implicit, paginationStyle: .limit
     )
 
-    private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect)
+    private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset)
 
     @Test("buildFilteredQuery with enabled filter produces WHERE clause")
     func filteredQueryWithEnabledFilter() {
@@ -95,7 +95,7 @@ struct TableQueryBuilderFilteredCountTests {
     )
 
     private var builder: TableQueryBuilder {
-        TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect)
+        TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset)
     }
 
     private func makeFilter(_ column: String, _ value: String, _ op: FilterOperator = .equal) -> TableFilter {
@@ -140,7 +140,7 @@ struct TableQueryBuilderFilteredCountTests {
 
     @Test("buildFilteredCountQuery returns nil without a dialect")
     func filteredCountNilWithoutDialect() {
-        let noDialect = TableQueryBuilder(databaseType: .mysql)
+        let noDialect = TableQueryBuilder(databaseType: .mysql, pagination: .offset)
         #expect(noDialect.buildFilteredCountQuery(tableName: "users", filters: [makeFilter("name", "Alice")]) == nil)
     }
 }
@@ -166,7 +166,7 @@ struct TableQueryBuilderPaginationTests {
     )
 
     private func builder(_ dialect: SQLDialectDescriptor) -> TableQueryBuilder {
-        TableQueryBuilder(databaseType: .postgresql, dialect: dialect)
+        TableQueryBuilder(databaseType: .postgresql, dialect: dialect, pagination: .offset)
     }
 
     private func enabledFilter(_ column: String, _ value: String) -> TableFilter {
@@ -217,7 +217,7 @@ struct TableQueryBuilderPaginationTests {
 @Suite("Table Query Builder - NoSQL Nil Dialect Fallback")
 struct TableQueryBuilderNoSQLTests {
     // MongoDB has no SQL dialect — should produce bare SELECT without WHERE
-    private let builder = TableQueryBuilder(databaseType: .mongodb)
+    private let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset)
 
     @Test("NoSQL type produces no WHERE for filtered query")
     func noSqlFilteredQueryNoWhere() {

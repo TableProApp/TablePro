@@ -150,8 +150,10 @@
               "databases/cassandra",
               "databases/clickhouse",
               "databases/cloudflare-d1",
+              "databases/cloudflare-r2-sql",
               "databases/cockroachdb",
               "databases/dameng",
+              "databases/databend",
               "databases/duckdb",
               "databases/elasticsearch",
               "databases/etcd",
@@ -170,6 +172,7 @@
               "databases/sqlite",
               "databases/surrealdb",
               "databases/teradata",
+              "databases/tidb",
               "databases/trino",
               "databases/typesense"
             ]

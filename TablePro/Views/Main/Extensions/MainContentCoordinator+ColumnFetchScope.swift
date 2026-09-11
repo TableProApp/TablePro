@@ -64,7 +64,7 @@ extension MainContentCoordinator {
                     columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
                     return nil
                 }
-                return (columns.map(\.name), columns.filter(\.isPrimaryKey).map(\.name))
+                return SchemaColumnStore.Entry(fetchedColumns: columns)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
                 columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -90,13 +90,23 @@ extension MainContentCoordinator {
         return schema.columns
     }
 
-    func cachedSchemaColumns(for tab: QueryTab) -> (columns: [String], primaryKeys: [String])? {
+    func cachedSchemaColumns(for tab: QueryTab) -> SchemaColumnStore.Entry? {
         guard let tableName = tab.tableContext.tableName else { return nil }
         return schemaColumns.cached(schemaColumnsKey(tableName, scope: scope(for: tab)))
     }
 
     func effectiveResultColumns(for tab: QueryTab) -> [String] {
         selectColumns(for: tab) ?? cachedSchemaColumns(for: tab)?.columns ?? []
+    }
+
+    /// The columns a table tab's SQL is built against, each paired with its type. Loaded rows are
+    /// the authority once they exist. Before that the table's schema answers, because an untyped
+    /// filter guesses from the value's text and sends `0123` to a text column as a number.
+    func queryColumns(for tab: QueryTab) -> (columns: [String], columnTypes: [ColumnType]) {
+        let buffer = tabSessionRegistry.tableRows(for: tab.id)
+        guard buffer.columns.isEmpty else { return (buffer.columns, buffer.columnTypes) }
+        let columns = effectiveResultColumns(for: tab)
+        return (columns, cachedSchemaColumns(for: tab)?.columnTypes(aligningWith: columns) ?? [])
     }
 
     /// Built entirely from the tab's scope. Keying it on where the user is browsing

@@ -8,6 +8,7 @@ import TableProPluginKit
 
 extension MySQLPluginDriver {
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        guard !flavor.isDatabend else { return [] }
         let resolvedSchema = routineSchema(schema)
         let result = try await execute(query: MySQLObjectQueries.routineList(schema: resolvedSchema))
         return result.rows.compactMap { row -> PluginRoutineInfo? in
@@ -63,7 +64,8 @@ extension MySQLPluginDriver {
     var providesBulkTriggerFetch: Bool { true }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
-        try await triggerList(schema: routineSchema(schema), table: nil)
+        guard !flavor.isDatabend else { return [] }
+        return try await triggerList(schema: routineSchema(schema), table: nil)
     }
 
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {

@@ -56,7 +56,8 @@ internal enum CompareSQLLiteral {
     /// name falls back to the driver's own spelling rather than guessing at one.
     internal static func binaryStyle(for databaseType: DatabaseType) -> BinaryStyle {
         switch databaseType {
-        case .mysql, .mariadb, .sqlite, .clickhouse, .duckdb, .libsql, .turso, .cloudflareD1:
+        case .mysql, .mariadb, .tidb, .databend, .sqlite, .clickhouse, .duckdb, .libsql, .turso,
+             .cloudflareD1:
             return .bitString
         case .postgresql, .cockroachdb, .redshift, .pglite:
             return .postgresBytea

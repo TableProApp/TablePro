@@ -101,6 +101,8 @@ A filter is `{ column, operator, value, second_value, case_sensitive }`. `column
 
 A sort entry is `{ column, direction }`, `direction` being `ascending` (default) or `descending`, and entries apply in the order given. `offset` defaults to 0.
 
+On an engine that cannot skip rows, such as Cloudflare R2 SQL, a nonzero `offset` is refused as an invalid argument and `limit` is lowered to the engine's maximum. The result echoes the `limit` actually used and sets `is_truncated` when the rows reached it.
+
 Sorting on a column left out of `columns` appends it to the result. The columns you asked for keep the positions you asked for, and the sort column follows them, because some drivers can only order by a column they select.
 
 ### `count_rows`

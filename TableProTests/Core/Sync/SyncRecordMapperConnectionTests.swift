@@ -90,6 +90,16 @@ struct SyncRecordMapperConnectionTests {
         #expect(decoded.sortOrder == connection.sortOrder)
     }
 
+    @Test("A connection the engine holds at Read-Only syncs the user's own level")
+    func enforcedReadOnlyIsNotSynced() {
+        let connection = DatabaseConnection(name: "Iceberg", type: .cloudflareR2SQL, safeModeLevel: .alert)
+
+        let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+
+        #expect(record["safeModeLevel"] as? String == SafeModeLevel.alert.rawValue)
+        #expect(record["isReadOnly"] as? Int64 == 0)
+    }
+
     @Test(
         "iOS safe mode wire values map to the nearest macOS level",
         arguments: [

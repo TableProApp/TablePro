@@ -414,6 +414,7 @@
 				<string>postgres</string>
 				<string>mysql</string>
 				<string>mariadb</string>
+				<string>tidb</string>
 				<string>sqlite</string>
 				<string>mongodb</string>
 				<string>redis</string>

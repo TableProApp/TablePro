@@ -7,8 +7,9 @@
 
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("Column Type Classifier")
 struct ColumnTypeClassifierTests {
@@ -21,9 +22,26 @@ struct ColumnTypeClassifierTests {
         return false
     }
 
+    private func isJson(_ type: ColumnType) -> Bool {
+        if case .json = type { return true }
+        return false
+    }
+
     private func isInteger(_ type: ColumnType) -> Bool {
         if case .integer = type { return true }
         return false
+    }
+
+    // MARK: - Nested Types
+
+    @Test("Nested container types classify as JSON", arguments: ["ARRAY", "MAP", "ROW", "STRUCT"])
+    func nestedContainersAreJson(rawTypeName: String) {
+        #expect(isJson(classifier.classify(rawTypeName: rawTypeName)))
+    }
+
+    @Test("struct classifies as JSON regardless of case")
+    func lowercaseStructIsJson() {
+        #expect(isJson(classifier.classify(rawTypeName: "struct")))
     }
 
     private func isDecimal(_ type: ColumnType) -> Bool {
@@ -191,6 +209,21 @@ struct ColumnTypeClassifierTests {
         @Test("SMALLINT classifies as integer")
         func smallint() {
             #expect(isInteger(classifier.classify(rawTypeName: "SMALLINT")))
+        }
+
+        @Test("The catalog's INT UNSIGNED classifies as integer and keeps its raw spelling")
+        func intUnsignedIsInteger() {
+            #expect(classifier.classify(rawTypeName: "INT UNSIGNED") == .integer(rawType: "INT UNSIGNED"))
+        }
+
+        @Test("Trailing UNSIGNED, SIGNED and ZEROFILL never decide the type")
+        func trailingAttributesAreIgnored() {
+            #expect(isInteger(classifier.classify(rawTypeName: "BIGINT UNSIGNED")))
+            #expect(isInteger(classifier.classify(rawTypeName: "int(10) unsigned zerofill")))
+            #expect(isInteger(classifier.classify(rawTypeName: "TINYINT SIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DECIMAL(10,2) UNSIGNED")))
+            #expect(isDecimal(classifier.classify(rawTypeName: "DOUBLE UNSIGNED")))
+            #expect(classifier.classify(rawTypeName: "TINYINT(1) UNSIGNED").isBooleanType)
         }
 
         @Test("ENUM('a','b','c') classifies as enum")

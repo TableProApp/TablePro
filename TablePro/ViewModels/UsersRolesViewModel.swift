@@ -60,6 +60,7 @@ final class UsersRolesViewModel {
         var ownedObjectReassignment = false
         var scopeSearch = false
         var restrictsBrowsing = false
+        var connectionLimit = true
     }
 
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "UsersRolesViewModel")
@@ -198,7 +199,8 @@ final class UsersRolesViewModel {
             roleMembership: driver.supportsRoleMembership,
             ownedObjectReassignment: driver.supportsOwnedObjectReassignment,
             scopeSearch: driver.supportsGrantableScopeSearch,
-            restrictsBrowsing: driver.restrictsGrantBrowsingToCurrentDatabase
+            restrictsBrowsing: driver.restrictsGrantBrowsingToCurrentDatabase,
+            connectionLimit: PluginManager.shared.supportsPrincipalConnectionLimit(for: databaseType)
         )
         changeManager.cascades = { driver.privilegeCascades(from: $0, to: $1) }
 

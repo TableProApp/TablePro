@@ -7,11 +7,9 @@ import TableProPluginKit
 /// a list of method names. Checking against a list said `forEach` was an unsupported method and
 /// underlined every script that iterated a cursor, while saying nothing about a missing brace.
 struct MongoDiagnosticsProducer: QueryDiagnosticsProducing {
-    private static let maximumLength = 100_000
-
     func diagnostics(for text: String) -> [QueryDiagnostic] {
         let source = text as NSString
-        guard source.length > 0, source.length <= Self.maximumLength else { return [] }
+        guard source.length > 0, source.length <= QueryDiagnosticsLimits.maximumDocumentLength else { return [] }
 
         // The bracket scanner has no regex state, so `db.c.find({x:/[)]/})` reads as an unmatched
         // closer. The syntax checker below knows JavaScript properly, so the structural pass is

@@ -28,6 +28,8 @@ struct DatabaseIconView: View {
     static func color(for type: DatabaseType) -> Color {
         switch type {
         case .mysql, .mariadb: return .orange
+        case .tidb: return .red
+        case .databend: return .blue
         case .postgresql, .redshift: return .blue
         case .sqlite: return .green
         case .redis: return .red

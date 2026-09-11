@@ -717,6 +717,7 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
+                    isEngineReadOnly: true,
                     localFilePathField: .database
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -1139,7 +1140,7 @@ extension PluginMetadataRegistry {
         ] + tursoPluginDefaults(dialect: d1Dialect, columnTypes: d1ColumnTypes)
             + duckdbPluginDefaults(dialect: duckdbDialect, columnTypes: duckdbColumnTypes)
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
-            + kafkaPluginDefaults() + typesensePluginDefaults()
+            + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }
