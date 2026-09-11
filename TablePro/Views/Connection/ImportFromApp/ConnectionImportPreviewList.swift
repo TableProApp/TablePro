@@ -101,6 +101,10 @@ struct ConnectionImportPreviewList: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.yellow)
+        case .unsupportedType:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.callout)
+                .foregroundStyle(.orange)
         case .duplicate:
             EmptyView()
         }
@@ -108,8 +112,8 @@ struct ConnectionImportPreviewList: View {
 
     @ViewBuilder
     private func warningText(for status: ImportItemStatus) -> some View {
-        if case .warnings(let messages) = status, let first = messages.first {
-            Text(", \(first)")
+        if let message = status.message {
+            Text(verbatim: ", \(message)")
                 .foregroundStyle(.orange)
         }
     }

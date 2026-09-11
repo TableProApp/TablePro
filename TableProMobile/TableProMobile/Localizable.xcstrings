@@ -4001,34 +4001,6 @@
         }
       }
     },
-    "Database type \"%@\" is not installed" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음 데이터베이스 유형이 설치되어 있지 않습니다: \"%@\""
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loại cơ sở dữ liệu \"%@\" chưa được cài đặt"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "数据库类型 \"%@\" 未安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "資料庫類型「%@」未安裝"
-          }
-        }
-      }
-    },
     "Databases" : {
       "localizations" : {
         "ko" : {
@@ -11990,6 +11962,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro 無法讀取該檔案。"
+          }
+        }
+      }
+    },
+    "TablePro doesn't support “%@” connections" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 “%@” 연결을 지원하지 않습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không hỗ trợ kết nối “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 不支持“%@”连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 不支援「%@」連線"
           }
         }
       }

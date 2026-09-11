@@ -166,8 +166,9 @@ struct TablePlusImporter: ForeignAppImporter {
             throw ForeignAppImportError.parseError("Missing ConnectionName")
         }
 
-        let driverString = entry["Driver"] as? String ?? ""
-        let dbType = mapDriver(driverString)
+        let dbType = Self.databaseType(forDriver: entry["Driver"] as? String ?? "")
+        let filePathField = ForeignAppDatabaseType.localFilePathField(for: dbType)
+        let filePath = filePathField == nil ? nil : (entry["DatabasePath"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
         let host = entry["DatabaseHost"] as? String ?? "localhost"
         let port: Int
@@ -176,13 +177,18 @@ struct TablePlusImporter: ForeignAppImporter {
         } else if let strPort = entry["DatabasePort"] as? String, let parsed = Int(strPort) {
             port = parsed
         } else {
-            port = defaultPort(for: dbType)
+            port = filePath == nil ? ForeignAppDatabaseType.defaultPort(for: dbType) : 0
         }
         let username = entry["DatabaseUser"] as? String ?? ""
         let database: String
-        if dbType == "SQLite" {
-            database = entry["DatabasePath"] as? String ?? ""
-        } else {
+        var additionalFields: [String: String]?
+        switch (filePath, filePathField) {
+        case (let path?, .database?):
+            database = path
+        case (let path?, .additionalField(let fieldId)?):
+            database = ""
+            additionalFields = [fieldId: path]
+        default:
             database = entry["DatabaseName"] as? String ?? ""
         }
 
@@ -212,7 +218,7 @@ struct TablePlusImporter: ForeignAppImporter {
             sshProfileId: nil,
             safeModeLevel: nil,
             aiPolicy: nil,
-            additionalFields: nil,
+            additionalFields: additionalFields,
             redisDatabase: nil,
             startupCommands: nil,
             localOnly: nil
@@ -304,30 +310,15 @@ struct TablePlusImporter: ForeignAppImporter {
         )
     }
 
-    private func mapDriver(_ driver: String) -> String {
+    private static func databaseType(forDriver driver: String) -> String {
         switch driver {
-        case "MySQL": return "MySQL"
-        case "PostgreSQL": return "PostgreSQL"
-        case "Mongo": return "MongoDB"
-        case "SQLite": return "SQLite"
-        case "Redis": return "Redis"
-        case "MSSQL": return "SQL Server"
-        case "Redshift": return "Redshift"
-        case "MariaDB": return "MariaDB"
-        case "CockroachDB": return "CockroachDB"
-        default: return driver
-        }
-    }
-
-    private func defaultPort(for dbType: String) -> Int {
-        switch dbType {
-        case "MySQL", "MariaDB": return 3_306
-        case "PostgreSQL", "Redshift": return 5_432
-        case "CockroachDB": return 26_257
-        case "MongoDB": return 27_017
-        case "Redis": return 6_379
-        case "SQL Server": return 1_433
-        default: return 0
+        case "MicrosoftSQLServer": return DatabaseType.mssql.rawValue
+        case "Mongo": return DatabaseType.mongodb.rawValue
+        case "Cockroach": return DatabaseType.cockroachdb.rawValue
+        case "CloudflareD1": return DatabaseType.cloudflareD1.rawValue
+        case "LibSQL": return DatabaseType.libsql.rawValue
+        case "ElasticSearch": return DatabaseType.elasticsearch.rawValue
+        default: return ForeignAppDatabaseType.resolve(driver)
         }
     }
 

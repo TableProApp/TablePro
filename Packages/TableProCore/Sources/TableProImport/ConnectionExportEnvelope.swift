@@ -139,6 +139,19 @@ public struct ExportableConnection: Codable, Sendable {
         self.tunnelCommand = tunnelCommand
     }
 
+    public func retyped(to newType: String) -> ExportableConnection {
+        ExportableConnection(
+            name: name, host: host, port: port, database: database,
+            username: username, type: newType, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: additionalFields, redisDatabase: redisDatabase,
+            startupCommands: startupCommands, localOnly: localOnly,
+            tunnelCommand: tunnelCommand
+        )
+    }
+
     public func renamed(to newName: String) -> ExportableConnection {
         ExportableConnection(
             name: newName, host: host, port: port, database: database,

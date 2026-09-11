@@ -192,18 +192,30 @@ struct TablePlusImporterTests {
         #expect(result.sourceName == "TablePlus")
     }
 
-    @Test("importConnections maps driver correctly")
+    @Test("importConnections maps every driver TablePlus 26.10 writes")
     func testImportConnections_mapsDriverCorrectly() throws {
         let driverMappings: [(String, String)] = [
-            ("MySQL", "MySQL"),
-            ("PostgreSQL", "PostgreSQL"),
+            ("MicrosoftSQLServer", "SQL Server"),
             ("Mongo", "MongoDB"),
-            ("SQLite", "SQLite"),
-            ("Redis", "Redis"),
-            ("MSSQL", "SQL Server"),
-            ("Redshift", "Redshift"),
+            ("Cockroach", "CockroachDB"),
+            ("CloudflareD1", "Cloudflare D1"),
+            ("LibSQL", "libSQL"),
+            ("ElasticSearch", "Elasticsearch"),
+            ("MySQL", "MySQL"),
             ("MariaDB", "MariaDB"),
-            ("CockroachDB", "CockroachDB")
+            ("PostgreSQL", "PostgreSQL"),
+            ("Redshift", "Redshift"),
+            ("Redis", "Redis"),
+            ("Oracle", "Oracle"),
+            ("SQLite", "SQLite"),
+            ("DuckDB", "DuckDB"),
+            ("ClickHouse", "ClickHouse"),
+            ("BigQuery", "BigQuery"),
+            ("DynamoDB", "DynamoDB"),
+            ("Snowflake", "Snowflake"),
+            ("Cassandra", "Cassandra"),
+            ("Vertica", "Vertica"),
+            ("Greenplum", "Greenplum")
         ]
 
         var entries: [[String: Any]] = []
@@ -459,7 +471,10 @@ struct TablePlusImporterTests {
             makeConnection(name: "PG No Port", driver: "PostgreSQL", port: "", id: "c2"),
             makeConnection(name: "Mongo No Port", driver: "Mongo", port: "", id: "c3"),
             makeConnection(name: "Redis No Port", driver: "Redis", port: "", id: "c4"),
-            makeConnection(name: "MSSQL No Port", driver: "MSSQL", port: "", id: "c5")
+            makeConnection(name: "SQL Server No Port", driver: "MicrosoftSQLServer", port: "", id: "c5"),
+            makeConnection(name: "Cockroach No Port", driver: "Cockroach", port: "", id: "c6"),
+            makeConnection(name: "Redshift No Port", driver: "Redshift", port: "", id: "c7"),
+            makeConnection(name: "Vertica No Port", driver: "Vertica", port: "", id: "c8")
         ])
 
         let result = try importer.importConnections(includePasswords: false)
@@ -470,6 +485,9 @@ struct TablePlusImporterTests {
         #expect(connections[2].port == 27_017)
         #expect(connections[3].port == 6379)
         #expect(connections[4].port == 1433)
+        #expect(connections[5].port == 26_257)
+        #expect(connections[6].port == 5_439)
+        #expect(connections[7].port == 0)
     }
 
     @Test("importConnections skips invalid entries")
@@ -552,6 +570,31 @@ struct TablePlusImporterTests {
 
         let result = try importer.importConnections(includePasswords: false)
         #expect(result.envelope.connections[0].database == "/Users/me/data.db")
+        #expect(result.envelope.connections[0].additionalFields == nil)
+    }
+
+    @Test("importConnections puts a DuckDB file in the field DuckDB reads it from")
+    func testImportConnections_duckDBUsesItsFilePathField() throws {
+        var entry = makeConnection(name: "Local DuckDB", driver: "DuckDB", port: "", database: "", id: "c1")
+        entry["DatabasePath"] = "/Users/me/warehouse.duckdb"
+        try writeConnections([entry])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.type == "DuckDB")
+        #expect(connection.additionalFields?["duckdbFilePath"] == "/Users/me/warehouse.duckdb")
+        #expect(connection.database == "")
+        #expect(connection.port == 0)
+    }
+
+    @Test("importConnections ignores DatabasePath for a server engine")
+    func testImportConnections_serverEngineIgnoresDatabasePath() throws {
+        var entry = makeConnection(name: "Server", driver: "MicrosoftSQLServer", database: "sales", id: "c1")
+        entry["DatabasePath"] = "/tmp/stray"
+        try writeConnections([entry])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.database == "sales")
+        #expect(connection.additionalFields == nil)
     }
 
     @Test("importConnections envelope metadata")

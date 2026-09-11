@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
+- SQL Server, CockroachDB, Cloudflare D1, libSQL and Elasticsearch connections imported from TablePlus with a database type that could never connect.
+- DuckDB file connections imported from TablePlus without their file.
+- Connections to an engine TablePro does not support imported silently and checked by default, or dropped from a Beekeeper Studio import.
+- Import preview calling an unrecognized database type "not installed".
+- Imported connections unable to connect when the source app spelled the engine name in a different case.
+- Wrong default port on Redshift and CockroachDB connections imported without one.
 
 ## [0.73.0] - 2026-09-09
 

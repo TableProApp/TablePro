@@ -47441,41 +47441,6 @@
         }
       }
     },
-    "Database type \"%@\" is not installed" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음 데이터베이스 유형이 설치되어 있지 않습니다: \"%@\""
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "\"%@\" veritabanı türü yüklü değil"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loại cơ sở dữ liệu \"%@\" chưa được cài đặt"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "数据库类型 \"%@\" 未安装"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "資料庫類型「%@」未安裝"
-          }
-        }
-      }
-    },
     "Database Type:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -151065,6 +151030,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TablePro 沒有及時開啟那張資料表。"
+          }
+        }
+      }
+    },
+    "TablePro doesn't support “%@” connections" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 “%@” 연결을 지원하지 않습니다"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro “%@” bağlantılarını desteklemiyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không hỗ trợ kết nối “%@”"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 不支持“%@”连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 不支援「%@」連線"
           }
         }
       }
