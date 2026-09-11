@@ -184,6 +184,7 @@ extension PluginMetadataRegistry {
                     defaultGroupName: "default",
                     tableEntityName: "Tables",
                     containerEntityName: "Dataset",
+                    schemaEntityName: "Dataset",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],

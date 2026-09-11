@@ -44,7 +44,7 @@ struct SidebarTreeView: View {
     var body: some View {
         Group {
             if schemas.isEmpty {
-                emptyDatasetsState
+                emptySchemasState
             } else if !searchText.isEmpty && visibleSchemas.isEmpty {
                 noMatchState
             } else {
@@ -78,11 +78,15 @@ struct SidebarTreeView: View {
         )
     }
 
-    private var emptyDatasetsState: some View {
-        ContentUnavailableView(
-            String(localized: "No Datasets"),
-            systemImage: "tablecells",
-            description: Text(String(localized: "This project has no datasets yet."))
+    private var emptySchemasState: some View {
+        let entityName = PluginManager.shared.schemaEntityNamePlural(for: viewModel.databaseType)
+        return ContentUnavailableView(
+            String(format: String(localized: "No %@"), entityName),
+            systemImage: "folder",
+            description: Text(String(
+                format: String(localized: "This connection has no %@ yet."),
+                entityName.lowercased()
+            ))
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -95,20 +99,21 @@ struct SidebarTreeView: View {
     /// The same rule the outline applies, so the empty state and the rows can never disagree about
     /// whether a schema survived the filter.
     private func schemaIsVisibleDuringSearch(_ schema: String) -> Bool {
-        var isLoaded = false
-        if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) { isLoaded = true }
-        return DatabaseTreeFilter.hierarchicalSchemaIsVisible(
+        DatabaseTreeFilter.hierarchicalSchemaIsVisible(
             schema,
             searchText: searchText,
-            isLoaded: isLoaded,
-            tables: schemaService.tables(for: connectionId, schema: schema)
+            isLoaded: schemaService.isSchemaSettled(for: connectionId, schema: schema),
+            tables: schemaService.tables(for: connectionId, schema: schema),
+            routines: schemaService.routines(for: connectionId, schema: schema),
+            triggers: schemaService.triggers(for: connectionId, schema: schema),
+            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema)
         )
     }
 
-    private func loadTables(for schema: String) {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+    private func loadObjects(for schema: String) {
+        let database = activeDatabase
         Task {
-            await schemaService.loadSchemaTables(connectionId: connectionId, schema: schema, driver: driver)
+            await schemaService.loadSchemaObjects(connectionId: connectionId, schema: schema, database: database)
         }
     }
 
@@ -123,7 +128,7 @@ struct SidebarTreeView: View {
                 if case .loaded = schemaService.schemaState(for: connectionId, schema: schema) {
                     continue
                 }
-                loadTables(for: schema)
+                loadObjects(for: schema)
             }
         }
     }

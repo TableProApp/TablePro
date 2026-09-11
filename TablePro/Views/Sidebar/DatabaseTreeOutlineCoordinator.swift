@@ -596,6 +596,10 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     }
 
     internal func refreshContainerObjectKind(_ group: DatabaseTreeObjectGroup) {
+        if rootShape == .hierarchicalSchema, let schema = group.schema {
+            reloadHierarchicalSchemaObjects(schema)
+            return
+        }
         let connectionId = connectionId
         Task {
             switch group.kind.category {
@@ -627,10 +631,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         }
     }
 
-    internal func reloadHierarchicalSchemaTables(_ schema: String) {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+    internal func reloadHierarchicalSchemaObjects(_ schema: String) {
         let connectionId = connectionId
-        Task { await schemaService.reloadSchemaTables(connectionId: connectionId, schema: schema, driver: driver) }
+        let database = browsingDatabase
+        Task {
+            await schemaService.reloadSchemaObjects(connectionId: connectionId, schema: schema, database: database)
+        }
     }
 
     @objc

@@ -230,7 +230,7 @@ struct SidebarView: View {
                 errorState(message: message)
             case .loading:
                 loadingState
-            case .noMatch, .empty, .list:
+            case .noMatch, .list:
                 SidebarTreeView(
                     connectionId: connectionId,
                     viewModel: viewModel,
@@ -253,7 +253,6 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasSideObjects: !routines.isEmpty || !triggers.isEmpty || !userDefinedTypes.isEmpty,
             hasOutlastedGrace: showsSchemaProgress
         )
     }
@@ -274,8 +273,6 @@ struct SidebarView: View {
                 errorState(message: message)
             case .noMatch:
                 noMatchState
-            case .empty:
-                emptyState
             case .list:
                 tableList
             }
@@ -312,23 +309,6 @@ struct SidebarView: View {
     private var noMatchState: some View {
         ContentUnavailableView.search(text: viewModel.searchText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var emptyState: some View {
-        let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
-        let containerName = PluginManager.shared.containerEntityName(for: viewModel.databaseType)
-        let noItemsLabel = String(format: String(localized: "No %@"), entityName)
-        let noItemsDetail = String(
-            format: String(localized: "This %1$@ has no %2$@ yet."),
-            containerName.lowercased(),
-            entityName.lowercased()
-        )
-        return ContentUnavailableView(
-            noItemsLabel,
-            systemImage: "tablecells",
-            description: Text(noItemsDetail)
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Table List

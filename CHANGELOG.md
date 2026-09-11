@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
+- Object browser replaced by "No Tables" for a database with procedures but no tables.
+- Procedures, functions and triggers missing from the object browser on Oracle, Snowflake, BigQuery and Dameng.
+- Empty schema list labelled "No Datasets" on Oracle, Snowflake, Dameng and Trino.
 
 ## [0.73.0] - 2026-09-09
 

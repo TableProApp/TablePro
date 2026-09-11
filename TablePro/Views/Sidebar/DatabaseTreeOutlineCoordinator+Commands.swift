@@ -145,7 +145,7 @@ extension DatabaseTreeOutlineCoordinator {
         case .refreshContainerObjectKind(let group):
             refreshContainerObjectKind(group)
         case .refreshHierarchicalSchema(let schema):
-            reloadHierarchicalSchemaTables(schema)
+            reloadHierarchicalSchemaObjects(schema)
         case .copyText(let text):
             ClipboardService.shared.writeText(text)
         case .showObjectSource(let ref):
