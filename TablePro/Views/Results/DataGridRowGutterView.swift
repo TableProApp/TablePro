@@ -113,17 +113,17 @@ final class DataGridRowGutterView: NSView {
 
     // MARK: - Drawing
 
-    /// The grid's leading strip as it stands at scroll offset zero, pinned: each row's background, its
-    /// number, and the separator at the first data column's leading edge.
+    /// The grid's leading strip as it stands at scroll offset zero, pinned, over the strip's whole
+    /// height: each row's background and number, the stripes the grid continues past the last row,
+    /// and the separator at the first data column's leading edge.
     ///
-    /// Only the rows are pinned. Below the last row the grid paints its own background, which no
-    /// public colour reproduces (its alternate stripe measured 51 where a row's is 40, dark), so the
-    /// strip leaves that area to the grid rather than covering it with a colour that would not match.
+    /// Opaque everywhere, because the columns scroll underneath it, past the last row included. That
+    /// area matches only because the grid paints its own background there,
+    /// `DataGridBodyChrome.drawTableBackground(in:of:)`, with the same stripe this strip paints.
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
-        let rows = tableView.rows(in: convert(dirtyRect, to: tableView))
         let rowNumberColumn = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
-        guard rows.length > 0, rowNumberColumn >= 0 else { return }
+        guard rowNumberColumn >= 0 else { return }
 
         /// The same rule the header uses. An identity check on the first responder is not it: while
         /// a cell is being edited the responder is a descendant field editor, and the row and the
@@ -134,57 +134,35 @@ final class DataGridRowGutterView: NSView {
         )
         let font = ThemeEngine.shared.dataGridFonts.rowNumber
         let pageOffset = coordinator.paginationOffsetProvider()
-        let lastRow = rows.location + rows.length - 1
 
-        for row in rows.location...lastRow {
-            let rowRect = convert(tableView.rect(ofRow: row), from: tableView)
-            let stripRect = NSRect(x: 0, y: rowRect.minY, width: bounds.width, height: rowRect.height)
+        for band in DataGridBodyChrome.rowBands(in: dirtyRect, of: self, tableView: tableView) {
+            let stripRect = NSRect(x: 0, y: band.rect.minY, width: bounds.width, height: band.rect.height)
             guard stripRect.intersects(dirtyRect) else { continue }
 
-            let isSelected = tableView.selectedRowIndexes.contains(row)
-            let state = coordinator.visualState(for: row)
-            fill(
+            let isSelected = band.isTableRow && tableView.selectedRowIndexes.contains(band.row)
+            let state = band.isTableRow ? coordinator.visualState(for: band.row) : .empty
+            DataGridBodyChrome.fill(
                 stripRect,
-                with: rowLayers(row: row, isSelected: isSelected, emphasized: emphasized, state: state, tableView: tableView),
+                with: rowLayers(row: band.row, isSelected: isSelected, emphasized: emphasized, state: state, tableView: tableView),
                 over: tableView.backgroundColor
             )
-            let cellFrame = tableView.frameOfCell(atColumn: rowNumberColumn, row: row)
+            guard band.isTableRow else { continue }
+            let cellFrame = tableView.frameOfCell(atColumn: rowNumberColumn, row: band.row)
             drawNumber(
-                row + pageOffset + 1,
+                band.row + pageOffset + 1,
                 in: NSRect(x: cellFrame.minX, y: stripRect.minY, width: cellFrame.width, height: stripRect.height),
                 font: font,
                 color: numberColor(isSelected: isSelected, emphasized: emphasized, state: state)
             )
         }
 
-        let firstRowRect = convert(tableView.rect(ofRow: rows.location), from: tableView)
-        let lastRowRect = convert(tableView.rect(ofRow: lastRow), from: tableView)
-        let rowsBand = NSRect(
-            x: 0,
-            y: firstRowRect.minY,
-            width: bounds.width,
-            height: lastRowRect.maxY - firstRowRect.minY
-        )
-        drawColumnSeparator(in: rowsBand.intersection(dirtyRect), tableView: tableView, coordinator: coordinator)
+        drawColumnSeparator(in: dirtyRect, tableView: tableView, coordinator: coordinator)
     }
 
-    /// Opaque, because the columns scroll underneath it. A row view blends its stripe, tint and
-    /// selection over the table's own background, and in dark mode the alternate stripe is white at
-    /// under 5% alpha: filled on its own, as this strip used to fill it, every other row let the
-    /// scrolled columns show through the numbers. So the table's background goes down first and the
-    /// row's layers are blended over it, which is the colour the row itself ends up showing.
-    private func fill(_ rect: NSRect, with layers: [NSColor], over background: NSColor) {
-        background.setFill()
-        rect.fill()
-        for layer in layers {
-            layer.setFill()
-            rect.fill(using: .sourceOver)
-        }
-    }
-
-    /// What the row under the strip paints, in its order: `NSTableRowView`'s stripe, then either the
-    /// selection a `.plain` table with the regular highlight draws, or the tint `DataGridRowView` gives
-    /// an unselected row.
+    /// What the row under the strip paints, in its order, for `DataGridBodyChrome.fill` to blend over
+    /// the table's background: `NSTableRowView`'s stripe, then either the selection a `.plain` table
+    /// with the regular highlight draws, or the tint `DataGridRowView` gives an unselected row. A
+    /// band past the last row has the stripe alone.
     private func rowLayers(
         row: Int,
         isSelected: Bool,
@@ -193,9 +171,8 @@ final class DataGridRowGutterView: NSView {
         tableView: NSTableView
     ) -> [NSColor] {
         var layers: [NSColor] = []
-        let stripes = NSColor.alternatingContentBackgroundColors
-        if tableView.usesAlternatingRowBackgroundColors, !stripes.isEmpty {
-            layers.append(stripes[row % stripes.count])
+        if let stripe = DataGridBodyChrome.stripeColor(forRow: row, of: tableView) {
+            layers.append(stripe)
         }
         if isSelected {
             layers.append(emphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor)
@@ -387,11 +364,36 @@ final class DataGridRowGutterView: NSView {
 
     // MARK: - Hit testing
 
-    /// Only the rows are pinned, so only the rows take a press. Below the last row the grid shows
-    /// through, and a click there belongs to it: a double click adds a row and a single click clears
-    /// the selection, both of which the strip used to swallow.
+    /// Only the rows take a press. Past the last row the strip still paints the grid's stripes, but a
+    /// click there belongs to the grid: a double click adds a row and a single click clears the
+    /// selection, both of which the strip used to swallow.
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
         return row(atLocalPoint: convert(point, from: superview)) >= 0 ? hit : nil
+    }
+
+    // MARK: - Accessibility
+
+    /// The strip is drawn chrome and has no place in the accessibility tree, so AppKit's own hit test
+    /// stopped at the nearest element above it, the scroll area, and a pointer over a row's number
+    /// found no row at all. Measured, AppKit does consult this override for the floating view. The
+    /// strip answers with what it shows: the row's mounted row-number cell view, which is the element
+    /// `NSTableView` publishes as that row's cell, while the column is in the viewport; the row once
+    /// it is not. `NSTableView` keeps that cell mounted at the column's own position however far the
+    /// grid scrolls, measured, so handing it over then would point a client at a frame hundreds of
+    /// points off screen. Below the last row, the grid.
+    override func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        guard let tableView, let window else { return super.accessibilityHitTest(point) }
+        let row = row(atLocalPoint: convert(window.convertPoint(fromScreen: point), from: nil))
+        let column = tableView.column(withIdentifier: ColumnIdentitySchema.rowNumberIdentifier)
+        guard row >= 0, column >= 0 else { return tableView.accessibilityHitTest(point) }
+        if tableView.visibleRect.intersects(tableView.rect(ofColumn: column)),
+           let cell = tableView.view(atColumn: column, row: row, makeIfNecessary: false) {
+            return cell
+        }
+        if let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) {
+            return rowView
+        }
+        return tableView.accessibilityHitTest(point)
     }
 }

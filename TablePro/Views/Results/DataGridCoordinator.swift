@@ -593,6 +593,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if tableView.rowHeight != newRowHeight {
             tableView.rowHeight = newRowHeight
             tableView.tile()
+            repaintRowGutter()
         }
 
         let dataChanged = previous.dateFormat != settings.dateFormat

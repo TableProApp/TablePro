@@ -101,12 +101,25 @@ struct StructureRowMenuRouteTests {
         #expect(!items.contains(dataGridOnly))
     }
 
-    /// Not a column list, so neither route offers a menu at all.
-    @Test("A DDL tab row raises no menu on either route")
+    /// The pinned row-number strip asks with the target already resolved, because the column under the
+    /// pointer there is one scrolled out of sight. Only the two event routes were overridden, so the
+    /// strip raised the data grid's row menu over a schema row.
+    @Test("The pinned row-number strip's route builds the structure menu too")
+    func thePinnedStripRouteBuildsTheStructureMenu() {
+        let rowView = makeRowView()
+        let items = titles(rowView.contextMenu(target: .row))
+
+        #expect(items.contains(structureOnly))
+        #expect(!items.contains(dataGridOnly))
+    }
+
+    /// Not a column list, so no route offers a menu at all.
+    @Test("A DDL tab row raises no menu on any route")
     func theDdlTabRaisesNoMenu() throws {
         let rowView = makeRowView(tab: .ddl)
 
         #expect(rowView.menu(for: try rightClick()) == nil)
         #expect(rowView.contextMenu(for: try rightClick()) == nil)
+        #expect(rowView.contextMenu(target: .row) == nil)
     }
 }

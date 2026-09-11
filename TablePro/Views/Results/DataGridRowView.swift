@@ -371,11 +371,7 @@ class DataGridRowView: NSTableRowView {
     /// offers the same item rather than leaving the pointer with no route to a value the keyboard
     /// can already copy: the Structure tab had `Cmd+C` copying the clicked cell and no menu item
     /// for it at all.
-    internal func makeCopyItem(for event: NSEvent) -> NSMenuItem {
-        makeCopyItem(target: menuTarget(for: event))
-    }
-
-    private func makeCopyItem(target: MenuTarget) -> NSMenuItem {
+    func makeCopyItem(target: MenuTarget) -> NSMenuItem {
         let copyTarget: CopyContextTarget = switch target {
         case .cell(let dataColumn): .cell(dataColumn)
         case .row: .row

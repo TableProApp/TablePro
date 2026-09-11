@@ -144,6 +144,55 @@ struct DataGridRowGutterTests {
         #expect(grid.gutter.hitTest(belowRows) == nil)
     }
 
+    /// The strip is drawn chrome with no place in the accessibility tree, so AppKit's own hit test
+    /// stopped at the scroll area and a pointer over a row's number found no row at all.
+    @Test("an accessibility hit test over a pinned number finds that row's number cell, not the scroll area")
+    func accessibilityHitTestFindsTheRowNumberCell() throws {
+        let wasActive = DataGridAccessibility.isActive
+        defer { DataGridAccessibility.isActive = wasActive }
+        let grid = GutterGrid(rowCount: 3)
+        let row = try #require(firstRowUnderTheStrip(in: grid))
+        let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+
+        let hit = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.midY, in: grid)) as AnyObject?
+        let cell = grid.tableView.view(atColumn: 0, row: row, makeIfNecessary: false)
+        #expect(cell != nil)
+        #expect(hit === cell, "hit \(String(describing: hit))")
+
+        let below = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.maxY + 60, in: grid)) as AnyObject?
+        #expect(!(below is NSScrollView), "below the rows the hit belongs to the grid")
+    }
+
+    /// `NSTableView` keeps the row-number cell mounted at its own position however far the grid
+    /// scrolls, so past the viewport its frame is far off screen and the row is the better answer.
+    @Test("scrolled sideways, an accessibility hit test over a pinned number finds the row")
+    func accessibilityHitTestFindsTheRowWhenScrolled() throws {
+        let wasActive = DataGridAccessibility.isActive
+        defer { DataGridAccessibility.isActive = wasActive }
+        let grid = GutterGrid(rowCount: 3)
+        grid.scrollHorizontally(to: 2_400)
+        let row = try #require(firstRowUnderTheStrip(in: grid))
+        let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+
+        let hit = grid.gutter.accessibilityHitTest(screenPoint(x: 4, y: band.midY, in: grid)) as AnyObject?
+        let rowView = grid.tableView.rowView(atRow: row, makeIfNecessary: false)
+        #expect(rowView != nil)
+        #expect(hit === rowView, "hit \(String(describing: hit))")
+    }
+
+    /// Offscreen, the floating container sits a header's height below the table, so the strip
+    /// misses the first rows there; asking the geometry keeps the check on a row it covers.
+    private func firstRowUnderTheStrip(in grid: GutterGrid) -> Int? {
+        (0..<grid.tableView.numberOfRows).first { row in
+            let band = grid.gutter.convert(grid.tableView.rect(ofRow: row), from: grid.tableView)
+            return grid.gutter.bounds.contains(NSPoint(x: 4, y: band.midY))
+        }
+    }
+
+    private func screenPoint(x: CGFloat, y: CGFloat, in grid: GutterGrid) -> NSPoint {
+        grid.window.convertPoint(toScreen: grid.gutter.convert(NSPoint(x: x, y: y), to: nil))
+    }
+
     @Test("the gutter width follows the column when the row count crosses a digit boundary")
     func gutterWidthFollowsRowCount() {
         let narrow = GutterGrid(rowCount: 9)

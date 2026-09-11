@@ -198,4 +198,126 @@ struct DataGridBodyChromeTests {
         #expect(sampledRed > sampledGreen + 0.3, "the separator has to carry the grid colour, not a fixed grey")
     }
 
+    /// `NSTableView` continues the alternation past the last row one row height at a time, numbered
+    /// on from it, and the grid now paints those bands itself.
+    @Test("Past the last row, bands continue one row apart, numbered on from the last row")
+    func bandsContinuePastTheLastRow() throws {
+        let grid = makeGrid(columns: ["id", "name"], rows: 3)
+        let bounds = grid.tableView.bounds
+        let bands = DataGridBodyChrome.rowBands(in: bounds, of: grid.tableView, tableView: grid.tableView)
+
+        let rows = Array(bands.prefix(3))
+        let past = Array(bands.dropFirst(3))
+        let rowIndexes = rows.map { $0.row }
+        let rowsAreTableRows = rows.allSatisfy { $0.isTableRow }
+        let pastIndexes = past.map { $0.row }
+        let pastAreTableRows = past.contains { $0.isTableRow }
+
+        #expect(rowIndexes == [0, 1, 2])
+        #expect(rowsAreTableRows)
+        #expect(!past.isEmpty)
+        #expect(pastIndexes == Array(3..<(3 + past.count)))
+        #expect(!pastAreTableRows)
+        let lastRowBottom = grid.tableView.rect(ofRow: 2).maxY
+        for (offset, band) in past.enumerated() {
+            #expect(band.rect.minY == lastRowBottom + CGFloat(offset) * grid.tableView.rowHeight)
+            #expect(band.rect.height == grid.tableView.rowHeight)
+        }
+        let lastBand = try #require(past.last)
+        #expect(lastBand.rect.maxY >= bounds.maxY)
+    }
+
+    /// `NSTableView` blends the dark alternate stripe in twice past the last row (52 against a row's
+    /// 40, measured on screen), so its empty rows read brighter than the rows above them. The grid
+    /// paints that area itself, the stripe blended once over the table's colour, which is what a row
+    /// shows.
+    ///
+    /// Measured through the drawing itself rather than a cached drawing of the table: offscreen,
+    /// `cacheDisplay` runs a second alternating pass of `NSTableView`'s own that the table never shows
+    /// on screen (54 against 41), so a cached table cannot tell the two paintings apart.
+    @Test("Past the last row the table blends each stripe once, as a row does")
+    func stripesPastTheLastRowAreBlendedOnce() throws {
+        let grid = makeGrid(columns: ["id", "name"], rows: 1)
+        grid.tableView.usesAlternatingRowBackgroundColors = true
+        let dark = try #require(NSAppearance(named: .darkAqua))
+        let bounds = grid.tableView.bounds
+        let bands = DataGridBodyChrome.rowBands(in: bounds, of: grid.tableView, tableView: grid.tableView)
+        let oddBand = try #require(bands.first { !$0.isTableRow && !$0.row.isMultiple(of: 2) })
+
+        let rep = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(bounds.width),
+            pixelsHigh: Int(bounds.height),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        let context = try #require(NSGraphicsContext(bitmapImageRep: rep))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        context.cgContext.translateBy(x: 0, y: bounds.height)
+        context.cgContext.scaleBy(x: 1, y: -1)
+        dark.performAsCurrentDrawingAppearance {
+            DataGridBodyChrome.drawTableBackground(in: bounds, of: grid.tableView)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        let sampled = try #require(rep.colorAt(x: 300, y: Int(oddBand.rect.midY))?.usingColorSpace(.sRGB))
+        let expected = try #require(singleBlend(over: .controlBackgroundColor, of: oddBand.row, appearance: dark))
+
+        #expect(abs(sampled.redComponent - expected.redComponent) < 0.02, "sampled \(sampled), expected \(expected)")
+        #expect(abs(sampled.greenComponent - expected.greenComponent) < 0.02)
+        #expect(abs(sampled.blueComponent - expected.blueComponent) < 0.02)
+    }
+
+    /// A cached drawing of the table cannot show this (see above), so the one line in the app that
+    /// decides it is read instead, as `gridStyleMaskIsClearedInTheAppItself` reads its own.
+    @Test("The table never hands its background back to NSTableView")
+    func tableBackgroundIsTheGridsOwn() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("TablePro/Views/Results/KeyHandlingTableView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+
+        #expect(text.contains("DataGridBodyChrome.drawTableBackground(in: clipRect, of: self)"))
+        #expect(
+            !text.contains("super.drawBackground(inClipRect:"),
+            "NSTableView blends the stripe in twice past the last row, which nothing painting it once can match"
+        )
+    }
+
+    /// The colour of one alternate stripe blended once over `background`, drawn into a single pixel.
+    private func singleBlend(over background: NSColor, of row: Int, appearance: NSAppearance) -> NSColor? {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 1,
+            pixelsHigh: 1,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ), let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        appearance.performAsCurrentDrawingAppearance {
+            let pixel = NSRect(x: 0, y: 0, width: 1, height: 1)
+            background.setFill()
+            pixel.fill()
+            let stripes = NSColor.alternatingContentBackgroundColors
+            stripes[row % stripes.count].setFill()
+            pixel.fill(using: .sourceOver)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.colorAt(x: 0, y: 0)?.usingColorSpace(.sRGB)
+    }
 }

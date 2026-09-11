@@ -84,6 +84,7 @@ private func matches(_ lhs: NSColor, _ rhs: NSColor, tolerance: CGFloat = 0.02) 
 @Suite("Pinned row-number column rendering", .serialized)
 @MainActor
 struct DataGridRowNumberRenderingTests {
+    @MainActor
     private struct Grid {
         let window: NSWindow
         let scrollView: NSScrollView
@@ -126,6 +127,7 @@ struct DataGridRowNumberRenderingTests {
 
     private func makeGrid(
         titles: [String] = (0..<8).map { "column\($0)" },
+        rows: Int = DataGridRowNumberRenderingTests.rowCount,
         appearance: NSAppearance.Name = .darkAqua
     ) -> Grid {
         let coordinator = TableViewCoordinator(
@@ -137,7 +139,7 @@ struct DataGridRowNumberRenderingTests {
         )
         let columnTypes = Array(repeating: ColumnType.text(rawType: "TEXT"), count: titles.count)
         let tableRows = TableRows.from(
-            queryRows: (0..<Self.rowCount).map { _ in titles.map { _ in PluginCellValue.text("x") } },
+            queryRows: (0..<rows).map { _ in titles.map { _ in PluginCellValue.text("x") } },
             columns: titles,
             columnTypes: columnTypes
         )
@@ -198,7 +200,7 @@ struct DataGridRowNumberRenderingTests {
         window.layoutIfNeeded()
         scrollView.layoutSubtreeIfNeeded()
         gutter.synchronizeGeometry()
-        for row in 0..<Self.rowCount {
+        for row in 0..<rows {
             _ = tableView.rowView(atRow: row, makeIfNecessary: true)
         }
         return Grid(
@@ -294,6 +296,41 @@ struct DataGridRowNumberRenderingTests {
             CGFloat(linePixels.count) <= raster.scale * DataGridBodyChrome.separatorThickness,
             "\(linePixels.count) pixels of line at \(raster.scale)x"
         )
+    }
+
+    // MARK: - Past the last row
+
+    /// The columns scroll under the strip past the last row too, where it used to paint nothing and
+    /// let every column line crossing that area show through the numbers' column.
+    @Test("Past the last row the strip is opaque")
+    func stripIsOpaquePastTheLastRow() throws {
+        let grid = makeGrid(rows: 3)
+        let lastRow = grid.gutter.convert(grid.tableView.rect(ofRow: 2), from: grid.tableView)
+        let below = NSPoint(x: 2, y: lastRow.maxY + grid.tableView.rowHeight * 1.5)
+        #expect(grid.gutter.bounds.contains(below))
+        let raster = try #require(Raster(of: grid.gutter, in: grid.gutter.bounds))
+
+        let color = try #require(raster.color(at: below))
+        #expect(color.alphaComponent > 0.99, "past the last row the strip is see-through")
+    }
+
+    @Test("Scrolled sideways, no column line shows through the strip past the last row")
+    func noColumnLineShowsThroughPastTheLastRow() throws {
+        let grid = makeGrid(rows: 3)
+        let firstData = try #require(grid.coordinator.firstPresentedColumnIndex())
+        let secondData = try #require(grid.coordinator.nextPresentedColumnIndex(after: firstData))
+        grid.scroll(toX: grid.tableView.rect(ofColumn: secondData).minX - 20)
+        let raster = try #require(Raster(of: grid.scrollView, in: grid.scrollView.bounds))
+
+        let pastLastRow = grid.tableView.rect(ofRow: 2).maxY + grid.tableView.rowHeight * 1.5
+        let stripMinX = grid.scrollView.convert(NSPoint.zero, from: grid.gutter).x
+        let stripWidth = grid.tableView.rect(ofColumn: grid.rowNumberColumn).width
+        let y = grid.pointInScrollView(NSPoint(x: 0, y: pastLastRow)).y
+        let background = try #require(raster.color(at: NSPoint(x: stripMinX + 2, y: y)))
+        let strayPixels = raster.colors(fromX: stripMinX + 1, toX: stripMinX + stripWidth - 3, atY: y)
+            .filter { !matches($0, background) }
+
+        #expect(strayPixels.isEmpty, "\(strayPixels.count) pixels of a scrolled column line inside the strip")
     }
 
     // MARK: - The pinned heading

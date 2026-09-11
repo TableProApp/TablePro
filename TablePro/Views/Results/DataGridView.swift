@@ -305,9 +305,11 @@ struct DataGridView: NSViewRepresentable {
 
         if tableView.rowHeight != rowHeight {
             tableView.rowHeight = rowHeight
+            coordinator.repaintRowGutter()
         }
         if tableView.usesAlternatingRowBackgroundColors != alternatingRows {
             tableView.usesAlternatingRowBackgroundColors = alternatingRows
+            coordinator.repaintRowGutter()
         }
 
         let oldRowCount = coordinator.cachedRowCount

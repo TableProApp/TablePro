@@ -18,12 +18,14 @@ final class KeyHandlingTableView: NSTableView {
         window.makeFirstResponder(self)
     }
 
-    /// Continues the column separators past the last row.
+    /// The table's background, and the column separators continued past the last row.
     ///
-    /// A row view covers whatever the table view drew beneath it, so this reaches only the area no
-    /// row occupies, which is exactly the area the rows cannot draw. See `DataGridBodyChrome`.
+    /// A row view covers whatever the table view drew beneath it, so the separators here reach only
+    /// the area no row occupies, which is exactly the area the rows cannot draw. The background is
+    /// the grid's own rather than `super`'s, for the reason on
+    /// `DataGridBodyChrome.drawTableBackground(in:of:)`.
     override func drawBackground(inClipRect clipRect: NSRect) {
-        super.drawBackground(inClipRect: clipRect)
+        DataGridBodyChrome.drawTableBackground(in: clipRect, of: self)
         guard let coordinator else { return }
         let lastRowBottom = numberOfRows > 0 ? rect(ofRow: numberOfRows - 1).maxY : bounds.minY
         let belowRows = clipRect.intersection(
