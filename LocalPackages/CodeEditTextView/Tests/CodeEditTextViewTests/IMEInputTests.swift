@@ -91,6 +91,76 @@ struct IMEInputTests {
         #expect(textView.markedRange().location == NSNotFound)
     }
 
+    @Test("An input method that empties its composition ends it")
+    func emptiedCompositionEndsIt() throws {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "alpha")
+        #expect(textView.hasMarkedText() == false)
+        #expect(textView.markedRange().location == NSNotFound)
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 5, length: 0))
+    }
+
+    @Test("A composition begun after an emptied one starts at the caret")
+    func compositionAfterEmptiedOneStartsAtCaret() throws {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "c",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        #expect(textView.markedRange() == NSRange(location: 5, length: 1))
+
+        textView.insertText("测", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        #expect(textView.string == "alpha测")
+        #expect(textView.hasMarkedText() == false)
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 6, length: 0))
+    }
+
+    @Test("Emptying a composition across several cursors ends it at every cursor")
+    func emptiedMultiCursorCompositionEndsIt() {
+        let textView = makeLaidOutTextView("ABC")
+        textView.selectionManager.setSelectedRanges([
+            NSRange(location: 1, length: 0),
+            NSRange(location: 2, length: 0)
+        ])
+
+        textView.setMarkedText(
+            "´",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "ABC")
+        #expect(textView.hasMarkedText() == false)
+        let carets = textView.selectionManager.textSelections.map(\.range).sorted { $0.location < $1.location }
+        #expect(carets == [NSRange(location: 1, length: 0), NSRange(location: 2, length: 0)])
+    }
+
     @Test("Plain Latin insertText path is unaffected")
     func plainInsertTextIsUnaffected() {
         let textView = makeLaidOutTextView("alpha")

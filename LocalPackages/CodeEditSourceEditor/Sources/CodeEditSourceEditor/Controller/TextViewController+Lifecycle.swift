@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import Carbon.HIToolbox
 import CodeEditTextView
 
 extension TextViewController {
@@ -210,6 +209,9 @@ extension TextViewController {
             .subtracting([.capsLock, .function])
         switch event.type {
         case .keyDown:
+            guard !textView.hasMarkedText() else {
+                return handleKeyDownDuringComposition(event: event, modifierFlags: modifierFlags)
+            }
             let tabKey: UInt16 = 0x30
 
             if event.keyCode == tabKey {
@@ -245,61 +247,49 @@ extension TextViewController {
         }
     }
 
-    func handleCommand(event: NSEvent, modifierFlags: NSEvent.ModifierFlags) -> NSEvent? {
-        let commandKey = NSEvent.ModifierFlags.command
-        let controlKey = NSEvent.ModifierFlags.control
-
-        switch (modifierFlags, event.charactersIgnoringModifiers) {
-        case (commandKey, "/"):
-            handleCommandSlash()
-            return nil
-        case (commandKey, "["):
-            handleIndent(inwards: true)
-            return nil
-        case (commandKey, "]"):
-            handleIndent()
-            return nil
-        case ([commandKey, .shift], "D"):
-            duplicateLine()
-            return nil
-        case ([commandKey, .shift], "K"):
-            deleteLine()
-            return nil
-        case (.init(rawValue: 0), "\u{1b}"): // Escape key
-            if findViewController?.viewModel.isShowingFindPanel == true {
-                self.findViewController?.hideFindPanel()
-                return nil
-            }
-            // Attempt to show completions otherwise
-            return handleShowCompletions(event)
-        case (controlKey, " "):
-            return handleShowCompletions(event)
-        case ([NSEvent.ModifierFlags.command, NSEvent.ModifierFlags.control], "j"):
-            guard let cursor = cursorPositions.first else {
-                return event
-            }
-            jumpToDefinitionModel.performJump(at: cursor.range)
-            return nil
-        case (_, _):
-            // Handle key-code-based shortcuts (arrow keys don't have stable characters)
-            return handleKeyCodeCommand(event: event, modifierFlags: modifierFlags)
-        }
-    }
-
-    private func handleKeyCodeCommand(event: NSEvent, modifierFlags: NSEvent.ModifierFlags) -> NSEvent? {
-        // Strip .numericPad — arrow keys include it on macOS
-        let flags = modifierFlags.subtracting(.numericPad)
-
-        switch (flags, Int(event.keyCode)) {
-        case (.option, kVK_UpArrow):
-            moveLinesUp()
-            return nil
-        case (.option, kVK_DownArrow):
-            moveLinesDown()
-            return nil
-        default:
+    private func handleKeyDownDuringComposition(event: NSEvent, modifierFlags: NSEvent.ModifierFlags) -> NSEvent? {
+        guard let command = EditorKeyCommand(event: event, modifierFlags: modifierFlags),
+              command.isCommandChord else {
             return event
         }
+        return nil
+    }
+
+    func handleCommand(event: NSEvent, modifierFlags: NSEvent.ModifierFlags) -> NSEvent? {
+        guard let command = EditorKeyCommand(event: event, modifierFlags: modifierFlags) else { return event }
+
+        switch command {
+        case .toggleComment:
+            handleCommandSlash()
+        case .outdent:
+            handleIndent(inwards: true)
+        case .indent:
+            handleIndent()
+        case .duplicateLine:
+            duplicateLine()
+        case .deleteLine:
+            deleteLine()
+        case .moveLinesUp:
+            moveLinesUp()
+        case .moveLinesDown:
+            moveLinesDown()
+        case .escape:
+            return handleEscape(event)
+        case .showCompletions:
+            return handleShowCompletions(event)
+        case .jumpToDefinition:
+            guard let cursor = cursorPositions.first else { return event }
+            jumpToDefinitionModel.performJump(at: cursor.range)
+        }
+        return nil
+    }
+
+    private func handleEscape(_ event: NSEvent) -> NSEvent? {
+        guard let findViewController, findViewController.viewModel.isShowingFindPanel else {
+            return handleShowCompletions(event)
+        }
+        findViewController.hideFindPanel()
+        return nil
     }
 
     /// Handles the tab key event.

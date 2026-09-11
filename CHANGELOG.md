@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Failed connect from an opened file or URL titled "Disconnected", with Reconnect as its only fix.
 - Connection Failed alert covering the window that already showed the same failure.
 - Invisible control characters typed into a query by an input method or a Control-key chord such as Ctrl+Option+H. (#2717)
+- Escape and Tab taken from an input method mid-composition in the SQL editor, and AI suggestions shown during it.
 - Statement with a NUL character running only up to it on SQLite and PostgreSQL, dropping its WHERE clause. (#2717)
 - Vim Replace mode writing an invisible character for Backspace and keypad Enter. (#2717)
 - Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)

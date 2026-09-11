@@ -111,6 +111,7 @@ final class InlineSuggestionManager {
         guard let controller else { return false }
         guard let textView = controller.textView else { return false }
         guard textView.window?.firstResponder === textView else { return false }
+        guard !textView.hasMarkedText() else { return false }
         guard let cursor = controller.cursorPositions.first,
               cursor.range.length == 0 else { return false }
 
@@ -122,7 +123,7 @@ final class InlineSuggestionManager {
 
     // MARK: - Request
 
-    private func requestSuggestion() {
+    internal func requestSuggestion() {
         guard isEnabled() else { return }
         guard let source = sourceResolver?() else { return }
         guard let controller, let textView = controller.textView else { return }
@@ -157,6 +158,7 @@ final class InlineSuggestionManager {
                 guard let activeIdentity = self.sourceResolver?()?.sourceIdentity,
                       activeIdentity == requestedFromIdentity else { return }
                 guard !suggestion.text.isEmpty else { return }
+                guard self.controller?.textView?.hasMarkedText() == false else { return }
 
                 self.currentSuggestion = suggestion
                 self.renderer.show(suggestion.text, at: cursorOffset)
@@ -210,32 +212,28 @@ final class InlineSuggestionManager {
         removeKeyEventMonitor()
         let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
             nonisolated(unsafe) let event = nsEvent
-            let acceptsSuggestion = MainActor.assumeIsolated { () -> Bool in
-                guard let self, self.isEditorFocused else { return false }
-
-                guard self.currentSuggestion != nil else { return false }
-
-                guard let textView = self.controller?.textView,
-                      event.window === textView.window,
-                      textView.window?.firstResponder === textView else { return false }
-
-                switch event.keyCode {
-                case 48:
-                    self.acceptSuggestion()
-                    return true
-
-                case 53:
-                    self.dismissSuggestion()
-                    return false
-
-                default:
-                    self.dismissSuggestion()
-                    return false
-                }
+            let consumed = MainActor.assumeIsolated { () -> Bool in
+                self?.consumesKeyDown(event) ?? false
             }
-            return acceptsSuggestion ? nil : nsEvent
+            return consumed ? nil : nsEvent
         }
         _keyEventMonitor.withLockUnchecked { $0 = monitor }
+    }
+
+    internal func consumesKeyDown(_ event: NSEvent) -> Bool {
+        guard isEditorFocused, currentSuggestion != nil else { return false }
+
+        guard let textView = controller?.textView,
+              event.window === textView.window,
+              textView.window?.firstResponder === textView else { return false }
+
+        guard event.keyCode == KeyCode.tab.rawValue, !textView.hasMarkedText() else {
+            dismissSuggestion()
+            return false
+        }
+
+        acceptSuggestion()
+        return true
     }
 
     private func removeKeyEventMonitor() {

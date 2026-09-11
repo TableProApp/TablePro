@@ -159,6 +159,10 @@ extension TextView: NSTextInputClient {
             NSRange(location: $0.max, length: 0)
         }))
 
+        if insertString.isEmpty {
+            layoutManager.markedTextManager.removeAll()
+        }
+
         _undoManager?.enable()
     }
 
