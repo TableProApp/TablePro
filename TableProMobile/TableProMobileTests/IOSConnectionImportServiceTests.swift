@@ -48,6 +48,14 @@ struct IOSConnectionImportServiceTests {
         #expect(try store.retrieve(forKey: "com.TablePro.sshpassword.\(idB.uuidString)") == nil)
     }
 
+    @Test("recognizes every known type plus the variants a Mac export can carry")
+    func recognizesVariantTypes() {
+        let recognized = IOSConnectionImportService.recognizedTypeIds
+        #expect(DatabaseType.allKnownTypes.allSatisfy { recognized.contains($0.rawValue) })
+        #expect(recognized.isSuperset(of: ["CockroachDB", "ScyllaDB", "Turso"]))
+        #expect(!recognized.contains("Vertica"))
+    }
+
     @Test("no credentials envelope writes nothing")
     func noCredentialsWritesNothing() throws {
         let store = MockSecureStore()

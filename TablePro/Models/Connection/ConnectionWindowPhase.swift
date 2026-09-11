@@ -35,13 +35,39 @@ internal enum ConnectionLiveness: Equatable, Sendable {
     case unreachable(ConnectionFailureInfo?)
 }
 
+/// Why a session's entry went away, recorded by `DatabaseManager` before it removes the entry. An
+/// attempt that never connected and a session that was lost are different events: the first is a
+/// failed connect, with the fix its classified error offers, and only the second is a disconnect.
+internal enum ConnectionEndReason: Equatable, Sendable {
+    case connectFailed(ConnectionFailureInfo, ConnectionRecoveryAction?)
+    case sessionLost(ConnectionFailureInfo)
+
+    internal var info: ConnectionFailureInfo {
+        switch self {
+        case .connectFailed(let info, _), .sessionLost(let info):
+            return info
+        }
+    }
+
+    internal var unavailableReason: ConnectionUnavailableReason {
+        switch self {
+        case .connectFailed(let info, let action?):
+            return .actionRequired(info, action)
+        case .connectFailed(let info, nil):
+            return .failed(info)
+        case .sessionLost(let info):
+            return .disconnected(info)
+        }
+    }
+}
+
 internal enum ConnectionUnavailableReason: Equatable, Sendable {
     case notConnected
     case cancelled
     case disconnected(ConnectionFailureInfo?)
     case disconnectedByUser
     case failed(ConnectionFailureInfo)
-    case pluginMissing(ConnectionFailureInfo)
+    case actionRequired(ConnectionFailureInfo, ConnectionRecoveryAction)
 }
 
 internal enum ConnectionWindowPhase: Equatable, Sendable {
@@ -55,5 +81,5 @@ internal enum ConnectionWindowPhase: Equatable, Sendable {
 internal enum ConnectionAttemptOutcome: Equatable, Sendable {
     case cancelled
     case failed(ConnectionFailureInfo)
-    case pluginMissing(ConnectionFailureInfo)
+    case actionRequired(ConnectionFailureInfo, ConnectionRecoveryAction)
 }

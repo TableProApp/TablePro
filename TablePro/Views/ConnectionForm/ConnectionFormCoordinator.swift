@@ -480,17 +480,27 @@ final class ConnectionFormCoordinator {
         WelcomeRouter.shared.routeError(error, for: connection)
     }
 
-    func connectAfterInstall(_ connection: DatabaseConnection) {
-        Task {
-            do {
-                try await TabRouter.shared.route(.openConnection(connection.id))
-            } catch {
-                handleConnectError(error, connection: connection)
+    // MARK: - Test
+
+    private func presentRecoverableTestFailure(
+        _ error: Error,
+        action: ConnectionRecoveryAction,
+        connection: DatabaseConnection,
+        window: NSWindow?
+    ) {
+        let info = ConnectionFailureClassifier.info(for: error)
+        AlertHelper.showRecoverableErrorSheet(
+            title: String(localized: "Connection Test Failed"),
+            message: [info.message, info.failureReason].compactMap { $0 }.joined(separator: "\n\n"),
+            recoverySuggestion: info.recoverySuggestion,
+            recoveryTitle: action.title,
+            window: window
+        ) { [weak self] in
+            ConnectionRecoveryPerformer.perform(action, for: connection) {
+                self?.test()
             }
         }
     }
-
-    // MARK: - Test
 
     func test() {
         guard testTask == nil else { return }
@@ -588,6 +598,9 @@ final class ConnectionFormCoordinator {
                         error: error, connection: testConn, username: testConn.username
                     ) {
                         self?.pluginDiagnostic = item
+                    } else if let action = ConnectionFailureClassifier.recoveryAction(for: error),
+                              action != .editConnection {
+                        self?.presentRecoverableTestFailure(error, action: action, connection: testConn, window: window)
                     } else {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Connection Test Failed"),

@@ -13,6 +13,12 @@ internal enum TabRouterError: Error, LocalizedError {
     case fileNoLongerExists(URL)
     case userCancelled
     case unsupportedIntent(String)
+    case connectFailedInWindow(connectionId: UUID, underlying: Error)
+
+    internal var windowConnectionId: UUID? {
+        guard case .connectFailedInWindow(let connectionId, _) = self else { return nil }
+        return connectionId
+    }
 
     internal var errorDescription: String? {
         switch self {
@@ -32,6 +38,8 @@ internal enum TabRouterError: Error, LocalizedError {
             return String(localized: "Cancelled by user.")
         case .unsupportedIntent(let detail):
             return String(format: String(localized: "Unsupported intent: %@"), detail)
+        case .connectFailedInWindow(_, let underlying):
+            return underlying.localizedDescription
         }
     }
 }
@@ -342,16 +350,18 @@ internal final class TabRouter {
         let sshPasswordOverride = parsed.sshPassword.flatMap { $0.isEmpty ? nil : $0 }
 
         if let table = parsed.tableName {
-            try await openTable(
-                connectionId: connection.id,
-                transientConnection: isTransient ? connection : nil,
-                database: parsed.database.isEmpty ? nil : parsed.database,
-                schema: parsed.schema,
-                table: table,
-                isView: parsed.isView,
-                passwordOverride: passwordOverride,
-                sshPasswordOverride: sshPasswordOverride
-            )
+            try await failuresShownInWindow(of: connection.id) {
+                try await openTable(
+                    connectionId: connection.id,
+                    transientConnection: isTransient ? connection : nil,
+                    database: parsed.database.isEmpty ? nil : parsed.database,
+                    schema: parsed.schema,
+                    table: table,
+                    isView: parsed.isView,
+                    passwordOverride: passwordOverride,
+                    sshPasswordOverride: sshPasswordOverride
+                )
+            }
             if parsed.filterColumn != nil || parsed.filterCondition != nil {
                 try await applyFilterFromParsedURL(parsed: parsed, connectionId: connection.id)
             }
@@ -364,15 +374,29 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
-        try await DatabaseManager.shared.ensureConnected(
-            connection,
-            passwordOverride: passwordOverride,
-            sshPasswordOverride: sshPasswordOverride
-        )
+        try await failuresShownInWindow(of: connection.id) {
+            try await DatabaseManager.shared.ensureConnected(
+                connection,
+                passwordOverride: passwordOverride,
+                sshPasswordOverride: sshPasswordOverride
+            )
+        }
 
         await applyContainerSwitch(
             connectionId: connection.id, database: nil, schema: parsed.schema
         )
+    }
+
+    private func failuresShownInWindow(
+        of connectionId: UUID,
+        _ body: () async throws -> Void
+    ) async throws {
+        do {
+            try await body()
+        } catch {
+            guard !ConnectionFailureClassifier.isUserCancelled(error) else { throw error }
+            throw TabRouterError.connectFailedInWindow(connectionId: connectionId, underlying: error)
+        }
     }
 
     // MARK: - Database File
@@ -419,7 +443,9 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
-        try await DatabaseManager.shared.ensureConnected(connection)
+        try await failuresShownInWindow(of: connection.id) {
+            try await DatabaseManager.shared.ensureConnected(connection)
+        }
     }
 
     // MARK: - SQL File

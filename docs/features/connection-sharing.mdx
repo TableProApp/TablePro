@@ -74,7 +74,7 @@ Choose **File > Import > Import from Other App…**, pick the source, then revie
 
 | App | Databases | Passwords | Notes |
 |-----|-----------|-----------|-------|
-| TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain | |
+| TablePlus | Every TablePlus engine except Vertica and Greenplum | From Keychain | SQLite and DuckDB connections bring their file path. Check the account ID of a Cloudflare D1 connection and the URL of a libSQL one in the connection form after importing |
 | Sequel Ace | MySQL | From Keychain | |
 | DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file | Read from the data folder, so every edition works |
 | DataGrip | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | From Keychain or `c.kdbx` | Reads recent projects with SSH and SSL settings. A master password blocks it |

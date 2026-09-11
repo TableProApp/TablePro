@@ -5,8 +5,8 @@
 
 import AppKit
 
-/// The single owner of the data grid body's column separators, as `SortableHeaderChrome` is for the
-/// header.
+/// The single owner of the data grid body's column separators and of the table's background, as
+/// `SortableHeaderChrome` is for the header.
 ///
 /// `NSTableView` draws vertical grid lines by keeping one separator view per column as its own
 /// subview, and it re-sorts that whole subview list on every layout pass. That is O(columns) views
@@ -69,5 +69,87 @@ enum DataGridBodyChrome {
         guard !separators.isEmpty else { return }
         tableView.gridColor.setFill()
         separators.forEach { $0.fill() }
+    }
+
+    // MARK: - Row backgrounds
+
+    /// One row's band in the space of the view asking: a row of the table, or one of the bands past
+    /// the last row that the alternation continues through.
+    struct RowBand: Equatable {
+        let row: Int
+        let rect: NSRect
+        let isTableRow: Bool
+    }
+
+    /// Every band the rect reaches: the table's rows, then bands one row apart past the last row,
+    /// numbered on from it, which is where `NSTableView` continues the alternation.
+    ///
+    /// - Parameters:
+    ///   - rect: the area being drawn, in the coordinate space of `view`.
+    ///   - view: the view drawing, which supplies the space the bands are converted into.
+    static func rowBands(in rect: NSRect, of view: NSView, tableView: NSTableView) -> [RowBand] {
+        guard rect.width > 0, rect.height > 0 else { return [] }
+        let inTableView = view.convert(rect, to: tableView)
+        let rows = tableView.rows(in: inTableView)
+        var bands = (rows.location..<(rows.location + rows.length)).map { row in
+            RowBand(row: row, rect: view.convert(tableView.rect(ofRow: row), from: tableView), isTableRow: true)
+        }
+
+        let pitch = tableView.rowHeight + tableView.intercellSpacing.height
+        let rowCount = tableView.numberOfRows
+        let lastRowBottom = rowCount > 0 ? tableView.rect(ofRow: rowCount - 1).maxY : tableView.bounds.minY
+        guard pitch > 0, inTableView.maxY > lastRowBottom else { return bands }
+
+        var index = max(0, Int(((inTableView.minY - lastRowBottom) / pitch).rounded(.down)))
+        while lastRowBottom + CGFloat(index) * pitch < inTableView.maxY {
+            let band = NSRect(
+                x: inTableView.minX,
+                y: lastRowBottom + CGFloat(index) * pitch,
+                width: inTableView.width,
+                height: pitch
+            )
+            bands.append(RowBand(row: rowCount + index, rect: view.convert(band, from: tableView), isTableRow: false))
+            index += 1
+        }
+        return bands
+    }
+
+    /// The alternate stripe `NSTableRowView` paints for a row, or nil when the table does not
+    /// alternate, where a row shows the table's own background.
+    static func stripeColor(forRow row: Int, of tableView: NSTableView) -> NSColor? {
+        guard tableView.usesAlternatingRowBackgroundColors else { return nil }
+        let stripes = NSColor.alternatingContentBackgroundColors
+        guard !stripes.isEmpty else { return nil }
+        return stripes[row % stripes.count]
+    }
+
+    /// Lays `background` down and blends `layers` over it bottom to top, which is the colour a row
+    /// view's fills end up showing over the table beneath them. Opaque whatever the layers are,
+    /// because the background replaces the pixels rather than blending over them.
+    static func fill(_ rect: NSRect, with layers: [NSColor], over background: NSColor) {
+        background.setFill()
+        rect.fill()
+        for layer in layers {
+            layer.setFill()
+            rect.fill(using: .sourceOver)
+        }
+    }
+
+    /// The table's background: its own colour, and past the last row the alternate stripes blended
+    /// over it once.
+    ///
+    /// Drawn here rather than by `NSTableView.drawBackground(inClipRect:)`, which blends the stripe in
+    /// twice past the last row. Measured on macOS 27 in dark mode, its empty rows read 52 against the
+    /// rows' 40, so the empty area striped brighter than the rows above it, and nothing that paints
+    /// the stripe once could match it, the pinned row gutter included. Under the rows only the
+    /// table's colour goes down, because a row view blends its own stripe over exactly that.
+    static func drawTableBackground(in rect: NSRect, of tableView: NSTableView) {
+        tableView.backgroundColor.setFill()
+        rect.fill()
+        for band in rowBands(in: rect, of: tableView, tableView: tableView) where !band.isTableRow {
+            guard let stripe = stripeColor(forRow: band.row, of: tableView) else { continue }
+            stripe.setFill()
+            band.rect.intersection(rect).fill(using: .sourceOver)
+        }
     }
 }

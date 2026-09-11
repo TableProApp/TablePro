@@ -9,6 +9,7 @@ internal struct ConnectionUnavailableView: View {
     internal let connection: DatabaseConnection
     internal let reason: ConnectionUnavailableReason
     internal let onPrimaryAction: () -> Void
+    internal let onRetry: () -> Void
     internal let onManageConnections: () -> Void
 
     internal var body: some View {
@@ -33,10 +34,16 @@ internal struct ConnectionUnavailableView: View {
         } actions: {
             HStack(spacing: 12) {
                 Button(action: onPrimaryAction) {
-                    Text(primaryActionTitle)
+                    Text(Self.primaryActionTitle(for: reason))
                         .frame(minWidth: 80)
                 }
                 .keyboardShortcut(.defaultAction)
+
+                if Self.offersRetry(for: reason) {
+                    Button(action: onRetry) {
+                        Text(String(localized: "Try Again"))
+                    }
+                }
 
                 Button(action: onManageConnections) {
                     Text(String(localized: "Manage Connections…"))
@@ -70,8 +77,8 @@ internal struct ConnectionUnavailableView: View {
         case .failed:
             Image(systemName: "exclamationmark.triangle")
                 .symbolRenderingMode(.hierarchical)
-        case .pluginMissing:
-            Image(systemName: "puzzlepiece.extension")
+        case .actionRequired(_, let action):
+            Image(systemName: action.symbolName)
                 .symbolRenderingMode(.hierarchical)
         }
     }
@@ -82,21 +89,17 @@ internal struct ConnectionUnavailableView: View {
             return String(format: String(localized: "Not connected to %@"), connection.name)
         case .disconnected, .disconnectedByUser:
             return String(format: String(localized: "Disconnected from %@"), connection.name)
-        case .failed, .pluginMissing:
+        case .failed, .actionRequired:
             return String(format: String(localized: "Could not connect to %@"), connection.name)
         }
     }
 
     private var detailLines: [String] {
-        switch reason {
-        case .notConnected, .cancelled, .disconnectedByUser:
+        guard let failureInfo else {
+            if case .disconnected = reason { return [String(localized: "The connection was closed.")] }
             return []
-        case .disconnected(let info):
-            guard let info else { return [String(localized: "The connection was closed.")] }
-            return lines(from: info)
-        case .failed(let info), .pluginMissing(let info):
-            return lines(from: info)
         }
+        return lines(from: failureInfo)
     }
 
     private var failureInfo: ConnectionFailureInfo? {
@@ -105,7 +108,7 @@ internal struct ConnectionUnavailableView: View {
             return nil
         case .disconnected(let info):
             return info
-        case .failed(let info), .pluginMissing(let info):
+        case .failed(let info), .actionRequired(let info, _):
             return info
         }
     }
@@ -125,7 +128,7 @@ internal struct ConnectionUnavailableView: View {
             .filter { !$0.isEmpty }
     }
 
-    private var primaryActionTitle: String {
+    internal static func primaryActionTitle(for reason: ConnectionUnavailableReason) -> String {
         switch reason {
         case .notConnected, .cancelled:
             return String(localized: "Connect")
@@ -133,8 +136,13 @@ internal struct ConnectionUnavailableView: View {
             return String(localized: "Reconnect")
         case .failed:
             return String(localized: "Try Again")
-        case .pluginMissing:
-            return String(localized: "Install Plugin…")
+        case .actionRequired(_, let action):
+            return action.title
         }
+    }
+
+    internal static func offersRetry(for reason: ConnectionUnavailableReason) -> Bool {
+        guard case .actionRequired(_, let action) = reason else { return false }
+        return action.offersRetry
     }
 }

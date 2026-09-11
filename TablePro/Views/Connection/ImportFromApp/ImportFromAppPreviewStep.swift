@@ -98,14 +98,7 @@ struct ImportFromAppPreviewStep: View {
     // MARK: - Actions
 
     private func selectReadyItems() {
-        for item in preview.items {
-            switch item.status {
-            case .ready, .warnings:
-                selectedIds.insert(item.id)
-            case .duplicate:
-                break
-            }
-        }
+        selectedIds.formUnion(preview.items.filter(\.status.isSelectedByDefault).map(\.id))
     }
 
     private func performImport() {
@@ -113,7 +106,7 @@ struct ImportFromAppPreviewStep: View {
         for item in preview.items {
             if selectedIds.contains(item.id) {
                 switch item.status {
-                case .ready, .warnings:
+                case .ready, .warnings, .unsupportedType:
                     resolutions[item.id] = .importNew
                 case .duplicate:
                     resolutions[item.id] = duplicateResolutions[item.id] ?? .importAsCopy

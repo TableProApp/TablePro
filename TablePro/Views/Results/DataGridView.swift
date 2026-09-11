@@ -27,6 +27,16 @@ struct RowVisualState: Equatable {
     static let empty = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [])
 }
 
+extension RowVisualState {
+    /// The wash a row in this state carries, read by the row and by the pinned row gutter over it so
+    /// the two cannot disagree.
+    @MainActor var tint: NSColor? {
+        if isDeleted { return ThemeEngine.shared.colors.dataGrid.deleted }
+        if isInserted { return ThemeEngine.shared.colors.dataGrid.inserted }
+        return nil
+    }
+}
+
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
@@ -295,9 +305,11 @@ struct DataGridView: NSViewRepresentable {
 
         if tableView.rowHeight != rowHeight {
             tableView.rowHeight = rowHeight
+            coordinator.repaintRowGutter()
         }
         if tableView.usesAlternatingRowBackgroundColors != alternatingRows {
             tableView.usesAlternatingRowBackgroundColors = alternatingRows
+            coordinator.repaintRowGutter()
         }
 
         let oldRowCount = coordinator.cachedRowCount
@@ -530,11 +542,11 @@ struct DataGridView: NSViewRepresentable {
         column.maxWidth = columnWidth
     }
 
-    /// The row-number strip that holds the viewport's leading edge, and its header cap.
+    /// The row-number strip that holds the viewport's leading edge. See `DataGridRowGutterView` for why
+    /// this is the mechanism and why the `__rowNumber__` column stays attached underneath it.
     ///
-    /// Two views because they sit in two clip views: `addFloatingSubview(_:for:)` covers the content
-    /// clip view only, and the header has its own. See `DataGridRowGutterView` for why this is the
-    /// mechanism and why the `__rowNumber__` column stays attached underneath it.
+    /// Its heading is not a view of its own: `SortableHeaderView` draws it, because nothing but the
+    /// header view's own drawing can match the headings beside it.
     private func installRowGutter(
         scrollView: NSScrollView,
         tableView: KeyHandlingTableView,
@@ -545,12 +557,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.addSubview(gutter)
         scrollView.addFloatingSubview(gutter, for: .horizontal)
 
-        let headerCap = DataGridRowGutterHeaderView(frame: .zero)
-        headerCap.coordinator = coordinator
-        scrollView.addSubview(headerCap)
-
         coordinator.rowGutter = gutter
-        coordinator.rowGutterHeader = headerCap
         gutter.observeTableGeometry()
         coordinator.synchronizeRowGutter()
     }

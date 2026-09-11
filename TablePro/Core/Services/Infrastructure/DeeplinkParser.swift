@@ -244,18 +244,13 @@ internal enum DeeplinkParser {
             return .failure(.missingRequiredParam("type"))
         }
 
-        let resolvedType: DatabaseType?
-        if let direct = DatabaseType(validating: typeStr) {
-            resolvedType = direct
-        } else if let pluginMatch = PluginMetadataRegistry.shared.allRegisteredTypeIds()
-            .first(where: { $0.lowercased() == typeStr.lowercased() }) {
-            resolvedType = DatabaseType(rawValue: pluginMatch)
-        } else {
-            resolvedType = nil
-        }
-        guard let dbType = resolvedType else {
+        guard let typeId = ConnectionTypeResolver.canonicalTypeId(
+            typeStr,
+            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds())
+        ) else {
             return .failure(.unsupportedDatabaseType(typeStr))
         }
+        let dbType = DatabaseType(rawValue: typeId)
 
         let port = value("port").flatMap(Int.init) ?? dbType.defaultPort
         let username = value("username") ?? ""

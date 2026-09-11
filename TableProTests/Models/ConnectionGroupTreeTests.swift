@@ -651,6 +651,35 @@ struct ConnectionGroupTreeTests {
         #expect(treeNodeFingerprint(indexed) == treeNodeFingerprint(reference))
     }
 
+    @Test("Removing connections drops matching rows at every level and keeps every group")
+    func removingConnectionsReachesEveryLevel() {
+        let parent = makeGroup(name: "Parent")
+        let child = makeGroup(name: "Child", parentId: parent.id)
+        var nestedFavorite = makeConnection(name: "Nested", groupId: child.id)
+        nestedFavorite.isFavorite = true
+        let kept = makeConnection(name: "Kept", groupId: parent.id)
+        var topFavorite = makeConnection(name: "Top")
+        topFavorite.isFavorite = true
+
+        let tree = buildGroupTree(
+            groups: [parent, child],
+            connections: [nestedFavorite, kept, topFavorite],
+            parentId: nil
+        )
+        let pruned = removingConnections(from: tree, where: \.isFavorite)
+
+        func connectionIds(_ nodes: [ConnectionGroupTreeNode]) -> [UUID] {
+            nodes.flatMap { node -> [UUID] in
+                switch node {
+                case .connection(let conn): return [conn.id]
+                case .group(_, let children): return connectionIds(children)
+                }
+            }
+        }
+        #expect(connectionIds(pruned) == [kept.id])
+        #expect(groupIds(from: pruned) == [parent.id])
+    }
+
     @Test("Indexed tree matches reference for sorting across multiple siblings")
     func indexedTree_sortingEquivalence() {
         let groups = (0..<8).map { idx in

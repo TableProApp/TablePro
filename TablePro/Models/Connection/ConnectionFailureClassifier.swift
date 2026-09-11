@@ -7,12 +7,41 @@ import Foundation
 import TableProPluginKit
 
 internal enum ConnectionFailureClassifier {
-    internal static func outcome(for error: Error) -> ConnectionAttemptOutcome {
+    internal static func outcome(for error: Error, canEditConnection: Bool = true) -> ConnectionAttemptOutcome {
         if isUserCancelled(error) { return .cancelled }
-        if case PluginError.pluginNotInstalled = error {
-            return .pluginMissing(info(for: error))
+        if let action = recoveryAction(for: error, canEditConnection: canEditConnection) {
+            return .actionRequired(info(for: error), action)
         }
         return .failed(info(for: error))
+    }
+
+    internal static func endReason(for error: Error, canEditConnection: Bool) -> ConnectionEndReason? {
+        switch outcome(for: error, canEditConnection: canEditConnection) {
+        case .cancelled:
+            return nil
+        case .failed(let info):
+            return .connectFailed(info, nil)
+        case .actionRequired(let info, let action):
+            return .connectFailed(info, action)
+        }
+    }
+
+    internal static func recoveryAction(for error: Error, canEditConnection: Bool = true) -> ConnectionRecoveryAction? {
+        guard let pluginError = error as? PluginError else { return nil }
+        switch pluginError {
+        case .pluginNotInstalled:
+            return .installPlugin
+        case .pluginDisabled(let pluginId, _):
+            return .enablePlugin(pluginId: pluginId)
+        case .pluginLoadFailed(let pluginId, _, _):
+            return .openPluginSettings(pluginId: pluginId)
+        case .pluginUpdateUnavailable:
+            return .openPluginSettings(pluginId: nil)
+        case .unknownDatabaseType:
+            return canEditConnection ? .editConnection : nil
+        default:
+            return nil
+        }
     }
 
     internal static func isUserCancelled(_ error: Error) -> Bool {

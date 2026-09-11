@@ -340,17 +340,17 @@ struct SchemaServiceRefreshTests {
         driver.schemaTablesToReturn = ["sales": [TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales")]]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
         #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders"])
 
         driver.schemaTablesError = DatabaseError.notConnected
-        await service.reloadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.reloadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders"])
     }
 
-    @Test("refreshLoadedSchemaTables refetches only the schemas already expanded")
-    func refreshLoadedSchemaTablesRefetchesExpandedSchemas() async {
+    @Test("refreshLoadedSchemaObjects refetches only the schemas already expanded")
+    func refreshLoadedSchemaObjectsRefetchesExpandedSchemas() async {
         let connectionId = UUID()
         let connection = TestFixtures.makeConnection(id: connectionId, type: .postgresql)
         let driver = RefreshMockDriver(connection: connection)
@@ -360,13 +360,13 @@ struct SchemaServiceRefreshTests {
         ]
 
         let service = SchemaService()
-        await service.loadSchemaTables(connectionId: connectionId, schema: "sales", driver: driver)
+        await service.loadSchemaObjects(connectionId: connectionId, schema: "sales", driver: driver)
 
         driver.schemaTablesToReturn["sales"] = [
             TableInfo(name: "orders", type: .table, rowCount: 0, schema: "sales"),
             TableInfo(name: "refunds", type: .table, rowCount: 0, schema: "sales")
         ]
-        await service.refreshLoadedSchemaTables(connectionId: connectionId, driver: driver)
+        await service.refreshLoadedSchemaObjects(connectionId: connectionId, driver: driver)
 
         #expect(service.tables(for: connectionId, schema: "sales").map(\.name) == ["orders", "refunds"])
         #expect(service.tables(for: connectionId, schema: "hr").isEmpty)

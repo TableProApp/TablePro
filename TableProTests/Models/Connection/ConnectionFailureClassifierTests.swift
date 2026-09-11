@@ -40,14 +40,68 @@ struct ConnectionFailureClassifierTests {
         #expect(!ConnectionFailureClassifier.isUserCancelled(error))
     }
 
-    @Test("A missing plugin is classified apart from a connection failure")
-    func missingPluginIsItsOwnOutcome() {
-        let outcome = ConnectionFailureClassifier.outcome(for: PluginError.pluginNotInstalled("mongodb"))
+    @Test("Each driver failure offers the fix that matches its cause")
+    func driverFailuresMapToTheirFix() {
+        let cases: [(PluginError, ConnectionRecoveryAction)] = [
+            (.pluginNotInstalled("MongoDB"), .installPlugin),
+            (.pluginDisabled(pluginId: "com.TablePro.SQLiteDriver", pluginName: "SQLite Driver"),
+             .enablePlugin(pluginId: "com.TablePro.SQLiteDriver")),
+            (.pluginLoadFailed(pluginId: "com.example.driver", pluginName: "Example", reason: "bad signature"),
+             .openPluginSettings(pluginId: "com.example.driver")),
+            (.pluginUpdateUnavailable(reason: "No compatible build"), .openPluginSettings(pluginId: nil)),
+            (.unknownDatabaseType("MicrosoftSQLServer"), .editConnection)
+        ]
 
-        guard case .pluginMissing = outcome else {
-            Issue.record("Expected a pluginMissing outcome, got \(outcome)")
-            return
+        for (error, action) in cases {
+            let outcome = ConnectionFailureClassifier.outcome(for: error)
+            #expect(outcome == .actionRequired(ConnectionFailureClassifier.info(for: error), action))
         }
+    }
+
+    @Test("An unrecognized database type is never sent to install a plugin")
+    func unknownTypeNeverOffersInstall() {
+        let action = ConnectionFailureClassifier.recoveryAction(for: PluginError.unknownDatabaseType("MicrosoftSQLServer"))
+
+        #expect(action == .editConnection)
+        #expect(action != .installPlugin)
+    }
+
+    @Test("A connection that cannot be edited is not offered Edit Connection")
+    func uneditableConnectionGetsNoEditAction() {
+        let error = PluginError.unknownDatabaseType("MicrosoftSQLServer")
+
+        #expect(ConnectionFailureClassifier.recoveryAction(for: error, canEditConnection: false) == nil)
+        #expect(
+            ConnectionFailureClassifier.outcome(for: error, canEditConnection: false)
+                == .failed(ConnectionFailureClassifier.info(for: error))
+        )
+    }
+
+    @Test("A failed plugin install names its reason in the message every surface shows")
+    func failedInstallMessageCarriesItsReason() {
+        let error = PluginError.pluginInstallFailed(databaseType: "SQL Server", reason: "The registry is unreachable.")
+
+        #expect(error.localizedDescription.contains("The registry is unreachable."))
+        #expect(error.localizedDescription.contains("SQL Server"))
+    }
+
+    @Test("A failed plugin install is retried by connecting again, not by a separate fix")
+    func failedInstallIsAPlainFailure() {
+        let error = PluginError.pluginInstallFailed(databaseType: "SQL Server", reason: "offline")
+
+        #expect(ConnectionFailureClassifier.recoveryAction(for: error) == nil)
+        #expect(ConnectionFailureClassifier.outcome(for: error) == .failed(ConnectionFailureClassifier.info(for: error)))
+    }
+
+    @Test("A driver failure carries its reason and what to do about it")
+    func driverFailureCarriesReasonAndSuggestion() {
+        let info = ConnectionFailureClassifier.info(
+            for: PluginError.pluginLoadFailed(pluginId: nil, pluginName: "Example", reason: "bad signature")
+        )
+
+        #expect(info.message.contains("Example"))
+        #expect(info.failureReason == "bad signature")
+        #expect(info.recoverySuggestion?.isEmpty == false)
     }
 
     @Test("A failure keeps its description, reason and recovery suggestion")

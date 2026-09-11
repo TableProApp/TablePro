@@ -13,7 +13,7 @@ import TableProPluginKit
 
 @MainActor @Observable
 final class PluginManager {
-    static let shared = PluginManager()
+    static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
     /// Raised to 23 for `releasableResourceCommandTitle` and `releaseIdleResource` on
     /// `PluginDatabaseDriver`, plus the `PluginResourceRelease` they answer with. Together they let
     /// a driver hand back a resource its session is holding without ending the session. DuckDB is
@@ -153,7 +153,7 @@ final class PluginManager {
     var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir()
     ) {
@@ -259,7 +259,9 @@ final class PluginManager {
 
         let lazyCount = lazyPending.count
         Task {
-            let validated = await Self.validateAndLoadBundles(eagerPending)
+            let loaded = await Self.validateAndLoadBundles(eagerPending)
+            self.recordEagerLoadFailures(loaded.failures)
+            let validated = loaded.validated
             self.registerValidatedBundles(validated)
             self.validateDependencies()
             self.hasFinishedInitialLoad = true
@@ -405,14 +407,15 @@ final class PluginManager {
 
         guard !rejectedPlugins.contains(where: { $0.url == url }) else { return }
         let name = manifest?.bundleId ?? url.deletingPathExtension().lastPathComponent
+        let registryId = Self.readRegistryMetadata(for: url)?.pluginId
         rejectedPlugins.append(RejectedPlugin(
             url: url,
             bundleId: manifest?.bundleId,
-            registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+            registryId: registryId,
             name: name,
             reason: reason.localizedDescription,
             isOutdated: false,
-            providedDatabaseTypeIds: manifest?.providedDatabaseTypeIds ?? []
+            providedDatabaseTypeIds: Self.databaseTypeIds(of: Bundle(url: url), registryId: registryId)
         ))
     }
 
@@ -496,6 +499,7 @@ final class PluginManager {
         guard !activatedBundleIds.contains(bundleId) else { return }
 
         let entry = plugins.first(where: { $0.id == bundleId })
+        if let entry, !entry.isEnabled { return }
 
         do {
             try assertLoadable(bundle, source: entry?.source ?? .userInstalled)
@@ -640,19 +644,59 @@ final class PluginManager {
         return dictionary["CFBundleShortVersionString"] as? String
     }
 
+    private struct EagerLoadFailure {
+        let url: URL
+        let source: PluginSource
+        let reason: String
+        let isOutdated: Bool
+    }
+
     nonisolated private static func validateAndLoadBundles(
         _ pending: [(url: URL, source: PluginSource)]
-    ) async -> [ValidatedBundle] {
+    ) async -> (validated: [ValidatedBundle], failures: [EagerLoadFailure]) {
         var results: [ValidatedBundle] = []
+        var failures: [EagerLoadFailure] = []
         for entry in pending {
             do {
                 let bundle = try validateAndLoadBundle(at: entry.url, source: entry.source)
                 results.append(ValidatedBundle(url: entry.url, source: entry.source, bundle: bundle))
             } catch {
                 logger.error("Failed to load plugin at \(entry.url.lastPathComponent): \(error.localizedDescription)")
+                failures.append(EagerLoadFailure(
+                    url: entry.url,
+                    source: entry.source,
+                    reason: error.localizedDescription,
+                    isOutdated: (error as? PluginError)?.isOutdated ?? false
+                ))
             }
         }
-        return results
+        return (results, failures)
+    }
+
+    private func recordEagerLoadFailures(_ failures: [EagerLoadFailure]) {
+        for failure in failures where !rejectedPlugins.contains(where: { $0.url == failure.url }) {
+            let bundle = Bundle(url: failure.url)
+            let registryId = Self.readRegistryMetadata(for: failure.url)?.pluginId
+            rejectedPlugins.append(RejectedPlugin(
+                url: failure.url,
+                bundleId: bundle?.bundleIdentifier,
+                registryId: registryId,
+                name: failure.url.deletingPathExtension().lastPathComponent,
+                reason: failure.reason,
+                isOutdated: failure.source == .userInstalled && failure.isOutdated,
+                providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
+            ))
+        }
+    }
+
+    static func databaseTypeIds(
+        of bundle: Bundle?,
+        registryId: String?,
+        manifest: RegistryManifest? = RegistryClient.shared.manifest
+    ) -> [String] {
+        let declared = bundle.flatMap { PluginManifest(bundle: $0)?.providedDatabaseTypeIds } ?? []
+        guard declared.isEmpty, let registryId else { return declared }
+        return manifest?.plugins.first { $0.id == registryId }?.databaseTypeIds ?? []
     }
 
     private func registerBundle(_ bundle: Bundle, url: URL, source: PluginSource) -> PluginEntry? {
@@ -740,14 +784,15 @@ final class PluginManager {
                 Self.logger.error("Failed to discover plugin at \(winner.url.lastPathComponent): \(error.localizedDescription)")
                 if winner.source == .userInstalled {
                     let bundle = Bundle(url: winner.url)
+                    let registryId = Self.readRegistryMetadata(for: winner.url)?.pluginId
                     rejectedPlugins.append(RejectedPlugin(
                         url: winner.url,
                         bundleId: bundle?.bundleIdentifier,
-                        registryId: Self.readRegistryMetadata(for: winner.url)?.pluginId,
+                        registryId: registryId,
                         name: winner.url.deletingPathExtension().lastPathComponent,
                         reason: error.localizedDescription,
                         isOutdated: (error as? PluginError)?.isOutdated ?? false,
-                        providedDatabaseTypeIds: bundle.flatMap { PluginManifest(bundle: $0)?.providedDatabaseTypeIds } ?? []
+                        providedDatabaseTypeIds: Self.databaseTypeIds(of: bundle, registryId: registryId)
                     ))
                 }
             }
@@ -848,8 +893,9 @@ final class PluginManager {
         let pending = pendingPluginURLs
         pendingPluginURLs.removeAll()
 
-        let validated = await Self.validateAndLoadBundles(pending)
-        registerValidatedBundles(validated)
+        let loaded = await Self.validateAndLoadBundles(pending)
+        recordEagerLoadFailures(loaded.failures)
+        registerValidatedBundles(loaded.validated)
         hasFinishedInitialLoad = true
         validateDependencies()
         Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")

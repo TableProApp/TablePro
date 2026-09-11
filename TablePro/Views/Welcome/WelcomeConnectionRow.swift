@@ -7,19 +7,12 @@ import SwiftUI
 
 struct WelcomeConnectionRow: View {
     let connection: DatabaseConnection
-    let sshProfile: SSHProfile?
+    let tags: [ConnectionTag]
+    let group: ConnectionGroup?
     let isSelected: Bool
     let onToggleFavorite: () -> Void
     @State private var isHovering = false
     private let pluginManager = PluginManager.shared
-
-    private var metadata: (tags: [ConnectionTag], group: ConnectionGroup?) {
-        ConnectionMetadata.resolve(
-            connection: connection,
-            tags: TagStorage.shared.loadTags(),
-            groups: GroupStorage.shared.loadGroups()
-        )
-    }
 
     private var showsLocalOnly: Bool {
         connection.localOnly && !connection.isSample
@@ -61,8 +54,7 @@ struct WelcomeConnectionRow: View {
     }
 
     var body: some View {
-        let meta = metadata
-        return HStack {
+        HStack {
             connection.type.iconImage
                 .renderingMode(.template)
                 .font(.title3)
@@ -86,7 +78,7 @@ struct WelcomeConnectionRow: View {
                         .truncationMode(.middle)
                         .help(connection.connectionSubtitle)
 
-                    if let group = meta.group {
+                    if let group {
                         ConnectionGroupBadge(group: group)
                             .layoutPriority(1)
                     }
@@ -95,7 +87,7 @@ struct WelcomeConnectionRow: View {
 
             Spacer(minLength: 8)
 
-            trailingAccessories(tags: meta.tags)
+            trailingAccessories(tags: tags)
         }
         .contentShape(Rectangle())
         .onHover { hovering in isHovering = hovering }

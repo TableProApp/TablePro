@@ -36,8 +36,8 @@ struct ConnectionFormDetailView: View {
                 coordinator.pluginDiagnostic = nil
             }
         }
-        .pluginInstallPrompt(connection: $coordinator.pluginInstallConnection) { connection in
-            coordinator.connectAfterInstall(connection)
+        .pluginInstallPrompt(connection: $coordinator.pluginInstallConnection) { _ in
+            coordinator.test()
         }
         .alert(
             String(localized: "Save Failed"),

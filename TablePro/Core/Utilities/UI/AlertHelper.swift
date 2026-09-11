@@ -273,6 +273,29 @@ final class AlertHelper {
         present(alert, in: window)
     }
 
+    static func showRecoverableErrorSheet(
+        title: String,
+        message: String,
+        recoverySuggestion: String?,
+        recoveryTitle: String,
+        window: NSWindow?,
+        onRecover: @escaping @MainActor () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = [message, recoverySuggestion]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: recoveryTitle)
+        addCancelButton(to: alert, title: String(localized: "Cancel"))
+        present(alert, in: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            onRecover()
+        }
+    }
+
     static func showInfoSheet(
         title: String,
         message: String,

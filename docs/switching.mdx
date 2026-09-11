@@ -19,7 +19,7 @@ This page covers the rest: what does not come across, and what to do about it.
     TablePlus, Sequel Ace, DBeaver, DataGrip and Beekeeper Studio are read in place. Navicat is the exception: export first with **File > Export Connections** in Navicat, with **Export Password** turned on, then point TablePro at the `.ncx` file.
   </Step>
   <Step title="Review and import">
-    Deselect anything you do not want, resolve duplicates, click **Import**.
+    Deselect anything you do not want, resolve duplicates, click **Import**. A connection to an engine TablePro does not support arrives unchecked, with the reason beside it.
   </Step>
   <Step title="Open one before you delete the old app">
     Connect to a connection that had a password. That is the only check that proves the credential came across, and deleting the source app is the one step you cannot undo.
@@ -54,6 +54,7 @@ A DataGrip project protected by a master password cannot be read at all. Import 
 | Saved queries and snippets | Re-save the ones you actually use as [Favorites](/features/favorites) with `Cmd+D`. To keep a whole folder of `.sql` files in sync instead, including one tracked in git, [Linked Folders](/features/connection-sharing) does that and needs a Starter license |
 | Query history | Starts fresh. TablePro records history per connection from the first query you run, searchable with `Cmd+Y` |
 | Column widths, sort order and per-table filters | Rebuilt as you browse. TablePro saves these per table on its own |
+| Connections to an engine TablePro does not support, such as Vertica or Greenplum | Check the row anyway to keep its host, user and password, then edit the connection and choose a database type. Greenplum speaks the PostgreSQL protocol, so PostgreSQL is the one to try |
 | Keyboard shortcuts | See the next section |
 
 ## Getting your shortcuts back
@@ -93,7 +94,7 @@ The full list is in [Keyboard Shortcuts](/features/keyboard-shortcuts).
 
 Two other routes exist.
 
-**A connection URL.** **Add from Existing > Import from URL** takes a `postgres://`, `mysql://` or similar URL and fills in the form. Fastest path when you only have a handful of connections.
+**A connection URL.** **File > Import > Import from URL…** takes a `postgres://`, `mysql://` or similar URL and fills in the form. Fastest path when you only have a handful of connections.
 
 <Frame caption="Import from URL">
   <img className="block dark:hidden" src="/images/import-from-url.png" alt="Import a connection from a database URL" />

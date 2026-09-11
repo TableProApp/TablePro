@@ -52,7 +52,6 @@ final class SupportWindowUITests: UITestCase {
     /// the one that has to stay a line of text: no alert, no sheet, nothing over the window.
     func testTheWelcomeWindowCarriesTheStandingLink() throws {
         let app = try launchShowingWelcome()
-        dismissOnboarding(in: app)
         let link = app.windows["welcome"].descendants(matching: .any)["support-prompt-link"]
 
         XCTAssertTrue(link.waitToExist(timeout: 10), "An unlicensed welcome window must offer the link")

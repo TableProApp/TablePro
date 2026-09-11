@@ -33,7 +33,7 @@ struct PluginInstallModifier: ViewModifier {
                 }
             } message: {
                 if let conn = connection {
-                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), conn.type.rawValue))
+                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), conn.type.displayName))
                 }
             }
             .alert(
@@ -57,7 +57,7 @@ struct PluginInstallModifier: ViewModifier {
         Task {
             let presenter = PluginInstallProgressPresenter()
             presenter.begin(
-                title: String(format: String(localized: "Downloading the %@ plugin…"), conn.type.rawValue)
+                title: String(format: String(localized: "Downloading the %@ plugin…"), conn.type.displayName)
             )
             do {
                 try await PluginManager.shared.installMissingPlugin(for: conn.type) { fraction in
@@ -117,7 +117,7 @@ struct PluginInstallTypeModifier: ViewModifier {
                 }
             } message: {
                 if let t = type {
-                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), t.rawValue))
+                    Text(String(format: String(localized: "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?"), t.displayName))
                 }
             }
             .alert(
@@ -140,7 +140,7 @@ struct PluginInstallTypeModifier: ViewModifier {
     private func install(_ t: DatabaseType) {
         Task {
             let presenter = PluginInstallProgressPresenter()
-            presenter.begin(title: String(format: String(localized: "Downloading the %@ plugin…"), t.rawValue))
+            presenter.begin(title: String(format: String(localized: "Downloading the %@ plugin…"), t.displayName))
             do {
                 try await PluginManager.shared.installMissingPlugin(for: t) { fraction in
                     presenter.update(fraction: fraction)

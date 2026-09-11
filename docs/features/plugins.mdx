@@ -101,7 +101,16 @@ In **Settings > Plugins > Installed**:
 
 macOS cannot fully unload a plugin's code until relaunch, so a banner offers **Quit & Reopen** after you remove one.
 
-Saved connections survive either way. A connection whose driver is switched off or uninstalled stays in the list, and opening it lands on "Could not connect", with **Install Plugin…** as the button.
+Saved connections survive either way. A connection whose driver cannot load stays in the list, and opening it lands on "Could not connect" with the button for the cause:
+
+| Cause | Button |
+|-------|--------|
+| The driver is not installed | **Install Plugin…** downloads it and connects |
+| The plugin is switched off | **Enable Plugin** switches it on and connects |
+| The plugin failed to load or needs an update | **Open Plugin Settings** selects it under **Installed**. Click **Try Again** once it is fixed |
+| The connection names a database type no plugin provides, which a connection imported from another app can | **Edit Connection…** opens the form to choose the type |
+
+A plugin switched off stays off: connecting never switches it back on.
 
 ## Themes
 

@@ -21,6 +21,10 @@ extension AppDelegate: NSMenuItemValidation {
         SupportWindowController.present()
     }
 
+    @objc func showWelcomeSheet(_ sender: Any?) {
+        WelcomeRouter.shared.route(.showWelcomeSheet)
+    }
+
     @objc func checkForUpdates(_ sender: Any?) {
         UpdaterBridge.shared.checkForUpdates()
     }
@@ -75,6 +79,10 @@ extension AppDelegate: NSMenuItemValidation {
 
     @objc func importFromOtherApp(_ sender: Any?) {
         WelcomeRouter.shared.route(.importFromApp)
+    }
+
+    @objc func openProjectFolder(_ sender: Any?) {
+        WelcomeRouter.shared.route(.openProjectFolder)
     }
 
     @objc func openSampleDatabase(_ sender: Any?) {

@@ -132,6 +132,11 @@ enum FileMenuBuilder {
             MenuItemFactory.item(
                 String(localized: "Import from Other App…"),
                 action: #selector(AppDelegate.importFromOtherApp(_:))
+            ),
+            MenuItemFactory.separator,
+            MenuItemFactory.item(
+                String(localized: "Open Project Folder…"),
+                action: #selector(AppDelegate.openProjectFolder(_:))
             )
         ])
         container.submenu?.insertItem(.separator(), at: 0)

@@ -27,23 +27,24 @@ final class StructureRowViewWithMenu: DataGridRowView {
     var onDelete: ((Set<Int>) -> Void)?
     var onUndoDelete: ((Int) -> Void)?
 
-    /// AppKit takes two routes to a row's menu and this row owns both.
+    /// Three routes reach a row's menu, and all of them end in `contextMenu(target:)`.
     ///
     /// `KeyHandlingTableView.rightMouseDown` intercepts a click that lands inside the selection and
     /// answers from `contextMenu(for:)`; a click outside it falls through to `super`, which reaches
-    /// `menu(for:)`. Overriding only the second is what left the Structure tab showing the data
-    /// grid's row commands, Copy as INSERT and Paste and Set Value and Export Results, over a
-    /// schema row, and none of Copy Name, Copy Definition or the referenced table, for the
-    /// select-then-right-click path that most people take.
+    /// `menu(for:)`; and the pinned row-number strip asks with the target already resolved, because
+    /// the column under the pointer there is one scrolled out of sight. Overriding the two event
+    /// routes alone left the strip, and before it the select-then-right-click path, showing the data
+    /// grid's row commands, Copy as INSERT and Paste and Set Value and Export Results, over a schema
+    /// row, and none of Copy Name, Copy Definition or the referenced table.
     override func menu(for event: NSEvent) -> NSMenu? {
-        structureMenu(for: event)
+        contextMenu(for: event)
     }
 
-    override func contextMenu(for event: NSEvent) -> NSMenu? {
-        structureMenu(for: event)
+    override func contextMenu(target: MenuTarget) -> NSMenu? {
+        structureMenu(target: target)
     }
 
-    private func structureMenu(for event: NSEvent) -> NSMenu? {
+    private func structureMenu(target: MenuTarget) -> NSMenu? {
         guard structureTab != .ddl, structureTab != .parts, structureTab != .triggers else { return nil }
 
         let menu = NSMenu()
@@ -61,7 +62,7 @@ final class StructureRowViewWithMenu: DataGridRowView {
 
         /// The clicked cell, so the Type or the Default is reachable from the pointer and not only
         /// from `Cmd+C`, which has copied it all along.
-        menu.addItem(makeCopyItem(for: event))
+        menu.addItem(makeCopyItem(target: target))
 
         /// No `Cmd+C` on this one. That key copies the clicked cell, which is what the item above
         /// does; advertising it here promised a shortcut that has never copied a column's name.

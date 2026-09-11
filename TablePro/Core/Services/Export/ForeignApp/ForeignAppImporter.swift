@@ -57,6 +57,25 @@ extension ForeignAppImporter {
     mutating func setSelectedFile(_ url: URL) {}
 }
 
+// MARK: - Database Types
+
+enum ForeignAppDatabaseType {
+    static func resolve(_ identifier: String) -> String {
+        ConnectionTypeResolver.canonicalTypeId(
+            identifier,
+            registeredTypeIds: Set(PluginMetadataRegistry.shared.allRegisteredTypeIds())
+        ) ?? identifier
+    }
+
+    static func defaultPort(for typeId: String) -> Int {
+        DatabaseType(rawValue: typeId).defaultPort
+    }
+
+    static func localFilePathField(for typeId: String) -> LocalFilePathField? {
+        PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: typeId))?.capabilities.localFilePathField
+    }
+}
+
 // MARK: - Result
 
 struct ForeignAppImportResult {

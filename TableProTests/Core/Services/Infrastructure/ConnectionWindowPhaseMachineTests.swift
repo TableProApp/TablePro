@@ -43,15 +43,80 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(phase == .unavailable(.cancelled))
     }
 
-    @Test("A missing plugin is its own outcome")
-    func pluginMissingIsDistinct() {
-        let phase = ConnectionWindowPhaseMachine.onAttemptFinished(
-            phase: .connecting,
-            isCurrentAttempt: true,
-            outcome: .pluginMissing(Self.failure)
-        )
+    @Test("A failure that needs the user's fix keeps the fix it names")
+    func actionRequiredKeepsItsAction() {
+        let actions: [ConnectionRecoveryAction] = [
+            .installPlugin,
+            .enablePlugin(pluginId: "com.TablePro.SQLiteDriver"),
+            .openPluginSettings(pluginId: nil),
+            .editConnection
+        ]
 
-        #expect(phase == .unavailable(.pluginMissing(Self.failure)))
+        for action in actions {
+            let phase = ConnectionWindowPhaseMachine.onAttemptFinished(
+                phase: .connecting,
+                isCurrentAttempt: true,
+                outcome: .actionRequired(Self.failure, action)
+            )
+
+            #expect(phase == .unavailable(.actionRequired(Self.failure, action)))
+        }
+    }
+
+    @Test("Choosing a database type replaces Edit Connection with Connect")
+    func recordChangeResetsAnEditRequest() {
+        let editing = ConnectionWindowPhase.unavailable(.actionRequired(Self.failure, .editConnection))
+
+        #expect(
+            ConnectionWindowPhaseMachine.onConnectionRecordChanged(phase: editing, databaseTypeChanged: true)
+                == .unavailable(.notConnected)
+        )
+    }
+
+    /// A rename, a colour, a group move or a sync batch also reports the record as changed, and none
+    /// of them fixes an unrecognized type, so Edit Connection has to survive them.
+    @Test("An edit that leaves the database type alone keeps Edit Connection")
+    func unrelatedRecordChangeKeepsTheEditRequest() {
+        let editing = ConnectionWindowPhase.unavailable(.actionRequired(Self.failure, .editConnection))
+
+        #expect(ConnectionWindowPhaseMachine.onConnectionRecordChanged(phase: editing, databaseTypeChanged: false) == editing)
+    }
+
+    /// A fix offered for one database type names that type's plugin, so once the type changes it
+    /// would enable or reveal a plugin the connection no longer uses.
+    @Test("A new database type retires every fix offered for the old one")
+    func typeChangeRetiresEveryAction() {
+        let actions: [ConnectionRecoveryAction] = [
+            .installPlugin,
+            .enablePlugin(pluginId: "com.TablePro.SQLiteDriver"),
+            .openPluginSettings(pluginId: nil),
+            .editConnection
+        ]
+
+        for action in actions {
+            let phase = ConnectionWindowPhase.unavailable(.actionRequired(Self.failure, action))
+            #expect(
+                ConnectionWindowPhaseMachine.onConnectionRecordChanged(phase: phase, databaseTypeChanged: true)
+                    == .unavailable(.notConnected)
+            )
+        }
+    }
+
+    @Test("Editing the record leaves every phase without a fix alone")
+    func recordChangeLeavesOtherPhases() {
+        let phases: [ConnectionWindowPhase] = [
+            .idle,
+            .connecting,
+            .connected,
+            .closing,
+            .unavailable(.failed(Self.failure)),
+            .unavailable(.cancelled),
+            .unavailable(.disconnectedByUser)
+        ]
+
+        for phase in phases {
+            #expect(ConnectionWindowPhaseMachine.onConnectionRecordChanged(phase: phase, databaseTypeChanged: true) == phase)
+        }
     }
 
     @Test("An outcome from a superseded attempt never moves the phase")
@@ -71,7 +136,7 @@ struct ConnectionWindowPhaseMachineTests {
             .cancelled,
             .disconnected(nil),
             .failed(Self.failure),
-            .pluginMissing(Self.failure)
+            .actionRequired(Self.failure, .installPlugin)
         ]
 
         for reason in reasons {
@@ -144,12 +209,66 @@ struct ConnectionWindowPhaseMachineTests {
     func disconnectReasonReachesThePhase() {
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
             phase: .connected,
-            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, disconnectInfo: Self.failure),
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .sessionLost(Self.failure)),
             ownsAttempt: false
         )
 
         #expect(phase == .unavailable(.disconnected(Self.failure)))
         #expect(phase != .unavailable(.disconnected(nil)))
+    }
+
+    /// A connect driven from outside the window, opening a file or a table from a URL, is not the
+    /// window's attempt, so the window learns its result only from the session going away. That
+    /// used to read as "Disconnected" with Reconnect, for a connection that never connected and
+    /// whose only fix was switching its plugin on.
+    @Test("A connect the window did not start that failed for its plugin offers the plugin's fix")
+    func unownedFailedConnectKeepsItsFix() {
+        let action = ConnectionRecoveryAction.enablePlugin(pluginId: "com.TablePro.SQLiteDriver")
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, action)),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.actionRequired(Self.failure, action)))
+    }
+
+    @Test("A connect the window did not start that failed is a failure, not a disconnect")
+    func unownedFailedConnectIsAFailure() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, nil)),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.failed(Self.failure)))
+    }
+
+    @Test("A window's own attempt still decides its own outcome")
+    func ownedAttemptIgnoresTheRecordedReason() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connecting,
+            session: ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: .connectFailed(Self.failure, .editConnection)),
+            ownsAttempt: true
+        )
+
+        #expect(phase == .connecting)
+    }
+
+    @Test("A user's disconnect outranks any recorded reason")
+    func deliberateDisconnectOutranksTheReason() {
+        let phase = ConnectionWindowPhaseMachine.onSessionChanged(
+            phase: .connected,
+            session: ConnectionSessionSnapshot(
+                exists: false,
+                hasDriver: false,
+                endReason: .connectFailed(Self.failure, .installPlugin),
+                wasDisconnectedByUser: true
+            ),
+            ownsAttempt: false
+        )
+
+        #expect(phase == .unavailable(.disconnectedByUser))
     }
 
     @Test("A driverless session does not drag an unavailable window back to a spinner")
@@ -167,7 +286,7 @@ struct ConnectionWindowPhaseMachineTests {
     func failureRetainsRestoreIntent() {
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.failed(Self.failure))))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.disconnected(nil))))
-        #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.pluginMissing(Self.failure))))
+        #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .unavailable(.actionRequired(Self.failure, .editConnection))))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .connecting))
         #expect(ConnectionWindowPhaseMachine.retainsRestoreIntent(phase: .connected))
     }
@@ -186,7 +305,7 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.disconnected(nil))))
 
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.cancelled)))
-        #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.pluginMissing(Self.failure))))
+        #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .unavailable(.actionRequired(Self.failure, .enablePlugin(pluginId: "p")))))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .connecting))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .connected))
         #expect(!ConnectionWindowPhaseMachine.allowsActivationConnect(phase: .closing))
@@ -222,7 +341,9 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.disconnectedByUser)))
     }
 
-    @Test("Reconnect is offered wherever a window has no session, except a missing plugin")
+    /// A failure whose fix lives in Settings or the connection form is fixed away from the window,
+    /// so Reconnect has to stay available for the user to come back and try it.
+    @Test("Reconnect is offered wherever a window has no session")
     func manualConnectEligibility() {
         #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .idle))
         #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.notConnected)))
@@ -230,7 +351,9 @@ struct ConnectionWindowPhaseMachineTests {
         #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.disconnected(nil))))
         #expect(ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.failed(Self.failure))))
 
-        #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .unavailable(.pluginMissing(Self.failure))))
+        #expect(ConnectionWindowPhaseMachine.allowsManualConnect(
+            phase: .unavailable(.actionRequired(Self.failure, .openPluginSettings(pluginId: nil)))
+        ))
         #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .connecting))
         #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .connected))
         #expect(!ConnectionWindowPhaseMachine.allowsManualConnect(phase: .closing))

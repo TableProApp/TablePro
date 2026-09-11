@@ -82,7 +82,7 @@ final class DatabaseManager {
 
     /// Why a session was torn down, kept past the session entry so a window that only observes
     /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
-    @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionFailureInfo] = [:]
+    @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionEndReason] = [:]
 
     /// Connections the user disconnected on purpose. Kept past the session entry for the same
     /// reason `disconnectReasons` is: the window learns the session went away by watching the

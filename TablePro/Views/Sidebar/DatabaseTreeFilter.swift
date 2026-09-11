@@ -109,24 +109,47 @@ enum DatabaseTreeFilter {
         )
     }
 
-    /// A schema whose tables have not loaded yet cannot be judged, so it stays visible. Reading an
+    /// A schema whose objects have not loaded yet cannot be judged, so it stays visible. Reading an
     /// unloaded schema as an empty one hides it for the whole life of the filter and blanks the
-    /// pane while the search-driven load is still running.
+    /// pane while the search-driven load is still running. A match on a procedure, trigger or type
+    /// keeps the schema as surely as a match on a table.
     static func hierarchicalSchemaIsVisible(
         _ schema: String,
         searchText: String,
         isLoaded: Bool,
-        tables: [TableInfo]
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        triggers: [TriggerInfo],
+        userTypes: [UserDefinedTypeInfo]
     ) -> Bool {
         if matches(searchText, schema) { return true }
         guard isLoaded else { return true }
-        return !filteredTables(tables, searchText: searchText).isEmpty
+        return !objectBuckets(
+            tables: tables,
+            routines: routines,
+            triggers: triggers,
+            userTypes: userTypes,
+            searchText: searchText
+        ).isEmpty
     }
 
-    /// A schema the search matched by name shows everything inside it. Filtering its tables by the
+    /// A schema the search matched by name shows everything inside it. Filtering its objects by the
     /// same query leaves the matched schema reporting no items.
-    static func hierarchicalTables(_ tables: [TableInfo], schema: String, searchText: String) -> [TableInfo] {
-        matches(searchText, schema) ? tables : filteredTables(tables, searchText: searchText)
+    static func hierarchicalObjectBuckets(
+        schema: String,
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        triggers: [TriggerInfo],
+        userTypes: [UserDefinedTypeInfo],
+        searchText: String
+    ) -> DatabaseTreeObjectBuckets {
+        objectBuckets(
+            tables: tables,
+            routines: routines,
+            triggers: triggers,
+            userTypes: userTypes,
+            searchText: matches(searchText, schema) ? "" : searchText
+        )
     }
 
     static func visibleSchemas(
