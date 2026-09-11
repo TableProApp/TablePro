@@ -150,7 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
-- Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- Display As formats lost on a rename, and kept with column layouts after deleting a connection.
 
 ### Security
 
