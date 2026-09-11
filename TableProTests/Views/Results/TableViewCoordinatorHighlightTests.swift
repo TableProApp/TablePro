@@ -44,8 +44,8 @@ private final class HighlightGrid {
         )
         coordinator.tableRowsProvider = { [weak self] in self?.tableRows ?? TableRows() }
         coordinator.tableRowsMutator = { [weak self] mutation in
-            guard let self else { return }
-            mutation(&self.tableRows)
+            guard let self else { return .none }
+            return mutation(&self.tableRows)
         }
         coordinator.rebuildColumnMetadataCache(from: tableRows)
         coordinator.updateCache()

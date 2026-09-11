@@ -14,6 +14,16 @@ extension MainContentCoordinator {
     func saveSidebarEdits(
         editState: MultiRowEditState
     ) async throws {
+        let statements = try sidebarEditStatements(editedFields: editState.getEditedFields())
+        guard !statements.isEmpty else { return }
+        try await executeSidebarChanges(statements: statements)
+
+        runQuery()
+    }
+
+    func sidebarEditStatements(
+        editedFields: [(columnIndex: Int, columnName: String, newValue: String?)]
+    ) throws -> [ParameterizedStatement] {
         guard let tab = tabManager.selectedTab,
             !selectionState.indices.isEmpty,
             tab.tableContext.tableName != nil,
@@ -22,11 +32,10 @@ extension MainContentCoordinator {
                 resultsViewMode: tab.display.resultsViewMode
             ) == .dataGrid
         else {
-            return
+            return []
         }
 
-        let editedFields = editState.getEditedFields()
-        guard !editedFields.isEmpty else { return }
+        guard !editedFields.isEmpty else { return [] }
 
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         let displayIDs = activeGridDisplayIDs
@@ -55,10 +64,6 @@ extension MainContentCoordinator {
             )
         }
 
-        let statements = try changeManager.generateSQL(for: changes)
-        guard !statements.isEmpty else { return }
-        try await executeSidebarChanges(statements: statements)
-
-        runQuery()
+        return try changeManager.generateSQL(for: changes)
     }
 }

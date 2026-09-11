@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Refresh Materialized View…** on PostgreSQL, with a concurrent refresh where the view qualifies. (#2726)
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
+- UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
 
 ### Changed
 
@@ -46,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
+- Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
+- SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
 - Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
 - **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
 - Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.
@@ -67,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
 - Dragging a connection in filtered welcome window results snapping back without moving it.
 - Welcome window context menu leaving linked connections out of a mixed selection.
-
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)
 - Password prompt raised by a background reconnect, on whichever window was in front. (#2700)
@@ -150,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Illegal mix of collations` comparing a column with a user variable on MySQL 8.
 - GEOMETRY values from a parameterized MySQL query shown as raw bytes.
 - Earlier row's text repeated in later rows of a parameterized MySQL query once a value passed 64 KB.
+- Wrong row deleted or updated after an edit took a row out of a column value filter.
 - Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8 after `RESET ALL` or `DISCARD ALL`.
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
@@ -160,6 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Edit View Definition** in the Database menu opening a same-named view from the browsed schema. (#2726)
 - **Edit View Definition** enabled in the Database menu on a read-only connection. (#2726)
 - Enum types and sequences written in front of a PostgreSQL view's DDL. (#2726)
+- Display As formats lost on a rename, and kept with column layouts after deleting a connection.
 
 ### Security
 

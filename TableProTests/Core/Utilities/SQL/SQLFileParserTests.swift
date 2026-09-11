@@ -280,4 +280,46 @@ struct SQLFileParserTests {
         #expect(SqlDialect.from(databaseTypeId: "Oracle") == .generic)
         #expect(SqlDialect.from(databaseTypeId: "Unknown Whatever") == .generic)
     }
+
+    private static func parse(_ data: Data, encoding: String.Encoding) async throws -> [String] {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sql")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var statements: [String] = []
+        let parser = SQLFileParser()
+        for try await (stmt, _) in parser.parseFile(url: url, encoding: encoding, dialect: .mysql) {
+            statements.append(stmt)
+        }
+        return statements
+    }
+
+    /// The parser reads 64 KiB at a time, and a chunk of UTF-16 without a byte order mark decodes
+    /// as big-endian, so every statement past the first boundary used to arrive byte-swapped: a
+    /// dump this size imported as CJK from 64 KiB on, with nothing raised.
+    @Test("A UTF-16 dump larger than one chunk parses to the statements it holds")
+    func utf16DumpLargerThanOneChunk() async throws {
+        let lines = (0..<4_000).map { "INSERT INTO t (a) VALUES ('メール \($0)');" }
+        let sql = lines.joined(separator: "\n") + "\n"
+        let body = try #require(sql.data(using: .utf16LittleEndian))
+        #expect(body.count > 65_536 * 2)
+
+        let withMark = try await Self.parse(Data([0xFF, 0xFE]) + body, encoding: .utf16)
+        #expect(withMark == lines.map { String($0.dropLast()) })
+
+        let withoutMark = try await Self.parse(body, encoding: .utf16LittleEndian)
+        #expect(withoutMark == lines.map { String($0.dropLast()) })
+    }
+
+    /// A multi-byte character landing on a chunk boundary is the ordinary case in a dump of
+    /// non-Latin text, and only UTF-8 used to carry one across.
+    @Test("A Shift JIS dump larger than one chunk parses to the statements it holds")
+    func shiftJISDumpLargerThanOneChunk() async throws {
+        let lines = (0..<4_000).map { "INSERT INTO t (a) VALUES ('日本語 \($0)');" }
+        let sql = lines.joined(separator: "\n") + "\n"
+        let body = try #require(sql.data(using: .shiftJIS))
+        #expect(body.count > 65_536)
+        #expect(try await Self.parse(body, encoding: .shiftJIS) == lines.map { String($0.dropLast()) })
+    }
 }

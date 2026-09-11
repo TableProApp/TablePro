@@ -69,7 +69,7 @@ extension RowVisualState {
 
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
-    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Delta) -> Delta = { _ in .none }
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     let isEditable: Bool
@@ -91,6 +91,7 @@ struct DataGridView: NSViewRepresentable {
     /// menu's row commands all read it with no grid mounted. A grid with no owner keeps the filter
     /// on its own coordinator, which is all a structure or create-table grid ever needs. (#2251)
     var valueFilter: Binding<GridValueFilterState>?
+    var displayOrderProvider: (@MainActor () -> [RowID]?)?
     /// The formatted text and viewport anchor for this result, owned the same way and for the same
     /// reason as the value filter above. The owner hands back a fresh instance whenever the inputs
     /// that decide the text have moved, so adopting one is always safe. (#2424)
@@ -161,6 +162,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.paginationOffsetProvider = paginationOffsetProvider
         coordinator.valueFilterBinding = valueFilter
+        coordinator.displayOrderProvider = displayOrderProvider
         if let valueFilter {
             coordinator.adoptValueFilter(valueFilter.wrappedValue)
         }
@@ -234,6 +236,7 @@ struct DataGridView: NSViewRepresentable {
         // before the snapshot is built. A snapshot taken from the stale order would report no
         // change and skip the reload.
         coordinator.valueFilterBinding = valueFilter
+        coordinator.displayOrderProvider = displayOrderProvider
         if let valueFilter, coordinator.valueFilterState != valueFilter.wrappedValue {
             coordinator.adoptValueFilter(valueFilter.wrappedValue)
             coordinator.recomputeValueFilteredIDs()

@@ -1,7 +1,8 @@
 import Foundation
 import TableProPluginKit
-@testable import TablePro
 import Testing
+
+@testable import TablePro
 
 @Suite("TabSessionRegistry+TableRows")
 @MainActor
@@ -129,7 +130,7 @@ struct TabSessionRegistryTableRowsTests {
         )
 
         store.updateTableRows(for: tabId) { rows in
-            _ = rows.edit(row: 0, column: 0, value: "z")
+            rows.edit(row: 0, column: 0, value: "z")
         }
 
         let resolved = store.existingTableRows(for: tabId)

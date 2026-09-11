@@ -11,21 +11,24 @@ import TableProPluginKit
 
 /// A resolved display order plus the inputs it was resolved from.
 ///
-/// `dataRevision` is ticked by `TabSessionRegistry` on every row mutation, so a stale entry cannot
-/// survive a change to the rows it was computed over. That is the point of stamping rather than
-/// asking callers to remember a refresh.
+/// `rowSetRevision` is ticked by `TabSessionRegistry` whenever rows arrive, leave or are replaced,
+/// and never for a cell edit. An edit that takes a row out of the filter's match therefore leaves it
+/// where it is until one of the three inputs here moves, which is what the grid shows, and every
+/// reader that maps a display position through this order lands on the row the grid has at that
+/// position. The display formats are one of those inputs because the filter matches formatted text,
+/// so changing a column's format re-resolves the order the way changing the filter does.
 struct DisplayOrderCacheEntry {
-    let dataRevision: Int
+    let rowSetRevision: Int
     let valueFilter: GridValueFilterState
     let displayFormats: [ValueDisplayFormat?]
     let displayIDs: [RowID]?
 
     func matches(
-        dataRevision: Int,
+        rowSetRevision: Int,
         valueFilter: GridValueFilterState,
         displayFormats: [ValueDisplayFormat?]
     ) -> Bool {
-        self.dataRevision == dataRevision
+        self.rowSetRevision == rowSetRevision
             && self.valueFilter == valueFilter
             && self.displayFormats == displayFormats
     }
@@ -147,11 +150,11 @@ extension MainContentCoordinator {
         guard tab.valueFilter.isActive else { return nil }
 
         let session = tabSessionRegistry.session(for: tabId)
-        let dataRevision = session?.dataRevision ?? 0
+        let rowSetRevision = session?.rowSetRevision ?? 0
         let formats = displayFormats(for: tab)
 
         if let cached = displayOrderCache[tabId],
-           cached.matches(dataRevision: dataRevision, valueFilter: tab.valueFilter, displayFormats: formats) {
+           cached.matches(rowSetRevision: rowSetRevision, valueFilter: tab.valueFilter, displayFormats: formats) {
             return cached.displayIDs
         }
 
@@ -162,7 +165,7 @@ extension MainContentCoordinator {
             databaseType: connection.type
         )
         displayOrderCache[tabId] = DisplayOrderCacheEntry(
-            dataRevision: dataRevision,
+            rowSetRevision: rowSetRevision,
             valueFilter: tab.valueFilter,
             displayFormats: formats,
             displayIDs: resolved
@@ -170,9 +173,23 @@ extension MainContentCoordinator {
         return resolved
     }
 
+    /// Resolves the order now, against the rows as they stand, and stores it for every later reader.
+    ///
+    /// The order is a function of the values the rows held when the filter or the row set last
+    /// changed, not of the values they hold when someone asks. Resolving it lazily makes the answer
+    /// depend on whether anything happened to read it before the edit: the first read after an edit
+    /// that takes a row out of the filter's match drops that row, while the grid goes on showing it,
+    /// and every display position from there on names a different row than the grid has.
+    @discardableResult
+    func refreshDisplayOrder(forTab tabId: UUID) -> [RowID]? {
+        displayOrderCache.removeValue(forKey: tabId)
+        return displayIDs(forTab: tabId)
+    }
+
     func setValueFilter(_ valueFilter: GridValueFilterState, forTab tabId: UUID) {
         guard tabManager.tabs.first(where: { $0.id == tabId })?.valueFilter != valueFilter else { return }
         tabManager.mutate(tabId: tabId) { $0.valueFilter = valueFilter }
+        refreshDisplayOrder(forTab: tabId)
     }
 
     /// Drops a value filter whose rows have been replaced wholesale.

@@ -75,4 +75,21 @@ struct DeltaTests {
         #expect(inserted != removed)
         #expect(Delta.columnsReplaced != Delta.fullReplace)
     }
+
+    @Test("Rows arriving, leaving or being replaced change the row set")
+    func structuralDeltasChangeRowSet() {
+        #expect(Delta.rowsInserted(IndexSet(integer: 3)).changesRowSet)
+        #expect(Delta.rowsRemoved(IndexSet([1, 4])).changesRowSet)
+        #expect(Delta.fullReplace.changesRowSet)
+    }
+
+    @Test("Cell edits, metadata and empty row deltas keep the row set")
+    func nonStructuralDeltasKeepRowSet() {
+        #expect(!Delta.cellChanged(row: 0, column: 1).changesRowSet)
+        #expect(!Delta.cellsChanged([CellPosition(row: 2, column: 0)]).changesRowSet)
+        #expect(!Delta.none.changesRowSet)
+        #expect(!Delta.columnsReplaced.changesRowSet)
+        #expect(!Delta.rowsInserted(IndexSet()).changesRowSet)
+        #expect(!Delta.rowsRemoved(IndexSet()).changesRowSet)
+    }
 }
