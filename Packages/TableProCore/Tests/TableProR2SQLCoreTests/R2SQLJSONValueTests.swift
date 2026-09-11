@@ -1,59 +1,39 @@
-import XCTest
+import Foundation
+import Testing
 @testable import TableProR2SQLCore
 
-final class R2SQLJSONValueTests: XCTestCase {
+@Suite("R2 SQL JSON values")
+struct R2SQLJSONValueTests {
     private func decode(_ json: String) throws -> R2SQLJSONValue {
         try JSONDecoder().decode(R2SQLJSONValue.self, from: Data(json.utf8))
     }
 
-    func testLargeInt64KeepsExactPrecision() throws {
-        let value = try decode("9223372036854775807")
-        XCTAssertEqual(value, .int(Int64.max))
-        XCTAssertEqual(value.scalarText, "9223372036854775807")
+    @Test("Numbers keep every digit", arguments: [
+        "12345678901234567.89",
+        "99999999999999999999999999999999999999",
+        "18446744073709551615",
+        "9007199254740993",
+        "-9223372036854775808",
+        "0.1"
+    ])
+    func exactNumbers(literal: String) throws {
+        #expect(try decode(literal).jsonText == literal)
     }
 
-    func testIntegerBeyondInt64MaxDecodesAsUnsigned() throws {
-        let value = try decode("9223372036854775808")
-        XCTAssertEqual(value, .uint(9_223_372_036_854_775_808))
-        XCTAssertEqual(value.scalarText, "9223372036854775808")
+    @Test("A number no Decimal can hold is a decoding error, not NULL")
+    func outOfRangeNumberThrows() {
+        #expect(throws: DecodingError.self) { try decode("1e400") }
     }
 
-    func testIntegerAboveTwoToTheFiftyThreeIsNotRoundedByDouble() throws {
-        let value = try decode("9007199254740993")
-        XCTAssertEqual(value.scalarText, "9007199254740993")
+    @Test("Booleans stay booleans and never read as numbers")
+    func booleans() throws {
+        #expect(try decode("true") == .bool(true))
+        #expect(try decode("1") == .number(1))
     }
 
-    func testNegativeIntegerDecodes() throws {
-        XCTAssertEqual(try decode("-42"), .int(-42))
-    }
-
-    func testFractionalNumberDecodesAsDouble() throws {
-        XCTAssertEqual(try decode("1.5"), .double(1.5))
-    }
-
-    func testBooleansDecodeAsBool() throws {
-        XCTAssertEqual(try decode("true"), .bool(true))
-        XCTAssertEqual(try decode("false"), .bool(false))
-    }
-
-    func testNullDecodesAsNull() throws {
-        XCTAssertTrue(try decode("null").isNull)
-        XCTAssertNil(try decode("null").scalarText)
-    }
-
-    func testNestedNullInsideObjectIsPreserved() throws {
-        let value = try decode(#"{"count":null}"#)
-        XCTAssertEqual(value.jsonText(), #"{"count":null}"#)
-    }
-
-    func testNestedArrayOfStructsSerializesStably() throws {
-        let value = try decode(#"[{"b":2,"a":1},{"a":3,"b":4}]"#)
-        XCTAssertEqual(value.jsonText(), #"[{"a":1,"b":2},{"a":3,"b":4}]"#)
-    }
-
-    func testStringWithQuotesIsEscapedInJSONText() throws {
-        let value = try decode(#""he said \"hi\"""#)
-        XCTAssertEqual(value.scalarText, #"he said "hi""#)
-        XCTAssertEqual(value.jsonText(), #""he said \"hi\"""#)
+    @Test("Nested values render as JSON without re-encoding their numbers")
+    func nestedText() throws {
+        let value = try decode(#"{"y":0.1,"x":[1,"a\"b",null,false]}"#)
+        #expect(value.jsonText == #"{"x":[1,"a\"b",null,false],"y":0.1}"#)
     }
 }

@@ -6,25 +6,11 @@ public struct R2SQLConnectionConfig: Sendable, Equatable {
     public let accountId: String
     public let bucket: String
     public let token: String
-    public let defaultNamespace: String
-    public let timeoutSeconds: Int
 
-    public init(
-        accountId: String,
-        bucket: String,
-        token: String,
-        defaultNamespace: String = "",
-        timeoutSeconds: Int = 60
-    ) {
+    public init(accountId: String, bucket: String, token: String) {
         self.accountId = accountId.trimmingCharacters(in: .whitespacesAndNewlines)
         self.bucket = bucket.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.token = token
-        self.defaultNamespace = defaultNamespace.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.timeoutSeconds = timeoutSeconds
-    }
-
-    public var warehouse: String {
-        "\(accountId)_\(bucket)"
+        self.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public var queryURL: URL? {
@@ -35,29 +21,13 @@ public struct R2SQLConnectionConfig: Sendable, Equatable {
         return components.url
     }
 
-    public func validate() -> R2SQLError? {
-        if accountId.isEmpty {
-            return .configuration(R2SQLErrorText.missingAccountId)
+    public func validated() throws -> URL {
+        if accountId.isEmpty { throw R2SQLError.configuration("Enter the Cloudflare account ID.") }
+        if bucket.isEmpty { throw R2SQLError.configuration("Enter the R2 bucket name.") }
+        if token.isEmpty { throw R2SQLError.configuration("Enter a Cloudflare API token.") }
+        guard let url = queryURL else {
+            throw R2SQLError.configuration("The account ID or bucket name is not valid in a URL.")
         }
-        if bucket.isEmpty {
-            return .configuration(R2SQLErrorText.missingBucket)
-        }
-        if token.isEmpty {
-            return .configuration(R2SQLErrorText.missingToken)
-        }
-        if queryURL == nil {
-            return .configuration(R2SQLErrorText.invalidEndpoint)
-        }
-        return nil
-    }
-}
-
-public enum R2SQLWarehouse {
-    public static func split(_ warehouse: String) -> (accountId: String, bucket: String)? {
-        guard let separator = warehouse.firstIndex(of: "_") else { return nil }
-        let accountId = String(warehouse[warehouse.startIndex..<separator])
-        let bucket = String(warehouse[warehouse.index(after: separator)...])
-        guard !accountId.isEmpty, !bucket.isEmpty else { return nil }
-        return (accountId, bucket)
+        return url
     }
 }

@@ -1,84 +1,32 @@
-import XCTest
+import Foundation
+import Testing
 @testable import TableProR2SQLCore
 
-final class R2SQLRequestBuilderTests: XCTestCase {
-    private let config = R2SQLConnectionConfig(
-        accountId: "abc123",
-        bucket: "my-bucket",
-        token: "secret-token"
-    )
+@Suite("R2 SQL request")
+struct R2SQLRequestBuilderTests {
+    private let config = R2SQLConnectionConfig(accountId: " acc123 ", bucket: "my-bucket", token: " tok \n")
 
-    func testWarehouseIsAccountIdUnderscoreBucket() {
-        XCTAssertEqual(config.warehouse, "abc123_my-bucket")
+    @Test("The request posts the query alone to the account's bucket endpoint with a bearer token")
+    func request() throws {
+        let request = try R2SQLRequestBuilder.queryRequest(config: config, sql: "SELECT 1", timeoutInterval: 330)
+        let body = try #require(try JSONSerialization.jsonObject(with: request.body) as? [String: String])
+
+        #expect(request.url.absoluteString
+            == "https://api.sql.cloudflarestorage.com/api/v1/accounts/acc123/r2-sql/query/my-bucket")
+        #expect(body == ["query": "SELECT 1"])
+        #expect(request.headers["Authorization"] == "Bearer tok")
+        #expect(request.headers["Content-Type"] == "application/json")
+        #expect(request.timeoutInterval == 330)
     }
 
-    func testWarehouseRoundTripsThroughSplit() {
-        let parts = R2SQLWarehouse.split(config.warehouse)
-        XCTAssertEqual(parts?.accountId, "abc123")
-        XCTAssertEqual(parts?.bucket, "my-bucket")
-    }
-
-    func testWarehouseSplitUsesFirstUnderscoreOnly() {
-        let parts = R2SQLWarehouse.split("acct_my_bucket_with_underscores")
-        XCTAssertEqual(parts?.accountId, "acct")
-        XCTAssertEqual(parts?.bucket, "my_bucket_with_underscores")
-    }
-
-    func testWarehouseSplitRejectsMissingSeparator() {
-        XCTAssertNil(R2SQLWarehouse.split("nounderscore"))
-    }
-
-    func testQueryURLMatchesDocumentedEndpoint() {
-        XCTAssertEqual(
-            config.queryURL?.absoluteString,
-            "https://api.sql.cloudflarestorage.com/api/v1/accounts/abc123/r2-sql/query/my-bucket"
-        )
-    }
-
-    func testRequestCarriesBearerTokenAndJSONContentType() throws {
-        let request = try R2SQLRequestBuilder.queryRequest(config: config, sql: "SELECT 1 FROM t")
-        XCTAssertEqual(request.headers["Authorization"], "Bearer secret-token")
-        XCTAssertEqual(request.headers["Content-Type"], "application/json")
-    }
-
-    func testRequestBodyCarriesBothWarehouseAndQuery() throws {
-        let request = try R2SQLRequestBuilder.queryRequest(config: config, sql: "SELECT * FROM ns.t LIMIT 10")
-        let decoded = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: request.body) as? [String: String]
-        )
-        XCTAssertEqual(decoded["warehouse"], "abc123_my-bucket")
-        XCTAssertEqual(decoded["query"], "SELECT * FROM ns.t LIMIT 10")
-        XCTAssertEqual(decoded.count, 2)
-    }
-
-    func testRequestUsesConfiguredTimeout() throws {
-        let timed = R2SQLConnectionConfig(accountId: "a", bucket: "b", token: "t", timeoutSeconds: 15)
-        let request = try R2SQLRequestBuilder.queryRequest(config: timed, sql: "SELECT 1 FROM t")
-        XCTAssertEqual(request.timeoutSeconds, 15)
-    }
-
-    func testMissingAccountIdIsRejected() {
-        let invalid = R2SQLConnectionConfig(accountId: "", bucket: "b", token: "t")
-        XCTAssertEqual(invalid.validate(), .configuration(R2SQLErrorText.missingAccountId))
-        XCTAssertThrowsError(try R2SQLRequestBuilder.queryRequest(config: invalid, sql: "SELECT 1 FROM t"))
-    }
-
-    func testMissingBucketIsRejected() {
-        let invalid = R2SQLConnectionConfig(accountId: "a", bucket: "", token: "t")
-        XCTAssertEqual(invalid.validate(), .configuration(R2SQLErrorText.missingBucket))
-    }
-
-    func testMissingTokenIsRejected() {
-        let invalid = R2SQLConnectionConfig(accountId: "a", bucket: "b", token: "")
-        XCTAssertEqual(invalid.validate(), .configuration(R2SQLErrorText.missingToken))
-    }
-
-    func testValidConfigurationPassesValidation() {
-        XCTAssertNil(config.validate())
-    }
-
-    func testWhitespaceIsTrimmedFromIdentifiers() {
-        let padded = R2SQLConnectionConfig(accountId: "  abc123 ", bucket: " my-bucket\n", token: "t")
-        XCTAssertEqual(padded.warehouse, "abc123_my-bucket")
+    @Test("A missing account, bucket or token fails before any request", arguments: [
+        R2SQLConnectionConfig(accountId: "", bucket: "b", token: "t"),
+        R2SQLConnectionConfig(accountId: "a", bucket: " ", token: "t"),
+        R2SQLConnectionConfig(accountId: "a", bucket: "b", token: "")
+    ])
+    func validation(config: R2SQLConnectionConfig) {
+        #expect(throws: R2SQLError.self) {
+            try R2SQLRequestBuilder.queryRequest(config: config, sql: "SELECT 1", timeoutInterval: 60)
+        }
     }
 }

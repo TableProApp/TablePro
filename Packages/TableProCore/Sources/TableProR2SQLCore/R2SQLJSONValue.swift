@@ -1,133 +1,58 @@
 import Foundation
 
+/// A JSON value as R2 SQL sent it, with numbers kept exact.
+///
+/// Numbers decode as `Decimal`, which carries 38 significant digits. Trying `Int64` first, as the
+/// usual pattern does, silently truncates a fractional value whose `Double` rounding happens to be
+/// integral (`12345678901234567.89` arrives as `12345678901234567`), and `Double` loses every digit
+/// past the 17th.
 public enum R2SQLJSONValue: Decodable, Sendable, Equatable {
     case null
     case bool(Bool)
-    case int(Int64)
-    case uint(UInt64)
-    case double(Double)
+    case number(Decimal)
     case string(String)
     case array([R2SQLJSONValue])
     case object([String: R2SQLJSONValue])
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-
         if container.decodeNil() {
             self = .null
-            return
-        }
-        if let value = try? container.decode(Bool.self) {
+        } else if let value = try? container.decode(Bool.self) {
             self = .bool(value)
-            return
-        }
-        if let value = try? container.decode(Int64.self) {
-            self = .int(value)
-            return
-        }
-        if let value = try? container.decode(UInt64.self) {
-            self = .uint(value)
-            return
-        }
-        if let value = try? container.decode(Double.self) {
-            self = .double(value)
-            return
-        }
-        if let value = try? container.decode(String.self) {
+        } else if let value = try? container.decode(Decimal.self) {
+            self = .number(value)
+        } else if let value = try? container.decode(String.self) {
             self = .string(value)
-            return
-        }
-        if let value = try? container.decode([R2SQLJSONValue].self) {
+        } else if let value = try? container.decode([R2SQLJSONValue].self) {
             self = .array(value)
-            return
-        }
-        if let value = try? container.decode([String: R2SQLJSONValue].self) {
-            self = .object(value)
-            return
-        }
-        self = .null
-    }
-
-    public var isNull: Bool {
-        if case .null = self { return true }
-        return false
-    }
-
-    public var foundationObject: Any {
-        switch self {
-        case .null:
-            return NSNull()
-        case .bool(let value):
-            return value
-        case .int(let value):
-            return NSNumber(value: value)
-        case .uint(let value):
-            return NSNumber(value: value)
-        case .double(let value):
-            return NSNumber(value: value)
-        case .string(let value):
-            return value
-        case .array(let values):
-            return values.map(\.foundationObject)
-        case .object(let values):
-            return values.mapValues(\.foundationObject)
+        } else {
+            self = .object(try container.decode([String: R2SQLJSONValue].self))
         }
     }
 
-    public func jsonText() -> String {
+    public var jsonText: String {
         switch self {
         case .null:
             return "null"
         case .bool(let value):
             return value ? "true" : "false"
-        case .int(let value):
-            return String(value)
-        case .uint(let value):
-            return String(value)
-        case .double(let value):
-            return Self.format(double: value)
+        case .number(let value):
+            return value.description
         case .string(let value):
-            return Self.encode(string: value)
-        case .array, .object:
-            guard let data = try? JSONSerialization.data(
-                withJSONObject: foundationObject,
-                options: [.sortedKeys, .fragmentsAllowed]
-            ), let text = String(data: data, encoding: .utf8) else {
-                return ""
+            return Self.quoted(value)
+        case .array(let values):
+            return "[" + values.map(\.jsonText).joined(separator: ",") + "]"
+        case .object(let fields):
+            let members = fields.keys.sorted().map { key in
+                Self.quoted(key) + ":" + (fields[key] ?? .null).jsonText
             }
-            return text
+            return "{" + members.joined(separator: ",") + "}"
         }
     }
 
-    public var scalarText: String? {
-        switch self {
-        case .null:
-            return nil
-        case .bool(let value):
-            return value ? "true" : "false"
-        case .int(let value):
-            return String(value)
-        case .uint(let value):
-            return String(value)
-        case .double(let value):
-            return Self.format(double: value)
-        case .string(let value):
-            return value
-        case .array, .object:
-            return jsonText()
-        }
-    }
-
-    static func format(double value: Double) -> String {
-        if value == value.rounded(), abs(value) < 1e15 {
-            return String(Int64(value))
-        }
-        return String(value)
-    }
-
-    static func encode(string value: String) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
-              let text = String(data: data, encoding: .utf8) else {
+    private static func quoted(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value), let text = String(data: data, encoding: .utf8) else {
             return "\"\""
         }
         return text

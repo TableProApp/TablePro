@@ -9,8 +9,7 @@ import TableProR2SQLCore
 
 extension CloudflareR2SQLPluginDriver {
     func fetchDatabases() async throws -> [String] {
-        guard let bucket = resolvedConfig?.bucket, !bucket.isEmpty else { return [] }
-        return [bucket]
+        [connectionConfig.bucket]
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -18,33 +17,25 @@ extension CloudflareR2SQLPluginDriver {
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await run(sql: R2SQLIntrospectionSQL.showNamespaces())
-        return R2SQLRowMapper.firstColumnStrings(result).sorted()
+        try R2SQLIntrospectionSQL.namespaces(from: try await run(sql: R2SQLIntrospectionSQL.showNamespaces))
     }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        guard let namespace = resolveNamespace(schema) else { return [] }
-        let result = try await run(sql: R2SQLIntrospectionSQL.showTables(namespace: namespace))
-        return R2SQLRowMapper.firstColumnStrings(result).sorted().map { name in
+        guard let namespace = schema.flatMap({ $0.isEmpty ? nil : $0 }) ?? currentSchema else { return [] }
+        let listing = try await run(sql: R2SQLIntrospectionSQL.showTables(namespace: namespace))
+        return try R2SQLIntrospectionSQL.tables(from: listing).map { name in
             PluginTableInfo(name: name, type: "TABLE", schema: namespace, comment: nil)
         }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        guard let namespace = resolveNamespace(schema) else { return [] }
-        let result = try await run(sql: R2SQLIntrospectionSQL.describe(namespace: namespace, table: table))
-        let mapped = R2SQLRowMapper.map(result)
-
-        return mapped.rows.compactMap { row -> PluginColumnInfo? in
-            guard let name = Self.text(row.first), !name.isEmpty else { return nil }
-            let rawType = row.count > 1 ? Self.text(row[1]) ?? "" : ""
-            let nullable = Self.parseNullable(row.count > 2 ? Self.text(row[2]) : nil)
-            return PluginColumnInfo(
-                name: name,
-                dataType: R2SQLTypeMapper.displayTypeName(rawTypeName: rawType),
-                isNullable: nullable,
+        try await describe(table: table, schema: schema).columns.map { column in
+            PluginColumnInfo(
+                name: column.name,
+                dataType: column.typeName,
+                isNullable: column.isNullable,
                 defaultValue: nil,
-                comment: nil
+                comment: column.comment
             )
         }
     }
@@ -62,36 +53,28 @@ extension CloudflareR2SQLPluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        guard let namespace = resolveNamespace(schema) else {
-            throw R2SQLError.configuration(R2SQLErrorText.noNamespace)
-        }
-        let columns = try await fetchColumns(table: table, schema: namespace)
-        guard !columns.isEmpty else {
-            throw R2SQLError.query(R2SQLAPIError(code: 0, message: "No columns found for \(table)"))
-        }
-        let body = columns
-            .map { "    \(R2SQLLiteral.quoteIdentifier($0.name)) \($0.dataType)\($0.isNullable ? "" : " NOT NULL")" }
+        let described = try await describe(table: table, schema: schema)
+        let body = described.columns
+            .map { column in
+                let quoted = R2SQLIntrospectionSQL.quoteIdentifier(column.name)
+                return "    \(quoted) \(column.typeName)\(column.isNullable ? "" : " NOT NULL")"
+            }
             .joined(separator: ",\n")
-        let name = R2SQLLiteral.qualifiedName(namespace: namespace, table: table)
+        let name = R2SQLIntrospectionSQL.quoteIdentifier(described.namespace)
+            + "." + R2SQLIntrospectionSQL.quoteIdentifier(table)
         return "CREATE TABLE \(name) (\n\(body)\n)"
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        throw R2SQLError.unsupported(R2SQLErrorText.noViews)
+        throw R2SQLError.unsupported("R2 SQL has no views.")
     }
 
-    static func text(_ value: R2SQLValue?) -> String? {
-        guard case .text(let text)? = value else { return nil }
-        return text
-    }
-
-    static func parseNullable(_ value: String?) -> Bool {
-        guard let value else { return true }
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
-        case "NO", "FALSE", "0", "NOT NULL":
-            return false
-        default:
-            return true
-        }
+    private func describe(
+        table: String,
+        schema: String?
+    ) async throws -> (namespace: String, columns: [R2SQLColumnDescription]) {
+        let namespace = try namespace(for: schema)
+        let result = try await run(sql: R2SQLIntrospectionSQL.describe(namespace: namespace, table: table))
+        return (namespace, try R2SQLIntrospectionSQL.columns(from: result))
     }
 }

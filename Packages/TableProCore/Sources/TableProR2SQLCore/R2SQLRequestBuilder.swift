@@ -1,17 +1,13 @@
 import Foundation
 
 public enum R2SQLRequestBuilder {
-    public static func queryRequest(config: R2SQLConnectionConfig, sql: String) throws -> R2SQLHTTPRequest {
-        if let error = config.validate() {
-            throw error
-        }
-        guard let url = config.queryURL else {
-            throw R2SQLError.configuration(R2SQLErrorText.invalidEndpoint)
-        }
-        let body = R2SQLRequestBody(warehouse: config.warehouse, query: sql)
-        guard let encoded = try? JSONEncoder().encode(body) else {
-            throw R2SQLError.configuration("Could not encode the query request")
-        }
+    public static func queryRequest(
+        config: R2SQLConnectionConfig,
+        sql: String,
+        timeoutInterval: TimeInterval
+    ) throws -> R2SQLHTTPRequest {
+        let url = try config.validated()
+        let body = try JSONEncoder().encode(R2SQLRequestBody(query: sql))
         return R2SQLHTTPRequest(
             url: url,
             headers: [
@@ -19,8 +15,8 @@ public enum R2SQLRequestBuilder {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             ],
-            body: encoded,
-            timeoutSeconds: config.timeoutSeconds
+            body: body,
+            timeoutInterval: timeoutInterval
         )
     }
 }

@@ -15,7 +15,7 @@ extension PluginMetadataRegistry {
                 isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
                 navigationModel: .standard, explainVariants: r2SQLExplainVariants,
                 pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: [],
+                supportsHealthMonitor: false, urlSchemes: [],
                 postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#F6821F",
                 queryLanguageName: "SQL", editorLanguage: .sql,

@@ -8,54 +8,50 @@ public struct R2SQLAPIError: Decodable, Sendable, Equatable {
         self.code = code
         self.message = message
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case code, message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decodeIfPresent(Int.self, forKey: .code) ?? 0
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+    }
 }
 
 public enum R2SQLError: Error, LocalizedError, Equatable {
     case configuration(String)
     case notConnected
     case transport(String)
-    case authentication(String)
-    case query(R2SQLAPIError)
-    case api([R2SQLAPIError])
-    case malformedResponse(status: Int, body: String)
+    case authentication(status: Int, errors: [R2SQLAPIError])
+    case api(status: Int, errors: [R2SQLAPIError])
+    case malformedResponse(status: Int, detail: String)
+    case unexpectedResult(String)
     case unsupported(String)
     case cancelled
 
     public var errorDescription: String? {
         switch self {
-        case .configuration(let detail):
+        case .configuration(let detail), .transport(let detail), .unexpectedResult(let detail),
+             .unsupported(let detail):
             return detail
         case .notConnected:
-            return "Not connected to R2 SQL"
-        case .transport(let detail):
-            return detail
-        case .authentication(let detail):
-            return detail
-        case .query(let error):
-            return error.message
-        case .api(let errors):
-            let joined = errors.map(\.message).filter { !$0.isEmpty }.joined(separator: "\n")
-            return joined.isEmpty ? "R2 SQL returned an unspecified error" : joined
-        case .malformedResponse(let status, let body):
-            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                return "R2 SQL returned an unreadable response (HTTP \(status))"
-            }
-            return "R2 SQL returned an unreadable response (HTTP \(status)): \(trimmed.prefix(200))"
-        case .unsupported(let detail):
-            return detail
+            return "Not connected to R2 SQL."
+        case .authentication(let status, let errors):
+            let reason = Self.joined(errors) ?? "HTTP \(status)"
+            return "\(reason). The API token needs the R2 SQL, R2 Data Catalog and R2 Storage permissions for this account."
+        case .api(let status, let errors):
+            return Self.joined(errors) ?? "R2 SQL returned HTTP \(status) with no error message."
+        case .malformedResponse(let status, let detail):
+            return "R2 SQL returned a response TablePro could not read (HTTP \(status)): \(detail)"
         case .cancelled:
-            return "Query was cancelled"
+            return "The query was cancelled."
         }
     }
-}
 
-public enum R2SQLErrorText {
-    public static let missingAccountId = "Account ID is required"
-    public static let missingBucket = "Bucket is required"
-    public static let missingToken = "API token is required"
-    public static let invalidEndpoint = "Could not build the R2 SQL endpoint from the account ID and bucket"
-    public static let noNamespace = "Select a namespace before browsing tables"
-    public static let noViews = "R2 SQL does not support views"
-    public static let readOnlyEngine = "R2 SQL is a read-only query engine"
+    private static func joined(_ errors: [R2SQLAPIError]) -> String? {
+        let messages = errors.map(\.message).filter { !$0.isEmpty }
+        return messages.isEmpty ? nil : messages.joined(separator: "\n")
+    }
 }

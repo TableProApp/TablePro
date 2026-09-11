@@ -10,32 +10,20 @@ public struct R2SQLResultSet: Sendable, Equatable {
         self.columnTypeNames = columnTypeNames
         self.rows = rows
     }
-
-    public static let empty = R2SQLResultSet(columns: [], columnTypeNames: [], rows: [])
 }
 
 public enum R2SQLRowMapper {
+    /// Rows arrive as objects keyed by column name, so the schema supplies the order and a key a
+    /// row leaves out is a NULL.
     public static func map(_ result: R2SQLResult) -> R2SQLResultSet {
-        let columns = result.schema.map(\.name)
-        let rawTypeNames = result.schema.map(\.typeName)
-        let columnTypeNames = rawTypeNames.map { R2SQLTypeMapper.displayTypeName(rawTypeName: $0) }
-
+        let kinds = result.schema.map { R2SQLTypeMapper.valueKind($0.typeName) }
         let rows = result.rows.map { row in
-            zip(columns, rawTypeNames).map { name, rawTypeName in
-                R2SQLTypeMapper.value(for: row[name], rawTypeName: rawTypeName)
-            }
+            zip(result.schema, kinds).map { field, kind in R2SQLTypeMapper.cell(row[field.name], kind: kind) }
         }
-
-        return R2SQLResultSet(columns: columns, columnTypeNames: columnTypeNames, rows: rows)
-    }
-
-    public static func firstColumnStrings(_ result: R2SQLResult) -> [String] {
-        let mapped = map(result)
-        guard !mapped.columns.isEmpty else { return [] }
-        return mapped.rows.compactMap { row in
-            guard let first = row.first, case .text(let value) = first else { return nil }
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
+        return R2SQLResultSet(
+            columns: result.schema.map(\.name),
+            columnTypeNames: result.schema.map { R2SQLTypeMapper.displayTypeName($0.typeName) },
+            rows: rows
+        )
     }
 }

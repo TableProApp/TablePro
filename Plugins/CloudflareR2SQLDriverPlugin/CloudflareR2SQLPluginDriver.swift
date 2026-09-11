@@ -12,106 +12,86 @@ final class CloudflareR2SQLPluginDriver: PluginDatabaseDriver, @unchecked Sendab
     static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareR2SQL")
 
     private let lock = NSLock()
-    private var connectionConfig: R2SQLConnectionConfig?
     private var namespace: String?
     private var isConnected = false
+    private let queryTimeout = HttpQueryTimeoutBox()
 
     let transport: R2SQLTransport
-    let config: DriverConnectionConfig
+    let connectionConfig: R2SQLConnectionConfig
 
-    init(config: DriverConnectionConfig, transport: R2SQLTransport? = nil) {
-        self.config = config
-        self.transport = transport ?? URLSessionR2SQLTransport()
+    init(
+        config: DriverConnectionConfig,
+        transport: R2SQLTransport = URLSessionR2SQLTransport(resourceTimeout: HttpQueryTimeout.sessionResourceTimeout)
+    ) {
+        self.connectionConfig = R2SQLConnectionConfig(
+            accountId: config.additionalFields[CloudflareR2SQLMetadata.accountIdFieldId] ?? "",
+            bucket: config.additionalFields[CloudflareR2SQLMetadata.bucketFieldId] ?? "",
+            token: config.password
+        )
+        self.transport = transport
     }
 
-    // MARK: - Capabilities
-
-    var capabilities: PluginCapabilities {
-        [.cancelQuery]
-    }
-
+    var capabilities: PluginCapabilities { [.cancelQuery] }
     var supportsSchemas: Bool { true }
-
     var supportsTransactions: Bool { false }
-
     var serverVersion: String? { nil }
-
-    // MARK: - Connection State
-
-    var resolvedConfig: R2SQLConnectionConfig? {
-        lock.withLock { connectionConfig }
-    }
 
     var currentSchema: String? {
         lock.withLock { namespace }
     }
 
     func switchSchema(to schema: String) async throws {
-        lock.withLock { namespace = schema }
+        lock.withLock { namespace = schema.isEmpty ? nil : schema }
     }
 
-    func resolveNamespace(_ schema: String?) -> String? {
+    func namespace(for schema: String?) throws -> String {
         if let schema, !schema.isEmpty { return schema }
-        let current = currentSchema
-        if let current, !current.isEmpty { return current }
-        return nil
+        guard let current = currentSchema else {
+            throw R2SQLError.configuration("Choose a namespace first.")
+        }
+        return current
     }
 
     // MARK: - Lifecycle
 
     func connect() async throws {
-        let resolved = Self.buildConfig(from: config)
-        if let error = resolved.validate() {
+        _ = try connectionConfig.validated()
+        lock.withLock { isConnected = true }
+        do {
+            _ = try await run(sql: R2SQLIntrospectionSQL.showNamespaces)
+        } catch {
+            lock.withLock { isConnected = false }
             throw error
         }
-        lock.withLock {
-            connectionConfig = resolved
-            if namespace == nil {
-                namespace = resolved.defaultNamespace.isEmpty ? nil : resolved.defaultNamespace
-            }
-            isConnected = true
-        }
-        _ = try await run(sql: R2SQLIntrospectionSQL.showNamespaces())
     }
 
     func disconnect() {
-        lock.withLock {
-            connectionConfig = nil
-            isConnected = false
-        }
+        lock.withLock { isConnected = false }
+        transport.cancelAll()
     }
 
     func ping() async throws {
-        _ = try await run(sql: R2SQLIntrospectionSQL.showNamespaces())
+        _ = try await run(sql: R2SQLIntrospectionSQL.showNamespaces)
     }
 
     func cancelQuery() throws {
-        (transport as? URLSessionR2SQLTransport)?.cancelInFlight()
+        transport.cancelAll()
+    }
+
+    func applyQueryTimeout(_ seconds: Int) async throws {
+        queryTimeout.set(serverTimeoutSeconds: seconds)
     }
 
     // MARK: - Transport
 
     func run(sql: String) async throws -> R2SQLResult {
-        guard let resolved = resolvedConfig else {
-            throw R2SQLError.notConnected
-        }
-        let request = try R2SQLRequestBuilder.queryRequest(config: resolved, sql: sql)
-        let response = try await transport.send(request)
-        switch R2SQLErrorClassifier.decode(response) {
-        case .success(let result):
-            return result
-        case .failure(let error):
-            throw error
-        }
-    }
-
-    private static func buildConfig(from config: DriverConnectionConfig) -> R2SQLConnectionConfig {
-        R2SQLConnectionConfig(
-            accountId: config.additionalFields["r2AccountId"] ?? "",
-            bucket: config.additionalFields["r2Bucket"] ?? "",
-            token: config.password,
-            defaultNamespace: config.additionalFields["r2Namespace"] ?? "",
-            timeoutSeconds: 60
+        guard lock.withLock({ isConnected }) else { throw R2SQLError.notConnected }
+        let request = try R2SQLRequestBuilder.queryRequest(
+            config: connectionConfig,
+            sql: sql,
+            timeoutInterval: queryTimeout.requestTimeoutInterval
         )
+        let response = try await transport.send(request)
+        return try R2SQLResponseDecoder.decode(response)
     }
 }
