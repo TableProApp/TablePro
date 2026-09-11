@@ -44,7 +44,12 @@ internal enum DatabaseTreeMenuSpec {
             return [
                 DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshContainerObjectKind(group))]),
                 DatabaseTreeMenuSection(
-                    createTypeItems(kind: group.kind, database: group.database, schema: group.schema, context: context)
+                    createTypeItems(
+                        kind: group.kind,
+                        database: group.database.isEmpty ? nil : group.database,
+                        schema: group.schema,
+                        context: context
+                    )
                 )
             ]
         case .hierarchicalSchemaSection(let schema):

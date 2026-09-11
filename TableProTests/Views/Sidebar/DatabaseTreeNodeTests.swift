@@ -136,4 +136,60 @@ struct DatabaseTreeNodeTests {
         #expect(groups.map(\.kind) == [.function])
         #expect(groups.first?.schema == nil)
     }
+
+    /// A section with no rows was drawn bare, so a Procedures section still waiting on its fetch, one
+    /// whose fetch failed, and one that is genuinely empty all looked the same.
+    @Test("An empty section says whether it is loading, failed or empty")
+    func emptySectionStatus() {
+        #expect(DatabaseTreeNode.Status.emptySection(.idle) == .loading)
+        #expect(DatabaseTreeNode.Status.emptySection(.loading) == .loading)
+        #expect(DatabaseTreeNode.Status.emptySection(.failed("denied")) == .error("denied"))
+        #expect(DatabaseTreeNode.Status.emptySection(.loaded) == .empty)
+    }
+
+    @Test("An empty container is empty only once every declared kind has answered")
+    func emptyContainerStatus() {
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: [.loaded, .loaded]) == .empty)
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: [.loaded, .loading]) == .loading)
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: [.idle]) == .loading)
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: [.loaded, .failed("gone")]) == .error("gone"))
+        #expect(DatabaseTreeNode.Status.emptyContainer(sideStates: []) == .empty)
+    }
+
+    /// An empty group used to say "No items" while its kind was still loading, and a failed fetch
+    /// showed that same false "No items" with the error pushed up to the container.
+    @Test("An empty group's placeholder follows its own kind's fetch")
+    func groupPlaceholderFollowsItsKind() {
+        let phases = DatabaseTreeSidePhases(routines: .loading, triggers: .failed("denied"), types: nil)
+
+        #expect(DatabaseTreeNode.Status.emptySection(phases.phase(for: .routine)) == .loading)
+        #expect(DatabaseTreeNode.Status.emptySection(phases.phase(for: .trigger)) == .error("denied"))
+        #expect(DatabaseTreeNode.Status.emptySection(phases.phase(for: .type)) == .empty)
+        #expect(DatabaseTreeNode.Status.emptySection(phases.phase(for: .table)) == .empty)
+        #expect(phases.all == [.loading, .failed("denied")])
+    }
+
+    @Test("A failure goes on the container only when no group of its kind is listed")
+    func unplacedFailureOnlyWithoutAGroup() {
+        let phases = DatabaseTreeSidePhases(routines: .failed("denied"), triggers: .loaded, types: nil)
+
+        #expect(phases.unplacedFailure(listing: [.table, .routine]) == nil)
+        #expect(phases.unplacedFailure(listing: [.table]) == "denied")
+        #expect(DatabaseTreeSidePhases(routines: .loaded, triggers: nil, types: nil).unplacedFailure(listing: []) == nil)
+    }
+
+    /// A schema holding only a procedure used to read as empty on the engines that group by schema,
+    /// because their schema rows listed tables and nothing else.
+    @Test("A schema with no tables and one procedure gets a Procedures group")
+    func proceduresOnlySchemaGetsAGroup() {
+        let groups = DatabaseTreeObjectGroupResolver.groups(
+            database: "",
+            schema: "HR",
+            itemCounts: [.procedure: 1],
+            declaredKinds: [.procedure, .function]
+        )
+
+        #expect(groups.map(\.kind) == [.procedure, .function])
+        #expect(groups.allSatisfy { $0.schema == "HR" })
+    }
 }

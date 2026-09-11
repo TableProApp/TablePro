@@ -185,6 +185,788 @@
     "-- Once the rows are in" : {
 
     },
+    "A single click opens each table in the same preview tab. Double-click a table, or press Return, to keep it open." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 번 클릭하면 각 테이블이 같은 미리보기 탭에서 열립니다. 테이블을 이중 클릭하거나 Return 키를 누르면 열린 상태로 유지됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek tıklama her tabloyu aynı önizleme sekmesinde açar. Açık tutmak için tabloya çift tıklayın veya Return tuşuna basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấp một lần sẽ mở từng bảng trong cùng một tab xem trước. Nhấp đúp vào bảng hoặc nhấn Return để giữ nó mở."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单击会在同一个预览标签页中打开每个表格。双击表格或按 Return 键即可保持打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按一下會在同一個預覽標籤頁中開啟每個表格。按兩下表格或按 Return 鍵即可保持開啟。"
+          }
+        }
+      }
+    },
+    "Are you sure you want to delete the group \"%@\" and its subgroups? Their connections will be moved to the top level." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 그룹과 하위 그룹을 삭제하시겠습니까? 그 안의 연결은 최상위 수준으로 이동됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" grubunu ve alt gruplarını silmek istediğinize emin misiniz? İçlerindeki bağlantılar üst seviyeye taşınacaktır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bạn có chắc muốn xóa nhóm \"%@\" và các nhóm con của nó? Các kết nối bên trong sẽ được chuyển lên cấp cao nhất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要删除分组 \"%@\" 及其子分组吗？其中的连接将移至顶层。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確定要刪除群組「%@」及其子群組嗎？其中的連線將移至頂層。"
+          }
+        }
+      }
+    },
+    "Autocomplete from your schema, editor tabs, and a searchable query history." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스키마 기반 자동 완성, 편집기 탭, 검색 가능한 쿼리 기록을 제공합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şemanızdan otomatik tamamlama, düzenleyici sekmeleri ve aranabilir sorgu geçmişi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động hoàn thành theo lược đồ, các tab trình soạn thảo và lịch sử truy vấn có thể tìm kiếm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于架构的自动补全、编辑器标签页和可搜索的查询历史。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依結構描述自動完成、編輯器標籤頁與可搜尋的查詢記錄。"
+          }
+        }
+      }
+    },
+    "Change cells in the grid and review the SQL before you save." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그리드에서 셀을 바꾸고 저장하기 전에 SQL을 검토하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablodaki hücreleri değiştirin ve kaydetmeden önce SQL'i inceleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa ô ngay trong bảng và xem lại SQL trước khi lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改单元格，保存前先检查 SQL。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改儲存格，儲存前先檢查 SQL。"
+          }
+        }
+      }
+    },
+    "Choose File > Open Quickly… and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일 > 빠르게 열기…를 선택하고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için Dosya > Hızlı Aç… öğesini seçin ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn Tệp > Mở nhanh… và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择“文件 > 快速打开…”并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇「檔案 > 快速開啟…」並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
+          }
+        }
+      }
+    },
+    "Compare & Sync With…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음과 비교 및 동기화…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şununla Karşılaştır ve Eşitle…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So sánh & Đồng bộ với…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与之比较与同步…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與之比較與同步…"
+          }
+        }
+      }
+    },
+    "Connect Securely" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안전하게 연결"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Güvenle Bağlanın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối an toàn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全連線"
+          }
+        }
+      }
+    },
+    "Connect to your own database, or open the sample database to look around." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 사용하는 데이터베이스에 연결하거나, 샘플 데이터베이스를 열어 둘러보세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi veritabanınıza bağlanın veya göz atmak için örnek veritabanını açın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối tới cơ sở dữ liệu của bạn, hoặc mở cơ sở dữ liệu mẫu để khám phá."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到你自己的数据库，或打开示例数据库看看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線到你自己的資料庫，或開啟範例資料庫看看。"
+          }
+        }
+      }
+    },
+    "Edit Data in Place" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 자리에서 데이터 편집"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verileri Yerinde Düzenleyin"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉnh sửa dữ liệu tại chỗ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地编辑数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地編輯資料"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Choose View > Show Query History to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. 보기 > 쿼리 기록 보기를 선택하여 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için Görünüm > Sorgu Geçmişini Göster öğesini seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Chọn Xem > Hiện lịch sử truy vấn để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。选择“显示 > 显示查询历史”搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。選擇「顯示方式 > 顯示查詢記錄」搜尋它們，並將其中一個載回編輯器。"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Press %@ to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. %@을(를) 눌러 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için %@ tuşlarına basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Nhấn %@ để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。按 %@ 搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。按 %@ 搜尋它們，並將其中一個載回編輯器。"
+          }
+        }
+      }
+    },
+    "Find Past Queries" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지난 쿼리 찾기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geçmiş Sorguları Bulun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tìm các truy vấn trước đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找过去的查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找過去的查詢"
+          }
+        }
+      }
+    },
+    "Getting Started" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작하기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlarken"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bắt đầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入门"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入門"
+          }
+        }
+      }
+    },
+    "Keep a Table Open" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블 열어 두기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir Tabloyu Açık Tutun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ bảng luôn mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格開啟"
+          }
+        }
+      }
+    },
+    "Many Databases, One App" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하나의 앱, 다양한 데이터베이스"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek Uygulamada Birçok Veritabanı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhiều cơ sở dữ liệu, một ứng dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个应用，多种数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個 App，多種資料庫"
+          }
+        }
+      }
+    },
+    "Move Group To" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 이동"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grubu Taşı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển nhóm đến"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动分组到"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動群組至"
+          }
+        }
+      }
+    },
+    "MySQL, PostgreSQL, SQLite, ClickHouse, and Redis are built in. Others install when you choose them." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse, Redis가 기본 포함되어 있습니다. 다른 데이터베이스는 선택할 때 설치됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse ve Redis yerleşik gelir. Diğerleri seçtiğinizde yüklenir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse và Redis có sẵn. Các loại khác được cài khi bạn chọn chúng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他数据库在你选择时安装。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "內建 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他資料庫在你選擇時安裝。"
+          }
+        }
+      }
+    },
+    "New Subgroup…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 하위 그룹…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni Alt Grup…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm con mới…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子分组…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增子群組…"
+          }
+        }
+      }
+    },
+    "No connections have the selected tags." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 태그가 있는 연결이 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçili etiketlere sahip bağlantı yok."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có kết nối nào mang các thẻ đã chọn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有连接带有所选标签。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有連線帶有所選標籤。"
+          }
+        }
+      }
+    },
+    "Open Any Table by Name" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름으로 테이블 열기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herhangi Bir Tabloyu Adıyla Açın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở bất kỳ bảng nào theo tên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按名称打开任意表格"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依名稱開啟任何表格"
+          }
+        }
+      }
+    },
+    "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 키체인에 보관됩니다. SSH 터널이나 SSL/TLS로 연결하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parolalar Anahtar Zinciri'nizde kalır. SSH tüneli üzerinden ya da SSL/TLS ile bağlanın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu được giữ trong Chuỗi khóa. Kết nối qua đường hầm SSH hoặc SSL/TLS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码保存在你的钥匙串中。可通过 SSH 隧道或 SSL/TLS 连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 通道或 SSL/TLS 連線。"
+          }
+        }
+      }
+    },
+    "Press %@ and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 누르고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için %@ tuşlarına basın ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấn %@ và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
+          }
+        }
+      }
+    },
+    "Write and Run SQL" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL 작성 및 실행"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL Yazın ve Çalıştırın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viết và chạy SQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编写并运行 SQL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撰寫並執行 SQL"
+          }
+        }
+      }
+    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11524,40 +12306,6 @@
     "A dump of chosen tables may not restore on its own. Sequences, types, schemas and tables it references are left out." : {
 
     },
-    "A fast, lightweight native macOS database client" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "빠르고 가벼운 macOS 네이티브 데이터베이스 클라이언트"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hızlı, hafif yerel macOS veritabanı istemcisi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ứng dụng quản lý cơ sở dữ liệu gốc macOS nhanh và nhẹ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快速、轻量的原生 macOS 数据库客户端"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快速、輕量的原生 macOS 資料庫用戶端"
-          }
-        }
-      }
-    },
     "A filter is one expression. Remove the semicolon." : {
 
     },
@@ -16254,40 +17002,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由 AI 產生。套用前請先檢查。"
-          }
-        }
-      }
-    },
-    "AI-Powered Assistant" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 기반 어시스턴트"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI Destekli Asistan"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trợ lý AI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 助手"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI 助理"
           }
         }
       }
@@ -24313,40 +25027,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "瀏覽資料表"
-          }
-        }
-      }
-    },
-    "Browse, edit, and manage your data with ease" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "데이터를 간편하게 탐색, 편집 및 관리"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verilerinizi kolayca görüntüleyin, düzenleyin ve yönetin"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Duyệt, chỉnh sửa và quản lý dữ liệu dễ dàng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻松浏览、编辑和管理数据"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "輕鬆瀏覽、編輯和管理你的資料"
           }
         }
       }
@@ -36551,40 +37231,6 @@
         }
       }
     },
-    "Connect to popular databases with full feature support" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모든 기능을 지원하는 인기 데이터베이스에 연결"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tam özellik desteğiyle popüler veritabanlarına bağlanın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối với các cơ sở dữ liệu phổ biến với đầy đủ tính năng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接主流数据库，功能全面"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連線主流資料庫,功能完整支援"
-          }
-        }
-      }
-    },
     "Connect to the database before starting this operation." : {
       "localizations" : {
         "ko" : {
@@ -42951,40 +43597,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "建立連線以開始使用"
-          }
-        }
-      }
-    },
-    "Create a connection to get started with\nyour databases." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "데이터베이스 사용을 시작하려면\n연결을 생성하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veritabanlarınızla başlamak için\nbir bağlantı oluşturun."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tạo kết nối để bắt đầu sử dụng\ncơ sở dữ liệu của bạn."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建连接以开始使用\n您的数据库。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "建立連線以開始使用\n你的資料庫。"
           }
         }
       }
@@ -70731,40 +71343,6 @@
         }
       }
     },
-    "Get intelligent SQL suggestions and query assistance" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지능형 SQL 제안 및 쿼리 지원 받기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akıllı SQL önerileri ve sorgu yardımı alın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhận gợi ý SQL thông minh và hỗ trợ truy vấn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "获取智能 SQL 建议和查询辅助"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取得智慧 SQL 建議與查詢輔助"
-          }
-        }
-      }
-    },
     "Get Server Dashboard" : {
       "localizations" : {
         "ko" : {
@@ -70795,40 +71373,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取得伺服器儀表板"
-          }
-        }
-      }
-    },
-    "Get Started" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "시작하기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başlayın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bắt đầu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "开始使用"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "開始使用"
           }
         }
       }
@@ -78865,40 +79409,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "整合…"
-          }
-        }
-      }
-    },
-    "Interactive Data Grid" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "대화형 데이터 그리드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Etkileşimli Veri Tablosu"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lưới dữ liệu tương tác"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "交互式数据网格"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "互動式資料格線"
           }
         }
       }
@@ -92688,40 +93198,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MySQL 和 MariaDB。移除資料表的下一個鍵值。欄位仍保留 AUTO_INCREMENT 屬性，還原資料列時會依資料設定計數器。"
-          }
-        }
-      }
-    },
-    "MySQL, PostgreSQL & SQLite" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL & SQLite"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL & SQLite"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL & SQLite"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL、PostgreSQL 和 SQLite"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL、PostgreSQL 和 SQLite"
           }
         }
       }
@@ -132382,7 +132858,38 @@
       }
     },
     "Search Connections" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 검색"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantılarda Ara"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tìm kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋連線"
+          }
+        }
+      }
     },
     "Search databases" : {
       "localizations" : {
@@ -133395,40 +133902,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "區段標題"
-          }
-        }
-      }
-    },
-    "Secure Connections" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "보안 연결"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güvenli Bağlantılar"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối bảo mật"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全连接"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全連線"
           }
         }
       }
@@ -140837,40 +141310,6 @@
         }
       }
     },
-    "Smart SQL Editor" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "스마트 SQL 편집기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akıllı SQL Düzenleyici"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trình soạn SQL thông minh"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智能 SQL 编辑器"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智慧 SQL 編輯器"
-          }
-        }
-      }
-    },
     "Smart value detection" : {
       "localizations" : {
         "ko" : {
@@ -143750,40 +144189,6 @@
     },
     "SSH Tunnel: %@" : {
 
-    },
-    "SSH tunneling and SSL/TLS encryption support" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SSH 터널링 및 SSL/TLS 암호화 지원"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SSH tünelleme ve SSL/TLS şifreleme desteği"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hỗ trợ đường hầm SSH và mã hóa SSL/TLS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SSH 隧道和 SSL/TLS 加密支持"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支援 SSH 隧道與 SSL/TLS 加密"
-          }
-        }
-      }
     },
     "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server." : {
       "extractionState" : "stale",
@@ -148893,40 +149298,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "語法顏色"
-          }
-        }
-      }
-    },
-    "Syntax highlighting, autocomplete, and multi-tab editing" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구문 강조, 자동 완성 및 다중 탭 편집"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sözdizimi vurgulama, otomatik tamamlama ve çoklu sekme düzenleme"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tô sáng cú pháp, tự động hoàn thành và chỉnh sửa nhiều tab"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "语法高亮、自动补全和多标签编辑"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "語法上色、自動完成與多分頁編輯"
           }
         }
       }
@@ -167060,40 +167431,6 @@
         }
       }
     },
-    "Try a different search term." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다른 검색어를 입력해 보십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Farklı bir arama terimi deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thử từ khóa tìm kiếm khác."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请尝试其他搜索词。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請嘗試其他搜尋詞。"
-          }
-        }
-      }
-    },
     "Try adjusting your search terms\nor date filter." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -167159,74 +167496,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重試"
-          }
-        }
-      }
-    },
-    "Try Sample Database" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "샘플 데이터베이스 사용해 보기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Örnek Veritabanını Dene"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng thử cơ sở dữ liệu mẫu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "试用示例数据库"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "試用範例資料庫"
-          }
-        }
-      }
-    },
-    "Try the sample database, or click + above to add your own." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "샘플 데이터베이스를 사용하거나 위의 +를 클릭하여 데이터베이스를 추가하십시오."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Örnek veritabanını deneyin veya kendi bağlantınızı eklemek için yukarıdaki + düğmesine tıklayın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dùng thử cơ sở dữ liệu mẫu, hoặc bấm + ở trên để thêm của riêng bạn."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "试用示例数据库，或点按上方的 + 添加你自己的数据库。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "試用範例資料庫，或點按上方的 + 來新增你自己的資料庫。"
           }
         }
       }
@@ -174198,40 +174467,6 @@
         }
       }
     },
-    "What you can do" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "사용 가능한 기능"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neler yapabilirsiniz"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bạn có thể làm gì"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "您可以做什么"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你可以做什麼"
-          }
-        }
-      }
-    },
     "When enabled, clicking a new table replaces the current clean table tab instead of opening a new tab" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -176656,40 +176891,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每次連線時都會要求你輸入驗證碼。"
-          }
-        }
-      }
-    },
-    "You're all set!" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "모든 준비가 완료되었습니다!"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hazırsınız!"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bạn đã sẵn sàng!"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一切就绪！"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一切就緒！"
           }
         }
       }

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Empty state in the inspector and the assistant for a connection that is not up.
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
+- Tips for preview tabs, Open Quickly, and query history.
 - **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
 
 ### Changed
@@ -18,8 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
+- First launch opening on the welcome window, whose empty list offers the sample database and import from another app.
+- New Connection… and Import on the welcome window, named as in the File menu.
+- Open Project Folder… in File > Import.
+- First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 
 ### Fixed
+
+- Blank welcome window list when a search matched nothing and a favorite existed.
+- Welcome window reading No Connections while a tag filter hid every connection.
+- Favorited connection inside a group listed twice on the welcome window.
+- Welcome window tag filter stuck on a tag no connection carries any more, hiding every connection.
+- Collapsing every group on the welcome window undone at the next launch.
+- Linked Folders and Team Library connections ignoring the welcome window search, with no context menu.
+- Dragging a connection in filtered welcome window results snapping back without moving it.
+- Welcome window context menu leaving linked connections out of a mixed selection.
 
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)
@@ -50,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row numbers keeping the selection's accent colour after the data grid lost focus.
 - Clicks and double-clicks below the last row ignored in the row-number column.
 - Column headings out of line with their columns after moving to a column hidden under the row numbers.
+- Object browser replaced by "No Tables" for a database with procedures but no tables.
+- Procedures, functions and triggers missing from the object browser on Oracle, Snowflake, BigQuery and Dameng.
+- Empty schema list labelled "No Datasets" on Oracle, Snowflake, Dameng and Trino.
 - Connect error blaming a missing plugin for a connection whose database type is not recognized.
 - Connecting silently switching a disabled plugin back on.
 - Plugin install error replaced by "not installed" when connecting.

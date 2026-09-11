@@ -19,6 +19,7 @@ extension MainContentCoordinator {
             quickSwitcherPanel.dismiss()
             return
         }
+        FeatureTipSignals.quickSwitcherOpened()
         let browseSchema = services.databaseManager.session(for: connectionId)?.browseSchema
         let switcherScope = browseScope
             ?? DatabaseScope(connectionId: connectionId, database: connection.database, schema: nil)
