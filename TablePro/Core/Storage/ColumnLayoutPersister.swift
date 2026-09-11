@@ -8,7 +8,7 @@ import os
 import TableProSyncTransport
 
 @MainActor
-final class FileColumnLayoutPersister: ColumnLayoutPersisting {
+final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettingsStore {
     static let shared: FileColumnLayoutPersister = {
         let persister = FileColumnLayoutPersister()
         persister.performScopeMigration()
@@ -131,20 +131,23 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
     /// Persisted before either sync marker is written, because `markDeleted` posts a change
     /// notification that can start a sync, and a sync reading the old file would put the entry
     /// back under the name that has gone.
-    func rename(from oldKey: ColumnLayoutTableKey, to newKey: ColumnLayoutTableKey) {
-        var entries = loadEntries(for: oldKey.connectionId)
-        guard let entry = entries.removeValue(forKey: oldKey.storageKey) else { return }
-        entries[newKey.storageKey] = entry
-        cache[oldKey.connectionId] = entries
-        writeEntries(entries, for: oldKey.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey.storageKey))
-        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey.storageKey))
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
+        let oldKey = oldScope.storageComponent
+        let newKey = newScope.storageComponent
+        guard oldKey != newKey else { return }
+        var entries = loadEntries(for: oldScope.connectionId)
+        guard let entry = entries.removeValue(forKey: oldKey) else { return }
+        entries[newKey] = entry
+        cache[oldScope.connectionId] = entries
+        writeEntries(entries, for: oldScope.connectionId)
+        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey))
+        syncTracker.markDeleted(.settings, id: Self.syncCategory(for: oldKey))
     }
 
     /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
     /// filter store, and for the same reason: the tables that have a layout are whatever the user
     /// has opened over the life of the connection, not what is loaded now.
-    func renameScope(
+    func renameContainer(
         connectionId: UUID,
         fromDatabase: String,
         fromSchema: String?,
@@ -172,6 +175,16 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting {
             syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
             syncTracker.markDeleted(.settings, id: Self.syncCategory(for: key))
         }
+    }
+
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        var deletedCategories: [String] = []
+        for connectionId in connectionIds {
+            deletedCategories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
+            cache[connectionId] = [:]
+            removeFile(for: connectionId)
+        }
+        syncTracker.markDeleted(.settings, ids: deletedCategories)
     }
 
     func clear(for key: ColumnLayoutTableKey) {

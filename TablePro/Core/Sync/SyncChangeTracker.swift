@@ -61,6 +61,14 @@ final class SyncChangeTracker: Sendable {
         postChangeNotification()
     }
 
+    func markDeleted(_ type: SyncRecordType, ids: [String]) {
+        guard !isSuppressed, !ids.isEmpty else { return }
+        metadataStorage.removeDirty(ids, type: type)
+        metadataStorage.addTombstones(ids, type: type)
+        Self.logger.trace("Marked deleted: \(type.rawValue) x\(ids.count)")
+        postChangeNotification()
+    }
+
     // MARK: - Query
 
     func dirtyRecords(for type: SyncRecordType) -> Set<String> {

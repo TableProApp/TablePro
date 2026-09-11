@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import Testing
 import TableProSyncTransport
+import Testing
 
 @testable import TablePro
 
@@ -15,9 +15,9 @@ struct SyncChangeTrackerTests {
     private let metadata: SyncMetadataStorage
     private let tracker: SyncChangeTracker
 
-    init() {
+    init() throws {
         let unique = UUID().uuidString
-        let syncDefaults = UserDefaults(suiteName: "com.TablePro.tests.SyncChangeTracker.\(unique)")!
+        let syncDefaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.SyncChangeTracker.\(unique)"))
         metadata = SyncMetadataStorage(userDefaults: syncDefaults)
         tracker = SyncChangeTracker(metadataStorage: metadata)
     }
@@ -47,6 +47,34 @@ struct SyncChangeTrackerTests {
 
         #expect(!tracker.dirtyRecords(for: .connection).contains("conn-1"))
         #expect(metadata.tombstones(for: .connection).contains { $0.id == "conn-1" })
+    }
+
+    @Test("markDeleted with multiple ids clears each dirty flag and tombstones each id once")
+    func markDeletedMultiple() {
+        tracker.markDirty(.settings, ids: ["a", "b", "kept"])
+        tracker.markDeleted(.settings, ids: ["a", "b"])
+
+        #expect(tracker.dirtyRecords(for: .settings) == ["kept"])
+        #expect(metadata.tombstones(for: .settings).map(\.id).sorted() == ["a", "b"])
+    }
+
+    @Test("markDeleted with an empty id list records nothing")
+    func markDeletedEmptyIsNoop() {
+        tracker.markDirty(.settings, id: "kept")
+        tracker.markDeleted(.settings, ids: [])
+
+        #expect(tracker.dirtyRecords(for: .settings) == ["kept"])
+        #expect(metadata.tombstones(for: .settings).isEmpty)
+    }
+
+    @Test("Suppression makes a batch markDeleted a no-op")
+    func suppressionDisablesBatchDelete() {
+        tracker.markDirty(.settings, id: "a")
+        tracker.isSuppressed = true
+        tracker.markDeleted(.settings, ids: ["a"])
+
+        #expect(tracker.dirtyRecords(for: .settings) == ["a"])
+        #expect(metadata.tombstones(for: .settings).isEmpty)
     }
 
     @Test("Suppression makes markDirty and markDeleted no-ops")

@@ -9,7 +9,7 @@ import os
 
 @MainActor
 @Observable
-final class HighlightRuleStorage {
+final class HighlightRuleStorage: TableScopedSettingsStore {
     static let shared = HighlightRuleStorage()
 
     nonisolated private static let logger = Logger(
@@ -53,7 +53,7 @@ final class HighlightRuleStorage {
         commit(entries, for: scope.connectionId)
     }
 
-    func rename(from oldScope: TableScope, to newScope: TableScope) {
+    func renameTable(from oldScope: TableScope, to newScope: TableScope) {
         guard oldScope.storageComponent != newScope.storageComponent else { return }
         var entries = loadEntries(for: oldScope.connectionId)
         guard let moving = entries.removeValue(forKey: oldScope.storageComponent) else { return }
@@ -61,7 +61,7 @@ final class HighlightRuleStorage {
         commit(entries, for: oldScope.connectionId)
     }
 
-    func renameScope(
+    func renameContainer(
         connectionId: UUID,
         fromDatabase: String,
         fromSchema: String?,
@@ -81,11 +81,12 @@ final class HighlightRuleStorage {
         commit(entries, for: connectionId)
     }
 
-    func removeRules(for connectionIds: Set<UUID>) {
+    func purgeConnections(_ connectionIds: Set<UUID>) {
         guard !connectionIds.isEmpty else { return }
         for connectionId in connectionIds {
             cache[connectionId] = [:]
             removeFile(at: fileURL(for: connectionId))
+            removeFile(at: unreadableFileURL(for: connectionId))
         }
         revision &+= 1
     }
@@ -122,7 +123,7 @@ final class HighlightRuleStorage {
             Self.logger.error(
                 "Unreadable highlight rules for \(connectionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
             )
-            preserveUnreadableFile(at: url)
+            preserveUnreadableFile(for: connectionId)
             cache[connectionId] = [:]
             return [:]
         }
@@ -139,12 +140,12 @@ final class HighlightRuleStorage {
         }
     }
 
-    private func preserveUnreadableFile(at url: URL) {
-        let preserved = url.deletingPathExtension().appendingPathExtension("unreadable.json")
+    private func preserveUnreadableFile(for connectionId: UUID) {
+        let preserved = unreadableFileURL(for: connectionId)
         let fileManager = FileManager.default
         try? fileManager.removeItem(at: preserved)
         do {
-            try fileManager.moveItem(at: url, to: preserved)
+            try fileManager.moveItem(at: fileURL(for: connectionId), to: preserved)
         } catch {
             Self.logger.error("Failed to set aside unreadable highlight rules: \(error.localizedDescription, privacy: .public)")
         }
@@ -157,6 +158,10 @@ final class HighlightRuleStorage {
         } catch {
             Self.logger.error("Failed to remove highlight rules file: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func unreadableFileURL(for connectionId: UUID) -> URL {
+        storageDirectory.appendingPathComponent("\(connectionId.uuidString).unreadable.json")
     }
 
     private func fileURL(for connectionId: UUID) -> URL {

@@ -83,26 +83,12 @@ extension MainContentCoordinator {
         database: String,
         schema: String?
     ) {
-        FilterSettingsStorage.shared.renameLastFilters(
-            from: oldName,
-            to: newName,
-            connectionId: connectionId,
-            databaseName: database,
-            schemaName: schema
-        )
-        FileColumnLayoutPersister.shared.rename(
-            from: ColumnLayoutTableKey(
-                connectionId: connectionId, databaseName: database, schemaName: schema, tableName: oldName
-            ),
-            to: ColumnLayoutTableKey(
-                connectionId: connectionId, databaseName: database, schemaName: schema, tableName: newName
-            )
-        )
         let scopedDatabase = database.isEmpty ? nil : database
-        HighlightRuleStorage.shared.rename(
-            from: TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: oldName),
-            to: TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: newName)
-        )
+        let oldScope = TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: oldName)
+        let newScope = TableScope(connectionId: connectionId, database: scopedDatabase, schema: schema, table: newName)
+        for store in TableScopedSettingsRegistry.stores {
+            store.renameTable(from: oldScope, to: newScope)
+        }
     }
 
     private func moveFavorite(_ ref: DatabaseTreeTableRef, to newName: String, database: String?) {
@@ -136,18 +122,12 @@ extension MainContentCoordinator {
         retargetPendingOperations(
             database: database, schema: schema, toDatabase: toDatabase, toSchema: toSchema
         )
-        FilterSettingsStorage.shared.renameScope(
-            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
-            toDatabase: toDatabase, toSchema: toSchema
-        )
-        FileColumnLayoutPersister.shared.renameScope(
-            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
-            toDatabase: toDatabase, toSchema: toSchema
-        )
-        HighlightRuleStorage.shared.renameScope(
-            connectionId: connectionId, fromDatabase: database, fromSchema: schema,
-            toDatabase: toDatabase, toSchema: toSchema
-        )
+        for store in TableScopedSettingsRegistry.stores {
+            store.renameContainer(
+                connectionId: connectionId, fromDatabase: database, fromSchema: schema,
+                toDatabase: toDatabase, toSchema: toSchema
+            )
+        }
         retargetFavoriteTables(
             database: database, schema: schema, toDatabase: toDatabase, toSchema: toSchema
         )
