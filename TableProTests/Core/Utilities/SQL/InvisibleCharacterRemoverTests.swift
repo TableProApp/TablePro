@@ -14,7 +14,7 @@ struct InvisibleCharacterRemoverTests {
     private func clean(
         _ text: String,
         scope: NSRange? = nil,
-        dialect: SqlDialect = .mysql,
+        rules: SQLLexicalRules = SQLLexicalRules(dialect: .mysql),
         lineEnding: String = "\n"
     ) -> String {
         let nsText = text as NSString
@@ -23,7 +23,7 @@ struct InvisibleCharacterRemoverTests {
             in: nsText,
             scope: range,
             skippingLiteralsAndComments: scope == nil,
-            dialect: dialect,
+            rules: rules,
             lineEnding: lineEnding
         )
         let result = NSMutableString(string: text)
@@ -68,13 +68,32 @@ struct InvisibleCharacterRemoverTests {
     @Test("A PostgreSQL dollar-quoted body is kept")
     func dollarQuotedBodyIsKept() {
         let text = "SELECT\u{A0}$$a\u{A0}b$$"
-        #expect(clean(text, dialect: .postgres) == "SELECT $$a\u{A0}b$$")
+        #expect(clean(text, rules: SQLLexicalRules(dialect: .postgres)) == "SELECT $$a\u{A0}b$$")
     }
 
     @Test("A MySQL conditional comment runs, so it is cleaned like code")
     func conditionalCommentIsCode() {
         #expect(clean("/*!40101 SET\u{A0}NAMES utf8 */") == "/*!40101 SET NAMES utf8 */")
         #expect(clean("/* a\u{A0}b */") == "/* a\u{A0}b */")
+    }
+
+    @Test("A backslash-escaped quote does not end the literal on engines that escape with a backslash")
+    func backslashEscapedQuote() {
+        let rules = SQLLexicalRules(dialect: .generic, backslashEscapes: true, bracketsDelimitIdentifiers: false)
+        #expect(clean("SELECT\u{A0}'it\\'s\u{A0}x'", rules: rules) == "SELECT 'it\\'s\u{A0}x'")
+    }
+
+    @Test("A PostgreSQL escape string and a nested block comment keep their characters")
+    func postgresEscapeStringAndNestedComment() {
+        let rules = SQLLexicalRules(dialect: .postgres)
+        #expect(clean("SELECT\u{A0}E'a\\'\u{A0}b'", rules: rules) == "SELECT E'a\\'\u{A0}b'")
+        #expect(clean("/* a /* b */\u{A0} */ SELECT\u{A0}1", rules: rules) == "/* a /* b */\u{A0} */ SELECT 1")
+    }
+
+    @Test("A bracketed identifier keeps its characters where brackets quote names")
+    func bracketedIdentifier() {
+        let rules = SQLLexicalRules(dialect: .sqlite, backslashEscapes: false, bracketsDelimitIdentifiers: true)
+        #expect(clean("SELECT\u{A0}[a\u{A0}b]", rules: rules) == "SELECT [a\u{A0}b]")
     }
 
     @Test("A MySQL hash comment is kept")
@@ -111,7 +130,7 @@ struct InvisibleCharacterRemoverTests {
             in: text,
             scope: NSRange(location: 0, length: text.length),
             skippingLiteralsAndComments: true,
-            dialect: .mysql,
+            rules: SQLLexicalRules(dialect: .mysql),
             lineEnding: "\n"
         )
         #expect(replacements.isEmpty)
@@ -124,7 +143,7 @@ struct InvisibleCharacterRemoverTests {
             in: text,
             scope: NSRange(location: 0, length: text.length),
             skippingLiteralsAndComments: true,
-            dialect: .mysql,
+            rules: SQLLexicalRules(dialect: .mysql),
             lineEnding: "\n"
         )
         #expect(InvisibleCharacterRemover.mappedOffset(0, through: replacements) == 0)
