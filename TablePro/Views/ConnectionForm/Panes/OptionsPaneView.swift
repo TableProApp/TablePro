@@ -122,11 +122,12 @@ struct OptionsPaneView: View {
 
     @ViewBuilder
     private var safeModeRow: some View {
-        if coordinator.readOnlyEnforcement != nil {
-            LabeledContent(String(localized: "Safe Mode"), value: SafeModeLevel.readOnly.displayName)
+        let levels = SafeModeFloor.levels(allowedBy: coordinator.safeModeFloor)
+        if levels.count == 1 {
+            LabeledContent(String(localized: "Safe Mode"), value: coordinator.effectiveSafeModeLevel.displayName)
         } else {
-            Picker(String(localized: "Safe Mode"), selection: $coordinator.customization.safeModeLevel) {
-                ForEach(SafeModeLevel.allCases) { level in
+            Picker(String(localized: "Safe Mode"), selection: $coordinator.effectiveSafeModeLevel) {
+                ForEach(levels) { level in
                     Text(level.displayName).tag(level)
                 }
             }
@@ -136,8 +137,8 @@ struct OptionsPaneView: View {
     @ViewBuilder
     private var accessFooter: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let enforcement = coordinator.readOnlyEnforcement {
-                Text(enforcement.explanation)
+            if let floor = coordinator.safeModeFloor {
+                Text(floor.explanation)
             }
             if aiIsEnabled {
                 // swiftlint:disable:next line_length

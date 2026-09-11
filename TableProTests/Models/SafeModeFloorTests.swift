@@ -1,5 +1,5 @@
 //
-//  ReadOnlyEnforcementTests.swift
+//  SafeModeFloorTests.swift
 //  TableProTests
 //
 
@@ -9,9 +9,9 @@ import Testing
 
 @testable import TablePro
 
-@Suite("Read-only enforcement")
+@Suite("Safe Mode floor")
 @MainActor
-struct ReadOnlyEnforcementTests {
+struct SafeModeFloorTests {
     private func remoteFileConnection(preferred: SafeModeLevel = .silent) -> DatabaseConnection {
         var connection = DatabaseConnection(name: "Remote", type: .sqlite, safeModeLevel: preferred)
         connection.sshTunnelMode = .inline(
@@ -20,18 +20,48 @@ struct ReadOnlyEnforcementTests {
         return connection
     }
 
-    @Test("A read-only engine outranks a remote file, and neither leaves no enforcement")
+    @Test("A read-only engine outranks a remote file, and both outrank the profile")
     func resolveOrder() {
-        #expect(ReadOnlyEnforcement.resolve(isEngineReadOnly: true, opensRemoteDatabaseFile: true) == .readOnlyEngine)
-        #expect(ReadOnlyEnforcement.resolve(isEngineReadOnly: false, opensRemoteDatabaseFile: true) == .remoteDatabaseFile)
-        #expect(ReadOnlyEnforcement.resolve(isEngineReadOnly: false, opensRemoteDatabaseFile: false) == nil)
+        let engine = SafeModeFloor.resolve(isEngineReadOnly: true, opensRemoteDatabaseFile: true, managedMinimum: .alert)
+        let remote = SafeModeFloor.resolve(isEngineReadOnly: false, opensRemoteDatabaseFile: true, managedMinimum: .alert)
+        let managed = SafeModeFloor.resolve(isEngineReadOnly: false, opensRemoteDatabaseFile: false, managedMinimum: .alert)
+
+        #expect(engine == SafeModeFloor(level: .readOnly, reason: .readOnlyEngine))
+        #expect(remote == SafeModeFloor(level: .readOnly, reason: .remoteDatabaseFile))
+        #expect(managed == SafeModeFloor(level: .alert, reason: .managedPolicy))
     }
 
-    @Test("Only Read-Only can be chosen while enforcement applies", arguments: SafeModeLevel.allCases)
-    func allowsChoosing(level: SafeModeLevel) {
-        #expect(ReadOnlyEnforcement.allowsChoosing(level, under: nil))
-        #expect(ReadOnlyEnforcement.allowsChoosing(level, under: .readOnlyEngine) == (level == .readOnly))
-        #expect(ReadOnlyEnforcement.allowsChoosing(level, under: .remoteDatabaseFile) == (level == .readOnly))
+    @Test("No condition and no profile, or a profile at Silent, leaves no floor", arguments: [nil, SafeModeLevel.silent])
+    func noFloor(managedMinimum: SafeModeLevel?) {
+        #expect(
+            SafeModeFloor.resolve(isEngineReadOnly: false, opensRemoteDatabaseFile: false, managedMinimum: managedMinimum)
+                == nil
+        )
+    }
+
+    @Test("A floor allows its own level and every stricter one", arguments: SafeModeLevel.allCases)
+    func allowsStricterLevels(candidate: SafeModeLevel) {
+        let floor = SafeModeFloor(level: .safeMode, reason: .managedPolicy)
+        let stricter: Set<SafeModeLevel> = [.safeMode, .safeModeFull, .readOnly]
+
+        #expect(floor.allows(candidate) == stricter.contains(candidate))
+        #expect(floor.raising(candidate) == (stricter.contains(candidate) ? candidate : .safeMode))
+    }
+
+    @Test("The choosable levels are the ones at or above the floor")
+    func choosableLevels() {
+        #expect(SafeModeFloor.levels(allowedBy: nil) == SafeModeLevel.allCases)
+        #expect(SafeModeFloor.levels(allowedBy: SafeModeFloor(level: .readOnly, reason: .readOnlyEngine)) == [.readOnly])
+        #expect(
+            SafeModeFloor.levels(allowedBy: SafeModeFloor(level: .alertFull, reason: .managedPolicy))
+                == [.alertFull, .safeMode, .safeModeFull, .readOnly]
+        )
+    }
+
+    @Test("The profile's explanation names the level it requires")
+    func managedExplanationNamesLevel() {
+        let floor = SafeModeFloor(level: .safeModeFull, reason: .managedPolicy)
+        #expect(floor.explanation.contains(SafeModeLevel.safeModeFull.displayName))
     }
 
     @Test("A read-only engine reads as Read-Only and keeps the user's own level", arguments: [
@@ -40,7 +70,7 @@ struct ReadOnlyEnforcementTests {
     func readOnlyEngine(type: DatabaseType) {
         let connection = DatabaseConnection(name: "Engine", type: type, safeModeLevel: .alert)
 
-        #expect(connection.readOnlyEnforcement == .readOnlyEngine)
+        #expect(connection.safeModeFloor?.reason == .readOnlyEngine)
         #expect(connection.safeModeLevel == .readOnly)
         #expect(connection.preferredSafeModeLevel == .alert)
     }
@@ -49,7 +79,7 @@ struct ReadOnlyEnforcementTests {
     func writableEngine() {
         let connection = DatabaseConnection(name: "PG", type: .postgresql, safeModeLevel: .alert)
 
-        #expect(connection.readOnlyEnforcement == nil)
+        #expect(connection.safeModeFloor == nil)
         #expect(connection.safeModeLevel == .alert)
     }
 
@@ -57,7 +87,7 @@ struct ReadOnlyEnforcementTests {
     func remoteFile() {
         let connection = remoteFileConnection()
 
-        #expect(connection.readOnlyEnforcement == .remoteDatabaseFile)
+        #expect(connection.safeModeFloor?.reason == .remoteDatabaseFile)
         #expect(connection.safeModeLevel == .readOnly)
         #expect(connection.preferredSafeModeLevel == .silent)
     }
@@ -98,7 +128,6 @@ struct ReadOnlyEnforcementTests {
         #expect(ConnectionSession(connection: engine).safeModeLevel == .readOnly)
     }
 
-
     @Test("Choosing a weaker level on an enforced session keeps it Read-Only")
     func setSafeModeLevelKeepsEnforcement() {
         let connection = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .readOnly)
@@ -113,7 +142,7 @@ struct ReadOnlyEnforcementTests {
         #expect(session?.connection.preferredSafeModeLevel == .silent)
     }
 
-    @Test("Picking Read-Only on a held connection leaves the saved level alone")
+    @Test("Picking the level already in force on a held connection leaves the saved level alone")
     func chooseOnHeldConnectionKeepsPreference() {
         let connection = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .silent)
         DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
@@ -124,6 +153,17 @@ struct ReadOnlyEnforcementTests {
         let session = DatabaseManager.shared.session(for: connection.id)
         #expect(session?.connection.preferredSafeModeLevel == .silent)
         #expect(session?.safeModeLevel == .readOnly)
+    }
+
+    @Test("Picking a level below the floor changes nothing")
+    func chooseBelowFloorIsIgnored() {
+        let connection = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .alert)
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        DatabaseManager.shared.chooseSafeModeLevel(.silent, for: connection.id)
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.connection.preferredSafeModeLevel == .alert)
     }
 
     @Test("Picking a level on an ordinary connection applies it")

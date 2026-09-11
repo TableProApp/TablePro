@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Blank welcome window list when a search matched nothing and a favorite existed.
 - Welcome window reading No Connections while a tag filter hid every connection.

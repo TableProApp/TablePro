@@ -590,11 +590,14 @@ extension DatabaseManager {
 
     /// The user picking a level from the toolbar or the Database menu.
     ///
-    /// A connection held at Read-Only offers only the level already in force, so a pick there
-    /// changes nothing, and writing it would replace the level the user saved, which is the one
-    /// that comes back once the connection stops being held.
+    /// A level below the connection's floor is not on offer, and picking the level already in
+    /// force changes nothing: writing it would replace the level the user saved, which is the one
+    /// that comes back once the floor lifts.
     func chooseSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
-        guard activeSessions[connectionId]?.connection.readOnlyEnforcement == nil else { return }
+        guard let connection = activeSessions[connectionId]?.connection,
+              level != connection.safeModeLevel,
+              connection.safeModeFloor?.allows(level) ?? true
+        else { return }
         setSafeModeLevel(level, for: connectionId)
     }
 

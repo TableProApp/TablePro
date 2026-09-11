@@ -446,10 +446,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard isConnected,
               let raw = menuItem.representedObject as? String,
               let level = SafeModeLevel(rawValue: raw) else { return false }
-        return ReadOnlyEnforcement.allowsChoosing(
-            level,
-            under: commandActions?.coordinator?.connection.readOnlyEnforcement
-        )
+        return commandActions?.coordinator?.connection.safeModeFloor?.allows(level) ?? true
     }
 
     private func isCurrentResultView(_ menuItem: NSMenuItem) -> Bool {
