@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Start of a line hidden under the line numbers after moving to it in a horizontally scrolled editor.
 - Editor jumping sideways on each keystroke in a long line while scrolled horizontally.
 - Cursor left off screen after pasting a long line.
+- Option+Delete and Option+Arrow splitting an emoji or accented letter in the SQL and JSON editors.
 - Line number column keeping a stale width after the line count drops below 1,000 or the font size changes.
 - Line after the data grid's row numbers drawn twice as thick as the other column lines.
 - `#` heading in the data grid darker and dimmer than the headings beside it.

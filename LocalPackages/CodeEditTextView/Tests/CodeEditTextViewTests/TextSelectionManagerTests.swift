@@ -25,7 +25,7 @@ final class TextSelectionManagerTests: XCTestCase {
     func test_updateSelectionLeft() {
         let selectionManager = selectionManager()
         let locations = [2, 0, 14, 14]
-        let expectedRanges = [(1, 1), (0, 0), (12, 2), (13, 1)]
+        let expectedRanges = [(1, 1), (0, 0), (12, 2), (12, 2)]
         let decomposeCharacters = [false, false, false, true]
 
         for idx in locations.indices {
@@ -50,7 +50,7 @@ final class TextSelectionManagerTests: XCTestCase {
     func test_updateSelectionRight() {
         let selectionManager = selectionManager()
         let locations = [2, 0, 14, 13, 12]
-        let expectedRanges = [(2, 1), (0, 1), (14, 0), (12, 2), (12, 1)]
+        let expectedRanges = [(2, 1), (0, 1), (14, 0), (12, 2), (12, 2)]
         let decomposeCharacters = [false, false, false, false, true]
 
         for idx in locations.indices {

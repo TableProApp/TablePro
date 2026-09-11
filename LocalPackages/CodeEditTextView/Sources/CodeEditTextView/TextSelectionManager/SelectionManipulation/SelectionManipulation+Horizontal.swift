@@ -70,14 +70,32 @@ package extension TextSelectionManager {
         delta: Int,
         decomposeCharacters: Bool
     ) -> NSRange {
-        let range = delta > 0 ? NSRange(location: offset, length: 1) : NSRange(location: offset - 1, length: 1)
         if delta > 0 && offset == string.length {
             return NSRange(location: offset, length: 0)
         } else if delta < 0 && offset == 0 {
             return NSRange(location: 0, length: 0)
         }
 
-        return decomposeCharacters ? range : string.rangeOfComposedCharacterSequences(for: range)
+        let index = delta > 0 ? offset : offset - 1
+        guard decomposeCharacters else {
+            return string.rangeOfComposedCharacterSequence(at: index)
+        }
+        return rangeOfUnicodeScalar(in: string, at: index)
+    }
+
+    private func rangeOfUnicodeScalar(in string: NSString, at index: Int) -> NSRange {
+        let unit = string.character(at: index)
+        if UTF16.isLeadSurrogate(unit),
+           index + 1 < string.length,
+           UTF16.isTrailSurrogate(string.character(at: index + 1)) {
+            return NSRange(location: index, length: 2)
+        }
+        if UTF16.isTrailSurrogate(unit),
+           index > 0,
+           UTF16.isLeadSurrogate(string.character(at: index - 1)) {
+            return NSRange(location: index - 1, length: 2)
+        }
+        return NSRange(location: index, length: 1)
     }
 
     /// Extends the selection by one "word".
@@ -95,13 +113,13 @@ package extension TextSelectionManager {
         if delta < 0 {
             enumerationOptions.formUnion(.reverse)
         }
-        var rangeToDelete = NSRange(location: offset, length: 0)
+        var wordRange = NSRange(location: offset, length: 0)
 
         var hasFoundValidWordChar = false
         string.enumerateSubstrings(
             in: NSRange(location: delta > 0 ? offset : 0, length: delta > 0 ? string.length - offset : offset),
             options: enumerationOptions
-        ) { substring, _, _, stop in
+        ) { substring, substringRange, _, stop in
             guard let substring = substring else {
                 stop.pointee = true
                 return
@@ -116,14 +134,10 @@ package extension TextSelectionManager {
             } else if CharacterSet.codeIdentifierCharacters.isSuperset(of: CharacterSet(charactersIn: substring)) {
                 hasFoundValidWordChar = true
             }
-            rangeToDelete.length += substring.count
-
-            if delta < 0 {
-                rangeToDelete.location -= substring.count
-            }
+            wordRange.formUnion(substringRange)
         }
 
-        return rangeToDelete
+        return wordRange
     }
 
     /// Extends the selection by one visual line in the direction specified (eg one line fragment).
@@ -221,13 +235,12 @@ package extension TextSelectionManager {
     /// - Returns: A new range to replace the given range for the line.
     private func findBeginningOfLineText(string: NSString, initialRange: NSRange) -> NSRange {
         var foundRange = initialRange
-        string.enumerateSubstrings(in: foundRange, options: .byCaretPositions) { substring, _, _, stop in
+        string.enumerateSubstrings(in: foundRange, options: .byCaretPositions) { substring, substringRange, _, stop in
             if let substring = substring as String? {
                 if CharacterSet
                     .whitespacesAndNewlines.subtracting(.newlines)
                     .isSuperset(of: CharacterSet(charactersIn: substring)) {
-                    foundRange.location += 1
-                    foundRange.length -= 1
+                    foundRange = NSRange(start: substringRange.max, end: initialRange.max)
                 } else {
                     stop.pointee = true
                 }
