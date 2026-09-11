@@ -32,6 +32,7 @@ final class AppSettingsStorage: Sendable {
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
+        static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
         static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
@@ -203,6 +204,16 @@ final class AppSettingsStorage: Sendable {
 
     func loadLastSchema(for connectionId: UUID) -> String? {
         defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
+    }
+
+    // MARK: - Welcome Sheet
+
+    func hasSeenWelcomeSheet() -> Bool {
+        defaults.bool(forKey: Keys.hasSeenWelcomeSheet)
+    }
+
+    func markWelcomeSheetSeen() {
+        defaults.set(true, forKey: Keys.hasSeenWelcomeSheet)
     }
 
     // MARK: - Reset

@@ -21,6 +21,8 @@ extension WelcomeViewModel {
             urlImportPresented = true
         case .openProjectFolder:
             openProjectFolder()
+        case .showWelcomeSheet:
+            presentsWelcomeSheet = true
         }
     }
 

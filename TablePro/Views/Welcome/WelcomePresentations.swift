@@ -24,6 +24,12 @@ internal struct WelcomePresentations: ViewModifier {
             }) { sheet in
                 activeSheetContent(sheet)
             }
+            .sheet(isPresented: $vm.presentsWelcomeSheet, onDismiss: {
+                vm.welcomeSheetDidDismiss()
+                onSheetDismiss()
+            }) {
+                WelcomeSheetView { vm.presentsWelcomeSheet = false }
+            }
             .modifier(WelcomeConnectionCreationOverlays(vm: vm))
             .pluginInstallPromptForType(type: $vm.pendingInstallType) { type in
                 vm.completePendingInstall(for: type)

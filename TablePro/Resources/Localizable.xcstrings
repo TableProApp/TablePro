@@ -219,6 +219,74 @@
         }
       }
     },
+    "Autocomplete from your schema, editor tabs, and a searchable query history." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스키마 기반 자동 완성, 편집기 탭, 검색 가능한 쿼리 기록을 제공합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şemanızdan otomatik tamamlama, düzenleyici sekmeleri ve aranabilir sorgu geçmişi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động hoàn thành theo lược đồ, các tab trình soạn thảo và lịch sử truy vấn có thể tìm kiếm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于架构的自动补全、编辑器标签页和可搜索的查询历史。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依結構描述自動完成、編輯器標籤頁與可搜尋的查詢記錄。"
+          }
+        }
+      }
+    },
+    "Change cells in the grid and review the SQL before you save." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그리드에서 셀을 바꾸고 저장하기 전에 SQL을 검토하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablodaki hücreleri değiştirin ve kaydetmeden önce SQL'i inceleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa ô ngay trong bảng và xem lại SQL trước khi lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改单元格，保存前先检查 SQL。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改儲存格，儲存前先檢查 SQL。"
+          }
+        }
+      }
+    },
     "Compare & Sync With…" : {
       "localizations" : {
         "ko" : {
@@ -249,6 +317,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "與之比較與同步…"
+          }
+        }
+      }
+    },
+    "Connect Securely" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안전하게 연결"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Güvenle Bağlanın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối an toàn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全連線"
           }
         }
       }
@@ -287,6 +389,74 @@
         }
       }
     },
+    "Edit Data in Place" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 자리에서 데이터 편집"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verileri Yerinde Düzenleyin"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉnh sửa dữ liệu tại chỗ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地编辑数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地編輯資料"
+          }
+        }
+      }
+    },
+    "Many Databases, One App" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하나의 앱, 다양한 데이터베이스"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek Uygulamada Birçok Veritabanı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhiều cơ sở dữ liệu, một ứng dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个应用，多种数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個 App，多種資料庫"
+          }
+        }
+      }
+    },
     "Move Group To" : {
       "localizations" : {
         "ko" : {
@@ -317,6 +487,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移動群組至"
+          }
+        }
+      }
+    },
+    "MySQL, PostgreSQL, SQLite, ClickHouse, and Redis are built in. Others install when you choose them." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse, Redis가 기본 포함되어 있습니다. 다른 데이터베이스는 선택할 때 설치됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse ve Redis yerleşik gelir. Diğerleri seçtiğinizde yüklenir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse và Redis có sẵn. Các loại khác được cài khi bạn chọn chúng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他数据库在你选择时安装。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "內建 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他資料庫在你選擇時安裝。"
           }
         }
       }
@@ -385,6 +589,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "沒有連線帶有所選標籤。"
+          }
+        }
+      }
+    },
+    "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 키체인에 보관됩니다. SSH 터널이나 SSL/TLS로 연결하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parolalar Anahtar Zinciri'nizde kalır. SSH tüneli üzerinden ya da SSL/TLS ile bağlanın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu được giữ trong Chuỗi khóa. Kết nối qua đường hầm SSH hoặc SSL/TLS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码保存在你的钥匙串中。可通过 SSH 隧道或 SSL/TLS 连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 通道或 SSL/TLS 連線。"
+          }
+        }
+      }
+    },
+    "Write and Run SQL" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL 작성 및 실행"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL Yazın ve Çalıştırın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viết và chạy SQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编写并运行 SQL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撰寫並執行 SQL"
           }
         }
       }

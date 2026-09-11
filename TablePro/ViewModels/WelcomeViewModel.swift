@@ -54,6 +54,7 @@ final class WelcomeViewModel {
         didSet { rebuildTree() }
     }
     private(set) var hasImportableApp = false
+    var presentsWelcomeSheet = false
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var pendingDeleteHasFavorites = false
@@ -312,6 +313,7 @@ final class WelcomeViewModel {
         teamLibraryConnections = Self.buildTeamLibraryConnections()
 
         consumePendingRouterActions()
+        presentWelcomeSheetIfFirstLaunch()
         startWelcomeRouterObservation()
     }
 

@@ -84,7 +84,7 @@ final class WelcomeViewModelTests: XCTestCase {
         return AppServices(
             appEvents: live.appEvents,
             appSettings: live.appSettings,
-            appSettingsStorage: live.appSettingsStorage,
+            appSettingsStorage: AppSettingsStorage(userDefaults: defaults),
             connectionStorage: connectionStorage,
             databaseManager: live.databaseManager,
             pluginManager: live.pluginManager,
@@ -223,6 +223,39 @@ final class WelcomeViewModelTests: XCTestCase {
 
         XCTAssertTrue(offering.hasImportableApp)
         XCTAssertFalse(viewModel.hasImportableApp)
+    }
+
+    // MARK: - Welcome Sheet
+
+    func testAFirstLaunchPresentsTheWelcomeSheetOnce() {
+        viewModel.setUp()
+        XCTAssertTrue(viewModel.presentsWelcomeSheet)
+
+        viewModel.presentsWelcomeSheet = false
+        viewModel.welcomeSheetDidDismiss()
+        let relaunched = makeViewModel()
+        relaunched.setUp()
+
+        XCTAssertFalse(relaunched.presentsWelcomeSheet, "The sheet must not come back on its own")
+    }
+
+    func testARoutedSheetWinsOverTheWelcomeSheet() {
+        welcomeRouter.route(.importFromApp)
+
+        viewModel.setUp()
+
+        XCTAssertFalse(viewModel.presentsWelcomeSheet)
+        XCTAssertNotNil(viewModel.activeSheet)
+    }
+
+    func testTheHelpMenuRequestShowsTheSheetAgain() {
+        AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
+        viewModel.setUp()
+        XCTAssertFalse(viewModel.presentsWelcomeSheet)
+
+        viewModel.handle(.showWelcomeSheet)
+
+        XCTAssertTrue(viewModel.presentsWelcomeSheet)
     }
 
     // MARK: - Favorites, Tags and Groups
