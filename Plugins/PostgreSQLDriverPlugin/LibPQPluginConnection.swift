@@ -200,7 +200,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     private func performConnect(reportingStage report: @escaping ConnectionStageReporter) throws {
-        guard let connection = buildConnectionString().withCString({ PQconnectStart($0) }) else {
+        guard let connection = connectionString.withCString({ PQconnectStart($0) }) else {
             throw LibPQPluginError.connectionFailed
         }
 
@@ -299,10 +299,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     private func configureEstablishedConnection(_ connection: OpaquePointer) {
-        "SET client_encoding TO 'UTF8'".withCString { cStr in
-            let result = PQexec(connection, cStr)
-            PQclear(result)
-        }
+        logUnexpectedClientEncoding(of: connection)
 
         let version = PQserverVersion(connection)
         guard version > 0 else { return }
@@ -319,39 +316,24 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
-    private func buildConnectionString() -> String {
-        func escapeConnParam(_ value: String) -> String {
-            value.replacingOccurrences(of: "\\", with: "\\\\")
-                 .replacingOccurrences(of: "'", with: "\\'")
-        }
+    private func logUnexpectedClientEncoding(of connection: OpaquePointer) {
+        let reported = PQparameterStatus(connection, "client_encoding").map { String(cString: $0) }
+        guard !LibPQConnectionString.isClientEncoding(reportedByServer: reported) else { return }
+        logger.warning(
+            "Server reports client_encoding \(reported ?? "none", privacy: .public) instead of UTF8"
+        )
+    }
 
-        var connStr = "host='\(escapeConnParam(host))' port='\(port)' dbname='\(escapeConnParam(database))'"
-
-        if !user.isEmpty {
-            connStr += " user='\(escapeConnParam(user))'"
-        }
-
-        if let password, !password.isEmpty {
-            connStr += " password='\(escapeConnParam(password))'"
-        }
-
-        connStr += " sslmode='\(LibPQSSLMapping.sslmode(for: sslConfig.mode))'"
-
-        if sslConfig.verifiesCertificate, !sslConfig.caCertificatePath.isEmpty {
-            connStr += " sslrootcert='\(escapeConnParam(sslConfig.caCertificatePath))'"
-        }
-        if !sslConfig.clientCertificatePath.isEmpty {
-            connStr += " sslcert='\(escapeConnParam(sslConfig.clientCertificatePath))'"
-        }
-        if !sslConfig.clientKeyPath.isEmpty {
-            connStr += " sslkey='\(escapeConnParam(sslConfig.clientKeyPath))'"
-        }
-
-        if let options, !options.isEmpty {
-            connStr += " options='\(escapeConnParam(options))'"
-        }
-
-        return connStr
+    private var connectionString: String {
+        LibPQConnectionString.build(
+            host: host,
+            port: port,
+            user: user,
+            password: password,
+            database: database,
+            sslConfig: sslConfig,
+            options: options
+        )
     }
 
     func disconnect() {
@@ -1128,7 +1110,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             } else if let valuePtr = PQgetvalue(result, Int32(rowIndex), 0) {
                 let length = Int(PQgetlength(result, Int32(rowIndex), 0))
                 let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-                converted.append(.text(String(bytes: bufferPtr, encoding: .utf8) ?? ""))
+                converted.append(.text(LibPQCellDecoding.text(from: bufferPtr)))
             } else {
                 converted.append(.null)
             }
@@ -1148,21 +1130,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
 
         let length = Int(PQgetlength(result, row, column))
-        let bufferPtr = UnsafeRawBufferPointer(start: valuePtr, count: length)
-
-        if oid == 17 {
-            let text = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-            guard let data = LibPQByteaDecoder.decode(text) else { return .text(text) }
-            return .bytes(data)
-        }
-
-        if oid == 16 {
-            let str = String(bytes: bufferPtr, encoding: .utf8) ?? ""
-            return .text(str == "t" ? "true" : "false")
-        }
-
-        if let str = String(bytes: bufferPtr, encoding: .utf8) { return .text(str) }
-        return .text(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+        return LibPQCellDecoding.value(from: UnsafeRawBufferPointer(start: valuePtr, count: length), oid: oid)
     }
 
     private func parseRows(
