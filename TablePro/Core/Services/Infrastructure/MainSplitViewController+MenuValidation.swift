@@ -55,6 +55,8 @@ struct MenuValidationContext: Equatable {
     /// run out independently and an item that is disabled has to say which one it is.
     var canNavigateBack = false
     var canNavigateForward = false
+    /// First, Previous, Next and Last Page, which an engine that cannot skip rows never offers.
+    var canNavigatePages = false
     var canSaveAsFavorite = false
     var canSwitchSidebarLayout = false
     var canToggleWorkspaceRail = false
@@ -112,12 +114,14 @@ extension MainSplitViewController: NSMenuItemValidation {
              #selector(focusSidebarFilter(_:)),
              #selector(showERDiagram(_:)),
              #selector(previewFKReference(_:)),
-             #selector(goToFirstPage(_:)),
-             #selector(goToPreviousPage(_:)),
-             #selector(goToNextPage(_:)),
-             #selector(goToLastPage(_:)),
              #selector(selectNumberedTab(_:)):
             return context.isConnected
+
+        case #selector(goToFirstPage(_:)),
+             #selector(goToPreviousPage(_:)),
+             #selector(goToNextPage(_:)),
+             #selector(goToLastPage(_:)):
+            return context.isConnected && context.canNavigatePages
 
         case #selector(saveDocument(_:)):
             return context.isConnected && !context.isReadOnly && context.hasPendingChanges
@@ -312,6 +316,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canPinResultTab: actions.canPinResultTab,
             canNavigateBack: actions.canNavigateBack,
             canNavigateForward: actions.canNavigateForward,
+            canNavigatePages: actions.canNavigatePages,
             canSaveAsFavorite: actions.canSaveAsFavorite,
             canSwitchSidebarLayout: actions.canSwitchSidebarLayout,
             canToggleWorkspaceRail: canToggleWorkspaceRail,

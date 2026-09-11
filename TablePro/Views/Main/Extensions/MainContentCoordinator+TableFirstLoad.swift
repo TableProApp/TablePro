@@ -106,8 +106,10 @@ extension MainContentCoordinator {
         let sortWasConsumed = pendingSort.isEmpty || !resolvedSort.isEmpty
         // The persisted page index counts pages of the size it was taken in, so reading it in
         // today's default would land the tab on rows it was never showing.
-        let pageSize = tab.restoredPageSize ?? AppSettingsManager.shared.dataGrid.defaultPageSize
-        let page = supportsOffsetPagination ? max(1, tab.restoredPage ?? 1) : 1
+        let pageSize = paginationCapability.clampedRowCount(
+            tab.restoredPageSize ?? AppSettingsManager.shared.dataGrid.defaultPageSize
+        )
+        let page = paginationCapability.allowsSeeking ? max(1, tab.restoredPage ?? 1) : 1
 
         tabManager.mutate(at: index) { tab in
             if sortWasConsumed {

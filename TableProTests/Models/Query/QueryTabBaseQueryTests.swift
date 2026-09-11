@@ -27,6 +27,7 @@ struct QueryTabBaseQueryTests {
             databaseType: .mssql,
             pluginDriver: PluginManager.shared.queryBuildingDriver(for: .mssql),
             dialect: dialect,
+            pagination: .offset,
             dialectQuote: quote
         ).buildBaseQuery(tableName: "users", schemaName: nil, limit: pageSize, offset: 0)
 

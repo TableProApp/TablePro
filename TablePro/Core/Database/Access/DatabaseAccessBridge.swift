@@ -182,6 +182,14 @@ internal actor DatabaseAccessBridge {
             options: [.regularExpression, .caseInsensitive]
         ) != nil
         let shouldCap = classification.tier == .safe || hasReturning
+        let statement: LeadingRowsStatement
+        if shouldCap {
+            statement = await MainActor.run {
+                LeadingRowsStatement.resolve(normalizedQuery, rowCap: maxRows, databaseType: databaseType)
+            }
+        } else {
+            statement = LeadingRowsStatement(sql: normalizedQuery, rowCap: nil)
+        }
         let connectionId = scope.connectionId
         let policy: DriverCancellationPolicy = classification.tier == .safe ? .cancellableRead : .protectedWrite
 
@@ -205,8 +213,8 @@ internal actor DatabaseAccessBridge {
                 ) { driver in
                     if shouldCap {
                         return try await driver.executeUserQuery(
-                            query: normalizedQuery,
-                            rowCap: maxRows,
+                            query: statement.sql,
+                            rowCap: statement.rowCap ?? maxRows,
                             parameters: nil
                         )
                     }

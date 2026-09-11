@@ -43,6 +43,9 @@ struct ResultStatusControls: Equatable {
     var showsColumns = false
     var showsFilters = false
     var showsPagination = false
+    /// First, Previous, Next, Last and the page number, which an engine that cannot skip rows has
+    /// no use for. The rows-per-page menu stays, because it still sets how many leading rows load.
+    var showsPageNavigation = false
     /// The structure editor's add and remove pair, which is this bar's trailing cluster while the
     /// structure editor is the content.
     var showsStructureActions = false
@@ -114,6 +117,7 @@ struct ResultStatusModel: Equatable {
         controls.showsColumns = viewMode.showsColumnControls && describesAResult
         controls.showsFilters = viewMode.showsRowFilters && isTable && snapshot.hasTableName
         controls.showsPagination = viewMode.showsResultScope && isTable && snapshot.hasTableName
+        controls.showsPageNavigation = controls.showsPagination && snapshot.paginationCapability.allowsSeeking
 
         return controls
     }

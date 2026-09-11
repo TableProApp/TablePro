@@ -657,7 +657,7 @@ final class MainContentCoordinator {
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
-            supportsOffsetPagination: services.pluginManager.supportsOffsetPagination(for: connection.type),
+            pagination: services.pluginManager.paginationCapability(for: connection.type),
             dialectQuote: dialect.map { quoteIdentifierFromDialect($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
@@ -1309,7 +1309,8 @@ final class MainContentCoordinator {
         let traceToken = adoptOrBeginExecutionTrace(tabId: tabId)
         traceExecutionStarted(traceToken, epoch: claim.epoch, isAutoLoad: isAutoLoad)
 
-        let rowCap = resolveRowCap(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let statement = resolveStatement(sql: sql, tabType: tab.tabType, bypassLimit: bypassRowLimit)
+        let rowCap = statement.rowCap
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
         let needsMetadataFetch: Bool
@@ -1370,7 +1371,7 @@ final class MainContentCoordinator {
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
-                        sql: sql,
+                        sql: statement.sql,
                         parameters: nil,
                         rowCap: rowCap
                     )

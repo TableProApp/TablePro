@@ -21,36 +21,45 @@ final class PaginationCoordinator {
     // MARK: - Pagination
 
     func goToNextPage() {
-        guard parent.supportsOffsetPagination else { return }
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
+        guard canSeek, let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
         let loadedRowCount = parent.tabSessionRegistry.tableRows(for: tab.id).rows.count
         guard tab.pagination.canGoToNextPage(loadedRowCount: loadedRowCount) else { return }
         paginateAfterConfirmation(tabIndex: tabIndex) { $0.goToNextPage(loadedRowCount: loadedRowCount) }
     }
 
     func goToPreviousPage() {
-        guard parent.supportsOffsetPagination else { return }
-        paginateIfPossible(where: \.hasPreviousPage) { $0.goToPreviousPage() }
+        seekIfPossible(where: \.hasPreviousPage) { $0.goToPreviousPage() }
     }
 
     func goToFirstPage() {
-        guard parent.supportsOffsetPagination else { return }
-        paginateIfPossible(where: \.hasPreviousPage) { $0.goToFirstPage() }
+        seekIfPossible(where: \.hasPreviousPage) { $0.goToFirstPage() }
     }
 
     func goToLastPage() {
-        guard parent.supportsOffsetPagination else { return }
-        paginateIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
+        seekIfPossible(where: { $0.isLastPageKnown && $0.currentPage != $0.totalPages }) { $0.goToLastPage() }
     }
 
     func goToPage(_ page: Int) {
-        guard parent.supportsOffsetPagination else { return }
-        paginateIfPossible(where: { $0.hasRowCountTotal && page > 0 }) { $0.goToPage(page) }
+        seekIfPossible(where: { $0.hasRowCountTotal && page > 0 }) { $0.goToPage(page) }
     }
 
     func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
-        paginateIfPossible { $0.updatePageSize(newSize) }
+        let pageSize = parent.paginationCapability.clampedRowCount(newSize)
+        paginateIfPossible { $0.updatePageSize(pageSize) }
+    }
+
+    /// Every page move asks this, because an engine that cannot skip rows has only the first page.
+    private var canSeek: Bool {
+        parent.paginationCapability.allowsSeeking
+    }
+
+    private func seekIfPossible(
+        where condition: (PaginationState) -> Bool,
+        mutate: @escaping (inout PaginationState) -> Void
+    ) {
+        guard canSeek else { return }
+        paginateIfPossible(where: condition, mutate: mutate)
     }
 
     /// Only ever sized from a real count.
@@ -60,7 +69,8 @@ final class PaginationCoordinator {
     /// `Count Exactly` in the status bar is the route to an exact total, and it sits next to the
     /// estimate that makes this unavailable.
     func showAllRows() {
-        guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
+        guard canSeek,
+              let (tab, _) = parent.tabManager.selectedTabAndIndex,
               tab.pagination.hasExactRowCount,
               let total = tab.pagination.totalRowCount, total > 0 else { return }
 

@@ -199,7 +199,7 @@ final class ExportService {
 
         state.processedRows = progress.processedRows
 
-        state.warnings = result.warnings
+        state.warnings = result.warnings + dataSource.cappedTableWarnings
     }
 
     // MARK: - Statement Timeout
@@ -316,7 +316,7 @@ final class ExportService {
         }
 
         let dataSource = StreamingQueryExportDataSource(
-            query: query,
+            query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
             driver: driver,
             databaseType: databaseType
         )

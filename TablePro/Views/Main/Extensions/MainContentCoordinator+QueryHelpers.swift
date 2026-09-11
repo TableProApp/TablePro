@@ -77,6 +77,10 @@ extension MainContentCoordinator {
         queryExecutionCoordinator.resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
     }
 
+    func resolveStatement(sql: String, tabType: TabType, bypassLimit: Bool = false) -> LeadingRowsStatement {
+        queryExecutionCoordinator.resolveStatement(sql: sql, tabType: tabType, bypassLimit: bypassLimit)
+    }
+
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         queryExecutionCoordinator.parseSchemaMetadata(schema)
     }

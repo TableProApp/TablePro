@@ -23,6 +23,7 @@ struct TableQueryBuilderMSSQLTests {
             databaseType: .mssql,
             pluginDriver: PluginManager.shared.queryBuildingDriver(for: .mssql),
             dialect: dialect,
+            pagination: .offset,
             dialectQuote: dialectQuote
         )
     }
@@ -105,6 +106,7 @@ struct TableQueryBuilderMSSQLTests {
             databaseType: .mssql,
             pluginDriver: nil,
             dialect: dialect,
+            pagination: .offset,
             dialectQuote: dialect.map(quoteIdentifierFromDialect)
         )
         let query = fallback.buildBaseQuery(tableName: "users")

@@ -6,8 +6,8 @@
 import Foundation
 
 extension MainContentCoordinator {
-    var supportsOffsetPagination: Bool {
-        services.pluginManager.supportsOffsetPagination(for: connection.type)
+    var paginationCapability: PaginationCapability {
+        services.pluginManager.paginationCapability(for: connection.type)
     }
 
     func goToNextPage() {

@@ -54,7 +54,7 @@ struct RewindPlannerTests {
                 databaseType: .sqlite,
                 pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite)
+            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
         )
     }
 
@@ -114,7 +114,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name", "updated_at"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite)
+            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
         )
 
         let plan = try planner.plan(currentRows: [["7", "Grace", "2026-06-30"]])
@@ -191,7 +191,7 @@ struct RewindPlannerTests {
                 tableName: target.table, schemaName: nil, columns: ["id", "name"],
                 primaryKeyColumns: ["id"], databaseType: .sqlite, pluginDriver: nil
             ),
-            queryBuilder: TableQueryBuilder(databaseType: .sqlite)
+            queryBuilder: TableQueryBuilder(databaseType: .sqlite, pagination: .offset)
         )
 
         #expect(planner.readQueries().isEmpty)

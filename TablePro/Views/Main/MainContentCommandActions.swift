@@ -288,6 +288,10 @@ final class MainContentCommandActions {
 
     var isReadOnly: Bool { safeModeLevel.blocksAllWrites }
 
+    var canNavigatePages: Bool {
+        PluginManager.shared.paginationCapability(for: connection.type).allowsSeeking
+    }
+
     var editorLanguage: EditorLanguage {
         PluginManager.shared.editorLanguage(for: connection.type)
     }

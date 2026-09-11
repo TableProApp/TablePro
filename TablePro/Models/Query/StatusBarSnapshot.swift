@@ -25,7 +25,7 @@ struct StatusBarSnapshot: Equatable {
     let hasStructureActions: Bool
     let pagination: PaginationState
     let statusMessage: String?
-    let supportsPaging: Bool
+    let paginationCapability: PaginationCapability
 
     init(
         tabId: UUID?,
@@ -40,7 +40,7 @@ struct StatusBarSnapshot: Equatable {
         hasStructureActions: Bool = false,
         pagination: PaginationState,
         statusMessage: String?,
-        supportsPaging: Bool = true
+        paginationCapability: PaginationCapability = .offset
     ) {
         self.tabId = tabId
         self.tabType = tabType
@@ -54,7 +54,7 @@ struct StatusBarSnapshot: Equatable {
         self.hasStructureActions = hasStructureActions
         self.pagination = pagination
         self.statusMessage = statusMessage
-        self.supportsPaging = supportsPaging
+        self.paginationCapability = paginationCapability
     }
 
     /// `isFetching` is the caller's answer to "is an execution running for this tab", which the tab
@@ -68,7 +68,7 @@ struct StatusBarSnapshot: Equatable {
         displayRowCount: Int? = nil,
         isFetching: Bool = false,
         hasStructureActions: Bool = false,
-        supportsPaging: Bool = true
+        paginationCapability: PaginationCapability = .offset
     ) {
         let loaded = tableRows?.rows.count ?? 0
         let displayed = displayRowCount ?? loaded
@@ -91,7 +91,7 @@ struct StatusBarSnapshot: Equatable {
             hasStructureActions: hasStructureActions,
             pagination: pagination,
             statusMessage: tab?.execution.statusMessage,
-            supportsPaging: supportsPaging
+            paginationCapability: paginationCapability
         )
     }
 

@@ -34,7 +34,8 @@ struct RewindExecutor {
             queryBuilder: TableQueryBuilder(
                 databaseType: connection.type,
                 pluginDriver: factory.pluginDriver,
-                dialect: PluginManager.shared.sqlDialect(for: connection.type)
+                dialect: PluginManager.shared.sqlDialect(for: connection.type),
+                pagination: PluginManager.shared.paginationCapability(for: connection.type)
             )
         )
         let queries = planner.readQueries()

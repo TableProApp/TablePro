@@ -473,9 +473,8 @@ extension PluginManager {
             .capabilities.supportsReadOnlyMode ?? true
     }
 
-    func supportsOffsetPagination(for databaseType: DatabaseType) -> Bool {
-        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
-            .capabilities.supportsOffsetPagination ?? true
+    func paginationCapability(for databaseType: DatabaseType) -> PaginationCapability {
+        PaginationCapability.of(databaseType)
     }
 
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {

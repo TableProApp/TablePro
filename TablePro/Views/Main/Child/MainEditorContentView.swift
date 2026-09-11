@@ -997,7 +997,7 @@ struct MainEditorContentView: View {
             displayRowCount: coordinator.displayIDs(forTab: tab.id)?.count,
             isFetching: isExecuting,
             hasStructureActions: structureFooter.isActive,
-            supportsPaging: coordinator.supportsOffsetPagination
+            paginationCapability: coordinator.paginationCapability
         )
         return ResultStatusBar(
             model: ResultStatusModel(

@@ -150,6 +150,7 @@ final class TableTransferService {
             )
             try await transferOne(object: object, from: source, into: sink, request: request)
         }
+        state.warnings.append(contentsOf: source.cappedTableWarnings)
     }
 
     /// The sink writes by column name and skips any field the mapping does not name, so an empty

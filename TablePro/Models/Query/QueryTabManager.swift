@@ -314,7 +314,8 @@ final class QueryTabManager {
             return false
         }
 
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pageSize = PluginManager.shared.paginationCapability(for: databaseType)
+            .clampedRowCount(AppSettingsManager.shared.dataGrid.defaultPageSize)
         let query = try QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
@@ -458,7 +459,8 @@ final class QueryTabManager {
             schemaName: schemaName,
             quoteIdentifier: quoteIdentifier
         )
-        let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
+        let pageSize = PluginManager.shared.paginationCapability(for: databaseType)
+            .clampedRowCount(AppSettingsManager.shared.dataGrid.defaultPageSize)
 
         onTabRetargeted?(selectedId)
 

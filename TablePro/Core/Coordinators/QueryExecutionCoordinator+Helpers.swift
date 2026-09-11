@@ -29,6 +29,15 @@ extension QueryExecutionCoordinator {
         return cap
     }
 
+    /// The text to send for a tab's read and the cap the app keeps on its result.
+    func resolveStatement(sql: String, tabType: TabType, bypassLimit: Bool = false) -> LeadingRowsStatement {
+        LeadingRowsStatement.resolve(
+            sql,
+            rowCap: resolveRowCap(sql: sql, tabType: tabType, bypassLimit: bypassLimit),
+            databaseType: parent.connection.type
+        )
+    }
+
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         QueryExecutor.parseSchemaMetadata(schema)
     }
@@ -620,6 +629,7 @@ extension QueryExecutionCoordinator {
         connectionType: DatabaseType
     ) {
         let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+        let countsAutomatically = PluginManager.shared.paginationCapability(for: connectionType).allowsSeeking
         let contentEpoch = parent.tabExecution.contentEpoch(for: tabId)
         let token = UUID()
 
@@ -638,7 +648,8 @@ extension QueryExecutionCoordinator {
                     isNonSQL: isNonSQL,
                     filterState: tab.filterState,
                     approximateRowCount: tab.pagination.totalRowCount,
-                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan
+                    threshold: AppSettingsManager.shared.dataGrid.countRowsIfEstimateLessThan,
+                    countsAutomatically: countsAutomatically
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let buffer = parent.tabSessionRegistry.tableRows(for: tabId)
@@ -719,12 +730,18 @@ extension QueryExecutionCoordinator {
         }
     }
 
+    /// An engine that cannot skip rows has no pages for a total to bound, so it is only counted
+    /// when the user asks: each automatic count would be a full scan the engine may bill for.
     static func rowCountPlan(
         isNonSQL: Bool,
         filterState: TabFilterState,
         approximateRowCount: Int?,
-        threshold: Int
+        threshold: Int,
+        countsAutomatically: Bool = true
     ) -> RowCountPlan {
+        guard countsAutomatically else {
+            return filterState.hasAppliedFilters ? .clear : .skip
+        }
         if isNonSQL {
             return filterState.hasAppliedFilters
                 ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
