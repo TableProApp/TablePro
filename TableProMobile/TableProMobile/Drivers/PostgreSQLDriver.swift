@@ -2,6 +2,7 @@ import CLibPQ
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
 
 nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = PostgreSQLActor()
@@ -18,6 +19,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // Set once during connect()/switchSchema() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
     nonisolated(unsafe) private(set) var serverVersion: String?
+    nonisolated(unsafe) private(set) var serverVersionNumber: Int32 = 0
 
     nonisolated(unsafe) private var reportsIdentityColumns: Bool?
 
@@ -39,6 +41,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         try await actor.connect(host: host, port: port, user: user, password: password, database: database, ssl: ssl)
         _ = try? await actor.execute("SET standard_conforming_strings = on")
         serverVersion = await actor.serverVersion()
+        serverVersionNumber = await actor.serverVersionNumber()
         await adoptServerSchema()
     }
 
@@ -277,49 +280,39 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        let schemaName = schema ?? effectiveSchema
-        let safeTbl = table.replacingOccurrences(of: "'", with: "''")
-        let safeSchema = schemaName.replacingOccurrences(of: "'", with: "''")
+        let raw = try await actor.execute(
+            Self.foreignKeysQuery(
+                schema: schema ?? effectiveSchema,
+                table: table,
+                serverVersionNumber: serverVersionNumber
+            )
+        )
 
-        let raw = try await actor.execute("""
-            SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON tc.constraint_name = ccu.constraint_name
-                AND tc.table_schema = ccu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.table_schema = rc.constraint_schema
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-                AND tc.table_schema = '\(safeSchema)'
-                AND tc.table_name = '\(safeTbl)'
-            ORDER BY tc.constraint_name
-            """)
-
-        return raw.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[0],
-                  let column = row[1],
-                  let refTable = row[2],
-                  let refColumn = row[3] else { return nil }
-            return ForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                onDelete: row[4] ?? "NO ACTION",
-                onUpdate: row[5] ?? "NO ACTION"
+        return PostgreSQLCatalogForeignKeys.foreignKeys(from: raw.rows).map { key in
+            ForeignKeyInfo(
+                name: key.name,
+                column: key.column,
+                referencedTable: key.referencedTable,
+                referencedColumn: key.referencedColumn,
+                referencedSchema: key.referencedSchema,
+                onDelete: key.onDelete,
+                onUpdate: key.onUpdate
             )
         }
+    }
+
+    static func foreignKeysQuery(schema: String, table: String, serverVersionNumber: Int32) -> String {
+        PostgreSQLCatalogForeignKeys.query(
+            schemaLiteral: literal(schema),
+            tableLiteral: literal(table),
+            excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
+                serverVersionNumber: serverVersionNumber
+            )
+        )
+    }
+
+    private static func literal(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -458,6 +451,11 @@ private actor PostgreSQLActor {
             PQcancel(cancel, &errbuf, Int32(errbuf.count))
             PQfreeCancel(cancel)
         }
+    }
+
+    func serverVersionNumber() -> Int32 {
+        guard let conn else { return 0 }
+        return PQserverVersion(conn)
     }
 
     func serverVersion() -> String? {
