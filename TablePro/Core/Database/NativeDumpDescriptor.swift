@@ -126,6 +126,10 @@ struct NativeDumpDescriptor: Sendable {
 
         internal let requiresUntranslatedMessages: Bool
 
+        /// Picks the binary to run for a known server version, when the engine's tools refuse
+        /// some servers. Nil leaves the plain PATH lookup in place.
+        let toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)?
+
         let backupArguments: @Sendable (Request) -> [String]
         let restoreArguments: @Sendable (Request) -> [String]
         let environment: @Sendable (Request) -> [String: String]
@@ -140,6 +144,7 @@ struct NativeDumpDescriptor: Sendable {
             needsCredentialsFile: Bool = false,
             restoreExitPolicy: NativeDumpExitPolicy = .zeroExitOnly,
             requiresUntranslatedMessages: Bool = false,
+            toolForServer: (@Sendable (_ binary: String, _ serverVersion: String?) -> NativeDumpToolSelection)? = nil,
             backupArguments: @escaping @Sendable (Request) -> [String],
             restoreArguments: @escaping @Sendable (Request) -> [String],
             environment: @escaping @Sendable (Request) -> [String: String] = { _ in [:] }
@@ -153,6 +158,7 @@ struct NativeDumpDescriptor: Sendable {
             self.needsCredentialsFile = needsCredentialsFile
             self.restoreExitPolicy = restoreExitPolicy
             self.requiresUntranslatedMessages = requiresUntranslatedMessages
+            self.toolForServer = toolForServer
             self.backupArguments = backupArguments
             self.restoreArguments = restoreArguments
             self.environment = environment

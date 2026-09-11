@@ -157,13 +157,13 @@ Formats are `csv`, `json` and `sql`; pass exactly one of `query` or `tables[]`. 
 
 | Tool | Arguments | Returns |
 |------|-----------|---------|
-| `get_server_dashboard` | `connection_id` (`panels`) | The requested panels: `sessions`, `metrics`, `slow_queries` |
+| `get_server_dashboard` | `connection_id` (`panels`) | The requested panels: `sessions`, `metrics`, `slow_queries`, plus `errors` for any the server could not answer |
 | `stop_server_session` | `connection_id`, `process_id` (`mode`) | The result set the engine produced |
 | `list_principals` | `connection_id` | `principals[]` (`name`, `host`, `is_role`, `can_login`, `member_of[]`, `connection_limit`, `comment`, and `attributes[]` of `{ key, label, is_enabled }`), sorted by name |
 | `list_grants` | `connection_id`, `principal` (`host`) | `principal`, `grants[]` (`privilege`, `scope`, `is_grantable`). `scope` is a dotted path, `*` for a server-wide grant |
 | `list_session_contexts` | `connection_id` | `is_supported`, `contexts[]` (`id`, `label`, `value`, `options[]`) |
 
-`get_server_dashboard` reads the live panels TablePro shows, and runs on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB and SQLite. Name the panels in `panels[]` or omit it for all three. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill` and `can_cancel`; a metric carries `id`, `label`, `value`, `unit`; a slow query carries `duration`, `query`, `user`, `database`.
+`get_server_dashboard` reads the live panels TablePro shows, and runs on PostgreSQL, MySQL, SQL Server, ClickHouse, DuckDB and SQLite. Name the panels in `panels[]` or omit it for all three. A session carries `id` (the process id `stop_server_session` takes), `user`, `database`, `state`, `duration_seconds`, `query`, `can_kill` and `can_cancel`; a metric carries `id`, `label`, `value`, `unit`; a slow query carries `duration`, `query`, `user`, `database`. A panel the server could not answer is left out, and `errors` names it: one fixed sentence per panel, keyed by panel name. The server's own message is not sent to the client; it goes to the app's log, where the user can read it. When every requested panel fails, the call fails.
 
 `stop_server_session` takes `mode` as `cancel` (default) to stop the running query or `kill` to end the session. The user always approves this one, whatever Safe Mode says.
 

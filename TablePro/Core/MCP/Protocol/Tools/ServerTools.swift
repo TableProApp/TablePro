@@ -72,6 +72,15 @@ public struct ServerDashboardTool: MCPToolImplementation {
                     ],
                     required: ["duration", "query", "user", "database"]
                 )
+            ),
+            "errors": MCPToolSchema.object(
+                properties: [
+                    "sessions": MCPToolSchema.string(String(localized: "Why the sessions panel could not be read")),
+                    "metrics": MCPToolSchema.string(String(localized: "Why the metrics panel could not be read")),
+                    "slow_queries": MCPToolSchema.string(
+                        String(localized: "Why the slow queries panel could not be read")
+                    )
+                ]
             )
         ]
     )

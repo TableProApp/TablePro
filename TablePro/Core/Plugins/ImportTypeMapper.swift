@@ -7,10 +7,19 @@ import Foundation
 import TableProPluginKit
 
 enum ImportTypeMapper {
-    static func sqlType(for type: PluginImportFieldType, databaseType: DatabaseType) -> String {
+    static func sqlType(
+        for type: PluginImportFieldType,
+        databaseType: DatabaseType,
+        serverVersion: String? = nil
+    ) -> String {
         switch databaseType {
         case .postgresql, .redshift, .cockroachdb:
-            return postgresType(type)
+            return postgresType(
+                type,
+                jsonColumnType: PostgreSQLServerVersion.jsonColumnType(
+                    for: databaseType, serverVersion: serverVersion
+                )
+            )
         case .mysql, .mariadb, .tidb:
             return mysqlType(type)
         case .sqlite:
@@ -22,12 +31,12 @@ enum ImportTypeMapper {
         }
     }
 
-    private static func postgresType(_ type: PluginImportFieldType) -> String {
+    private static func postgresType(_ type: PluginImportFieldType, jsonColumnType: PostgreSQLJSONColumnType) -> String {
         switch type {
         case .integer: return "BIGINT"
         case .real: return "DOUBLE PRECISION"
         case .boolean: return "BOOLEAN"
-        case .json: return "JSONB"
+        case .json: return jsonColumnType.rawValue
         case .text: return "TEXT"
         @unknown default: return "TEXT"
         }

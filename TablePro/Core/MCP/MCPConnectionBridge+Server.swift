@@ -93,7 +93,10 @@ extension MCPConnectionBridge {
         }
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            guard let provider = ServerDashboardQueryProviderFactory.provider(for: databaseType) else {
+            guard let provider = ServerDashboardQueryProviderFactory.provider(
+                for: databaseType,
+                serverVersion: driver.serverVersion
+            ) else {
                 throw DatabaseAccessError.dataSourceError(
                     String(localized: "TablePro has no server dashboard for this engine.")
                 )
@@ -102,45 +105,90 @@ extension MCPConnectionBridge {
                 try await driver.execute(query: sql)
             }
             var result: [String: JsonValue] = [:]
+            var failures: [String: String] = [:]
             if panels.contains("sessions") {
-                let sessions = (try? await provider.fetchSessions(execute: execute)) ?? []
-                result["sessions"] = .array(sessions.map { session in
-                    .object([
-                        "id": .string(session.id),
-                        "user": .string(session.user),
-                        "database": .string(session.database),
-                        "state": .string(session.state),
-                        "duration_seconds": .int(session.durationSeconds),
-                        "query": .string(session.query),
-                        "can_kill": .bool(session.canKill),
-                        "can_cancel": .bool(session.canCancel)
-                    ])
-                })
+                do {
+                    let sessions = try await provider.fetchSessions(execute: execute)
+                    result["sessions"] = .array(sessions.map { session in
+                        .object([
+                            "id": .string(session.id),
+                            "user": .string(session.user),
+                            "database": .string(session.database),
+                            "state": .string(session.state),
+                            "duration_seconds": .int(session.durationSeconds),
+                            "query": .string(session.query),
+                            "can_kill": .bool(session.canKill),
+                            "can_cancel": .bool(session.canCancel)
+                        ])
+                    })
+                } catch {
+                    failures["sessions"] = Self.dashboardPanelFailure(panel: "sessions", error: error)
+                }
             }
             if panels.contains("metrics") {
-                let metrics = (try? await provider.fetchMetrics(execute: execute)) ?? []
-                result["metrics"] = .array(metrics.map { metric in
-                    .object([
-                        "id": .string(metric.id),
-                        "label": .string(metric.label),
-                        "value": .string(metric.value),
-                        "unit": .string(metric.unit)
-                    ])
-                })
+                do {
+                    let metrics = try await provider.fetchMetrics(execute: execute)
+                    result["metrics"] = .array(metrics.map { metric in
+                        .object([
+                            "id": .string(metric.id),
+                            "label": .string(metric.label),
+                            "value": .string(metric.value),
+                            "unit": .string(metric.unit)
+                        ])
+                    })
+                } catch {
+                    failures["metrics"] = Self.dashboardPanelFailure(panel: "metrics", error: error)
+                }
             }
             if panels.contains("slow_queries") {
-                let slow = (try? await provider.fetchSlowQueries(execute: execute)) ?? []
-                result["slow_queries"] = .array(slow.map { entry in
-                    .object([
-                        "duration": .string(entry.duration),
-                        "query": .string(entry.query),
-                        "user": .string(entry.user),
-                        "database": .string(entry.database)
-                    ])
-                })
+                do {
+                    let slow = try await provider.fetchSlowQueries(execute: execute)
+                    result["slow_queries"] = .array(slow.map { entry in
+                        .object([
+                            "duration": .string(entry.duration),
+                            "query": .string(entry.query),
+                            "user": .string(entry.user),
+                            "database": .string(entry.database)
+                        ])
+                    })
+                } catch {
+                    failures["slow_queries"] = Self.dashboardPanelFailure(panel: "slow_queries", error: error)
+                }
             }
-            return .object(result)
+            return try Self.dashboardPayload(panels: result, failures: failures)
         }
+    }
+
+    /// The paired client is told which panel the server refused, never what the server said. The
+    /// server's own text can name a role, a database, a column or a statement, and this reply
+    /// leaves the user's Mac; the full message stays in the log for the user to read.
+    static func dashboardPanelFailure(panel: String, error: Error) -> String {
+        logger.warning(
+            """
+            Server dashboard panel \(panel, privacy: .public) failed: \
+            \(error.localizedDescription, privacy: .private)
+            """
+        )
+        return String(
+            format: String(localized: "The server did not answer the %@ panel."),
+            panel.replacingOccurrences(of: "_", with: " ")
+        )
+    }
+
+    static func dashboardPayload(
+        panels: [String: JsonValue],
+        failures: [String: String]
+    ) throws -> JsonValue {
+        guard !failures.isEmpty else { return .object(panels) }
+        guard !panels.isEmpty else {
+            let message = failures.keys.sorted()
+                .compactMap { failures[$0] }
+                .joined(separator: " ")
+            throw DatabaseAccessError.dataSourceError(message)
+        }
+        var payload = panels
+        payload["errors"] = .object(failures.mapValues { .string($0) })
+        return .object(payload)
     }
 
     func sessionControlStatement(

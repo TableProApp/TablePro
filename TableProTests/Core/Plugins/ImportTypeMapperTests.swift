@@ -19,6 +19,29 @@ struct ImportTypeMapperTests {
         #expect(ImportTypeMapper.sqlType(for: .text, databaseType: .postgresql) == "TEXT")
     }
 
+    @Test(
+        "A JSON field on PostgreSQL takes the richest type the server has",
+        arguments: [
+            (Optional<String>.none, "JSONB"),
+            (Optional("17.11"), "JSONB"),
+            (Optional("9.4.26"), "JSONB"),
+            (Optional("9.3.25"), "JSON"),
+            (Optional("9.2.23"), "JSON"),
+            (Optional("9.1.24"), "TEXT")
+        ]
+    )
+    func postgresJSONFollowsServerVersion(serverVersion: String?, expected: String) {
+        #expect(
+            ImportTypeMapper.sqlType(for: .json, databaseType: .postgresql, serverVersion: serverVersion) == expected
+        )
+    }
+
+    @Test("Redshift and CockroachDB keep their JSON mapping whatever version they report")
+    func postgresForksKeepJSONMapping() {
+        #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .redshift, serverVersion: "8.0.2") == "JSONB")
+        #expect(ImportTypeMapper.sqlType(for: .json, databaseType: .cockroachdb, serverVersion: "13.0.0") == "JSONB")
+    }
+
     @Test("MySQL maps inferred types to native SQL types")
     func testMySQL() {
         #expect(ImportTypeMapper.sqlType(for: .integer, databaseType: .mysql) == "BIGINT")

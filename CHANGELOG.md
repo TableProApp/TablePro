@@ -171,6 +171,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- Server Dashboard sessions, metrics and slow queries failing on PostgreSQL 9.6 and earlier.
+- One unanswered metric emptying the whole Server Dashboard metrics panel on PostgreSQL, Redshift and CockroachDB.
+- MCP `get_server_dashboard` reporting a panel the server could not read as an empty list.
+- Backup and restore failing on PostgreSQL 9.1 when the `pg_dump` or `pg_restore` found first is version 15 or later.
+- Missing execution time in query plans on PostgreSQL 9.3 and earlier.
+- Cross-engine copy and JSON import creating `jsonb` columns on PostgreSQL 9.3 and earlier.
 
 ### Security
 
