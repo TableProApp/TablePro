@@ -34,11 +34,9 @@ struct ReadOnlyEnforcementTests {
         #expect(ReadOnlyEnforcement.allowsChoosing(level, under: .remoteDatabaseFile) == (level == .readOnly))
     }
 
-    @Test("A read-only engine reads as Read-Only and keeps the user's own level", arguments: [
-        DatabaseType.cloudflareR2SQL, DatabaseType.beancount
-    ])
-    func readOnlyEngine(type: DatabaseType) {
-        let connection = DatabaseConnection(name: "Engine", type: type, safeModeLevel: .alert)
+    @Test("A read-only engine reads as Read-Only and keeps the user's own level")
+    func readOnlyEngine() {
+        let connection = DatabaseConnection(name: "Engine", type: .cloudflareR2SQL, safeModeLevel: .alert)
 
         #expect(connection.readOnlyEnforcement == .readOnlyEngine)
         #expect(connection.safeModeLevel == .readOnly)
@@ -94,8 +92,15 @@ struct ReadOnlyEnforcementTests {
     @Test("A session starts at the enforced level")
     func sessionSeedsEnforcedLevel() {
         #expect(ConnectionSession(connection: remoteFileConnection()).safeModeLevel == .readOnly)
-        let engine = DatabaseConnection(name: "Ledger", type: .beancount, safeModeLevel: .silent)
+        let engine = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .silent)
         #expect(ConnectionSession(connection: engine).safeModeLevel == .readOnly)
+    }
+
+    @Test("Beancount keeps the level it was given, because BQL queries do not classify as reads")
+    func beancountIsNotEnforced() {
+        let ledger = DatabaseConnection(name: "Ledger", type: .beancount, safeModeLevel: .silent)
+        #expect(ledger.readOnlyEnforcement == nil)
+        #expect(ledger.safeModeLevel == .silent)
     }
 
     @Test("Choosing a weaker level on an enforced session keeps it Read-Only")
@@ -110,6 +115,30 @@ struct ReadOnlyEnforcementTests {
         #expect(session?.safeModeLevel == .readOnly)
         #expect(session?.connection.safeModeLevel == .readOnly)
         #expect(session?.connection.preferredSafeModeLevel == .silent)
+    }
+
+    @Test("Picking Read-Only on a held connection leaves the saved level alone")
+    func chooseOnHeldConnectionKeepsPreference() {
+        let connection = DatabaseConnection(name: "R2", type: .cloudflareR2SQL, safeModeLevel: .silent)
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        DatabaseManager.shared.chooseSafeModeLevel(.readOnly, for: connection.id)
+
+        let session = DatabaseManager.shared.session(for: connection.id)
+        #expect(session?.connection.preferredSafeModeLevel == .silent)
+        #expect(session?.safeModeLevel == .readOnly)
+    }
+
+    @Test("Picking a level on an ordinary connection applies it")
+    func chooseOnOrdinaryConnectionApplies() {
+        let connection = DatabaseConnection(name: "PG", type: .postgresql, safeModeLevel: .silent)
+        DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        DatabaseManager.shared.chooseSafeModeLevel(.safeMode, for: connection.id)
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.safeModeLevel == .safeMode)
     }
 
     @Test("Choosing a level on an ordinary session applies it")

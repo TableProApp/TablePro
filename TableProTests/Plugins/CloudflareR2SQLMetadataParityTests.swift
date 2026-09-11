@@ -73,6 +73,6 @@ struct CloudflareR2SQLMetadataParityTests {
         let capabilities = try curated().capabilities
 
         #expect(capabilities.isEngineReadOnly)
-        #expect(capabilities.pagination == .leadingRowsOnly(maximumRows: 10_000))
+        #expect(capabilities.pagination == .leadingRowsOnly(maximumRows: CloudflareR2SQLMetadata.maximumRows))
     }
 }

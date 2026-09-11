@@ -124,7 +124,7 @@ final class MainContentCoordinator {
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     func setSafeModeLevel(_ level: SafeModeLevel) {
-        services.databaseManager.setSafeModeLevel(level, for: connectionId)
+        services.databaseManager.chooseSafeModeLevel(level, for: connectionId)
         toolbarState.safeModeLevel = services.databaseManager.session(for: connectionId)?.safeModeLevel ?? level
     }
     let selectionState = GridSelectionState()

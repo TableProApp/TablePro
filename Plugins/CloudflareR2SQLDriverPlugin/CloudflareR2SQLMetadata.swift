@@ -17,6 +17,7 @@ enum CloudflareR2SQLMetadata {
     static let defaultSchemaName = ""
     static let schemaEntityName = "Namespace"
     static let containerEntityName = "Bucket"
+    static let maximumRows = 10_000
     static let accountIdFieldId = "r2AccountId"
     static let bucketFieldId = "r2Bucket"
 

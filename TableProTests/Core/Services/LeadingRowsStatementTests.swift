@@ -92,6 +92,15 @@ struct LeadingRowsStatementTests {
         #expect(ExportDataSourceAdapter.rowLimit(requested: nil, pagination: .offset) == nil)
     }
 
+    @Test("A query export that reached the engine's ceiling is named as partial")
+    func queryExportCapWarning() {
+        let leadingRows = PaginationCapability.leadingRowsOnly(maximumRows: 10_000)
+
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 10_000, pagination: leadingRows) != nil)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 9_999, pagination: leadingRows) == nil)
+        #expect(ExportService.leadingRowsCapWarning(exportedRows: 50_000, pagination: .offset) == nil)
+    }
+
     private func browse(offset: Int, limit: Int) -> MCPBrowseRequest {
         MCPBrowseRequest(
             table: "events", columns: nil, filters: [], logicMode: .and, sort: [], limit: limit, offset: offset

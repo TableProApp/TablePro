@@ -16,7 +16,18 @@ extension CloudflareR2SQLPluginDriver {
             columnTypeNames: mapped.columnTypeNames,
             rows: mapped.rows.map { $0.map(Self.cellValue) },
             rowsAffected: 0,
-            executionTime: Date().timeIntervalSince(started)
+            executionTime: Date().timeIntervalSince(started),
+            statusMessage: Self.ceilingMessage(rowCount: mapped.rows.count)
+        )
+    }
+
+    /// A result as long as the engine's ceiling cannot say whether more rows exist, so it says
+    /// where it stopped instead of passing for the whole answer.
+    static func ceilingMessage(rowCount: Int) -> String? {
+        guard rowCount >= CloudflareR2SQLMetadata.maximumRows else { return nil }
+        return String(
+            format: String(localized: "Stopped at %lld rows, the most R2 SQL returns from one query."),
+            CloudflareR2SQLMetadata.maximumRows
         )
     }
 

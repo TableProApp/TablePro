@@ -92,7 +92,7 @@ struct SyncRecordMapperConnectionTests {
 
     @Test("A connection the engine holds at Read-Only syncs the user's own level")
     func enforcedReadOnlyIsNotSynced() {
-        let connection = DatabaseConnection(name: "Ledger", type: .beancount, safeModeLevel: .alert)
+        let connection = DatabaseConnection(name: "Iceberg", type: .cloudflareR2SQL, safeModeLevel: .alert)
 
         let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
 
