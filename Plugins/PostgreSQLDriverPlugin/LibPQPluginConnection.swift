@@ -14,21 +14,6 @@ import TableProPluginKit
 
 private let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
-// MARK: - Error Types
-
-struct LibPQPluginError: Error {
-    let message: String
-    let sqlState: String?
-    let detail: String?
-
-    static let notConnected = LibPQPluginError(
-        message: String(localized: "Not connected to database"), sqlState: nil, detail: nil)
-    static let connectionFailed = LibPQPluginError(
-        message: String(localized: "Failed to establish connection"), sqlState: nil, detail: nil)
-    static let connectionTimedOut = LibPQPluginError(
-        message: String(localized: "Timed out while connecting to the server"), sqlState: nil, detail: nil)
-}
-
 // MARK: - Query Result
 
 struct LibPQPluginQueryResult {
@@ -1243,22 +1228,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func getResultError(from result: OpaquePointer) -> LibPQPluginError {
         var message = "Unknown error"
-        var sqlState: String?
-        var detail: String?
-
         if let msgPtr = PQresultErrorMessage(result) {
             message = String(cString: msgPtr).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-
-        if let statePtr = PQresultErrorField(result, Int32(80)) {
-            sqlState = String(cString: statePtr)
+        return LibPQPluginError(message: message) { field in
+            PQresultErrorField(result, field).map { String(cString: $0) }
         }
-
-        if let detailPtr = PQresultErrorField(result, Int32(68)) {
-            detail = String(cString: detailPtr)
-        }
-
-        return LibPQPluginError(message: message, sqlState: sqlState, detail: detail)
     }
 
     private func getAffectedRows(from result: OpaquePointer) -> Int {
@@ -1274,12 +1249,4 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
         return nil
     }
-}
-
-// MARK: - PluginDriverError Conformance
-
-extension LibPQPluginError: PluginDriverError {
-    var pluginErrorMessage: String { message }
-    var pluginSqlState: String? { sqlState }
-    var pluginErrorDetail: String? { detail }
 }

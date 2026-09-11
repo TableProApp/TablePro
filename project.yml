@@ -501,6 +501,7 @@ targets:
       - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQPluginError.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
