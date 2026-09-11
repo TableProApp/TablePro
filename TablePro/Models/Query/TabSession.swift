@@ -38,11 +38,19 @@ final class TabSession: Identifiable {
     /// be dropped exactly then and kept across an edit.
     var bufferEpoch: Int
 
+    /// Bumped when rows arrive, leave or are replaced, and never for a cell edit, which is the one
+    /// distinction the other two counters cannot draw: `dataRevision` moves for an edit and
+    /// `bufferEpoch` sits still for an insert or a delete. Anything that answers "which row sits at
+    /// this display position" has to hold still across an edit and move with the row set, because an
+    /// edit leaves the rows where they are and the grid goes on showing them there.
+    var rowSetRevision: Int
+
     init(id: UUID = UUID()) {
         self.id = id
         self.tableRows = TableRows()
         self.isEvicted = false
         self.dataRevision = 0
         self.bufferEpoch = 0
+        self.rowSetRevision = 0
     }
 }

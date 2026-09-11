@@ -16,9 +16,9 @@ extension MainContentCoordinator {
         for tabId: UUID,
         _ mutate: (inout TableRows) -> Delta
     ) -> Delta {
-        var delta: Delta = .none
-        tabSessionRegistry.updateTableRows(for: tabId) { rows in
-            delta = mutate(&rows)
+        let delta = tabSessionRegistry.updateTableRows(for: tabId, mutate)
+        if delta.changesRowSet {
+            refreshDisplayOrder(forTab: tabId)
         }
         return delta
     }

@@ -158,8 +158,8 @@ struct TableViewCoordinatorValueFilterTests {
             forColumn: 0
         )
 
-        coordinator.tableRowsMutator { rows in
-            _ = rows.appendInsertedRow(values: [.text("inactive"), .text("z")])
+        _ = coordinator.tableRowsMutator { rows in
+            rows.appendInsertedRow(values: [.text("inactive"), .text("z")])
         }
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
@@ -177,8 +177,9 @@ struct TableViewCoordinatorValueFilterTests {
             forColumn: 0
         )
 
-        coordinator.tableRowsMutator { rows in
+        _ = coordinator.tableRowsMutator { rows in
             rows.columns = ["other", "name"]
+            return .columnsReplaced
         }
         coordinator.applyFullReplace()
         coordinator.recomputeValueFilteredIDs()

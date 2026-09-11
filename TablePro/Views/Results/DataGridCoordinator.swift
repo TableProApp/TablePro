@@ -33,7 +33,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                                   NSMenuDelegate
 {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
-    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Delta) -> Delta = { _ in .none }
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
@@ -49,6 +49,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// the filter lives here alone and dies with this coordinator, which is all a structure or
     /// create-table grid needs.
     var valueFilterBinding: Binding<GridValueFilterState>?
+    var displayOrderProvider: (@MainActor () -> [RowID]?)?
     private var storedValueFilterState = GridValueFilterState()
     /// Reads never go back through the binding, because a SwiftUI `Binding` built from a captured
     /// value type returns the pre-write value until the next body pass. The mirror is authoritative
@@ -704,6 +705,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         // Local only: this runs while the window is being torn down, and the filter's owner is
         // either about to go away with it or is deliberately keeping the filter for the next mount.
         valueFilterBinding = nil
+        displayOrderProvider = nil
         adoptValueFilter(GridValueFilterState())
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
