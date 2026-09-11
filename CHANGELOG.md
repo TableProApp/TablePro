@@ -42,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read-only write explanation never shown on PostgreSQL servers.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
+- Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
+- Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.
 - Users & Roles failing, Stop not ending queries and sequences listed as tables on TiDB servers opened as MySQL.
 - Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
 - Blank welcome window list when a search matched nothing and a favorite existed.
