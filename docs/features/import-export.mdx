@@ -270,7 +270,7 @@ Select a row in the data grid and press `Cmd+V` to paste tabular data straight i
 | Option | What it does | Default |
 |--------|-------------|---------|
 | On error | Stop and Rollback, Stop and Commit, or Skip and Continue | Stop and Rollback |
-| Encoding | UTF-8, UTF-16, Latin1, or ASCII | UTF-8 |
+| Encoding | UTF-8, UTF-16, UTF-16 LE, UTF-16 BE, Latin-1, Windows-1252, or ASCII | UTF-8 |
 | Wrap in transaction | Runs every statement inside one transaction. Dimmed in Skip and Continue | Yes |
 | Disable foreign key checks | Suspends constraint checks for the import | Yes |
 
@@ -279,6 +279,8 @@ Select a row in the data grid and press `Cmd+V` to paste tabular data straight i
 | **Stop and Rollback** | Stops there. With the transaction on, everything rolls back |
 | **Stop and Commit** | Stops there, keeping what already succeeded |
 | **Skip and Continue** | Logs it and carries on, including a line the parser cannot read. No transaction |
+
+**UTF-16** reads the byte order from the mark at the start of the file and falls back to big-endian, which is what a file with no mark means. Pick **UTF-16 LE** or **UTF-16 BE** for a file that has no mark and is not big-endian. Latin-1 and Windows-1252 differ over the bytes `0x80` to `0x9F`: a dump written by MySQL keeps its curly quotes, en dashes and euro sign there, so Windows-1252 is the one to pick for it.
 
 Skip and Continue collects up to 1,000 failures with their line numbers and messages, and the summary counts successes against failures behind a **Copy Details** button. **Save Report…** writes them all to a CSV with a line, a statement and the database's own error per row, so a large import's failures can be sorted and searched rather than scrolled. A stop shows the line, the database's own message, and the failing statement, with the dialog still open behind it, ready for a changed setting and another run.
 

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
 - **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
+- UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
 
 ### Changed
 
@@ -43,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
+- Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
+- SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
 - Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
 - **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
 - Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.
