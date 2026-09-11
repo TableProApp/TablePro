@@ -11,32 +11,10 @@ internal enum WelcomeFocusField: Hashable {
 }
 
 struct WelcomeWindowView: View {
-    @State var vm = WelcomeViewModel()
+    let vm: WelcomeViewModel
     @FocusState private var focus: WelcomeFocusField?
 
     var body: some View {
-        ZStack {
-            if vm.showOnboarding {
-                OnboardingContentView {
-                    withMotion(.easeInOut(duration: 0.45)) {
-                        vm.showOnboarding = false
-                    }
-                }
-                .transition(.move(edge: .leading))
-            } else {
-                welcomeContent
-                    .transition(.move(edge: .trailing))
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            vm.setUp()
-            focus = .connectionList
-        }
-        .modifier(WelcomePresentations(vm: vm) { focus = .connectionList })
-    }
-
-    private var welcomeContent: some View {
         HStack(spacing: 0) {
             WelcomeActionsPanel(
                 onActivateLicense: { vm.activeSheet = .activation },
@@ -53,11 +31,16 @@ struct WelcomeWindowView: View {
 
             WelcomeConnectionsPanel(vm: vm, focus: $focus)
         }
-        .transition(.opacity)
+        .ignoresSafeArea()
+        .onAppear {
+            vm.setUp()
+            focus = .connectionList
+        }
+        .modifier(WelcomePresentations(vm: vm) { focus = .connectionList })
     }
 }
 
 #Preview("Welcome Window") {
-    WelcomeWindowView()
-        .frame(width: 700, height: 450)
+    WelcomeWindowView(vm: WelcomeViewModel())
+        .frame(width: 800, height: 480)
 }

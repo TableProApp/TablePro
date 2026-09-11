@@ -6,8 +6,6 @@
 import SwiftUI
 import TableProImport
 
-/// A connection the list shows but does not own: one read from a linked folder or from the team
-/// library. Both carry only the exported payload, so both draw the same row and differ by badge.
 internal struct WelcomeExternalConnectionRow: View {
     let linked: LinkedConnection
     let badgeSystemImage: String

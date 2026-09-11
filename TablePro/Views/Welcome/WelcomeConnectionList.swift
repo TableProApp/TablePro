@@ -12,18 +12,13 @@ internal struct WelcomeConnectionList: View {
     var body: some View {
         ScrollViewReader { proxy in
             List(selection: $vm.selectedConnectionIds) {
-                let showsFavoritesSection = vm.searchText.isEmpty && !vm.favoriteConnections.isEmpty
-                let showsLinkedSection = !vm.linkedConnections.isEmpty
-                    && LicenseManager.shared.isFeatureAvailable(.linkedFolders)
-                let showsTeamLibrarySection = !vm.teamLibraryConnections.isEmpty
-                    && LicenseManager.shared.isFeatureAvailable(.teamLibrary)
                 let treeHasGroups = vm.treeItems.contains { item in
                     if case .group = item { return true }
                     return false
                 }
-                let treeNeedsHeader = showsFavoritesSection && !treeHasGroups && !vm.treeItems.isEmpty
+                let treeNeedsHeader = vm.showsFavoritesSection && !treeHasGroups && !vm.treeItems.isEmpty
 
-                if showsFavoritesSection {
+                if vm.showsFavoritesSection {
                     Section {
                         ForEach(vm.favoriteConnections) { conn in
                             connectionRow(for: conn)
@@ -47,9 +42,9 @@ internal struct WelcomeConnectionList: View {
                     }
                 }
 
-                if showsLinkedSection {
+                if !vm.visibleLinkedConnections.isEmpty {
                     Section {
-                        ForEach(vm.linkedConnections) { linked in
+                        ForEach(vm.visibleLinkedConnections) { linked in
                             WelcomeExternalConnectionRow(linked: linked, badgeSystemImage: "folder.fill")
                         }
                     } header: {
@@ -57,9 +52,9 @@ internal struct WelcomeConnectionList: View {
                     }
                 }
 
-                if showsTeamLibrarySection {
+                if !vm.visibleTeamLibraryConnections.isEmpty {
                     Section {
-                        ForEach(vm.teamLibraryConnections) { linked in
+                        ForEach(vm.visibleTeamLibraryConnections) { linked in
                             WelcomeExternalConnectionRow(linked: linked, badgeSystemImage: "person.2.fill")
                         }
                     } header: {

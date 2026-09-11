@@ -49,7 +49,7 @@ final class WelcomeViewModel {
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
     var teamLibraryConnections: [LinkedConnection] = []
-    var showOnboarding: Bool
+    private(set) var hasImportableApp = false
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
     var pendingDeleteHasFavorites = false
@@ -107,6 +107,7 @@ final class WelcomeViewModel {
     @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
     @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
     @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
+    @ObservationIgnored private let importableAppDetector: @MainActor () -> Bool
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     // MARK: - Computed Properties
@@ -122,7 +123,44 @@ final class WelcomeViewModel {
         return TagStorage.shared.loadTags().filter { usedIds.contains($0.id) }
     }
 
+    var visibleLinkedConnections: [LinkedConnection] {
+        guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
+        return linkedConnections
+    }
+
+    var visibleTeamLibraryConnections: [LinkedConnection] {
+        guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        return teamLibraryConnections
+    }
+
+    var showsFavoritesSection: Bool {
+        searchText.isEmpty && !favoriteConnections.isEmpty
+    }
+
+    var hasAnyConnection: Bool {
+        !connections.isEmpty || !visibleLinkedConnections.isEmpty || !visibleTeamLibraryConnections.isEmpty
+    }
+
+    var isSearchAvailable: Bool {
+        hasAnyConnection
+    }
+
+    var listState: WelcomeListState {
+        WelcomeListState.resolve(WelcomeListState.Input(
+            hasAnyConnection: hasAnyConnection,
+            hasVisibleContent: !treeItems.isEmpty || showsFavoritesSection
+                || !visibleLinkedConnections.isEmpty || !visibleTeamLibraryConnections.isEmpty,
+            searchText: searchText,
+            isTagFiltered: tagFilter.isActive
+        ))
+    }
+
     func rebuildTree() {
+        guard hasAnyConnection || searchText.isEmpty else {
+            searchText = ""
+            return
+        }
+
         favoriteConnections = connections
             .filter(\.isFavorite)
             .filter { tagFilter.matches($0) }
@@ -182,14 +220,24 @@ final class WelcomeViewModel {
         self.init(services: .live)
     }
 
-    init(services: AppServices) {
+    init(
+        services: AppServices,
+        importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp
+    ) {
         self.services = services
-        self.showOnboarding = !services.appSettingsStorage.hasCompletedOnboarding()
+        self.importableAppDetector = importableAppDetector
+    }
+
+    static func detectImportableApp() -> Bool {
+        ForeignAppImporterRegistry.all.contains { importer in
+            importer.importFileTypes == nil && importer.isAvailable()
+        }
     }
 
     // MARK: - Setup & Teardown
 
     func setUp() {
+        hasImportableApp = importableAppDetector()
         guard connectionUpdatedCancellable == nil else { return }
 
         if expandedGroupIds.isEmpty {

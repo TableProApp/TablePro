@@ -17,8 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
+- First launch opening on the welcome window, whose empty list offers the sample database and import from another app.
+
+### Removed
+
+- First-launch tour.
 
 ### Fixed
+
+- Blank welcome window list when a search matched nothing and a favorite existed.
+- Welcome window reading No Connections while a tag filter hid every connection.
 
 - Idle metadata connections held open for the life of the app, up to six per connection. (#2700)
 - MongoDB connections reading as healthy after the server went away. (#2700)

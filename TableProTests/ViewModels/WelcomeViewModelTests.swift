@@ -52,7 +52,7 @@ final class WelcomeViewModelTests: XCTestCase {
             connectionStorage: self.connectionStorage
         )
         welcomeRouter = WelcomeRouter()
-        viewModel = WelcomeViewModel(services: makeServices())
+        viewModel = WelcomeViewModel(services: makeServices(), importableAppDetector: { false })
     }
 
     override func tearDown() {
@@ -146,6 +146,71 @@ final class WelcomeViewModelTests: XCTestCase {
             viewModel.groups.first { $0.id == id }?.name.lowercased() == "staging"
         }
         XCTAssertEqual(stagingNodes.count, 1)
+    }
+
+    // MARK: - List State
+
+    func testAnEmptyStoreOpensOnTheFirstRunState() {
+        viewModel.loadConnections()
+
+        XCTAssertEqual(viewModel.listState, .firstRun)
+        XCTAssertFalse(viewModel.isSearchAvailable)
+    }
+
+    func testASavedConnectionReplacesTheFirstRunState() {
+        connectionStorage.saveConnections([DatabaseConnection(name: "Local", type: .postgresql, sortOrder: 0)])
+        viewModel.loadConnections()
+
+        XCTAssertEqual(viewModel.listState, .content)
+        XCTAssertTrue(viewModel.isSearchAvailable)
+    }
+
+    func testASearchMissIsReportedWhenAFavoriteIsStored() {
+        var favorite = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
+        favorite.isFavorite = true
+        connectionStorage.saveConnections([favorite])
+        viewModel.loadConnections()
+
+        viewModel.searchText = "zzz"
+
+        XCTAssertEqual(viewModel.listState, .noSearchMatch("zzz"))
+    }
+
+    func testATagFilterThatHidesEveryConnectionIsAFilterMiss() {
+        let first = UUID()
+        let second = UUID()
+        var alpha = DatabaseConnection(name: "Alpha", type: .mysql, sortOrder: 0)
+        alpha.tagIds = [first]
+        var beta = DatabaseConnection(name: "Beta", type: .mysql, sortOrder: 1)
+        beta.tagIds = [second]
+        connectionStorage.saveConnections([alpha, beta])
+        viewModel.loadConnections()
+
+        viewModel.tagFilter = TagFilter(selectedIds: [first, second], mode: .all)
+
+        XCTAssertEqual(viewModel.listState, .noFilterMatch)
+    }
+
+    func testDeletingTheLastConnectionClearsTheSearchItCanNoLongerRun() {
+        let only = DatabaseConnection(name: "Only", type: .mysql, sortOrder: 0)
+        connectionStorage.saveConnections([only])
+        viewModel.loadConnections()
+        viewModel.searchText = "On"
+
+        viewModel.connectionsToDelete = [only]
+        viewModel.deleteSelectedConnections()
+
+        XCTAssertEqual(viewModel.searchText, "")
+        XCTAssertEqual(viewModel.listState, .firstRun)
+    }
+
+    func testTheImportOfferFollowsTheInstalledAppDetector() {
+        let offering = WelcomeViewModel(services: makeServices(), importableAppDetector: { true })
+
+        offering.setUp()
+
+        XCTAssertTrue(offering.hasImportableApp)
+        XCTAssertFalse(viewModel.hasImportableApp)
     }
 
     // MARK: - Reorder

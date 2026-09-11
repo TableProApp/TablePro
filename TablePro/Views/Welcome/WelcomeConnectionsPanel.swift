@@ -18,14 +18,8 @@ internal struct WelcomeConnectionsPanel: View {
                 TagFilterBar(tagFilter: $vm.tagFilter, availableTags: vm.availableTags)
                 Divider()
             }
-            ZStack {
-                if vm.treeItems.isEmpty && vm.linkedConnections.isEmpty && vm.teamLibraryConnections.isEmpty
-                    && vm.favoriteConnections.isEmpty {
-                    emptyState
-                } else {
-                    WelcomeConnectionList(vm: vm, focus: focus)
-                }
-            }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -34,6 +28,38 @@ internal struct WelcomeConnectionsPanel: View {
         .onReceive(NotificationCenter.default.publisher(for: .welcomeWindowFindRequested)) { _ in
             searchFocusTrigger += 1
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch vm.listState {
+        case .content:
+            WelcomeConnectionList(vm: vm, focus: focus)
+        case .firstRun:
+            firstRunState
+        case .noSearchMatch(let term):
+            ContentUnavailableView.search(text: term)
+        case .noFilterMatch:
+            EmptyStateView(
+                icon: "tag",
+                title: String(localized: "No Matching Connections"),
+                description: String(localized: "No connections have the selected tags."),
+                actionTitle: String(localized: "Clear Filter"),
+                action: { vm.tagFilter.selectedIds.removeAll() }
+            )
+        }
+    }
+
+    private var firstRunState: some View {
+        EmptyStateView(
+            icon: "cylinder.split.1x2",
+            title: String(localized: "No Connections"),
+            description: String(localized: "Connect to your own database, or open the sample database to look around."),
+            actionTitle: String(localized: "Open Sample Database"),
+            action: { vm.openSampleDatabase() },
+            secondaryActionTitle: vm.hasImportableApp ? String(localized: "Import from Other App…") : nil,
+            secondaryAction: vm.hasImportableApp ? { vm.importConnectionsFromApp() } : nil
+        )
     }
 
     private var newConnectionHelp: String {
@@ -81,30 +107,10 @@ internal struct WelcomeConnectionsPanel: View {
                 maxWidth: 240
             )
             .focused(focus, equals: .search)
+            .disabled(!vm.isSearchAvailable)
             .layoutPriority(0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private var emptyState: some View {
-        if vm.searchText.isEmpty {
-            EmptyStateView(
-                icon: "cylinder.split.1x2",
-                title: String(localized: "No Connections"),
-                description: String(localized: "Try the sample database, or click + above to add your own."),
-                actionTitle: String(localized: "Try Sample Database"),
-                action: { vm.openSampleDatabase() }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            EmptyStateView(
-                icon: "magnifyingglass",
-                title: String(localized: "No Matching Connections"),
-                description: String(localized: "Try a different search term.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
     }
 }

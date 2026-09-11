@@ -7,7 +7,6 @@ import SwiftUI
 import TableProImport
 import UniformTypeIdentifiers
 
-/// Every alert, sheet and panel the welcome window can raise, kept apart from its layout.
 internal struct WelcomePresentations: ViewModifier {
     @Bindable var vm: WelcomeViewModel
     let onSheetDismiss: () -> Void
