@@ -171,6 +171,8 @@ Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracl
 
 Read-only `CREATE TABLE` with syntax highlighting and font size controls. **Copy**, **Export** as a `.sql` file, and **Open in Editor** send it onward. On PostgreSQL the `CREATE SEQUENCE` and `CREATE TYPE … AS ENUM` statements the table depends on are prepended, so the script runs on an empty database.
 
+Open the tab on a view and it carries that view's own `CREATE VIEW` or `CREATE MATERIALIZED VIEW` instead, the same statement **Show DDL** opens. A materialized view's indexes follow it.
+
 ## Parts tab (ClickHouse)
 
 Lists partitions and parts from `system.parts`. **Optimize** merges parts; **Drop Partition** and **Detach Partition** act on the selected partition. Detached data stays on disk and is unreadable until it is re-attached.

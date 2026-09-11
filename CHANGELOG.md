@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
 - **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
+- **Refresh Materialized View…** on PostgreSQL, with a concurrent refresh where the view qualifies. (#2726)
+- **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
+- **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
 
 ### Changed
 
@@ -151,10 +154,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 - Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- PostgreSQL view definitions without `security_barrier`, `security_invoker` or the check option. (#2726)
+- PostgreSQL view definitions that bind to another schema's tables when run elsewhere. (#2726)
+- `CREATE TABLE` in Structure > DDL for a PostgreSQL view or materialized view. (#2726)
+- **Edit View Definition** in the Database menu opening a same-named view from the browsed schema. (#2726)
+- **Edit View Definition** enabled in the Database menu on a read-only connection. (#2726)
+- Enum types and sequences written in front of a PostgreSQL view's DDL. (#2726)
 
 ### Security
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
+- PostgreSQL comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
 
 ## [0.73.0] - 2026-09-09
 

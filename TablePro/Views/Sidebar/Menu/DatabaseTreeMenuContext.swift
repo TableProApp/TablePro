@@ -51,4 +51,6 @@ internal struct DatabaseTreeMenuContext {
     internal var canBackUp: Bool = false
     /// Whether the driver can offer a CREATE TYPE template. Read-only mode still hides the item.
     internal var canCreateType: Bool = false
+    /// Which materialized-view and comment commands the driver has statements for.
+    internal var objectToolSupport: DatabaseObjectToolEligibility.Support = .none
 }

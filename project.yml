@@ -519,6 +519,8 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogTypeNames.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift

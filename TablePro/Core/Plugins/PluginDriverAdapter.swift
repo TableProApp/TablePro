@@ -766,6 +766,23 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         pluginDriver.maintenanceStatements(operation: operation, table: table, schema: pluginDriver.currentSchema, options: options)
     }
 
+    // MARK: - Object Comments and Materialized Views
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        pluginDriver.objectCommentStatement(name: name, objectType: objectType, schema: schema, comment: comment)
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? {
+        pluginDriver.refreshMaterializedViewStatement(name: name, schema: schema, concurrently: concurrently)
+    }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
+    }
+
     // MARK: - All Tables Metadata SQL
 
     func allTablesMetadataSQL(schema: String?) -> String? {

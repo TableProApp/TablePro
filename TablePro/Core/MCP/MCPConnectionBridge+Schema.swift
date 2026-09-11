@@ -98,17 +98,13 @@ extension MCPConnectionBridge {
     /// The table's own statement plus the indexes it does not declare, because a caller asking for
     /// a table's DDL wants what recreates it, not the half the export replays first.
     static func composedTableDDL(driver: DatabaseDriver, table: String) async -> String? {
-        guard let base = try? await driver.fetchTableDDL(table: table) else { return nil }
-        let indexes = (try? await driver.fetchIndexDDL(table: table)) ?? []
-        return TableDDLComposer.compose(tableDDL: base, indexDDL: indexes)
+        try? await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
     }
 
     func getTableDDL(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let ddl = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            let base = try await driver.fetchTableDDL(table: table)
-            let indexes = (try? await driver.fetchIndexDDL(table: table)) ?? []
-            return TableDDLComposer.compose(tableDDL: base, indexDDL: indexes)
+            try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
         }
         return .object([
             "table": .string(table),

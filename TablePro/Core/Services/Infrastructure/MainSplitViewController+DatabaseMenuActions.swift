@@ -88,6 +88,22 @@ extension MainSplitViewController {
         commandActions?.editViewDefinition()
     }
 
+    @objc func showObjectDDL(_ sender: Any?) {
+        commandActions?.showObjectDDL()
+    }
+
+    @objc func copyObjectDDL(_ sender: Any?) {
+        commandActions?.copyObjectDDL()
+    }
+
+    @objc func refreshMaterializedView(_ sender: Any?) {
+        commandActions?.refreshMaterializedView()
+    }
+
+    @objc func editObjectComment(_ sender: Any?) {
+        commandActions?.editObjectComment()
+    }
+
     @objc func runMaintenanceOperation(_ sender: Any?) {
         guard let operation = (sender as? NSMenuItem)?.representedObject as? String else { return }
         commandActions?.runMaintenanceOperation(operation)

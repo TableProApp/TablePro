@@ -243,6 +243,19 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Generates SQL statements for a maintenance operation.
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]?
 
+    // MARK: - Object Comments and Materialized Views
+
+    /// Nil for an object kind the engine cannot comment on. Takes the object's own schema, never
+    /// the connection's current one, because the object named may live anywhere in the tree.
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String?
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability?
+
     // MARK: - Query Cancellation
 
     /// Cancel the currently running query, if any.
@@ -551,6 +564,19 @@ extension DatabaseDriver {
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        nil
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? { nil }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
 
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }

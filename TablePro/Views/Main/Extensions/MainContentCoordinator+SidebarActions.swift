@@ -134,33 +134,47 @@ extension MainContentCoordinator {
         WindowManager.shared.openTab(payload: payload)
     }
 
-    func editViewDefinition(_ viewName: String) {
+    /// Reads the view the row names, in the database and schema the row names, and opens the query
+    /// tab there. It used to read through the browse scope with the name alone, so a view selected
+    /// in another schema opened the definition of a same-named view in the browsed one, and running
+    /// it replaced that other view.
+    func editViewDefinition(_ ref: DatabaseTreeTableRef) {
+        guard let target = objectTarget(for: ref) else { return }
+        let viewName = ref.table.name
         Task {
+            let query: String
             do {
-                let definition = try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: self.connection.id) { driver in
+                query = try await DatabaseManager.shared.withMetadataDriver(scope: target.scope) { driver in
                     try await driver.fetchViewDefinition(view: viewName)
                 }
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: definition
-                )
-                WindowManager.shared.openTab(payload: payload)
             } catch {
-                let driver = DatabaseManager.shared.driver(for: self.connection.id)
-                let template = driver?.editViewFallbackTemplate(viewName: viewName)
-                    ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
-                let fallbackSQL = "-- Could not fetch view definition: \(error.localizedDescription)\n\(template)"
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: fallbackSQL
+                query = Self.viewDefinitionFallback(
+                    viewName: viewName,
+                    error: error,
+                    driver: DatabaseManager.shared.driver(for: self.connection.id)
                 )
-                WindowManager.shared.openTab(payload: payload)
             }
+            WindowManager.shared.openTab(payload: EditorTabPayload(
+                connectionId: connection.id,
+                tabType: .query,
+                databaseName: target.scope.database,
+                schemaName: target.scope.schema,
+                initialQuery: query
+            ))
         }
+    }
+
+    /// Every line of the error is commented out. A driver error can span several lines, and only the
+    /// first used to be, so the rest landed in the query tab as SQL.
+    static func viewDefinitionFallback(viewName: String, error: Error, driver: DatabaseDriver?) -> String {
+        let template = driver?.editViewFallbackTemplate(viewName: viewName)
+            ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
+        let reason = error.localizedDescription
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "-- \($0)" }
+            .joined(separator: "\n")
+        let heading = "-- " + String(localized: "Could not fetch the view definition:")
+        return "\(heading)\n\(reason)\n\(template)"
     }
 
     // MARK: - Export/Import

@@ -514,6 +514,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _cachedServerVersionNumber
     }
 
+    /// Whether the session is inside a transaction block, including one a failed statement has
+    /// aborted. A statement sent now joins that block rather than running on its own.
+    ///
+    /// Read on the connection's own queue, like every other libpq call here: one `PGconn` may not
+    /// be used from two threads at once, and the lock alone guards the pointer rather than the call.
+    var isInsideTransactionBlock: Bool {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return false }
+        return queue.sync {
+            let status = PQtransactionStatus(conn)
+            return status == PQTRANS_INTRANS || status == PQTRANS_INERROR
+        }
+    }
+
     func currentDatabase() -> String {
         database
     }
