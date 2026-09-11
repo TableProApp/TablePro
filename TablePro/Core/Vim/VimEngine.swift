@@ -134,10 +134,6 @@ final class VimEngine {
         return consumed
     }
 
-    func redo() {
-        buffer?.redo()
-    }
-
     func invalidateLineCache() {
         buffer?.invalidateLineCache()
     }

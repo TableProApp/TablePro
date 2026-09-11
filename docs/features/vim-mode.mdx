@@ -3,7 +3,7 @@ title: Vim Mode
 description: Vim motions, text objects, registers, marks, and search inside the SQL editor
 ---
 
-Vim mode is scoped to the SQL editor. The data grid, the find field and every other control in the window keep their own keys, and a `Cmd` or `Option` chord passes through in any mode, so `Cmd+Enter` still runs the query.
+Vim mode is scoped to the SQL editor. The data grid, the find field and every other control in the window keep their own keys, and a `Cmd` chord passes through in any mode, so `Cmd+Enter` still runs the query.
 
 Turn it on in **Settings > Editor > Vim mode**, which is also the only way to turn it off: there is no `:set`. A badge next to the editor shows the current mode.
 
@@ -24,7 +24,7 @@ Turn it on in **Settings > Editor > Vim mode**, which is also the only way to tu
 
 | Mode | How to enter |
 |------|--------------|
-| Normal | `Esc` |
+| Normal | `Esc`, `Ctrl+[` |
 | Insert | `i`, `I`, `a`, `A`, `o`, `O`, `s`, `S`, `c`, `C`, `gi` |
 | Replace | `R` |
 | Visual | `v` |
@@ -39,7 +39,7 @@ Turn it on in **Settings > Editor > Vim mode**, which is also the only way to tu
 
 | Key | Goes to |
 |-----|---------|
-| `h` `j` `k` `l` | Left, down, up, right |
+| `h` `j` `k` `l` | Left, down, up, right. The arrow keys do the same |
 | `0` | Start of line |
 | `^` `_` | First non-blank on line |
 | `$` | End of line |
@@ -92,7 +92,7 @@ Counts work: `3w` moves three words, `5j` moves five lines down.
 | `y{m}` | Yank |
 | `dd` `cc` `yy` | Same on the whole line |
 | `D` `C` `Y` | Same as `d$`, `c$`, `yy` |
-| `x` `X` | Delete one char under, one before cursor |
+| `x` `X` | Delete one char under, one before cursor. `Forward Delete` is `x` |
 | `s` `S` | Replace one char or whole line, then insert |
 | `r{c}` | Replace one char with `{c}`, stay in normal |
 | `~` | Toggle case under cursor |
@@ -197,15 +197,34 @@ A macro that calls itself stops after 50 rounds.
 
 ## Control keys
 
-`Ctrl+R` in normal mode is the only control combination vim mode intercepts, and it redoes. Every other one reaches the editor and gets the editor's own binding, so these vim meanings are not available:
+Outside insert mode, a `Ctrl` letter goes to vim, never to the editor's own binding:
 
-| Keys | What you do not get |
-|------|---------------------|
-| `Ctrl+D` `Ctrl+U` `Ctrl+F` `Ctrl+B` `Ctrl+E` `Ctrl+Y` | Scrolling. `Ctrl+D` deletes the character after the cursor and `Ctrl+E` goes to the end of the paragraph instead |
-| `Ctrl+A` `Ctrl+X` | Increment and decrement the number under the cursor. `Ctrl+A` goes to the start of the paragraph instead |
-| `Ctrl+W` `Ctrl+U` `Ctrl+T` `Ctrl+D` | Insert-mode delete word, delete to line start, indent, outdent. `Ctrl+H` still backspaces, through the editor's binding rather than vim's |
+| Keys | Normal mode | Visual mode |
+|------|-------------|-------------|
+| `Ctrl+D` `Ctrl+U` | Down, up half the visible lines. With a count, that many lines | Moves the end of the selection half the visible lines |
+| `Ctrl+F` `Ctrl+B` | Down, up one screen | Moves the end of the selection one screen |
+| `Ctrl+A` `Ctrl+X` | Add, subtract 1 from the number under or after the cursor. `5 Ctrl+A` adds 5 | Nothing |
+| `Ctrl+R` | Redo | Nothing |
+| `Ctrl+H` `Ctrl+N` `Ctrl+P` | Same as `h`, `j`, `k` | Same as `h`, `j`, `k` |
 
-`zt`, `zz` and `zb` are read and discarded, so there is no way to move the viewport from the keyboard at all.
+Any other `Ctrl` letter does nothing. That includes `Ctrl+E` and `Ctrl+Y`, which like `zt`, `zz` and `zb` are read and discarded: the view scrolls only to follow the cursor. `Ctrl+Space` still opens completions, and `Ctrl+Tab` and `Ctrl+Shift+Tab` still move focus to the next and previous control. A shortcut of `Ctrl` and a letter assigned in **Settings > Keyboard** does not fire from the SQL editor outside insert mode.
+
+In insert and replace mode, vim takes these and leaves every other `Ctrl` combination to the editor:
+
+| Keys | Action |
+|------|--------|
+| `Esc` `Ctrl+[` | Back to normal mode |
+| `Ctrl+W` | Delete the word before the cursor |
+| `Ctrl+U` | Delete back to the start of the line |
+| `Ctrl+T` `Ctrl+D` | Indent, outdent the line |
+
+`Ctrl+H` is the editor's own backspace in insert mode, so it deletes a selection the way `Delete` does. In replace mode vim takes it, and like `Delete` it restores the character you overwrote.
+
+## Option keys
+
+An `Option` chord outside insert mode is read as the character it types. On a keyboard layout where `Option` types `[` or `@`, such as German, those work as vim commands, and a character vim has no use for, such as the non-breaking space from `Option+Space`, does nothing. A dead key such as `Option+E` on the US layout does nothing outside insert mode.
+
+In insert mode, `Option` types as usual. In replace mode, the character it types overwrites the one under the cursor.
 
 ## Visual mode
 
@@ -227,7 +246,7 @@ Indent and outdent work in normal mode only (`>>`, `<<`, `>{m}`, `<{m}`).
 
 ## Insert mode
 
-`Esc` goes back to normal mode. Nothing else is intercepted while you type; see [Control keys](#control-keys).
+`Esc` or `Ctrl+[` goes back to normal mode. Apart from the insert-mode [control keys](#control-keys), what you type goes to the editor as usual.
 
 ## Command line
 
@@ -237,3 +256,5 @@ Indent and outdent work in normal mode only (`>>`, `<<`, `>{m}`, `<{m}`).
 | `:q` | Close the tab |
 
 `/` and `?` are search. Every other `:` command is parsed and ignored, `:wq`, `:x` and `:set` among them. `:10` does not jump to line 10 either; use `10G` or `10gg`.
+
+`Delete` and `Ctrl+H` erase the last character of the command. The arrow keys and the other `Ctrl` letters do nothing while you type one.

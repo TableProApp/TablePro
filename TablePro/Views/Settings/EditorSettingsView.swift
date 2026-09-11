@@ -26,6 +26,7 @@ struct EditorSettingsView: View {
                 Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
+                    .accessibilityIdentifier("vim-mode-toggle")
             }
         }
         .formStyle(.grouped)

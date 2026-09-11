@@ -37,6 +37,10 @@ extension VimEngine {
             return true
         }
 
+        if handleVisualControl(char, linewise: isLinewise, in: buffer) {
+            return true
+        }
+
         switch char {
         case "\u{1B}":
             recordVisualSelection(linewise: isLinewise, in: buffer)

@@ -37,4 +37,9 @@ enum VimMode: Equatable {
         if case .visual = self { return true }
         return false
     }
+
+    var isCommandLine: Bool {
+        if case .commandLine = self { return true }
+        return false
+    }
 }
