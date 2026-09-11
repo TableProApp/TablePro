@@ -15,26 +15,15 @@ import Testing
 
 @Suite("PostgreSQLSchemaQueries.columnsQuery")
 struct PostgreSQLColumnsQueryTests {
+    private let modern = PostgreSQLCapabilities(serverVersion: 170_000)
+    private let legacy = PostgreSQLCapabilities(serverVersion: 90_100)
+
     private func singleTable(schema: String, table: String) -> String {
-        PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: schema,
-            tableLiteral: table,
-            identityProjection: "a.attidentity",
-            generatedProjection: "a.attgenerated",
-            generationExpressionProjection: "c.generation_expression",
-            attributeJoin: "LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = st.relid"
-        )
+        PostgreSQLSchemaQueries.columnsQuery(schemaLiteral: schema, tableLiteral: table, capabilities: modern)
     }
 
     private func allTables(schema: String) -> String {
-        PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: schema,
-            tableLiteral: nil,
-            identityProjection: "NULL::text",
-            generatedProjection: "NULL::text",
-            generationExpressionProjection: "NULL::text",
-            attributeJoin: ""
-        )
+        PostgreSQLSchemaQueries.columnsQuery(schemaLiteral: schema, tableLiteral: nil, capabilities: legacy)
     }
 
     @Test("single-table query filters on the requested schema and table")
@@ -74,12 +63,39 @@ struct PostgreSQLColumnsQueryTests {
         #expect(query.contains("pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name"))
     }
 
-    @Test("version-dependent projections are interpolated verbatim")
-    func projectionsInterpolated() {
+    @Test("identity and generated flags are read from pg_attribute by attribute number on 10 and later")
+    func modernServerReadsAttributes() {
         let query = singleTable(schema: "s2", table: "orders")
         #expect(query.contains("a.attidentity"))
         #expect(query.contains("a.attgenerated"))
-        #expect(query.contains("LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = st.relid"))
+        #expect(query.contains("c.generation_expression"))
+        #expect(query.contains("ON a.attrelid = rel.oid"))
+        #expect(query.contains("AND a.attnum = c.ordinal_position"))
+    }
+
+    @Test("a server without identity or generated columns never names pg_attribute")
+    func legacyServerSkipsAttributes() {
+        let query = allTables(schema: "s2")
+        #expect(!query.contains("pg_attribute"))
+        #expect(!query.contains("a.attidentity"))
+        #expect(!query.contains("a.attgenerated"))
+        #expect(!query.contains("c.generation_expression"))
+    }
+
+    @Test("column comments are read through the relation's pg_class oid, not a statistics view")
+    func commentsKeyOnRelationOid() {
+        for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
+            #expect(!query.contains("pg_statio_all_tables"))
+            #expect(query.contains("ON rel.relnamespace = relns.oid"))
+            #expect(query.contains("pg_catalog.col_description(rel.oid, c.ordinal_position)"))
+        }
+    }
+
+    @Test("primary key columns are matched to the constraint's own table")
+    func primaryKeyJoinIsTableScoped() {
+        for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
+            #expect(query.contains("AND tc.table_name = kcu.table_name"))
+        }
     }
 }
 
@@ -109,5 +125,13 @@ struct RedshiftColumnsQueryTests {
         #expect(!query.contains("c.table_name = '"))
         #expect(query.contains("ORDER BY c.table_name, c.ordinal_position"))
         #expect(query.contains("pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name"))
+    }
+
+    @Test("primary key columns are matched to the constraint's own table")
+    func primaryKeyJoinIsTableScoped() {
+        for table in ["orders", nil] {
+            let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: "s2", tableLiteral: table)
+            #expect(query.contains("AND tc.table_name = kcu.table_name"))
+        }
     }
 }

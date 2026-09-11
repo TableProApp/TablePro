@@ -249,12 +249,20 @@ enum PostgreSQLSchemaQueries {
     static func columnsQuery(
         schemaLiteral: String,
         tableLiteral: String?,
-        identityProjection: String,
-        generatedProjection: String,
-        generationExpressionProjection: String,
-        attributeJoin: String
+        capabilities: PostgreSQLCapabilities
     ) -> String {
         let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
+        let identityProjection = capabilities.hasIdentityColumns ? "a.attidentity" : "NULL::text"
+        let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
+        let generationExpressionProjection = capabilities.hasGeneratedColumns
+            ? "c.generation_expression"
+            : "NULL::text"
+        let attributeJoin = (capabilities.hasIdentityColumns || capabilities.hasGeneratedColumns) ? """
+
+                LEFT JOIN pg_catalog.pg_attribute a
+                    ON a.attrelid = rel.oid
+                    AND a.attnum = c.ordinal_position
+            """ : ""
         return """
             SELECT
                 \(shape.selectPrefix)c.column_name,
@@ -262,7 +270,7 @@ enum PostgreSQLSchemaQueries {
                 c.is_nullable,
                 c.column_default,
                 c.collation_name,
-                pgd.description,
+                pg_catalog.col_description(rel.oid, c.ordinal_position),
                 c.udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
                 \(identityProjection),
@@ -270,22 +278,12 @@ enum PostgreSQLSchemaQueries {
                 c.udt_schema,
                 \(generationExpressionProjection)
             FROM information_schema.columns c
-            LEFT JOIN pg_catalog.pg_statio_all_tables st
-                ON st.schemaname = c.table_schema
-                AND st.relname = c.table_name
-            LEFT JOIN pg_catalog.pg_description pgd
-                ON pgd.objoid = st.relid
-                AND pgd.objsubid = c.ordinal_position
-            \(attributeJoin)
-            LEFT JOIN (
-                SELECT DISTINCT \(shape.pkSelect)
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schemaLiteral)'\(shape.pkTableFilter)
-            ) pk ON \(shape.pkJoin)
+            LEFT JOIN pg_catalog.pg_namespace relns
+                ON relns.nspname = c.table_schema
+            LEFT JOIN pg_catalog.pg_class rel
+                ON rel.relnamespace = relns.oid
+                AND rel.relname = c.table_name\(attributeJoin)
+            \(ColumnQueryShape.primaryKeyJoin(schemaLiteral: schemaLiteral, fragments: shape))
             WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
             ORDER BY \(shape.orderBy)
             """

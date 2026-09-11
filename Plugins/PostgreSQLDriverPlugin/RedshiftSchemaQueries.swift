@@ -34,15 +34,7 @@ enum RedshiftSchemaQueries {
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = cls.oid
                 AND pgd.objsubid = c.ordinal_position
-            LEFT JOIN (
-                SELECT DISTINCT \(shape.pkSelect)
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schemaLiteral)'\(shape.pkTableFilter)
-            ) pk ON \(shape.pkJoin)
+            \(ColumnQueryShape.primaryKeyJoin(schemaLiteral: schemaLiteral, fragments: shape))
             WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
             ORDER BY \(shape.orderBy)
             """
