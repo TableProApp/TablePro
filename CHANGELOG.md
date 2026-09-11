@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First launch opening on the welcome window, whose empty list offers the sample database and import from another app.
 - New Connection… and Import on the welcome window, named as in the File menu.
 - Open Project Folder… in File > Import.
-- First-launch tour replaced by a one-page welcome sheet, shown again from Help > Welcome to TablePro.
+- First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 
 ### Fixed
 

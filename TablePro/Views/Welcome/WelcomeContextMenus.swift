@@ -58,12 +58,7 @@ extension WelcomeConnectionList {
     private func externalConnectionContextMenu(for external: [LinkedConnection]) -> some View {
         if !external.isEmpty {
             Button { primaryAction(for: Set(external.map(\.id))) } label: {
-                Label(
-                    external.count == 1
-                        ? String(localized: "Connect")
-                        : String(format: String(localized: "Connect %d Connections"), external.count),
-                    systemImage: "play.fill"
-                )
+                Label(WelcomeSelectionLabels.connect(count: external.count), systemImage: "play.fill")
             }
 
             if external.count == 1, let linked = external.first, vm.isLinkedFolderConnection(linked.id) {
@@ -85,10 +80,7 @@ extension WelcomeConnectionList {
         selectionCount: Int
     ) -> some View {
         Button { primaryAction(for: selection) } label: {
-            Label(
-                String(format: String(localized: "Connect %d Connections"), selectionCount),
-                systemImage: "play.fill"
-            )
+            Label(WelcomeSelectionLabels.connect(count: selectionCount), systemImage: "play.fill")
         }
 
         Divider()
@@ -109,10 +101,7 @@ extension WelcomeConnectionList {
             Button {
                 vm.exportConnections(connections)
             } label: {
-                Label(
-                    String(format: String(localized: "Export %d Connections to File…"), connections.count),
-                    systemImage: "square.and.arrow.up"
-                )
+                Label(WelcomeSelectionLabels.exportToFile(count: connections.count), systemImage: "square.and.arrow.up")
             }
 
             if vm.services.licenseManager.isFeatureAvailable(.teamCatalog) {
@@ -120,7 +109,7 @@ extension WelcomeConnectionList {
                     vm.publishToTeamCatalog(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Catalog…"), connections.count),
+                        WelcomeSelectionLabels.publishToTeamCatalog(count: connections.count),
                         systemImage: "person.2.fill"
                     )
                 }
@@ -131,7 +120,7 @@ extension WelcomeConnectionList {
                     vm.publishConnectionsToTeamLibrary(connections)
                 } label: {
                     Label(
-                        String(format: String(localized: "Publish %d Connections to Team Library…"), connections.count),
+                        WelcomeSelectionLabels.publishToTeamLibrary(count: connections.count),
                         systemImage: "books.vertical.fill"
                     )
                 }
@@ -170,10 +159,7 @@ extension WelcomeConnectionList {
         Button(role: .destructive) {
             vm.requestDeleteConnections(connections)
         } label: {
-            Label(
-                String(format: String(localized: "Delete %d Connections"), connections.count),
-                systemImage: "trash"
-            )
+            Label(WelcomeSelectionLabels.delete(count: connections.count), systemImage: "trash")
         }
     }
 

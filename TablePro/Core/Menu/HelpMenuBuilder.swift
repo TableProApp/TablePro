@@ -27,7 +27,7 @@ enum HelpMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Welcome to TablePro"),
+                String(localized: "Getting Started"),
                 action: #selector(AppDelegate.showWelcomeSheet(_:))
             ),
             MenuItemFactory.item(

@@ -258,6 +258,16 @@ final class WelcomeViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.presentsWelcomeSheet)
     }
 
+    func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
+        AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
+        viewModel.setUp()
+        viewModel.activeSheet = .activation
+
+        viewModel.handle(.showWelcomeSheet)
+
+        XCTAssertFalse(viewModel.presentsWelcomeSheet, "A second sheet can never stack, so the request must not wait stuck")
+    }
+
     // MARK: - Favorites, Tags and Groups
 
     func testAFavoriteInsideAGroupIsListedOnlyUnderFavorites() throws {

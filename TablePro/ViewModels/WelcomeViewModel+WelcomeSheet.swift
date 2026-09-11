@@ -16,6 +16,11 @@ extension WelcomeViewModel {
         presentsWelcomeSheet = true
     }
 
+    func showWelcomeSheet() {
+        guard !hasPendingPresentation else { return }
+        presentsWelcomeSheet = true
+    }
+
     func welcomeSheetDidDismiss() {
         services.appSettingsStorage.markWelcomeSheetSeen()
     }

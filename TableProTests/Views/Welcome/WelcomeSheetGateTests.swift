@@ -18,12 +18,16 @@ struct WelcomeSheetGateTests {
     @Test("A sheet already seen never shows on its own again")
     func seenSheet() {
         #expect(!WelcomeSheetGate.shouldPresent(hasSeen: true, isUITestSandbox: false, uiTestRequestsSheet: false))
-        #expect(!WelcomeSheetGate.shouldPresent(hasSeen: true, isUITestSandbox: true, uiTestRequestsSheet: true))
     }
 
     @Test("A UI test sandbox keeps the sheet out of the way unless the test asks for it")
     func uiTestSandbox() {
         #expect(!WelcomeSheetGate.shouldPresent(hasSeen: false, isUITestSandbox: true, uiTestRequestsSheet: false))
         #expect(WelcomeSheetGate.shouldPresent(hasSeen: false, isUITestSandbox: true, uiTestRequestsSheet: true))
+    }
+
+    @Test("A UI test that asks for the sheet gets it even after an earlier case dismissed it")
+    func uiTestRequestOutlivesAnEarlierDismissal() {
+        #expect(WelcomeSheetGate.shouldPresent(hasSeen: true, isUITestSandbox: true, uiTestRequestsSheet: true))
     }
 }

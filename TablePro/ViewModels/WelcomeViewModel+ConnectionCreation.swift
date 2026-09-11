@@ -22,7 +22,7 @@ extension WelcomeViewModel {
         case .openProjectFolder:
             openProjectFolder()
         case .showWelcomeSheet:
-            presentsWelcomeSheet = true
+            showWelcomeSheet()
         }
     }
 

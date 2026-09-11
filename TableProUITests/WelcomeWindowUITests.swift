@@ -33,13 +33,13 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
         XCTAssertFalse(welcome.descendants(matching: .button)["welcome-sheet-continue"].exists)
 
-        let item = app.menuBars.menuItems["Welcome to TablePro"]
+        let item = app.menuBars.menuItems["Getting Started"]
         XCTAssertTrue(item.waitToExist(timeout: 10), "Help must offer the welcome sheet")
         item.click()
 
         XCTAssertTrue(
             welcome.descendants(matching: .button)["welcome-sheet-continue"].waitToExist(timeout: 10),
-            "Help > Welcome to TablePro must show the sheet again"
+            "Help > Getting Started must show the sheet again"
         )
     }
 
