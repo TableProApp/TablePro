@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
 - **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
+- Header, grid line, selection and focus colors in the theme editor.
+- Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
+- Reason shown in Settings > Appearance for a theme file that could not be loaded.
 
 ### Changed
 
@@ -35,14 +38,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
+- Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
+- Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data & Results, and kept per Mac.
+- Editor font size range of 10 to 24 points everywhere, including zoom.
 
 ### Removed
 
 - Focus Border color in the theme editor.
+- Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
+- Fonts from the theme file.
 
 ### Fixed
 
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
+- Interface, Sidebar and Toolbar colors having no effect anywhere in the app.
+- Line Number color having no effect on the editor gutter.
+- Default Light used for the dark theme when the chosen dark theme could not be loaded.
+- Editor zoom lost on the next appearance or theme change.
+- DDL, trigger and SQL import previews keeping the previous theme's colors.
+- Query history preview ignoring the theme and the editor font.
+- Theme editor changing the active theme instead of the theme selected for the slot being edited.
+- Malformed theme files loading as Default Light under their own name.
+- Color with a typo in it rendering as a different color instead of being reported.
 - Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
 - **Encoding** ignored on iPhone and iPad by a MySQL connection synced from the Mac. (#2725)
 - Binary MySQL columns shown as text on iPhone and iPad, and searched with `LIKE`.

@@ -1,65 +1,60 @@
 import AppKit
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Every action here acts on the theme the slot has selected. Acting on the active theme instead
+/// let a delete in the dark slot write the light theme's id into it, so at dusk the editor turned
+/// white inside dark chrome.
 internal struct ThemeListView: View {
-    @Binding var selectedThemeId: String
+    @Binding internal var selectedThemeId: String
     internal var slotAppearance: ThemeAppearance = .light
-
-    private var engine: ThemeEngine { ThemeEngine.shared }
 
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
     @State private var showError = false
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeListView")
+
+    private var catalog: ThemeCatalog { ThemeCatalog.shared }
+
     private var builtInThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(
-            engine.availableThemes.filter(\.isBuiltIn),
-            slot: slotAppearance,
-            keeping: selectedThemeId
-        )
+        eligible(catalog.themes.filter(\.isBuiltIn))
     }
 
     private var registryThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(
-            engine.registryThemes,
-            slot: slotAppearance,
-            keeping: selectedThemeId
-        )
+        eligible(catalog.themes.filter(\.isRegistry))
     }
 
     private var customThemes: [ThemeDefinition] {
-        ThemeSlotValidation.eligibleThemes(
-            engine.availableThemes.filter(\.isEditable),
-            slot: slotAppearance,
-            keeping: selectedThemeId
-        )
+        eligible(catalog.themes.filter(\.isEditable))
     }
 
     private var selectedTheme: ThemeDefinition? {
-        engine.availableThemes.first { $0.id == selectedThemeId }
+        catalog.theme(id: selectedThemeId)
     }
 
-    private var isDeleteDisabled: Bool {
-        guard let theme = selectedTheme else { return true }
-        return !theme.isEditable
+    private var fallbackThemeId: String {
+        BuiltInThemes.defaultId(for: slotAppearance)
     }
 
-    var body: some View {
+    private func eligible(_ themes: [ThemeDefinition]) -> [ThemeDefinition] {
+        ThemeSlotValidation.eligibleThemes(themes, slot: slotAppearance, keeping: selectedThemeId)
+    }
+
+    internal var body: some View {
         VStack(spacing: 0) {
             List(selection: $selectedThemeId) {
                 Section("Built-in") {
                     ForEach(builtInThemes) { theme in
-                        ThemeListRowView(theme: theme)
-                            .tag(theme.id)
+                        ThemeListRowView(theme: theme).tag(theme.id)
                     }
                 }
 
                 if !registryThemes.isEmpty {
                     Section("Registry") {
                         ForEach(registryThemes) { theme in
-                            ThemeListRowView(theme: theme)
-                                .tag(theme.id)
+                            ThemeListRowView(theme: theme).tag(theme.id)
                         }
                     }
                 }
@@ -67,8 +62,15 @@ internal struct ThemeListView: View {
                 if !customThemes.isEmpty {
                     Section("Custom") {
                         ForEach(customThemes) { theme in
-                            ThemeListRowView(theme: theme)
-                                .tag(theme.id)
+                            ThemeListRowView(theme: theme).tag(theme.id)
+                        }
+                    }
+                }
+
+                if !catalog.rejected.isEmpty {
+                    Section("Not Loaded") {
+                        ForEach(catalog.rejected, id: \.path) { record in
+                            rejectedRow(record)
                         }
                     }
                 }
@@ -78,72 +80,16 @@ internal struct ThemeListView: View {
 
             Divider()
 
-            HStack(spacing: 4) {
-                Menu {
-                    Button(String(localized: "New Theme")) {
-                        duplicateActiveTheme()
-                    }
-                    Divider()
-                    Button(String(localized: "Import…")) {
-                        importTheme()
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 24, height: 24)
-                }
-                .menuIndicator(.hidden)
-                .buttonStyle(.borderless)
-                .frame(width: 28)
-                .help(Text("Add Theme"))
-                .accessibilityLabel(Text("Add Theme"))
-
-                Button {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.borderless)
-                .disabled(isDeleteDisabled)
-                .help(Text("Delete Theme"))
-                .accessibilityLabel(Text("Delete Theme"))
-
-                Menu {
-                    Button(String(localized: "Duplicate")) {
-                        duplicateActiveTheme()
-                    }
-                    Button(String(localized: "Export…")) {
-                        exportActiveTheme()
-                    }
-                    if selectedTheme?.isRegistry == true {
-                        Divider()
-                        Button(String(localized: "Uninstall"), role: .destructive) {
-                            uninstallRegistryTheme()
-                        }
-                    }
-                } label: {
-                    Image(systemName: "gearshape")
-                        .frame(width: 24, height: 24)
-                }
-                .menuIndicator(.hidden)
-                .buttonStyle(.borderless)
-                .frame(width: 28)
-                .help(Text("Theme Actions"))
-                .accessibilityLabel(Text("Theme Actions"))
-
-                Spacer()
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            toolbar
         }
         .alert(String(localized: "Delete Theme"), isPresented: $showDeleteConfirmation) {
-            Button(String(localized: "Delete"), role: .destructive) {
-                deleteSelectedTheme()
-            }
+            Button(String(localized: "Delete"), role: .destructive) { deleteSelectedTheme() }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            let name = engine.availableThemes.first(where: { $0.id == selectedThemeId })?.name ?? ""
-            Text(String(format: String(localized: "Are you sure you want to delete \"%@\"?"), name))
+            Text(String(
+                format: String(localized: "Are you sure you want to delete \"%@\"?"),
+                selectedTheme?.name ?? ""
+            ))
         }
         .alert(String(localized: "Error"), isPresented: $showError) {
             Button(String(localized: "OK")) {}
@@ -154,53 +100,108 @@ internal struct ThemeListView: View {
         }
     }
 
+    /// A file the loader refused is shown with its reason rather than dropped in silence, which is
+    /// what the previous loader did for a malformed theme.
+    private func rejectedRow(_ record: RejectedThemeRecord) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(record.fileName)
+                .font(.callout)
+                .lineLimit(1)
+
+            Text(record.reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 2)
+        .help(Text(record.reason))
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 4) {
+            Menu {
+                Button(String(localized: "Duplicate Selected")) { duplicateSelectedTheme() }
+                Divider()
+                Button(String(localized: "Import…")) { importTheme() }
+            } label: {
+                Image(systemName: "plus").frame(width: 24, height: 24)
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
+            .frame(width: 28)
+            .help(Text("Add Theme"))
+            .accessibilityLabel(Text("Add Theme"))
+
+            Button {
+                showDeleteConfirmation = true
+            } label: {
+                Image(systemName: "minus").frame(width: 24, height: 24)
+            }
+            .buttonStyle(.borderless)
+            .disabled(selectedTheme?.isEditable != true)
+            .help(Text("Delete Theme"))
+            .accessibilityLabel(Text("Delete Theme"))
+
+            Menu {
+                Button(String(localized: "Duplicate")) { duplicateSelectedTheme() }
+                Button(String(localized: "Export…")) { exportSelectedTheme() }
+                if selectedTheme?.isRegistry == true {
+                    Divider()
+                    Button(String(localized: "Uninstall"), role: .destructive) { uninstallRegistryTheme() }
+                }
+            } label: {
+                Image(systemName: "gearshape").frame(width: 24, height: 24)
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
+            .frame(width: 28)
+            .help(Text("Theme Actions"))
+            .accessibilityLabel(Text("Theme Actions"))
+
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
     // MARK: - Actions
 
-    private func duplicateActiveTheme() {
-        let theme = engine.activeTheme
-        let copy = engine.duplicateTheme(theme, newName: theme.name + " (Copy)")
-        do {
-            try engine.saveUserTheme(copy)
-            selectedThemeId = copy.id
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
-        }
+    private func duplicateSelectedTheme() {
+        guard let theme = selectedTheme else { return }
+        var copy = theme
+        copy.id = ThemeIdentifier.generated()
+        copy.name = String(format: String(localized: "%@ (Copy)"), theme.name)
+
+        perform { try catalog.save(copy) } then: { selectedThemeId = copy.id }
     }
 
     private func deleteSelectedTheme() {
-        do {
-            try engine.deleteUserTheme(id: selectedThemeId)
-            selectedThemeId = engine.activeTheme.id
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
-        }
+        guard let theme = selectedTheme, theme.isEditable else { return }
+        perform { try catalog.delete(id: theme.id) } then: { selectedThemeId = fallbackThemeId }
     }
 
     private func uninstallRegistryTheme() {
         guard let theme = selectedTheme, theme.isRegistry else { return }
-        let meta = ThemeStorage.loadRegistryMeta()
-        guard let entry = meta.installed.first(where: { $0.id == theme.id }) else { return }
-        do {
-            try engine.uninstallRegistryTheme(registryPluginId: entry.registryPluginId)
-            selectedThemeId = engine.activeTheme.id
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+        guard let entry = catalog.loadRegistryMeta().installed.first(where: { $0.id == theme.id }) else { return }
+
+        perform {
+            try ThemeRegistryInstaller.shared.uninstall(registryPluginId: entry.registryPluginId)
+        } then: {
+            selectedThemeId = fallbackThemeId
         }
     }
 
-    private func exportActiveTheme() {
-        guard let window = AlertHelper.resolveWindow(nil) else { return }
+    private func exportSelectedTheme() {
+        guard let theme = selectedTheme, let window = AlertHelper.resolveWindow(nil) else { return }
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = engine.activeTheme.name + ".json"
+        panel.nameFieldStringValue = theme.name + ".json"
         panel.canCreateDirectories = true
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                try engine.exportTheme(engine.activeTheme, to: url)
+                try catalog.exportTheme(theme, to: url)
             } catch {
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Could not export the theme"),
@@ -213,19 +214,29 @@ internal struct ThemeListView: View {
 
     private func importTheme() {
         guard let window = AlertHelper.resolveWindow(nil) else { return }
+
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            do {
-                let imported = try self.engine.importTheme(from: url)
-                self.selectedThemeId = imported.id
-            } catch {
-                self.errorMessage = error.localizedDescription
-                self.showError = true
+            perform {
+                let imported = try catalog.importTheme(from: url)
+                guard imported.appearance == slotAppearance else { return }
+                selectedThemeId = imported.id
             }
+        }
+    }
+
+    private func perform(_ work: () throws -> Void, then completion: () -> Void = {}) {
+        do {
+            try work()
+            completion()
+        } catch {
+            Self.logger.error("Theme action failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            showError = true
         }
     }
 }

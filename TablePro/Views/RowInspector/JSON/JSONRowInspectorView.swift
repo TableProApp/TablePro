@@ -127,7 +127,7 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
+            .background(ThemeEngine.shared.palette.color(.editorBackground))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }

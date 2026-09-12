@@ -1,6 +1,6 @@
 ---
 title: Appearance
-description: Themes, per-theme fonts, color customization, and connection colors
+description: Themes, color customization, theme files, and connection colors
 ---
 
 Light and Dark each hold their own theme. The **Editing** control at the top of the tab says which of the two the theme list writes to, so setting your dark theme never means leaving Light mode; **Appearance** beside it picks the one in use, or **Auto** to follow the system.
@@ -12,28 +12,23 @@ Light and Dark each hold their own theme. The **Editing** control at the top of 
 
 ## Themes
 
-Four ship with the app: Default Light, Default Dark, and two more dark ones, Dracula and Nord. One theme carries the editor and syntax colors, the data grid colors, the interface colors, and both fonts.
+Four ship with the app: Default Light, Default Dark, and two more dark ones, Dracula and Nord. A theme carries the editor and syntax colors, the data grid colors, and the status colors.
 
-The list groups them into Built-in, Registry, and Custom, and shows the ones that suit the slot you are editing plus whatever that slot already holds. Click a row to assign it; it applies at once if that slot is the one in use.
+A theme declares whether it is light or dark, and only appears in the matching slot, plus whatever that slot already holds. Click a row to assign it; it applies at once if that slot is the one in use.
 
-The editor on the right always edits the **active** theme, not the row you highlighted. Switch **Editing** to the slot in use before you change a font or a color, or the change lands on the other theme.
+The editor on the right edits the theme selected in the slot named by **Editing**, so a change always lands on the theme you can see highlighted.
 
 | Control | What it does |
 |--------|--------|
-| **+** menu | **New Theme** copies the active theme; **Import…** reads a theme JSON file |
+| **+** menu | **Duplicate Selected** copies the selected theme; **Import…** reads a theme JSON file |
 | **-** button | Deletes the selected theme. Custom themes only |
-| **Gear** menu | **Duplicate** and **Export…** act on the active theme; **Uninstall** removes the selected registry theme |
+| **Gear** menu | **Duplicate** and **Export…** act on the selected theme; **Uninstall** removes the selected registry theme |
 
-A built-in or registry theme is read-only, so the first change forks it. Changing a font makes "Name (Custom)" and edits that; **Duplicate**, **New Theme**, and the **Duplicate Theme** button on the Colors tab make "Name (Copy)" for you to edit.
+A built-in or registry theme is read-only and shows a **Duplicate Theme** button, which makes "Name (Copy)" for you to edit.
 
-## Fonts
+Fonts are not part of a theme. Editor Font lives in [Editor settings](/customization/editor-settings) and Data Grid Font in [Data settings](/customization/data-settings), and both stay on the Mac you set them on.
 
-The pickers list the monospaced families installed on your Mac; the preview renders a sample query in the theme's own editor colors.
-
-| Setting | Options | Default | Applies to |
-|---------|---------|---------|------------|
-| Editor Font | Family + size, 11 to 18 pt | System Mono, 13 pt | SQL editor and the JSON viewer's Text mode |
-| Data Grid Font | Family + size, 10 to 18 pt | System Mono, 13 pt | Grid cells, the inspector, the cell popovers and the Compare row diff |
+A theme file the app cannot read is listed under **Not Loaded** with the reason, rather than dropped without a word.
 
 ## Colors
 
@@ -41,52 +36,48 @@ Custom themes get color wells here. A built-in or registry theme shows a lock an
 
 | Group | Controls |
 |-------|----------|
-| Editor | Background, text, cursor, current line, selection, line number, invisibles |
+| Editor | Background, text, cursor, selection, current line, current statement, line number, invisibles |
 | Syntax Colors | Keyword, string, number, comment, NULL, operator, function, type |
-| Data Grid | Background, text, alternate row, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text |
-| Interface | Window, control, and card backgrounds, border, primary/secondary/tertiary text, selection, hover |
-| Status Colors | Success, warning, error, info |
-| Badges | Badge background, primary key, auto increment |
-| Sidebar | Background, text, selected item, hover, section header |
-| Toolbar | Secondary and tertiary text |
+| Data Grid | Background, text, alternate row, header background, header text, grid line, selection, selected text, inactive selection, focus border, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text |
+| Status | Success, warning, error |
 
-Interface, Sidebar, and Toolbar colors sit on macOS system colors until you override one, which is why an untouched theme follows your system accent color. So do the grid's background, text, alternate row, NULL value, and row number. Bool true and false show in the grid's text color until you set them. An overridden well grows a reset button that puts the system color back.
+A slot holds either a hex color or the name of a macOS system color. Default Light and Default Dark keep the data grid surrounds on system colors, which is why an untouched theme follows your system accent and its Increase Contrast setting. Right-click a well that a built-in leaves on a system color to put that system color back.
 
 ## Theme files
 
-A theme is one JSON file. **Export…** in the gear menu writes every color the active theme sets, which is the shortest way to start a new one; **Import…** in the **+** menu reads one back into `~/Library/Application Support/TablePro/Themes/`. Community themes install from the [registry](/features/plugins) under **Settings > Plugins > Browse**, Themes category.
+A theme is one JSON file. **Export…** in the gear menu writes every color the selected theme sets, which is the shortest way to start a new one; **Import…** in the **+** menu reads one back into `~/Library/Application Support/TablePro/Themes/`. Community themes install from the [registry](/features/plugins) under **Settings > Plugins > Browse**, Themes category.
 
 | Key | Holds |
 |-----|-------|
+| `schema` | Format version. `2` is the version this release reads |
 | `id`, `name`, `author` | Identity. An `id` that collides with a built-in, a registry theme, or one you already have is replaced on import |
-| `version` | Format version, `1` |
-| `appearance` | `light`, `dark`, or `auto`. Decides which slot lists the theme; `auto` lists in both |
-| `editor` | Editor colors, with syntax colors nested under `syntax` |
-| `dataGrid` | Grid colors |
-| `ui` | Interface colors, with `status` and `badges` nested |
-| `sidebar`, `toolbar` | Sidebar and toolbar colors |
-| `fonts` | `editorFontFamily`, `editorFontSize`, `dataGridFontFamily`, `dataGridFontSize` |
+| `appearance` | `light` or `dark`. Decides which slot lists the theme |
+| `content.editor` | Editor colors, with syntax colors nested under `syntax` |
+| `content.dataGrid` | Grid colors |
+| `content.status` | Success, warning and error colors |
 
 ```json
 {
+  "schema": 2,
   "id": "user.midnight",
   "name": "Midnight",
-  "version": 1,
-  "appearance": "dark",
   "author": "You",
-  "editor": {
-    "background": "#2E3440",
-    "text": "#D8DEE9",
-    "currentStatementHighlight": "#FFFFFF0F",
-    "syntax": { "keyword": "#81A1C1", "string": "#A3BE8C" }
-  },
-  "fonts": { "editorFontFamily": "System Mono", "editorFontSize": 13 }
+  "appearance": "dark",
+  "content": {
+    "editor": {
+      "background": "#2E3440",
+      "text": "#D8DEE9",
+      "syntax": { "keyword": "#81A1C1", "string": "#A3BE8C" }
+    },
+    "dataGrid": { "background": "system:textBackground" },
+    "status": { "error": "#BF616A" }
+  }
 }
 ```
 
-Colors are sRGB hex, `#RRGGBB` or `#RRGGBBAA` for a translucent overlay such as a selection band. A value that is neither renders as the system label color, which is how a typo shows up.
+A color is sRGB hex, `#RRGGBB` or `#RRGGBBAA` for a translucent overlay such as a selection band, or `system:` followed by a macOS system color name such as `system:textBackground`.
 
-Every key is optional. A group you leave out falls back to Default Light. A color left out of `ui`, `sidebar`, or `toolbar` is the macOS system color rather than a fixed value, and so is a `dataGrid` `background`, `text`, `alternateRow`, `nullValue`, or `rowNumber`. A missing `boolTrue` or `boolFalse` uses the grid's text color.
+Every color a theme declares must be one TablePro reads, and every color TablePro reads must be present. A file that misses one, names one TablePro does not use, carries a color the app cannot parse, or declares a `schema` this release does not read is refused and listed under **Not Loaded** with the reason. Themes written for an earlier version of TablePro are not read and need to be written again.
 
 ## Connection colors
 

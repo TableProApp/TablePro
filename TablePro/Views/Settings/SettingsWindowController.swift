@@ -140,12 +140,16 @@ private struct SettingsPaneContent: View {
         case .appearance:
             AppearanceSettingsView(settings: $settingsManager.appearance)
         case .editor:
-            EditorSettingsView(settings: $settingsManager.editor)
+            EditorSettingsView(
+                settings: $settingsManager.editor,
+                typography: $settingsManager.typography
+            )
         case .data:
             DataResultsSettingsView(
                 dataGrid: $settingsManager.dataGrid,
                 history: $settingsManager.history,
-                editor: $settingsManager.editor
+                editor: $settingsManager.editor,
+                typography: $settingsManager.typography
             )
         case .keyboard:
             KeyboardSettingsView(settings: $settingsManager.keyboard)
