@@ -22,10 +22,18 @@ internal enum CompareSQLLiteral {
         driver: any PluginDatabaseDriver
     ) -> String {
         guard case .bytes(let data) = value else {
-            return driver.sqlLiteral(for: value)
+            return prefixed(driver.sqlLiteral(for: value), databaseType: databaseType)
         }
         return binaryLiteral(for: data, databaseType: databaseType)
             ?? driver.sqlLiteral(for: value)
+    }
+
+    /// The prefix belongs to a quoted literal and to nothing else. `sqlLiteral(for:)` answers
+    /// `NULL` for a null and passes a number through unquoted, and `N` in front of either is a
+    /// syntax error, so the opening quote is what decides.
+    internal static func prefixed(_ literal: String, databaseType: DatabaseType) -> String {
+        guard literal.hasPrefix("'") else { return literal }
+        return SQLStringLiteralPrefix.forDatabaseType(databaseType) + literal
     }
 
     internal static func binaryLiteral(for data: Data, databaseType: DatabaseType) -> String? {

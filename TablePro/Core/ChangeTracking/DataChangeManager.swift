@@ -47,8 +47,8 @@ final class DataChangeManager: ChangeManaging {
 
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
-    var insertedRowIndices: Set<Int> { pending.insertedRowIndices }
-    var deletedRowIndices: Set<Int> { pending.deletedRowIndices }
+    var insertedRowIDs: Set<RowID> { pending.insertedRowIDs }
+    var deletedRowIDs: Set<RowID> { pending.deletedRowIDs }
 
     var tableName: String = ""
     var schemaName: String?
@@ -148,7 +148,7 @@ final class DataChangeManager: ChangeManaging {
     // MARK: - Change Tracking
 
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -167,7 +167,7 @@ final class DataChangeManager: ChangeManaging {
             return
         }
         let recorded = pending.recordCellChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
@@ -180,30 +180,30 @@ final class DataChangeManager: ChangeManaging {
         }
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
             target.applyDataUndo(.cellEdit(
-                rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+                rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: oldValue, newValue: newValue, originalRow: originalRow
             ))
         }
         hasChanges = !pending.isEmpty
     }
 
-    func recordRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
-        pending.recordRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
+    func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
+        pending.recordRowDeletion(rowID: rowID, originalRow: originalRow)
         registerUndo(actionName: String(localized: "Delete Row")) { target in
-            target.applyDataUndo(.rowDeletion(rowIndex: rowIndex, originalRow: originalRow))
+            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: originalRow))
         }
         hasChanges = true
     }
 
-    func recordBatchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])]) {
+    func recordBatchRowDeletion(rows: [(rowID: RowID, originalRow: [PluginCellValue])]) {
         guard rows.count > 1 else {
             if let row = rows.first {
-                recordRowDeletion(rowIndex: row.rowIndex, originalRow: row.originalRow)
+                recordRowDeletion(rowID: row.rowID, originalRow: row.originalRow)
             }
             return
         }
-        for (rowIndex, originalRow) in rows {
-            pending.recordRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
+        for (rowID, originalRow) in rows {
+            pending.recordRowDeletion(rowID: rowID, originalRow: originalRow)
         }
         let batchData = rows
         registerUndo(actionName: String(localized: "Delete Rows")) { target in
@@ -212,32 +212,29 @@ final class DataChangeManager: ChangeManaging {
         hasChanges = true
     }
 
-    func recordRowInsertion(rowIndex: Int, values: [PluginCellValue]) {
-        pending.recordRowInsertion(rowIndex: rowIndex, values: values)
+    func recordRowInsertion(rowID: RowID, values: [PluginCellValue]) {
+        pending.recordRowInsertion(rowID: rowID, values: values)
         registerUndo(actionName: String(localized: "Insert Row")) { target in
-            target.applyDataUndo(.rowInsertion(rowIndex: rowIndex))
+            target.applyDataUndo(.rowInsertion(rowID: rowID))
         }
         hasChanges = true
     }
 
     // MARK: - Undo Operations
 
-    func undoRowDeletion(rowIndex: Int) {
-        guard pending.undoRowDeletion(rowIndex: rowIndex) else { return }
+    func undoRowDeletion(rowID: RowID) {
+        guard pending.undoRowDeletion(rowID: rowID) else { return }
         hasChanges = !pending.isEmpty
     }
 
-    func undoRowInsertion(rowIndex: Int) {
-        guard pending.undoRowInsertion(rowIndex: rowIndex) else { return }
-        hasChanges = !pending.isEmpty
-    }
-
-    func undoBatchRowInsertion(rowIndices: [Int]) {
-        let validRows = rowIndices.filter { pending.isRowInserted($0) }
+    func undoBatchRowInsertion(rows: [InsertedRowLocation]) {
+        let validRows = rows.filter { pending.isRowInserted($0.rowID) }
         guard !validRows.isEmpty else { return }
-        let rowValues = pending.undoBatchRowInsertion(rowIndices: validRows, columnCount: columns.count)
+        let rowValues = pending.undoBatchRowInsertion(
+            rowIDs: validRows.map(\.rowID), columnCount: columns.count
+        )
         registerUndo(actionName: String(localized: "Insert Rows")) { target in
-            target.applyDataUndo(.batchRowInsertion(rowIndices: validRows, rowValues: rowValues))
+            target.applyDataUndo(.batchRowInsertion(rows: validRows, rowValues: rowValues))
         }
         hasChanges = !pending.isEmpty
     }
@@ -246,24 +243,24 @@ final class DataChangeManager: ChangeManaging {
 
     private func applyDataUndo(_ action: UndoAction) {
         switch action {
-        case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue, let originalRow):
+        case .cellEdit(let rowID, let columnIndex, let columnName, let previousValue, let newValue, let originalRow):
             applyCellEditUndo(
-                rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+                rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: previousValue, newValue: newValue, originalRow: originalRow,
                 action: action
             )
 
-        case .rowInsertion(let rowIndex):
-            applyRowInsertionUndo(rowIndex: rowIndex, action: action)
+        case .rowInsertion(let rowID):
+            applyRowInsertionUndo(rowID: rowID, action: action)
 
-        case .rowDeletion(let rowIndex, let originalRow):
-            applyRowDeletionUndo(rowIndex: rowIndex, originalRow: originalRow, action: action)
+        case .rowDeletion(let rowID, let originalRow):
+            applyRowDeletionUndo(rowID: rowID, originalRow: originalRow, action: action)
 
         case .batchRowDeletion(let rows):
             applyBatchRowDeletionUndo(rows: rows, action: action)
 
-        case .batchRowInsertion(let rowIndices, let rowValues):
-            applyBatchRowInsertionUndo(rowIndices: rowIndices, rowValues: rowValues, action: action)
+        case .batchRowInsertion(let rows, let rowValues):
+            applyBatchRowInsertionUndo(rows: rows, rowValues: rowValues, action: action)
         }
 
         hasChanges = !pending.isEmpty
@@ -274,79 +271,76 @@ final class DataChangeManager: ChangeManaging {
     }
 
     private func applyCellEditUndo(
-        rowIndex: Int, columnIndex: Int, columnName: String,
+        rowID: RowID, columnIndex: Int, columnName: String,
         previousValue: PluginCellValue, newValue: PluginCellValue, originalRow: [PluginCellValue]?,
         action: UndoAction
     ) {
         registerUndo(actionName: String(localized: "Edit Cell")) { target in
             target.applyDataUndo(.cellEdit(
-                rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
+                rowID: rowID, columnIndex: columnIndex, columnName: columnName,
                 previousValue: newValue, newValue: previousValue, originalRow: originalRow
             ))
         }
 
-        if let updateChange = pending.change(forRow: rowIndex, type: .update) {
+        if let updateChange = pending.change(forRow: rowID, type: .update) {
             if updateChange.cellChanges.contains(where: { $0.columnIndex == columnIndex }) {
                 pending.revertUpdateCell(
-                    rowIndex: rowIndex, columnIndex: columnIndex,
+                    rowID: rowID, columnIndex: columnIndex,
                     columnName: columnName, previousValue: previousValue
                 )
             }
-        } else if pending.change(forRow: rowIndex, type: .insert) != nil {
+        } else if pending.change(forRow: rowID, type: .insert) != nil {
             pending.updateInsertedCellDirectly(
-                rowIndex: rowIndex, columnIndex: columnIndex,
+                rowID: rowID, columnIndex: columnIndex,
                 columnName: columnName, newValue: previousValue
             )
         } else {
             pending.reapplyCellChange(
-                rowIndex: rowIndex,
+                rowID: rowID,
                 columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
             )
         }
         lastUndoResult = UndoResult(
-            action: action, needsRowRemoval: false, needsRowRestore: false, restoreRow: nil,
-            delta: .cellChanged(row: rowIndex, column: columnIndex)
+            action: action, needsRowRemoval: false, needsRowRestore: false, restoreRow: nil
         )
     }
 
-    private func applyRowInsertionUndo(rowIndex: Int, action: UndoAction) {
-        let savedValues = pending.savedInsertedValues(forRow: rowIndex)
+    private func applyRowInsertionUndo(rowID: RowID, action: UndoAction) {
+        let savedValues = pending.savedInsertedValues(forRow: rowID)
         registerUndo(actionName: String(localized: "Insert Row")) { [savedValues] target in
             if let savedValues {
-                target.pending.restoreInsertedValues(forRow: rowIndex, values: savedValues)
+                target.pending.restoreInsertedValues(forRow: rowID, values: savedValues)
             }
-            target.applyDataUndo(.rowInsertion(rowIndex: rowIndex))
+            target.applyDataUndo(.rowInsertion(rowID: rowID))
         }
 
-        if pending.isRowInserted(rowIndex) {
-            _ = pending.undoRowInsertion(rowIndex: rowIndex)
+        if pending.isRowInserted(rowID) {
+            _ = pending.undoRowInsertion(rowID: rowID)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
-                delta: .rowsRemoved(IndexSet(integer: rowIndex))
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
             )
         } else {
-            pending.reinsertRow(rowIndex: rowIndex, columns: columns, savedValues: savedValues)
+            pending.reinsertRow(rowID: rowID, columns: columns, savedValues: savedValues)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: savedValues,
-                delta: .rowsInserted(IndexSet(integer: rowIndex))
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: savedValues
             )
         }
     }
 
-    private func applyRowDeletionUndo(rowIndex: Int, originalRow: [PluginCellValue], action: UndoAction) {
+    private func applyRowDeletionUndo(rowID: RowID, originalRow: [PluginCellValue], action: UndoAction) {
         registerUndo(actionName: String(localized: "Delete Row")) { target in
-            target.applyDataUndo(.rowDeletion(rowIndex: rowIndex, originalRow: originalRow))
+            target.applyDataUndo(.rowDeletion(rowID: rowID, originalRow: originalRow))
         }
 
-        if pending.isRowDeleted(rowIndex) {
-            _ = pending.undoRowDeletion(rowIndex: rowIndex)
+        if pending.isRowDeleted(rowID) {
+            _ = pending.undoRowDeletion(rowID: rowID)
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: originalRow,
                 delta: .fullReplace
             )
         } else {
-            pending.reapplyRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
+            pending.reapplyRowDeletion(rowID: rowID, originalRow: originalRow)
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
                 delta: .fullReplace
@@ -355,24 +349,24 @@ final class DataChangeManager: ChangeManaging {
     }
 
     private func applyBatchRowDeletionUndo(
-        rows: [(rowIndex: Int, originalRow: [PluginCellValue])], action: UndoAction
+        rows: [(rowID: RowID, originalRow: [PluginCellValue])], action: UndoAction
     ) {
         registerUndo(actionName: String(localized: "Delete Rows")) { target in
             target.applyDataUndo(.batchRowDeletion(rows: rows))
         }
 
-        let isUndo = rows.contains { pending.isRowDeleted($0.rowIndex) }
+        let isUndo = rows.contains { pending.isRowDeleted($0.rowID) }
         if isUndo {
-            for (rowIndex, _) in rows.reversed() {
-                _ = pending.undoRowDeletion(rowIndex: rowIndex)
+            for (rowID, _) in rows.reversed() {
+                _ = pending.undoRowDeletion(rowID: rowID)
             }
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil,
                 delta: .fullReplace
             )
         } else {
-            for (rowIndex, originalRow) in rows {
-                pending.reapplyRowDeletion(rowIndex: rowIndex, originalRow: originalRow)
+            for (rowID, originalRow) in rows {
+                pending.reapplyRowDeletion(rowID: rowID, originalRow: originalRow)
             }
             lastUndoResult = UndoResult(
                 action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
@@ -382,25 +376,23 @@ final class DataChangeManager: ChangeManaging {
     }
 
     private func applyBatchRowInsertionUndo(
-        rowIndices: [Int], rowValues: [[PluginCellValue]], action: UndoAction
+        rows: [InsertedRowLocation], rowValues: [[PluginCellValue]], action: UndoAction
     ) {
         registerUndo(actionName: String(localized: "Insert Rows")) { target in
-            target.applyDataUndo(.batchRowInsertion(rowIndices: rowIndices, rowValues: rowValues))
+            target.applyDataUndo(.batchRowInsertion(rows: rows, rowValues: rowValues))
         }
 
-        let firstInserted = rowIndices.first.map { pending.isRowInserted($0) } ?? false
-        let indices = IndexSet(rowIndices)
+        let rowIDs = rows.map(\.rowID)
+        let firstInserted = rowIDs.first.map { pending.isRowInserted($0) } ?? false
         if firstInserted {
-            _ = pending.undoBatchRowInsertion(rowIndices: rowIndices, columnCount: columns.count)
+            _ = pending.undoBatchRowInsertion(rowIDs: rowIDs, columnCount: columns.count)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil,
-                delta: .rowsRemoved(indices)
+                action: action, needsRowRemoval: true, needsRowRestore: false, restoreRow: nil
             )
         } else {
-            pending.reinsertBatch(rowIndices: rowIndices, rowValues: rowValues, columns: columns)
+            pending.reinsertBatch(rowIDs: rowIDs, rowValues: rowValues, columns: columns)
             lastUndoResult = UndoResult(
-                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil,
-                delta: .rowsInserted(indices)
+                action: action, needsRowRemoval: false, needsRowRestore: true, restoreRow: nil
             )
         }
     }
@@ -411,22 +403,22 @@ final class DataChangeManager: ChangeManaging {
         try generateSQL(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
-            deletedRowIndices: pending.deletedRowIndices,
-            insertedRowIndices: pending.insertedRowIndices
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs
         )
     }
 
     func generateSQL(
         for changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]] = [:],
-        deletedRowIndices: Set<Int> = [],
-        insertedRowIndices: Set<Int> = []
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = []
     ) throws -> [ParameterizedStatement] {
         try statementFactory().statements(
             for: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         )
     }
 
@@ -440,8 +432,8 @@ final class DataChangeManager: ChangeManaging {
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
             insertedRowData: pending.insertedRowData,
-            deletedRowIndices: pending.deletedRowIndices,
-            insertedRowIndices: pending.insertedRowIndices,
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs,
             target: DataWriteTarget(database: database, schema: schema, table: tableName),
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
@@ -452,8 +444,8 @@ final class DataChangeManager: ChangeManaging {
         if let attributed = try factory.attributedStatements(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
-            deletedRowIndices: pending.deletedRowIndices,
-            insertedRowIndices: pending.insertedRowIndices
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs
         ) {
             let steps = attributed.map {
                 DataWriteStep(
@@ -469,8 +461,8 @@ final class DataChangeManager: ChangeManaging {
         let steps = try factory.statements(
             for: pending.changes,
             insertedRowData: pending.insertedRowData,
-            deletedRowIndices: pending.deletedRowIndices,
-            insertedRowIndices: pending.insertedRowIndices
+            deletedRowIDs: pending.deletedRowIDs,
+            insertedRowIDs: pending.insertedRowIDs
         ).map {
             DataWriteStep(kind: .rowWrite, statement: $0, expectedRowCount: nil, tableName: tableName)
         }
@@ -495,12 +487,12 @@ final class DataChangeManager: ChangeManaging {
 
     // MARK: - Actions
 
-    func getOriginalValues() -> [(rowIndex: Int, columnIndex: Int, value: PluginCellValue)] {
-        var originals: [(rowIndex: Int, columnIndex: Int, value: PluginCellValue)] = []
+    func getOriginalValues() -> [(rowID: RowID, columnIndex: Int, value: PluginCellValue)] {
+        var originals: [(rowID: RowID, columnIndex: Int, value: PluginCellValue)] = []
         for change in pending.changes where change.type == .update {
             for cellChange in change.cellChanges {
                 originals.append((
-                    rowIndex: change.rowIndex,
+                    rowID: change.rowID,
                     columnIndex: cellChange.columnIndex,
                     value: cellChange.oldValue
                 ))
@@ -542,19 +534,19 @@ final class DataChangeManager: ChangeManaging {
 
     // MARK: - O(1) Lookups
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool {
-        pending.isRowDeleted(rowIndex)
+    func isRowDeleted(_ rowID: RowID) -> Bool {
+        pending.isRowDeleted(rowID)
     }
 
-    func isRowInserted(_ rowIndex: Int) -> Bool {
-        pending.isRowInserted(rowIndex)
+    func isRowInserted(_ rowID: RowID) -> Bool {
+        pending.isRowInserted(rowID)
     }
 
-    func isCellModified(rowIndex: Int, columnIndex: Int) -> Bool {
-        pending.isCellModified(rowIndex: rowIndex, columnIndex: columnIndex)
+    func isCellModified(rowID: RowID, columnIndex: Int) -> Bool {
+        pending.isCellModified(rowID: rowID, columnIndex: columnIndex)
     }
 
-    func getModifiedColumnsForRow(_ rowIndex: Int) -> Set<Int> {
-        pending.modifiedColumns(forRow: rowIndex)
+    func getModifiedColumnsForRow(_ rowID: RowID) -> Set<Int> {
+        pending.modifiedColumns(forRow: rowID)
     }
 }

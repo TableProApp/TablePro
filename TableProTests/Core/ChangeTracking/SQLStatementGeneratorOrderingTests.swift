@@ -28,7 +28,7 @@ struct SQLStatementGeneratorOrderingTests {
 
     private func update(row: Int, sequence: Int) -> RowChange {
         RowChange(
-            rowIndex: row,
+            rowID: .existing(row),
             type: .update,
             cellChanges: [
                 CellChange(columnIndex: 1, columnName: "email", oldValue: "old@b.com", newValue: "new@b.com"),
@@ -39,11 +39,11 @@ struct SQLStatementGeneratorOrderingTests {
     }
 
     private func delete(row: Int, sequence: Int) -> RowChange {
-        RowChange(rowIndex: row, type: .delete, originalRow: [.text("\(row)"), "a@b.com"], sequence: sequence)
+        RowChange(rowID: .existing(row), type: .delete, originalRow: [.text("\(row)"), "a@b.com"], sequence: sequence)
     }
 
     private func insert(row: Int, sequence: Int) -> RowChange {
-        RowChange(rowIndex: row, type: .insert, sequence: sequence)
+        RowChange(rowID: .existing(row), type: .insert, sequence: sequence)
     }
 
     private func verbs(_ statements: [AttributedStatement]) -> [String] {
@@ -54,9 +54,9 @@ struct SQLStatementGeneratorOrderingTests {
     func deleteBeforeInsert() throws {
         let statements = try makeGenerator().generateAttributedStatements(
             from: [delete(row: 0, sequence: 0), insert(row: 1, sequence: 1)],
-            insertedRowData: [1: ["9", "a@b.com"]],
-            deletedRowIndices: [0],
-            insertedRowIndices: [1]
+            insertedRowData: [.existing(1): ["9", "a@b.com"]],
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: [.existing(1)]
         )
 
         #expect(verbs(statements) == ["DELETE", "INSERT"])
@@ -66,9 +66,9 @@ struct SQLStatementGeneratorOrderingTests {
     func mixedOrderIsPreserved() throws {
         let statements = try makeGenerator().generateAttributedStatements(
             from: [update(row: 0, sequence: 0), delete(row: 1, sequence: 1), insert(row: 2, sequence: 2)],
-            insertedRowData: [2: ["9", "c@b.com"]],
-            deletedRowIndices: [1],
-            insertedRowIndices: [2]
+            insertedRowData: [.existing(2): ["9", "c@b.com"]],
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: [.existing(2)]
         )
 
         #expect(verbs(statements) == ["UPDATE", "DELETE", "INSERT"])
@@ -78,9 +78,9 @@ struct SQLStatementGeneratorOrderingTests {
     func arrayOrderIsNotTrusted() throws {
         let statements = try makeGenerator().generateAttributedStatements(
             from: [insert(row: 2, sequence: 5), delete(row: 1, sequence: 1)],
-            insertedRowData: [2: ["9", "c@b.com"]],
-            deletedRowIndices: [1],
-            insertedRowIndices: [2]
+            insertedRowData: [.existing(2): ["9", "c@b.com"]],
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: [.existing(2)]
         )
 
         #expect(verbs(statements) == ["DELETE", "INSERT"])
@@ -91,8 +91,8 @@ struct SQLStatementGeneratorOrderingTests {
         let statements = try makeGenerator().generateAttributedStatements(
             from: [delete(row: 0, sequence: 0), delete(row: 1, sequence: 1), delete(row: 2, sequence: 2)],
             insertedRowData: [:],
-            deletedRowIndices: [0, 1, 2],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0), .existing(1), .existing(2)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -108,8 +108,8 @@ struct SQLStatementGeneratorOrderingTests {
                 delete(row: 1, sequence: 2),
             ],
             insertedRowData: [:],
-            deletedRowIndices: [0, 1],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0), .existing(1)],
+            insertedRowIDs: []
         )
 
         #expect(verbs(statements) == ["DELETE", "UPDATE", "DELETE"])

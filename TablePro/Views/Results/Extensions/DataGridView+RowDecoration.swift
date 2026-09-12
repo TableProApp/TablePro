@@ -37,12 +37,16 @@ extension TableViewCoordinator {
         return true
     }
 
-    func highlight(forDisplayRow displayIndex: Int) -> RowHighlight {
-        guard !highlightRuleSet.isEmpty, let row = displayRow(at: displayIndex) else { return .none }
+    func highlight(for row: Row) -> RowHighlight {
+        guard !highlightRuleSet.isEmpty else { return .none }
         if let cached = displayCache.highlight(forID: row.id) { return cached }
         let resolved = highlightRuleSet.highlight(for: row.values)
         displayCache.setHighlight(resolved, forID: row.id)
         return resolved
+    }
+
+    func pendingChangeDescription(row: Int, columnIndex: Int) -> String? {
+        DataGridCellTextMark.accessibilityDescription(state: visualState(for: row), columnIndex: columnIndex)
     }
 
     func highlightDescription(row: Int, columnIndex: Int) -> String? {

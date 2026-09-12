@@ -75,7 +75,7 @@ extension TableViewCoordinator {
             columnType: columnType,
             value: cellValue(at: row, column: columnIndex),
             isTableEditable: isEditable,
-            isRowDeleted: changeManager.isRowDeleted(row),
+            isRowDeleted: isRowDeleted(displayRow: row),
             isImmutableColumn: immutable.contains(columnName),
             isBinaryValue: typedValue.asBytes != nil,
             isForeignKey: tableRows.columnForeignKeys[columnName] != nil,
@@ -89,7 +89,7 @@ extension TableViewCoordinator {
     func handleChevronAction(row: Int, columnIndex: Int) {
         guard isEditable else { return }
         guard row >= 0, columnIndex >= 0 else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
+        guard !isRowDeleted(displayRow: row) else { return }
         guard let tableView else { return }
         guard let column = tableColumnIndex(for: columnIndex) else { return }
 
@@ -197,6 +197,7 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
+        let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
@@ -207,6 +208,7 @@ extension TableViewCoordinator {
             CustomValueContentView(
                 initialValue: currentValue,
                 escapeStringLiteral: escape,
+                stringLiteralPrefix: literalPrefix,
                 onCommit: { newValue in
                     guard let self else { return }
                     self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)

@@ -93,7 +93,7 @@ enum PostgreSQLPrincipalQueries {
         SELECT n.nspname
         FROM pg_namespace n
         WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND n.nspname NOT LIKE 'pg\\_%'
+          AND n.nspname NOT LIKE 'pg!_%' ESCAPE '!'
         ORDER BY n.nspname
         """
 
@@ -152,7 +152,7 @@ enum PostgreSQLPrincipalQueries {
                    r.rolconnlimit,
                    pg_catalog.shobj_description(r.oid, 'pg_authid')
             FROM pg_roles r
-            WHERE r.rolname NOT LIKE 'pg\\_%'
+            WHERE r.rolname NOT LIKE 'pg!_%' ESCAPE '!'
             ORDER BY r.rolname
             """
     }

@@ -70,9 +70,6 @@ extension TableViewCoordinator {
         valueFilterState = state
     }
 
-    /// Confirmed before the state moves, not after: the alert's whole purpose is to let the reader
-    /// keep edits that this change would re-point, so the filter must not be written until they
-    /// have said yes.
     func applyValueFilter(
         _ filter: ColumnValueFilter?,
         columnName: String,
@@ -124,7 +121,7 @@ extension TableViewCoordinator {
     func reloadAfterValueFilterChange() {
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         selectionController.clear()
         tableView?.reloadData()
         updateValueFilterHeaderIndicators()
