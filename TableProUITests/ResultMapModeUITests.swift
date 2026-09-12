@@ -125,24 +125,27 @@ final class ResultMapModeUITests: UITestCase {
     /// Creating a table and inserting a row is a destructive run, so the execution gate puts a
     /// sheet in front of it, and the statements only run once it is confirmed.
     private func runSpatialSetup(in app: XCUIApplication) {
-        openEditor(in: app)
-        paste(Self.spatialSetup, into: app)
+        app.typeKey("t", modifierFlags: .command)
+        replaceEditorText(with: Self.spatialSetup, in: app)
         openExecuteMenu(in: app).menuItems["Execute All Statements"].click()
         let confirm = app.windows.firstMatch.sheets.firstMatch.buttons["Execute"]
         if confirm.waitToExist(timeout: 15) { confirm.click() }
     }
 
+    /// Runs in the tab the spatial query already used, deliberately. A fresh tab starts on Data, so
+    /// opening one would pass the reconciliation test whether or not the mapped tab was ever
+    /// reconciled: the assertion would be reading a mode that was never Map.
     private func runPlainQuery(in app: XCUIApplication) {
-        openEditor(in: app)
-        paste(Self.plainQuery, into: app)
+        replaceEditorText(with: Self.plainQuery, in: app)
         app.typeKey(.return, modifierFlags: .command)
     }
 
-    private func openEditor(in app: XCUIApplication) {
-        app.typeKey("t", modifierFlags: .command)
+    private func replaceEditorText(with text: String, in app: XCUIApplication) {
         let queryEditor = editorTextView(in: app)
         XCTAssertTrue(queryEditor.waitToExist(timeout: 15))
         queryEditor.click()
+        app.typeKey("a", modifierFlags: .command)
+        paste(text, into: app)
     }
 
     /// The editor's own bracket and quote completion rewrites parentheses as they are typed, and a

@@ -153,7 +153,7 @@ Every copy follows the grid as shown: hidden columns are left out, columns keep 
 
 ## View modes
 
-Switch between **Data**, **Structure**, **JSON**, **Chart**, and **Map** with the switcher at the leading edge of the status bar, or from **View > Result View**. Query tabs have no Structure mode, Map appears only while the result holds a geometry column, the mode is remembered per tab, and [Cell and Row Viewers](/features/json-viewer) covers JSON mode.
+Switch between **Data**, **Structure**, **JSON**, **Chart**, and **Map** with the switcher at the leading edge of the status bar, or from **View > Result View**. Query tabs have no Structure mode, Map appears only while the result holds a column of drawable geometry, the mode is remembered per tab, and [Cell and Row Viewers](/features/json-viewer) covers JSON mode.
 
 ### Chart mode
 
@@ -165,11 +165,11 @@ A chart draws the loaded rows, up to 2,000 points, 20 series, and 50,000 inspect
 
 ### Map mode
 
-A geometry or geography column in the result puts **Map** in the switcher. Nothing else does, so a result of plain columns never carries the segment.
+**Map** appears when a column of the result holds values the map can read. A `geometry`, `geography` or `geo_shape` column usually does, and so does a MongoDB field holding GeoJSON, which arrives typed as JSON. A result of plain columns never carries the segment, and neither does a spatial column whose values are in a format the reader does not cover.
 
 Points, lines and polygons draw over Apple's own tiles. Nothing about the result reaches a third-party tile server. Click a shape to select its row, then switch to **Data** to see that row selected in the grid; select rows in the grid and their shapes come back highlighted. **Fit to Result** frames every drawn shape. A result with more than one geometry column gets a picker to choose between them.
 
-Values are read as WKT, EWKT, WKB or EWKB hex, and GeoJSON, so PostGIS, MySQL, MariaDB and MongoDB draw without any setup. The map draws the rows the grid is showing, so a value filter narrows it and the page controls and **Fetch All** stay in the status bar.
+Values are read as WKT, EWKT, WKB and EWKB hex, GeoJSON, ClickHouse point and ring tuples, and all six spellings of an Elasticsearch `geo_point`, so PostGIS, MySQL, MariaDB, MongoDB, Snowflake, Elasticsearch and ClickHouse draw without any setup. The map draws the rows the grid is showing, so a value filter narrows it and the page controls and **Fetch All** stay in the status bar.
 
 The toolbar says what was drawn and what was not: `Drawing 4,102 shapes in SRID 4326. 88 rows in other coordinate systems are not drawn.` One coordinate system is drawn at a time, whichever most of the column uses.
 
@@ -179,7 +179,7 @@ A projected coordinate system such as SRID 27700 or 32633 draws nothing: the pan
 
 The map is one element to VoiceOver and does not publish its shapes, so the grid stays the readable representation of spatial rows.
 
-SQL Server, Oracle, DuckDB, SpatiaLite, Teradata, Trino, Spanner, Cassandra and BigQuery hand geometry over in formats the reader does not cover yet. Their spatial columns show text and carry no Map segment.
+SQL Server, Oracle, DuckDB, SpatiaLite, Teradata, Trino, Spanner, Cassandra and BigQuery hand geometry over in formats the reader does not cover yet. Their spatial columns show text and carry no Map segment, because the segment follows what the values are rather than what the column is called.
 
 ## Editing and display
 

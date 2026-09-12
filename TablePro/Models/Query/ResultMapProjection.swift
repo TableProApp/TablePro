@@ -46,6 +46,11 @@ struct ResultMapDiagnostics: Sendable, Equatable {
     var unsupportedTypes: [String: Int] = [:]
     var unreadableRows = 0
     var emptyRows = 0
+    /// Rows whose value read as a non-empty geometry, whatever happened to it afterwards. The pane
+    /// asks this before it blames the coordinate system: `projectability` carries
+    /// `.unsupported(srid: nil)` as its own default, so a column where nothing parsed is
+    /// indistinguishable from one whose SRID cannot be projected until this says which.
+    var readableRows = 0
     /// Rows past the shape or vertex budget. Nil when nothing was capped.
     var cappedRows: Int?
 

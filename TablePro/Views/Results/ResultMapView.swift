@@ -17,6 +17,7 @@ struct ResultMapProjectionKey: Hashable {
 
 struct ResultMapView: View {
     @Binding var configuration: ResultMapConfiguration
+    let columns: [SpatialColumn]
     let tableRows: TableRows
     let displayIDs: [RowID]?
     let selectedRowIndices: Set<Int>
@@ -35,10 +36,6 @@ struct ResultMapView: View {
 
     @State private var state: LoadState = .loading
     @State private var fitToken = 0
-
-    private var columns: [SpatialColumn] {
-        SpatialColumn.columns(in: tableRows)
-    }
 
     private var resolved: SpatialColumn? {
         configuration.resolved(in: columns)
@@ -175,7 +172,31 @@ struct ResultMapView: View {
     /// Why a result with a geometry column still drew nothing. Always names the reason: a blank
     /// map with no explanation is the failure mode every competitor ships.
     private func emptyProjectionReason(_ projection: ResultMapProjection) -> String {
-        if case .unsupported(let srid) = projection.diagnostics.projectability {
+        let diagnostics = projection.diagnostics
+        /// What the values were is asked before what coordinate system they were in, because
+        /// `projectability` carries `.unsupported(srid: nil)` as its own default: a column where
+        /// nothing parsed reaches here looking exactly like one whose SRID cannot be projected, and
+        /// it used to be told it had coordinates outside the range of longitude and latitude.
+        if diagnostics.readableRows == 0 {
+            if !diagnostics.unsupportedTypes.isEmpty {
+                let names = diagnostics.unsupportedTypes.keys.sorted().joined(separator: ", ")
+                return String(
+                    format: String(localized: "This column holds %@, which the map cannot draw."),
+                    names
+                )
+            }
+            if diagnostics.unreadableRows > 0 {
+                return String(
+                    format: String(localized: """
+                    %d values in this column are not in a format the map can read. The grid still \
+                    shows them as the database returned them.
+                    """),
+                    diagnostics.unreadableRows
+                )
+            }
+            return String(localized: "Every geometry in this column is empty or null.")
+        }
+        if case .unsupported(let srid) = diagnostics.projectability {
             if let srid {
                 return String(
                     format: String(localized: """
@@ -185,20 +206,10 @@ struct ResultMapView: View {
                     Int(srid)
                 )
             }
-            if projection.diagnostics.consideredRows > 0, projection.diagnostics.emptyRows == projection.diagnostics.consideredRows {
-                return String(localized: "Every geometry in this column is empty or null.")
-            }
             return String(localized: """
             This column carries no SRID and its coordinates are outside the range of longitude and \
             latitude, so the map cannot place them.
             """)
-        }
-        if !projection.diagnostics.unsupportedTypes.isEmpty {
-            let names = projection.diagnostics.unsupportedTypes.keys.sorted().joined(separator: ", ")
-            return String(
-                format: String(localized: "This column holds %@, which the map cannot draw."),
-                names
-            )
         }
         return String(localized: "Every geometry in this column is empty or null.")
     }

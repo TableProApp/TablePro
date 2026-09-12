@@ -87,7 +87,7 @@ struct StatusBarSnapshot: Equatable {
                 tabType: tab?.tabType,
                 hasTableName: tab?.tableContext.tableName != nil,
                 hasColumns: !(tableRows?.columns.isEmpty ?? true),
-                hasSpatialColumn: tableRows.map(SpatialColumn.hasSpatialColumn(in:)) ?? false
+                hasSpatialColumn: !(tab?.display.spatialColumns.isEmpty ?? true)
             ),
             hasStructureActions: hasStructureActions,
             pagination: pagination,

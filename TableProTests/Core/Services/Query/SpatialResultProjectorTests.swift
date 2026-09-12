@@ -21,11 +21,37 @@ private func rows(_ values: [String?], columnName: String = "geom") -> TableRows
     )
 }
 
-private func onlyColumn(_ tableRows: TableRows) -> SpatialColumn {
-    guard let column = SpatialColumn.columns(in: tableRows).first else {
-        fatalError("the fixture must have a spatial column")
+// An SRID is an identifier rather than a quantity, so it is named once here: written as a literal
+// it reads as a four-digit number and the thousand-separator rule asks for `4_326`, which is not
+// how anyone spells one.
+// swiftlint:disable number_separator
+private let wgs84: Int32 = 4326
+private let webMercator: Int32 = 3857
+// swiftlint:enable number_separator
+
+private func typedRows(_ values: [String?], type: ColumnType, columnName: String = "geom") -> TableRows {
+    let built = values.enumerated().map { index, value in
+        Row(id: .existing(index), values: [PluginCellValue.fromOptional(value)])
     }
-    return column
+    return TableRows(
+        rows: ContiguousArray(built),
+        columns: [columnName],
+        columnTypes: [type]
+    )
+}
+
+/// Names the fixture's column directly rather than going through `SpatialColumn.columns(in:)`.
+///
+/// The projector's job is to project whatever column it is handed, and which columns are offered is
+/// a separate decision with its own tests above. Those two have to stay separate here, because the
+/// gate refuses a column no reader can read and that is exactly the fixture several of these need.
+private func onlyColumn(_ tableRows: TableRows) -> SpatialColumn {
+    SpatialColumn(
+        id: SpatialColumnID(name: tableRows.columns[0], occurrence: 1),
+        index: 0,
+        displayName: tableRows.columns[0],
+        type: tableRows.columnTypes[0]
+    )
 }
 
 @Suite("SpatialColumn")
@@ -49,6 +75,55 @@ struct SpatialColumnTests {
         let plain = TableRows(rows: [], columns: ["id"], columnTypes: [.integer(rawType: "int")])
         #expect(SpatialColumn.columns(in: plain).isEmpty)
         #expect(!SpatialColumn.hasSpatialColumn(in: plain))
+    }
+
+    /// Oracle reports `SDO_GEOMETRY` and Teradata `ST_GEOMETRY`, and SQL Server's geography arrives
+    /// as MS-SSCLRT serialization rather than WKB. All three classify `.spatial`, so a gate reading
+    /// the type alone offered Map and then drew nothing at all.
+    @Test("A spatial column whose values no reader can read is not offered")
+    func unreadableSpatialColumnIsRefused() {
+        let oracle = typedRows(
+            [
+                "MDSYS.SDO_GEOMETRY(2001,4326,MDSYS.SDO_POINT_TYPE(-122.4,37.8,NULL),NULL,NULL)",
+                "MDSYS.SDO_GEOMETRY(2001,4326,MDSYS.SDO_POINT_TYPE(-122.5,37.7,NULL),NULL,NULL)"
+            ],
+            type: .spatial(rawType: "SDO_GEOMETRY")
+        )
+        #expect(SpatialColumn.columns(in: oracle).isEmpty)
+        #expect(!SpatialColumn.hasSpatialColumn(in: oracle))
+    }
+
+    /// The engine's own word is believed when nothing contradicts it, so an empty result and an
+    /// all-null column both keep the segment. Taking it away as a page loads would make the mode
+    /// appear and vanish under the reader.
+    @Test("A spatial column with no values to judge is still offered")
+    func emptySpatialColumnIsOffered() {
+        #expect(SpatialColumn.hasSpatialColumn(in: typedRows([], type: .spatial(rawType: "geometry"))))
+        #expect(SpatialColumn.hasSpatialColumn(in: typedRows([nil, nil], type: .spatial(rawType: "geometry"))))
+    }
+
+    /// MongoDB stores GeoJSON in an ordinary document field, which the app types `JSON`, so a gate
+    /// reading the type alone never offered Map for the engine whose spatial data is most often
+    /// GeoJSON.
+    @Test("GeoJSON in a JSON column is offered")
+    func geoJSONInAJsonColumnIsOffered() {
+        let mongo = typedRows(
+            [#"{"type":"Point","coordinates":[-122.4194,37.7749]}"#],
+            type: .json(rawType: "JSON"),
+            columnName: "location"
+        )
+        let columns = SpatialColumn.columns(in: mongo)
+        #expect(columns.count == 1)
+        #expect(columns.first?.name == "location")
+    }
+
+    @Test("A JSON column holding no geometry is not offered")
+    func plainJsonColumnIsRefused() {
+        let documents = typedRows(
+            [#"{"name":"Ada","roles":["admin"]}"#, #"{"type":"user","features":[1,2]}"#],
+            type: .json(rawType: "JSON")
+        )
+        #expect(SpatialColumn.columns(in: documents).isEmpty)
     }
 
     /// A result can hold two columns of the same name, so the id carries the occurrence and the
@@ -84,7 +159,7 @@ struct SpatialResultProjectorTests {
         )
         #expect(projection.shapes.count == 2)
         #expect(projection.diagnostics.drawnRows == 2)
-        #expect(projection.diagnostics.drawnSRID == 4326)
+        #expect(projection.diagnostics.drawnSRID == wgs84)
         #expect(projection.shapes[0].rowID == .existing(0))
         #expect(projection.shapes[0].kind == .point)
         #expect(projection.shapes[0].rings[0][0].longitude == -122.4194)
@@ -104,7 +179,7 @@ struct SpatialResultProjectorTests {
             displayIDs: nil,
             column: onlyColumn(table)
         )
-        #expect(projection.diagnostics.drawnSRID == 4326)
+        #expect(projection.diagnostics.drawnSRID == wgs84)
         #expect(projection.diagnostics.drawnShapes == 2)
         #expect(projection.diagnostics.otherSRIDRows == 1)
         #expect(projection.diagnostics.hasAnythingToReport)
@@ -259,8 +334,8 @@ struct SpatialResultProjectorTests {
 
     @Test("A tie between SRIDs prefers the named one")
     func tieBreaksTowardTheNamedSRID() {
-        #expect(SpatialResultProjector.majoritySRID(in: [4326: 1, nil: 1]) == 4326)
-        #expect(SpatialResultProjector.majoritySRID(in: [4326: 1, 3857: 2]) == 3857)
+        #expect(SpatialResultProjector.majoritySRID(in: [wgs84: 1, nil: 1]) == wgs84)
+        #expect(SpatialResultProjector.majoritySRID(in: [wgs84: 1, webMercator: 2]) == webMercator)
         #expect(SpatialResultProjector.majoritySRID(in: [:]) == nil)
     }
 
@@ -273,6 +348,63 @@ struct SpatialResultProjectorTests {
             column: onlyColumn(table)
         )
         #expect(projection.shapes.count == 1)
-        #expect(projection.diagnostics.drawnSRID == 4326)
+        #expect(projection.diagnostics.drawnSRID == wgs84)
+    }
+    /// The budget used to be checked once per row, so the first row alone could put any number of
+    /// shapes on the map: one MULTIPOINT or GEOMETRYCOLLECTION is a single row and has no bound of
+    /// its own.
+    @Test("One geometry cannot spend more than the whole budget")
+    func budgetIsSpentWithinAGeometry() async {
+        let many = (0 ..< 40).map { "\(-122.0 + Double($0) / 100) 37.5" }.joined(separator: ",")
+        let tableRows = rows(["MULTIPOINT(\(many))"])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: tableRows,
+            displayIDs: nil,
+            column: onlyColumn(tableRows),
+            budget: SpatialResultProjector.ShapeBudget(shapes: 5, vertices: 1_000)
+        )
+        #expect(projection.shapes.count == 5)
+        #expect(projection.diagnostics.cappedRows == 1)
+    }
+
+    @Test("The vertex budget stops a run that the shape budget would allow")
+    func vertexBudgetStopsALongRun() async {
+        let run = (0 ..< 30).map { "\(-122.0 + Double($0) / 100) 37.5" }.joined(separator: ",")
+        let tableRows = rows(["LINESTRING(\(run))", "LINESTRING(\(run))"])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: tableRows,
+            displayIDs: nil,
+            column: onlyColumn(tableRows),
+            budget: SpatialResultProjector.ShapeBudget(shapes: 100, vertices: 30)
+        )
+        #expect(projection.shapes.count == 1)
+        #expect(projection.diagnostics.cappedRows == 1)
+    }
+
+    /// The pane asks `readableRows` before it blames the coordinate system, because
+    /// `projectability` reports `.unsupported(srid: nil)` from its own default whenever nothing
+    /// parsed. Without this the pane told a column of curves that its coordinates were out of range.
+    @Test("A column nothing could read reports no readable rows")
+    func unreadableColumnReportsItself() async {
+        let tableRows = rows(["CIRCULARSTRING(0 0,1 1,2 0)", "CIRCULARSTRING(3 3,4 4,5 3)"])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: tableRows,
+            displayIDs: nil,
+            column: onlyColumn(tableRows)
+        )
+        #expect(projection.isEmpty)
+        #expect(projection.diagnostics.readableRows == 0)
+        #expect(projection.diagnostics.unsupportedTypes["CIRCULARSTRING"] == 2)
+    }
+
+    @Test("A drawable column reports the rows it read")
+    func drawableColumnReportsReadableRows() async {
+        let tableRows = rows(["SRID=4326;POINT(-122.4 37.8)", nil, "SRID=4326;POINT(-122.5 37.7)"])
+        let projection = await SpatialResultProjector.shared.project(
+            tableRows: tableRows,
+            displayIDs: nil,
+            column: onlyColumn(tableRows)
+        )
+        #expect(projection.diagnostics.readableRows == 2)
     }
 }

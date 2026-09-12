@@ -738,6 +738,7 @@ struct MainEditorContentView: View {
                 if let resultSet = tab.display.activeResultSet {
                     ResultMapView(
                         configuration: mapConfigurationBinding(for: tab),
+                        columns: tab.display.spatialColumns,
                         tableRows: resolvedTableRows(for: tab),
                         displayIDs: coordinator.displayIDs(forTab: tab.id),
                         selectedRowIndices: selectionState.indices,
@@ -746,7 +747,14 @@ struct MainEditorContentView: View {
                         dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                         displayRevision: coordinator.gridDisplayRevision,
                         onSelectRow: { displayIndex in
-                            selectionState.indices = displayIndex.map { [$0] } ?? []
+                            let rows: Set<Int> = displayIndex.map { [$0] } ?? []
+                            selectionState.indices = rows
+                            /// The shared channel alone does not survive the trip to Data mode: the
+                            /// grid remounts and restores the tab's own stored selection over it,
+                            /// which a map click never wrote. Storing it here is the same half that
+                            /// #2667 added for a mode switch, and the cell rectangle is cleared
+                            /// because a shape names a row and no columns.
+                            coordinator.storeGridSelection(rows: rows, cells: .empty, forTab: tab.id)
                         }
                     )
                     .id(tab.id)

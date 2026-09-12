@@ -24,10 +24,23 @@ extension MainContentCoordinator {
     }
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
-        tabSessionRegistry.setTableRows(tableRows, for: tabId)
-        reconcileResultsViewMode(against: tableRows, for: tabId)
+        installTableRows(tableRows, for: tabId)
         resetSelectionForNewResult(tabId: tabId)
         notifyFullReplaceIfActive(tabId: tabId)
+    }
+
+    /// The one place a whole `TableRows` is installed into the shared buffer.
+    ///
+    /// Reconciling the view mode belongs here rather than at each caller, because a result set
+    /// switch and a re-seed replace the rows just as completely as a fresh execution does: a tab
+    /// left on Map that switches to a result with no geometry column is stranded exactly the same
+    /// way. An incremental edit goes through `mutateActiveTableRows` instead and never changes
+    /// which modes the result can offer.
+    private func installTableRows(_ tableRows: TableRows, for tabId: UUID) {
+        tabSessionRegistry.setTableRows(tableRows, for: tabId)
+        let spatialColumns = SpatialColumn.columns(in: tableRows)
+        tabManager.mutate(tabId: tabId) { $0.display.spatialColumns = spatialColumns }
+        reconcileResultsViewMode(against: tableRows, spatialColumns: spatialColumns, for: tabId)
     }
 
     /// Keeps the tab on a mode it can still offer.
@@ -35,16 +48,19 @@ extension MainContentCoordinator {
     /// A mode that leaves `availableModes` takes its own switcher segment and every View menu item
     /// with it, and those items carry no key equivalent, so nothing is left to press: the tab is
     /// stranded until another statement happens to restore the mode. A succeeding non-SELECT
-    /// installs an empty `TableRows` and does exactly that, which is why this belongs at the one
-    /// place rows are installed rather than at each execution path.
-    private func reconcileResultsViewMode(against tableRows: TableRows, for tabId: UUID) {
+    /// installs an empty `TableRows` and does exactly that.
+    private func reconcileResultsViewMode(
+        against tableRows: TableRows,
+        spatialColumns: [SpatialColumn],
+        for tabId: UUID
+    ) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let tab = tabManager.tabs[index]
         let available = ResultsModeAvailability.modes(
             tabType: tab.tabType,
             hasTableName: tab.tableContext.tableName != nil,
             hasColumns: !tableRows.columns.isEmpty,
-            hasSpatialColumn: SpatialColumn.hasSpatialColumn(in: tableRows)
+            hasSpatialColumn: !spatialColumns.isEmpty
         )
         let reconciled = ResultsModeAvailability.reconcile(
             tab.display.resultsViewMode,
@@ -96,7 +112,7 @@ extension MainContentCoordinator {
         flushBufferToActiveResult(tabId: tabId, pinnedOnly: false)
         tabManager.mutate(at: tabIdx) { $0.display.activeResultSetId = resultSetId }
         guard let incoming = tabManager.tabs[tabIdx].display.activeResultSet else { return }
-        tabSessionRegistry.setTableRows(incoming.tableRows, for: tabId)
+        installTableRows(incoming.tableRows, for: tabId)
         resetSelectionForNewResult(tabId: tabId)
         syncLoadMoreState(from: incoming, at: tabIdx)
         adoptOrigin(of: incoming, at: tabIdx)
@@ -122,7 +138,7 @@ extension MainContentCoordinator {
     func seedBufferFromActiveResult(tabId: UUID) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         let rows = tabManager.tabs[idx].display.activeResultSet?.tableRows ?? TableRows()
-        tabSessionRegistry.setTableRows(rows, for: tabId)
+        installTableRows(rows, for: tabId)
     }
 
     /// A tab's table context describes its newest execution, so moving to another result has to

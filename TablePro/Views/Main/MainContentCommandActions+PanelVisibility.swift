@@ -34,8 +34,9 @@ extension MainContentCommandActions {
     }
 
     /// Recomputed here rather than read off the status bar's snapshot, because the View menu has
-    /// to validate while no status bar is on screen. Both call sites take the same inputs so the
-    /// menu and the switcher can never disagree about whether Map is offered.
+    /// to validate while no status bar is on screen. Both call sites take the same inputs, the
+    /// tab's own geometry columns included, so the menu and the switcher can never disagree about
+    /// whether Map is offered.
     var availableResultsViewModes: [ResultsViewMode] {
         guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return [] }
         let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
@@ -43,7 +44,7 @@ extension MainContentCommandActions {
             tabType: tab.tabType,
             hasTableName: tab.tableContext.tableName != nil,
             hasColumns: !(tableRows?.columns.isEmpty ?? true),
-            hasSpatialColumn: tableRows.map(SpatialColumn.hasSpatialColumn(in:)) ?? false
+            hasSpatialColumn: !tab.display.spatialColumns.isEmpty
         )
     }
 

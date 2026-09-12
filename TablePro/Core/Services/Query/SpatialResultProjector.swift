@@ -24,10 +24,13 @@ actor SpatialResultProjector {
     static let maximumShapes = 100_000
     static let maximumVertices = 2_000_000
 
+    /// The budget is a parameter so a test can prove the cap without building a two-million-vertex
+    /// fixture. Production always passes the measured default.
     func project(
         tableRows: TableRows,
         displayIDs: [RowID]?,
-        column: SpatialColumn
+        column: SpatialColumn,
+        budget initialBudget: ShapeBudget = ShapeBudget(shapes: maximumShapes, vertices: maximumVertices)
     ) async -> ResultMapProjection {
         let order = displayIDs ?? tableRows.rows.map(\.id)
         var values: [(rowID: RowID, value: SpatialValue)] = []
@@ -44,7 +47,7 @@ actor SpatialResultProjector {
             else {
                 continue
             }
-            guard let text = Self.text(of: tableRows.rows[index][column.index]) else {
+            guard let text = tableRows.rows[index][column.index].spatialText else {
                 diagnostics.emptyRows += 1
                 continue
             }
@@ -62,6 +65,8 @@ actor SpatialResultProjector {
                 diagnostics.unreadableRows += 1
             }
         }
+
+        diagnostics.readableRows = values.count
 
         guard let majority = Self.majoritySRID(in: sridCounts) else {
             diagnostics.projectability = .unsupported(srid: nil)
@@ -82,13 +87,16 @@ actor SpatialResultProjector {
         }
 
         var shapes: [ResultMapShape] = []
-        var vertices = 0
         var drawnRowIDs = Set<RowID>()
         var capped = 0
+        /// The budget is spent shape by shape rather than checked once per row, because one row can
+        /// be a MULTIPOINT or a GEOMETRYCOLLECTION of any size: a per-row check let the first row
+        /// alone put millions of shapes on the map.
+        var budget = initialBudget
 
         for entry in drawable {
             if Task.isCancelled { return ResultMapProjection() }
-            guard shapes.count < Self.maximumShapes, vertices < Self.maximumVertices else {
+            guard !budget.isExhausted else {
                 capped += 1
                 continue
             }
@@ -97,14 +105,17 @@ actor SpatialResultProjector {
                 from: entry.value.geometry,
                 rowID: entry.rowID,
                 projectability: projectability,
+                depth: 1,
+                budget: &budget,
                 into: &produced
             )
+            /// A row the budget cut short is counted as capped as well as drawn: part of it is on
+            /// the map and the rest is not, and saying nothing would be the silent truncation this
+            /// whole diagnostic exists to avoid.
+            if budget.isExhausted { capped += 1 }
             guard !produced.isEmpty else {
-                diagnostics.unreadableRows += 1
+                if !budget.isExhausted { diagnostics.unreadableRows += 1 }
                 continue
-            }
-            for shape in produced {
-                vertices += shape.rings.reduce(0) { $0 + $1.count }
             }
             shapes.append(contentsOf: produced)
             drawnRowIDs.insert(entry.rowID)
@@ -139,44 +150,87 @@ actor SpatialResultProjector {
         return values.isEmpty ? .unsupported(srid: nil) : .assumedGeographic
     }
 
+    /// What is left of the map's shape and vertex allowance.
+    ///
+    /// One aggregate overlay holding 200,000 rings costs 0.089s to add, so the shape count is not
+    /// what binds; total vertices is, and a shape is only taken when both still have room.
+    struct ShapeBudget {
+        private(set) var shapes: Int
+        private(set) var vertices: Int
+        private(set) var isExhausted = false
+
+        mutating func take(vertices count: Int) -> Bool {
+            guard shapes > 0, vertices >= count else {
+                isExhausted = true
+                return false
+            }
+            shapes -= 1
+            vertices -= count
+            return true
+        }
+    }
+
     private static func appendShapes(
         from geometry: SpatialGeometry,
         rowID: RowID,
         projectability: SpatialProjectability,
+        depth: Int,
+        budget: inout ShapeBudget,
         into shapes: inout [ResultMapShape]
     ) {
+        /// The same bound the readers apply, for the same reason: a collection nested past it is
+        /// stack depth rather than geometry.
+        guard depth <= SpatialLimits.maximumNestingDepth else { return }
         switch geometry {
         case .empty:
             return
         case .point(let point):
             guard let coordinate = SpatialProjection.project(point, using: projectability) else { return }
+            guard budget.take(vertices: 1) else { return }
             shapes.append(ResultMapShape(rowID: rowID, kind: .point, rings: [[coordinate]]))
         case .multiPoint(let points):
             for point in points {
                 guard let coordinate = SpatialProjection.project(point, using: projectability) else { continue }
+                guard budget.take(vertices: 1) else { return }
                 shapes.append(ResultMapShape(rowID: rowID, kind: .point, rings: [[coordinate]]))
             }
         case .lineString(let points):
             guard let run = project(points, using: projectability), run.count >= 2 else { return }
+            guard budget.take(vertices: run.count) else { return }
             shapes.append(ResultMapShape(rowID: rowID, kind: .polyline, rings: [run]))
         case .multiLineString(let lines):
             for line in lines {
                 guard let run = project(line, using: projectability), run.count >= 2 else { continue }
+                guard budget.take(vertices: run.count) else { return }
                 shapes.append(ResultMapShape(rowID: rowID, kind: .polyline, rings: [run]))
             }
         case .polygon(let rings):
             guard let projected = project(rings: rings, using: projectability) else { return }
+            guard budget.take(vertices: Self.vertexCount(of: projected)) else { return }
             shapes.append(ResultMapShape(rowID: rowID, kind: .polygon, rings: projected))
         case .multiPolygon(let polygons):
             for polygon in polygons {
                 guard let projected = project(rings: polygon, using: projectability) else { continue }
+                guard budget.take(vertices: Self.vertexCount(of: projected)) else { return }
                 shapes.append(ResultMapShape(rowID: rowID, kind: .polygon, rings: projected))
             }
         case .collection(let children):
             for child in children {
-                appendShapes(from: child, rowID: rowID, projectability: projectability, into: &shapes)
+                guard !budget.isExhausted else { return }
+                appendShapes(
+                    from: child,
+                    rowID: rowID,
+                    projectability: projectability,
+                    depth: depth + 1,
+                    budget: &budget,
+                    into: &shapes
+                )
             }
         }
+    }
+
+    private static func vertexCount(of rings: [[GeographicCoordinate]]) -> Int {
+        rings.reduce(0) { $0 + $1.count }
     }
 
     /// A run is dropped whole when any coordinate in it cannot be projected. Keeping the rest would
@@ -216,16 +270,6 @@ actor SpatialResultProjector {
 
     /// A binary cell is handed over as uppercase hex, which is what the WKB reader expects and what
     /// PostgreSQL's own text format for an unrewritten geometry already looks like.
-    private static func text(of value: PluginCellValue) -> String? {
-        switch value {
-        case .null:
-            return nil
-        case .text(let text):
-            return text.isEmpty ? nil : text
-        case .bytes(let data):
-            return data.isEmpty ? nil : value.sortKey
-        }
-    }
 }
 
 private extension ResultMapDiagnostics {
