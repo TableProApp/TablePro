@@ -34,14 +34,13 @@ final class GridSelectionOverlay: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let tableView, let coordinator else { return }
-        let totalRows = tableView.numberOfRows
         let editingCell = activeOverlayCell(in: coordinator)
 
         NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, coordinator: coordinator) else { continue }
             guard frame.intersects(dirtyRect) else { continue }
-            if isFullHeight(rect, totalRows: totalRows) { continue }
+            if isPickedColumn(rect, columns: selection.columns) { continue }
             if let editingCell, rect.contains(editingCell) { continue }
             let inset = frame.insetBy(dx: Self.borderWidth / 2, dy: Self.borderWidth / 2)
             let path = NSBezierPath(rect: inset)
@@ -74,9 +73,16 @@ final class GridSelectionOverlay: NSView {
         return nil
     }
 
-    private func isFullHeight(_ rect: GridRect, totalRows: Int) -> Bool {
-        guard totalRows > 0 else { return false }
-        return rect.rows.lowerBound <= 0 && rect.rows.upperBound >= totalRows - 1
+    /// A column the user picked by its heading needs no outline, because the heading itself carries
+    /// the selection.
+    ///
+    /// Asked of the picked columns rather than of the rectangle's height. A block whose rows happen
+    /// to reach both ends of the page is not a column selection, and skipping its outline left an
+    /// ordinary swept block with no border at all on a short page, and nothing visible whatsoever in
+    /// a one-row result.
+    private func isPickedColumn(_ rect: GridRect, columns: IndexSet) -> Bool {
+        guard !columns.isEmpty else { return false }
+        return columns.contains(integersIn: rect.columns.lowerBound...rect.columns.upperBound)
     }
 
     private func frame(for rect: GridRect, in tableView: NSTableView, coordinator: TableViewCoordinator) -> NSRect? {
