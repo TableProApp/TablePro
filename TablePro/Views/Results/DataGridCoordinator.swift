@@ -38,6 +38,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var editRefusalMessage: String?
+    /// Headings this grid must refuse an edit for while the rest of it stays editable. See
+    /// `DataGridConfiguration.lockedColumns`.
+    var lockedColumns: Set<String> = []
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -245,6 +248,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
         self.isEditable = isEditable
         editRefusalMessage = configuration.editRefusalMessage
+        lockedColumns = configuration.lockedColumns
         tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns

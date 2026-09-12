@@ -51,13 +51,29 @@ enum ForeignKeyEditAvailability: Sendable, Equatable {
         if case .unavailable(let reason) = self { return reason }
         return nil
     }
+
+    /// The same answer in the vocabulary the rest of the Structure tab speaks, so one gate can hand
+    /// every call site a single type while this policy stays the owner of the foreign key wording.
+    var structureEditAvailability: StructureEditAvailability {
+        switch self {
+        case .available:
+            return .available
+        case .unavailable(let reason):
+            return .unavailable(reason: reason)
+        }
+    }
 }
 
 enum ForeignKeyEditPolicy {
+    /// - Parameter kindRefusal: Why the object's own kind refuses a foreign key edit, nil when it
+    ///   accepts one. Supplied by `StructureEditEligibility`, because only the per-kind matrix knows
+    ///   which of seven object kinds is in front of the user. This used to be an `isTable` Bool
+    ///   derived from `allowsRowEditing`, which is true for a materialized view, so the "+" was
+    ///   offered over an `ADD CONSTRAINT` PostgreSQL always refuses. (#2726)
     static func resolve(
         support: ForeignKeyEditSupport,
         engineName: String,
-        isTable: Bool,
+        kindRefusal: String?,
         canEditSchema: Bool
     ) -> ForeignKeyEditAvailability {
         guard canEditSchema else {
@@ -65,13 +81,11 @@ enum ForeignKeyEditPolicy {
                 reason: String(format: String(localized: "%@ cannot edit a table's structure."), engineName)
             )
         }
-        /// A view has no constraints of its own, and both mechanisms emit table DDL. The rebuild one
-        /// looks the table up by `sqlite_master.type = 'table'`, so a view would end in an error
-        /// rather than an explanation.
-        guard isTable else {
-            return .unavailable(
-                reason: String(localized: "A view has no foreign keys. Edit the tables its query reads.")
-            )
+        /// Both mechanisms emit table DDL. The rebuild one looks the table up by
+        /// `sqlite_master.type = 'table'`, so anything else would end in an error rather than an
+        /// explanation.
+        if let kindRefusal {
+            return .unavailable(reason: kindRefusal)
         }
         switch support {
         case .unsupported:
@@ -97,4 +111,9 @@ enum ForeignKeyEditPolicy {
 struct SchemaEditingSupport: Sendable, Equatable {
     var columnReorder: ColumnReorderSupport = .unsupported
     var foreignKeyEdit: ForeignKeyEditSupport = .unsupported
+
+    /// Which structure edits each kind of object accepts. Defaults to tables only, so an engine
+    /// nobody has curated never offers a view, materialized view or foreign table an edit its server
+    /// would refuse.
+    var structureEdits: StructureObjectEditMatrix = .tablesOnly
 }

@@ -299,6 +299,7 @@ final class QueryTabManager {
         databaseName: String = "",
         schemaName: String? = nil,
         isView: Bool = false,
+        objectType: TableInfo.TableType? = nil,
         isPreview: Bool = false,
         allowsDuplicate: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
@@ -330,6 +331,7 @@ final class QueryTabManager {
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.objectType = objectType
         newTab.tableContext.schemaName = schemaName
         newTab.isPreview = isPreview
         tabs.append(newTab)
@@ -445,7 +447,8 @@ final class QueryTabManager {
     @discardableResult
     func replaceTabContent(
         tableName: String, databaseType: DatabaseType = .mysql,
-        isView: Bool = false, databaseName: String = "",
+        isView: Bool = false, objectType: TableInfo.TableType? = nil,
+        databaseName: String = "",
         schemaName: String? = nil, isPreview: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) throws -> Bool {
@@ -486,6 +489,7 @@ final class QueryTabManager {
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
         tab.tableContext.isView = isView
+        tab.tableContext.objectType = objectType
         tab.tableContext.isEditable = !isView
         tab.filterState = TabFilterState()
         tab.columnLayout = ColumnLayoutState()

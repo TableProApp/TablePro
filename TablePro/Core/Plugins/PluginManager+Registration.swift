@@ -555,6 +555,13 @@ extension PluginManager {
             .structureEditing.foreignKeyEdit ?? .unsupported
     }
 
+    /// The fallback is `.tablesOnly`, never a curated engine's matrix: an engine nobody has measured
+    /// must not be offered an edit on anything but a table.
+    func structureEditMatrix(for databaseType: DatabaseType) -> StructureObjectEditMatrix {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .structureEditing.structureEdits ?? .tablesOnly
+    }
+
     func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsDropDatabase ?? false

@@ -484,6 +484,7 @@ extension QueryExecutionCoordinator {
             primaryKeyColumns: primaryKeyColumns,
             isEditable: isEditable,
             isView: context.isView,
+            objectType: context.objectType,
             keysResolved: true
         )
     }

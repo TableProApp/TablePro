@@ -14,13 +14,31 @@ final class StructureGridDelegate: DataGridViewDelegate {
     var selectedTab: StructureTab
     let connection: DatabaseConnection
 
-    /// Whether this engine can add and remove foreign keys, which is not the same question as
-    /// whether it has them. Every path that stages a foreign key change reads this, not just the
-    /// button under the list: a context-menu Delete that stages one on an engine with no way to
-    /// apply it only fails later, at Save.
+    /// What kind of object this grid is editing. The footer pair is not the only way in: the Edit
+    /// menu's Add Row, the grid's own shortcut, the row context menu and the empty-space menu all
+    /// reach the methods below directly, so each of them asks the same gate rather than trusting a
+    /// button to have been dimmed. (#2726)
+    let objectKind: TableInfo.TableType
+
+    /// The single answer to "may this edit be offered", shared with the view that presents this grid.
+    var editGate: StructureEditGate {
+        StructureEditGate(databaseType: connection.type, objectKind: objectKind)
+    }
+
+    /// Whether this engine can add and remove foreign keys on this object, which is not the same
+    /// question as whether the engine has them. `supportsForeignKeys` answers the second, and reading
+    /// it as the first is what offered an enabled "+" on SQLite over a driver with no statement
+    /// behind it. Every path that stages a foreign key change reads this, not just the button under
+    /// the list: a context-menu Delete that stages one with no way to apply it only fails at Save.
     var canEditForeignKeys: Bool {
-        PluginManager.shared.foreignKeyEditSupport(for: connection.type).isEditable
-            && connection.type.supportsSchemaEditing
+        editGate.allows(.addForeignKey)
+    }
+
+    /// Whether a new row may be staged on the list the user is looking at. Paste and Duplicate stage
+    /// the same add the "+" does, so they answer to the same gate rather than to the pasteboard alone.
+    var canStageAddForSelectedTab: Bool {
+        guard let adding = StructureFooterPolicy.operation(forAdding: selectedTab) else { return false }
+        return editGate.allows(adding)
     }
     let tableName: String
     /// The lists behind the Foreign Keys grid's reference cells, shared with the Create Table tab.
@@ -58,12 +76,14 @@ final class StructureGridDelegate: DataGridViewDelegate {
         selectedTab: StructureTab,
         connection: DatabaseConnection,
         tableName: String,
+        objectKind: TableInfo.TableType = .table,
         coordinator: MainContentCoordinator?
     ) {
         self.structureChangeManager = structureChangeManager
         self.selectedTab = selectedTab
         self.connection = connection
         self.tableName = tableName
+        self.objectKind = objectKind
         self.coordinator = coordinator
         self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
     }
@@ -137,7 +157,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             }
 
         case .checkConstraints:
-            guard connection.type.supportsCheckConstraintEditing,
+            guard editGate.allows(.addCheckConstraint),
                   sourceRowIndex < structureChangeManager.workingCheckConstraints.count else { return }
             var constraint = structureChangeManager.workingCheckConstraints[sourceRowIndex]
             StructureEditingSupport.updateCheckConstraint(&constraint, at: column, with: newValue ?? "")
@@ -177,7 +197,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
         switch selectedTab {
         case .columns:
-            guard connection.type.supportsDropColumn else { return }
+            guard editGate.allows(.dropColumn) else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingColumns.count else { continue }
@@ -186,7 +206,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .indexes:
-            guard connection.type.supportsDropIndex else { return }
+            guard editGate.allows(.dropIndex) else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingIndexes.count else { continue }
@@ -204,7 +224,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 }
             }
         case .checkConstraints:
-            guard connection.type.supportsCheckConstraintEditing else { return }
+            guard editGate.allows(.addCheckConstraint) else { return }
             structureChangeManager.performAsOneUndoStep {
                 for row in translated.sorted(by: >) {
                     guard row < structureChangeManager.workingCheckConstraints.count else { continue }
@@ -315,6 +335,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridPasteRows() {
+        guard canStageAddForSelectedTab else { return }
         guard let data = NSPasteboard.general.data(forType: TableStructureView.structurePasteboardType),
               let jsonString = String(data: data, encoding: .utf8) else {
             return
@@ -348,10 +369,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
             }
 
         case .checkConstraints:
-            guard connection.type.supportsCheckConstraintEditing,
-                  let constraints = try? decoder.decode(
-                      [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
-                  ) else {
+            guard let constraints = try? decoder.decode(
+                [EditableCheckConstraintDefinition].self, from: Data(jsonString.utf8)
+            ) else {
                 return
             }
             for item in constraints {
@@ -380,18 +400,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridAddRow() {
+        guard canStageAddForSelectedTab else { return }
         switch selectedTab {
         case .columns:
-            guard connection.type.supportsAddColumn else { return }
             structureChangeManager.addNewColumn()
         case .indexes:
-            guard connection.type.supportsAddIndex else { return }
             structureChangeManager.addNewIndex()
         case .foreignKeys:
-            guard canEditForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
         case .checkConstraints:
-            guard connection.type.supportsCheckConstraintEditing else { return }
             structureChangeManager.addNewCheckConstraint()
         case .ddl, .parts, .triggers:
             break
@@ -578,16 +595,16 @@ final class StructureGridDelegate: DataGridViewDelegate {
         let label: String
         switch selectedTab {
         case .columns:
-            guard connection.type.supportsAddColumn else { return nil }
+            guard editGate.allows(.addColumn) else { return nil }
             label = String(localized: "Add Column")
         case .indexes:
-            guard connection.type.supportsAddIndex else { return nil }
+            guard editGate.allows(.addIndex) else { return nil }
             label = String(localized: "Add Index")
         case .foreignKeys:
             guard canEditForeignKeys else { return nil }
             label = String(localized: "Add Foreign Key")
         case .checkConstraints:
-            guard connection.type.supportsCheckConstraintEditing else { return nil }
+            guard editGate.allows(.addCheckConstraint) else { return nil }
             label = String(localized: "Add Check Constraint")
         case .ddl, .parts, .triggers:
             return nil
@@ -711,6 +728,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     private func handleDuplicateItems(_ indices: Set<Int>) {
+        guard canStageAddForSelectedTab else { return }
         for row in indices.sorted() {
             switch selectedTab {
             case .columns:
@@ -730,8 +748,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 let copy = structureChangeManager.workingForeignKeys[row]
                 structureChangeManager.addForeignKey(copy.withNewIdentity())
             case .checkConstraints:
-                guard connection.type.supportsCheckConstraintEditing,
-                      row < structureChangeManager.workingCheckConstraints.count else { continue }
+                guard row < structureChangeManager.workingCheckConstraints.count else { continue }
                 let copy = structureChangeManager.workingCheckConstraints[row]
                 structureChangeManager.addCheckConstraint(copy.withNewIdentity())
             case .ddl, .parts, .triggers:

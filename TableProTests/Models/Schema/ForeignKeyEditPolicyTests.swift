@@ -11,13 +11,13 @@ import Testing
 struct ForeignKeyEditPolicyTests {
     private func resolve(
         _ support: ForeignKeyEditSupport,
-        isTable: Bool = true,
+        kindRefusal: String? = nil,
         canEditSchema: Bool = true
     ) -> ForeignKeyEditAvailability {
         ForeignKeyEditPolicy.resolve(
             support: support,
             engineName: "Engine",
-            isTable: isTable,
+            kindRefusal: kindRefusal,
             canEditSchema: canEditSchema
         )
     }
@@ -43,11 +43,14 @@ struct ForeignKeyEditPolicyTests {
         #expect(availability.unavailableReason?.contains("Engine") == true)
     }
 
-    @Test("A view has no foreign keys of its own")
-    func withholdsOnViews() {
-        let availability = resolve(.rebuild, isTable: false)
+    /// The reason comes from the caller's per-kind matrix, because only that knows whether the user
+    /// is looking at a view, a materialized view or a foreign table. PostgreSQL refuses
+    /// `ADD CONSTRAINT … FOREIGN KEY` on all three.
+    @Test("An object kind that refuses the edit is withheld with its own reason")
+    func withholdsOnRefusingKinds() {
+        let availability = resolve(.rebuild, kindRefusal: "A materialized view cannot have constraints.")
         #expect(!availability.isAvailable)
-        #expect(availability.unavailableReason != nil)
+        #expect(availability.unavailableReason == "A materialized view cannot have constraints.")
     }
 
     /// Checked before the engine's own capability so a read-only engine explains that rather than
@@ -62,7 +65,9 @@ struct ForeignKeyEditPolicyTests {
     @Test("Every reason is a sentence, never an empty string")
     func alwaysExplainsItself() {
         let withheld = [
-            resolve(.unsupported), resolve(.rebuild, isTable: false), resolve(.alter, canEditSchema: false)
+            resolve(.unsupported),
+            resolve(.rebuild, kindRefusal: "A view cannot have constraints."),
+            resolve(.alter, canEditSchema: false)
         ]
         for availability in withheld {
             #expect(availability.unavailableReason?.isEmpty == false)

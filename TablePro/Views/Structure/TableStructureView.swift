@@ -30,10 +30,6 @@ struct TableStructureView: View {
     let databaseName: String
     let schemaName: String?
 
-    /// Whether the Structure tab is open on a view rather than a table. Every reorder mechanism
-    /// emits table DDL, so a view is withheld rather than allowed to fail at the statement.
-    var isViewObject: Bool = false
-
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
@@ -52,6 +48,16 @@ struct TableStructureView: View {
     /// Everything the user has staged, plus the baseline it is staged against. Held outside this
     /// view because the view is destroyed whenever the tab is deselected or switched to Data.
     let session: StructureEditingSession
+
+    /// What kind of object the tab is open on, which decides every edit it may offer.
+    ///
+    /// The real `TableInfo.TableType`, read from the session rather than passed in beside it, so the
+    /// grid delegate the session owns and the footer this view publishes can never disagree about
+    /// what they are looking at. It used to be an `isView` Bool derived from `allowsRowEditing`,
+    /// which is true for a materialized view, so a matview reached here as a table and was offered
+    /// `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits the server always refuses.
+    /// (#2726)
+    var objectKind: TableInfo.TableType { session.objectKind }
 
     /// Where the user was. Two tabs on one table are two editors, and a trip through the Data view
     /// must not lose the sub-tab, filter or sort either, so all of it lives on the session.
@@ -153,7 +159,6 @@ struct TableStructureView: View {
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
-        isViewObject: Bool = false,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
@@ -163,7 +168,6 @@ struct TableStructureView: View {
         self.connection = connection
         self.databaseName = databaseName
         self.schemaName = schemaName
-        self.isViewObject = isViewObject
         self.toolbarState = toolbarState
         self.coordinator = coordinator
         self.selectionState = selectionState
@@ -326,80 +330,6 @@ struct TableStructureView: View {
         .padding()
     }
 
-    // MARK: - Footer capability
-
-    /// Published to the tab's own session, which the bottom bar reads. Nothing is cleared on
-    /// disappear: the session outlives the view by design, and the bar only reads this while the
-    /// tab is showing its structure.
-    private func publishFooterCapability() {
-        guard connection.type.supportsSchemaEditing, let labels = footerLabels(for: selectedTab) else {
-            session.footer = StructureFooterCapability()
-            return
-        }
-        session.footer = StructureFooterCapability(
-            canAdd: canAdd(for: selectedTab),
-            canRemove: canRemove(for: selectedTab),
-            addLabel: labels.add,
-            removeLabel: labels.remove,
-            unavailableReason: unavailableReason(for: selectedTab)
-        )
-    }
-
-    /// Whether this engine can add and remove foreign keys, which is not the same question as
-    /// whether it has them. `supportsForeignKeys` answers the second, and reading it as the first
-    /// is what offered an enabled "+" on SQLite over a driver with no statement behind it.
-    var foreignKeyEditAvailability: ForeignKeyEditAvailability {
-        ForeignKeyEditPolicy.resolve(
-            support: PluginManager.shared.foreignKeyEditSupport(for: connection.type),
-            engineName: connection.type.displayName,
-            isTable: !isViewObject,
-            canEditSchema: connection.type.supportsSchemaEditing
-        )
-    }
-
-    private func canAdd(for tab: StructureTab) -> Bool {
-        switch tab {
-        case .columns: return connection.type.supportsAddColumn
-        case .indexes: return connection.type.supportsAddIndex
-        case .foreignKeys: return foreignKeyEditAvailability.isAvailable
-        case .checkConstraints: return connection.type.supportsCheckConstraintEditing
-        case .ddl, .parts, .triggers: return false
-        }
-    }
-
-    /// Why the pair under the list is dimmed, for its tooltip. Nil when it is not, and nil for a
-    /// tab whose absence needs no explaining: DDL and Parts have nothing to add.
-    private func unavailableReason(for tab: StructureTab) -> String? {
-        guard tab == .foreignKeys else { return nil }
-        return foreignKeyEditAvailability.unavailableReason
-    }
-
-    private func canRemove(for tab: StructureTab) -> Bool {
-        guard !selectedRows.isEmpty else { return false }
-        switch tab {
-        case .columns: return connection.type.supportsDropColumn
-        case .indexes: return connection.type.supportsDropIndex
-        case .foreignKeys: return foreignKeyEditAvailability.isAvailable
-        case .checkConstraints: return connection.type.supportsCheckConstraintEditing
-        case .ddl, .parts, .triggers: return false
-        }
-    }
-
-    private func footerLabels(for tab: StructureTab) -> (add: String, remove: String)? {
-        switch tab {
-        case .columns:
-            return (String(localized: "Add Column"), String(localized: "Remove Column"))
-        case .indexes:
-            return (String(localized: "Add Index"), String(localized: "Remove Index"))
-        case .foreignKeys:
-            return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
-        case .checkConstraints:
-            return (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
-        case .ddl, .parts, .triggers:
-            return nil
-        }
-    }
-
     // MARK: - Tab Label with Count Badge
 
     private func tabLabel(for tab: StructureTab) -> String {
@@ -472,25 +402,27 @@ struct TableStructureView: View {
         }
     }
 
+    /// Only offered where the add behind it can actually run. An engine that lists an object but
+    /// cannot edit it shows the grid, so its real rows stay visible instead of being replaced by an
+    /// empty state whose only affordance is disabled, and a view whose kind refuses the add never
+    /// gets the empty state's button at all.
     private var shouldShowIndexesEmptyState: Bool {
         tabData.hasData(.indexes)
             && structureChangeManager.workingIndexes.isEmpty
-            && connection.type.supportsAddIndex
+            && editGate.allows(.addIndex)
     }
 
     private var shouldShowForeignKeysEmptyState: Bool {
         tabData.hasData(.foreignKeys)
             && structureChangeManager.workingForeignKeys.isEmpty
             && connection.type.supportsForeignKeys
+            && editGate.allows(.addForeignKey)
     }
 
-    /// Only offered where the engine can actually add one. An engine that lists constraints but
-    /// cannot edit them shows the grid, so a table's real constraints stay visible instead of being
-    /// replaced by an empty state whose only affordance is disabled.
     private var shouldShowCheckConstraintsEmptyState: Bool {
         tabData.hasData(.checkConstraints)
             && structureChangeManager.workingCheckConstraints.isEmpty
-            && connection.type.supportsCheckConstraintEditing
+            && editGate.allows(.addCheckConstraint)
     }
 
     // MARK: - Structure Grid (DataGridView)
@@ -536,9 +468,12 @@ struct TableStructureView: View {
     private var structureGrid: some View {
         @Bindable var session = session
         let provider = makeCurrentProvider()
-        let canEdit = connection.type.supportsSchemaEditing
+        let canEdit = editGate.allowsAnyEdit
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns
+        /// Resolved once. It reads the engine's curated capabilities and the object's own kind, and
+        /// this is a body property, so asking twice for the pair of values below doubled that work.
+        let reorder = columnReorderAvailability
 
         // Build the row snapshot fresh on every call rather than capturing it
         // once at body-evaluation time. After a cell edit / undo / redo the
@@ -562,12 +497,14 @@ struct TableStructureView: View {
                 tableName: tableName,
                 databaseName: databaseName,
                 schemaName: schemaName,
-                tabType: .table
+                tabType: .table,
+                lockedColumns: lockedStructureColumns,
+                editRefusalMessage: structureEditRefusal
             ),
             delegate: gridDelegate,
             rowReorder: DataGridRowReorder(
-                isEnabled: columnReorderAvailability.isAvailable,
-                unavailableReason: columnReorderAvailability.unavailableReason
+                isEnabled: reorder.isAvailable,
+                unavailableReason: reorder.unavailableReason
             ),
             selectedRowIndices: $selectedRows,
             sortState: $session.sortState,

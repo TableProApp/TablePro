@@ -80,6 +80,7 @@ extension QueryExecutionCoordinator {
             primaryKeyColumns: [],
             isEditable: resolved.isEditable && producesRows,
             isView: tab.tableContext.isView,
+            objectType: tab.tableContext.objectType,
             keysResolved: false
         )
     }

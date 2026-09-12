@@ -24,6 +24,9 @@ struct TabNavigationEntry: Equatable {
     var databaseName: String
     var schemaName: String?
     var isView: Bool
+    /// The object's own kind, so Back and Forward put the tab on a materialized view rather than
+    /// falling back to the table the `isView` Bool cannot distinguish it from. (#2726)
+    var objectType: TableInfo.TableType?
     var resultsViewMode: ResultsViewMode
     var filterState: TabFilterState
     var sortColumns: [PersistedSortColumn]

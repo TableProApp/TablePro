@@ -66,6 +66,7 @@ extension MainContentCoordinator {
             databaseName: tab.tableContext.databaseName,
             schemaName: tab.tableContext.schemaName,
             isView: tab.tableContext.isView,
+            objectType: tab.tableContext.objectType,
             resultsViewMode: tab.display.resultsViewMode,
             filterState: tab.filterState,
             sortColumns: tab.sortState.persistedColumns,
@@ -170,6 +171,7 @@ extension MainContentCoordinator {
                 tableName: entry.tableName,
                 databaseType: connection.type,
                 isView: entry.isView,
+                objectType: entry.objectType,
                 databaseName: entry.databaseName,
                 schemaName: entry.schemaName
             )

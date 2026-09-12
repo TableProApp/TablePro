@@ -31,6 +31,10 @@ struct PersistedTab: Codable {
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false
+    /// The object's own kind, as its `TableInfo.TableType` raw value. Optional and a raw String so a
+    /// file written before this existed decodes to nil, and a spelling a newer build invents decodes
+    /// to nil too rather than throwing and taking the whole tab aggregate with it.
+    var objectTypeRawValue: String?
     var databaseName: String = ""
     var schemaName: String?
     var sourceFileURL: URL?
@@ -61,6 +65,7 @@ struct PersistedTab: Codable {
         tabType: TabType,
         tableName: String?,
         isView: Bool = false,
+        objectTypeRawValue: String? = nil,
         databaseName: String = "",
         schemaName: String? = nil,
         sourceFileURL: URL? = nil,
@@ -84,6 +89,7 @@ struct PersistedTab: Codable {
         self.tabType = tabType
         self.tableName = tableName
         self.isView = isView
+        self.objectTypeRawValue = objectTypeRawValue
         self.databaseName = databaseName
         self.schemaName = schemaName
         self.sourceFileURL = sourceFileURL
@@ -103,7 +109,7 @@ struct PersistedTab: Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, query, tabType, tableName, isView, databaseName, schemaName
+        case id, title, query, tabType, tableName, isView, objectTypeRawValue, databaseName, schemaName
         case sourceFileURL, erDiagramSchemaKey, objectRef, queryParameters
         case sortColumns, sortSource, restoredPage, restoredPageSize, cursorOffset, cursorLength
         case collapsedFoldRanges
@@ -119,6 +125,7 @@ struct PersistedTab: Codable {
         tabType = try container.decode(TabType.self, forKey: .tabType)
         tableName = try container.decodeIfPresent(String.self, forKey: .tableName)
         isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
+        objectTypeRawValue = try container.decodeIfPresent(String.self, forKey: .objectTypeRawValue)
         databaseName = try container.decodeIfPresent(String.self, forKey: .databaseName) ?? ""
         schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
@@ -563,6 +570,22 @@ struct TabTableContext: Equatable {
     var primaryKeyColumns: [String] = []
     var isEditable: Bool = false
     var isView: Bool = false
+
+    /// The object's own kind, carried beside `isView` rather than replacing it.
+    ///
+    /// The two answer different questions. `isView` decides whether the *rows* may be written, which
+    /// a dozen Bool-only carriers already speak (deeplinks, the URL parser, scripting, recents), and
+    /// it comes from `allowsRowEditing`, which is deliberately true for a materialized view because
+    /// a matview does hold rows. This says which of seven kinds the object is, which is the only
+    /// thing that can say which *structure* edits it accepts. Conflating them is the defect. (#2726)
+    ///
+    /// Nil on a tab restored from a file written before this existed, and on any path that never
+    /// learned the kind; `resolvedObjectKind()` falls back to what `isView` can still tell us.
+    var objectType: TableInfo.TableType?
+
+    func resolvedObjectKind() -> TableInfo.TableType {
+        objectType ?? (isView ? .view : .table)
+    }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }
 

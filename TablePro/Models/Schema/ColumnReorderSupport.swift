@@ -82,23 +82,24 @@ enum ColumnMove {
 /// the drop, while the drag itself was offered unconditionally, so 30 engines lifted the row,
 /// opened the insertion gap, took the drop and did nothing.
 enum ColumnReorderPolicy {
+    /// - Parameter kindRefusal: Why the object's own kind refuses a reorder, nil when it accepts one.
+    ///   Supplied by `StructureEditEligibility`, because only the per-kind matrix knows which of
+    ///   seven object kinds is in front of the user and can therefore word the refusal. (#2726)
     static func resolve(
         support: ColumnReorderSupport,
         engineName: String,
         isColumnsTab: Bool,
-        isTable: Bool,
+        kindRefusal: String?,
         canEditSchema: Bool,
         hasStagedChanges: Bool,
         isRearranged: Bool
     ) -> ColumnReorderAvailability {
         guard isColumnsTab else { return .notApplicable }
         /// Every mechanism emits table DDL, and the SQLite one looks the table up by
-        /// `sqlite_master.type = 'table'`, so a view drag would end in an error rather than an
-        /// explanation. A view's column order comes from its own `SELECT`.
-        guard isTable else {
-            return .unavailable(
-                reason: String(localized: "A view's column order comes from its query. Edit the view to change it.")
-            )
+        /// `sqlite_master.type = 'table'`, so a drag on anything else would end in an error rather
+        /// than an explanation.
+        if let kindRefusal {
+            return .unavailable(reason: kindRefusal)
         }
         guard canEditSchema else {
             return .unavailable(

@@ -113,6 +113,7 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? browseDatabaseName,
                 schemaName: resolvedSchemaName,
                 isView: payload.isView,
+                objectType: payload.objectType,
                 isPreview: payload.isPreview,
                 allowsDuplicate: payload.forcesNewTab
             )
@@ -126,6 +127,7 @@ internal enum EditorTabOpener {
         /// work the user did there while leaving the grid on rows the new filter never ran.
         guard didCreateTab, let index = tabManager.selectedTabIndex else { return }
         tabManager.tabs[index].tableContext.isView = payload.isView
+        tabManager.tabs[index].tableContext.objectType = payload.objectType
         tabManager.tabs[index].tableContext.isEditable = !payload.isView
         tabManager.tabs[index].tableContext.schemaName = resolvedSchemaName
         if payload.showStructure {

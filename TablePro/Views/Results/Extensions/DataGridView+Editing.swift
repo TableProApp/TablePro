@@ -47,6 +47,7 @@ extension TableViewCoordinator {
     /// statement can carry, so Set NULL on a MongoDB `_id`, a generated column or a
     /// `GENERATED ALWAYS AS IDENTITY` column marked the row edited and then wrote nothing.
     func isColumnWritable(_ columnName: String) -> Bool {
+        guard !lockedColumns.contains(columnName) else { return false }
         guard !changeManager.generatedColumns.contains(columnName) else { return false }
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         return !immutable.contains(columnName)
@@ -66,9 +67,24 @@ extension TableViewCoordinator {
     /// A grid that will not take a keystroke and says nothing reads as broken. When the refusal has
     /// a reason the pointer already carries it as the grid's tooltip, and the beep is AppKit's own
     /// way of saying the attempt was heard and declined.
-    func refuseEditIfExplained() {
+    ///
+    /// A locked column beeps too. The rest of its grid is editable, so there is no grid-wide tooltip
+    /// to carry the reason, and a cell that swallowed the keystroke in silence would read as a dead
+    /// grid rather than a refusal. The explanation is on the dimmed pair under the list. (#2726)
+    func refuseEditIfExplained(columnIndex: Int? = nil) {
+        if let columnIndex, isLockedColumn(at: columnIndex) {
+            NSSound.beep()
+            return
+        }
         guard !isEditable, editRefusalMessage != nil else { return }
         NSSound.beep()
+    }
+
+    private func isLockedColumn(at columnIndex: Int) -> Bool {
+        guard !lockedColumns.isEmpty else { return false }
+        let columns = tableRowsProvider().columns
+        guard columnIndex >= 0, columnIndex < columns.count else { return false }
+        return lockedColumns.contains(columns[columnIndex])
     }
 
     func beginCellEdit(row: Int, tableColumnIndex: Int) {
@@ -78,7 +94,7 @@ extension TableViewCoordinator {
         guard column.identifier != ColumnIdentitySchema.rowNumberIdentifier else { return }
         guard let columnIndex = dataColumnIndex(from: column.identifier) else { return }
         guard case .editable(let value) = editEligibility(row: row, columnIndex: columnIndex) else {
-            refuseEditIfExplained()
+            refuseEditIfExplained(columnIndex: columnIndex)
             return
         }
         showOverlayEditor(

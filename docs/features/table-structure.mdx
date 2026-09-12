@@ -16,6 +16,24 @@ Open a table and switch the result view to **Structure**, or right-click it in t
 
 The tabs are **Columns**, **Indexes**, **Foreign Keys**, **Constraints**, **Triggers**, **DDL**, and **Parts** (ClickHouse only); the first five carry item counts. A tab the engine has no concept of is hidden: ClickHouse has no Foreign Keys, Redshift no Triggers, Redis no Constraints. Every grid has a filter field, and clicking a header sorts.
 
+## What each object accepts
+
+A view is not a table, and the grid offers only the edits the server will take on the object open in front of it. A refused **+** or **-** stays on screen, dimmed, with the reason in its tooltip; a cell the object will not let you change beeps instead of opening an editor.
+
+PostgreSQL answers this per operation, so the tab does too:
+
+| Object | What it accepts |
+|--------|-----------------|
+| Table, partitioned table | Everything on this page |
+| View | Rename a column, set or clear its default, edit its comment |
+| Materialized view | Rename a column, edit its comment, add and drop indexes |
+| Foreign table | Every column change and check constraints. No indexes, no keys |
+| System table, external table | Nothing |
+
+A view and a materialized view differ in both directions: `ALTER TABLE … SET DEFAULT` runs on a view and is refused on a materialized view, and `CREATE INDEX` is the other way round.
+
+Every other engine edits a table and a partitioned table only. A view, a materialized view, a foreign table and a system table are read-only there.
+
 ## Columns tab
 
 Columns are edited in place. **Nullable**, **Primary Key**, and **Auto Inc** are YES/NO dropdowns; **Primary Key** set to YES forces **Nullable** to NO and holds it there until the key comes back off. **Type** opens a picker of the engine's types by category: search to filter, or type a parametric value such as `VARCHAR(255)` and press Return to use it as written. On PostgreSQL and PGlite the picker opens with a **User-Defined** group of the database's enums, composites, domains and ranges, each listed schema-qualified as `sales.status`. See [User-Defined Types](/features/user-defined-types).
@@ -67,7 +85,7 @@ Add a column with **+** at the right of the status bar or `Cmd+Shift+N`. Select 
 
 Flag **Primary Key** on one column, or several for a composite key in one `PRIMARY KEY (col1, col2)` clause. On an existing table that becomes a drop of the old constraint followed by an add.
 
-Drag a column row to reorder it, or right-click one and choose **Move Column Up** or **Move Column Down**. Both are dimmed with the reason spelled out under them while unsaved changes exist, while the list is filtered or sorted, on a view, and on an engine that cannot change column order.
+Drag a column row to reorder it, or right-click one and choose **Move Column Up** or **Move Column Down**. Both are dimmed with the reason spelled out under them while unsaved changes exist, while the list is filtered or sorted, on anything but a table, and on an engine that cannot change column order.
 
 What the drag does depends on the engine:
 
@@ -100,7 +118,7 @@ Everything that runs goes to query history rather than the change queue.
 
 Right-click a foreign key and choose **Open [table]** to jump to the referenced table. Right-click any row in these three grids for **Copy** (the cell under the pointer), **Copy Name**, **Copy Definition**, **Copy As** (CSV, JSON, SQL), **Duplicate**, and **Delete** (`Delete`). A row already marked for deletion offers **Undo Delete**. The same menu appears whether or not the row was already selected, and its row commands act on the whole selection.
 
-**Add Foreign Key** and **Remove Foreign Key** sit under the list. Both are dimmed on a view and on an engine that cannot edit foreign keys, with the reason in the tooltip.
+**Add Foreign Key** and **Remove Foreign Key** sit under the list. Both are dimmed on an object that cannot carry a key and on an engine that cannot edit foreign keys, with the reason in the tooltip.
 
 What the save does depends on the engine:
 

@@ -203,7 +203,8 @@ struct QueryTab: Identifiable, Equatable {
             databaseName: persisted.databaseName,
             schemaName: persisted.schemaName,
             isEditable: persisted.tabType == .table && !persisted.isView,
-            isView: persisted.isView
+            isView: persisted.isView,
+            objectType: persisted.objectTypeRawValue.flatMap(TableInfo.TableType.init(rawValue:))
         )
         self.display = TabDisplayState(
             erDiagramSchemaKey: persisted.erDiagramSchemaKey,
@@ -377,6 +378,7 @@ struct QueryTab: Identifiable, Equatable {
             tabType: tabType,
             tableName: tableContext.tableName,
             isView: tableContext.isView,
+            objectTypeRawValue: tableContext.objectType?.rawValue,
             databaseName: tableContext.databaseName,
             schemaName: tableContext.schemaName,
             sourceFileURL: content.sourceFileURL,
@@ -413,6 +415,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable
             && lhs.tableContext.isView == rhs.tableContext.isView
+            && lhs.tableContext.objectType == rhs.tableContext.objectType
             && lhs.tabType == rhs.tabType
             && lhs.isPreview == rhs.isPreview
             && lhs.hasUserInteraction == rhs.hasUserInteraction

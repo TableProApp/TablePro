@@ -20,7 +20,7 @@ extension TableStructureView {
             support: PluginManager.shared.columnReorderSupport(for: connection.type),
             engineName: connection.type.displayName,
             isColumnsTab: selectedTab == .columns,
-            isTable: !isViewObject,
+            kindRefusal: editGate.kindRefusal(.reorderColumns),
             canEditSchema: connection.type.supportsSchemaEditing,
             hasStagedChanges: structureChangeManager.hasChanges,
             isRearranged: !searchText.isEmpty || structureSortDescriptor != nil

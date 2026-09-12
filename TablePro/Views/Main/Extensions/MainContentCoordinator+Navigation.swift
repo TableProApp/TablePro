@@ -34,6 +34,7 @@ extension MainContentCoordinator {
             schema: schema ?? table.schema,
             showStructure: showStructure,
             isView: !table.type.allowsRowEditing,
+            objectType: table.type,
             forceNonPreview: forceNonPreview,
             activateGridFocus: activateGridFocus,
             forceNewTab: forceNewTab
@@ -46,6 +47,7 @@ extension MainContentCoordinator {
         schema: String? = nil,
         showStructure: Bool = false,
         isView: Bool = false,
+        objectType: TableInfo.TableType? = nil,
         forceNonPreview: Bool = false,
         activateGridFocus: Bool = false,
         forceNewTab: Bool = false
@@ -97,6 +99,7 @@ extension MainContentCoordinator {
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
                 isView: isView,
+                objectType: objectType,
                 createAsPreview: createAsPreview,
                 isInPlace: navigationModel == .inPlace
             )
@@ -150,6 +153,7 @@ extension MainContentCoordinator {
                 currentDatabase: currentDatabase,
                 resolvedSchema: resolvedSchema,
                 isView: isView,
+                objectType: objectType,
                 showStructure: showStructure,
                 createAsPreview: createAsPreview
             )
@@ -168,6 +172,7 @@ extension MainContentCoordinator {
             databaseName: currentDatabase,
             schemaName: resolvedSchema,
             isView: isView,
+            objectType: objectType,
             showStructure: showStructure,
             isPreview: createAsPreview,
             forcesNewTab: forceNewTab
@@ -233,6 +238,7 @@ extension MainContentCoordinator {
         currentDatabase: String,
         resolvedSchema: String?,
         isView: Bool,
+        objectType: TableInfo.TableType?,
         createAsPreview: Bool,
         isInPlace: Bool
     ) -> Bool {
@@ -243,6 +249,7 @@ extension MainContentCoordinator {
                 databaseName: currentDatabase,
                 schemaName: resolvedSchema,
                 isView: isView,
+                objectType: objectType,
                 isPreview: createAsPreview
             )
         } catch {
@@ -260,6 +267,7 @@ extension MainContentCoordinator {
             TableLoadTracer.shared.stage(.addFirstTab, token: token)
             tabManager.mutate(at: tabIndex) { tab in
                 tab.tableContext.isView = isView
+                tab.tableContext.objectType = objectType
                 tab.tableContext.isEditable = !isView
                 tab.tableContext.schemaName = resolvedSchema
                 tab.pagination.reset()
@@ -281,6 +289,7 @@ extension MainContentCoordinator {
         currentDatabase: String,
         resolvedSchema: String?,
         isView: Bool,
+        objectType: TableInfo.TableType?,
         showStructure: Bool,
         createAsPreview: Bool
     ) -> Bool {
@@ -316,6 +325,7 @@ extension MainContentCoordinator {
                 tableName: tableName,
                 databaseType: connection.type,
                 isView: isView,
+                objectType: objectType,
                 databaseName: currentDatabase,
                 schemaName: resolvedSchema,
                 isPreview: createAsPreview

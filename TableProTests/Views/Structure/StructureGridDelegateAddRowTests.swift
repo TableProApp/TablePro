@@ -16,7 +16,8 @@ import Testing
 struct StructureGridDelegateAddRowTests {
     private func makeDelegate(
         selectedTab: StructureTab = .columns,
-        type: DatabaseType = .mysql
+        type: DatabaseType = .mysql,
+        objectKind: TableInfo.TableType = .table
     ) -> (StructureGridDelegate, StructureChangeManager) {
         let manager = StructureChangeManager()
         let connection = TestFixtures.makeConnection(type: type)
@@ -25,6 +26,7 @@ struct StructureGridDelegateAddRowTests {
             selectedTab: selectedTab,
             connection: connection,
             tableName: "t",
+            objectKind: objectKind,
             coordinator: nil
         )
         return (delegate, manager)
@@ -178,5 +180,71 @@ struct StructureGridDelegateAddRowTests {
         delegate.dataGridDeleteRows([before - 1])
 
         #expect(manager.workingIndexes.count == before - 1)
+    }
+
+    // MARK: - Per object kind
+
+    /// The footer pair is not the only way in. Cmd+Shift+N reaches `dataGridAddRow` through
+    /// `structureActions`, the row and empty-space menus reach it directly, and none of them consults
+    /// the dimmed button, so the delegate has to refuse for itself. (#2726)
+    @Test("A PostgreSQL view refuses an added column, whatever reaches the delegate")
+    func viewRefusesAnAddedColumn() {
+        let (delegate, manager) = makeDelegate(selectedTab: .columns, type: .postgresql, objectKind: .view)
+        delegate.dataGridAddRow()
+        #expect(manager.workingColumns.isEmpty)
+    }
+
+    @Test("A PostgreSQL view refuses an added index and a materialized view accepts one")
+    func indexesFollowTheObjectKind() {
+        let (view, viewManager) = makeDelegate(selectedTab: .indexes, type: .postgresql, objectKind: .view)
+        view.dataGridAddRow()
+        #expect(viewManager.workingIndexes.isEmpty)
+
+        let (matview, matviewManager) = makeDelegate(
+            selectedTab: .indexes, type: .postgresql, objectKind: .materializedView
+        )
+        matview.dataGridAddRow()
+        #expect(matviewManager.workingIndexes.count == 1)
+    }
+
+    @Test("A PostgreSQL materialized view refuses a foreign key")
+    func materializedViewRefusesAForeignKey() {
+        let (delegate, manager) = makeDelegate(
+            selectedTab: .foreignKeys, type: .postgresql, objectKind: .materializedView
+        )
+        delegate.dataGridAddRow()
+        #expect(manager.workingForeignKeys.isEmpty)
+    }
+
+    @Test("A view refuses to drop a column its own grid is showing")
+    func viewRefusesADroppedColumn() {
+        let manager = StructureChangeManager()
+        manager.addColumn(.placeholder())
+        let before = manager.workingColumns.count
+        #expect(before == 1)
+
+        let view = StructureGridDelegate(
+            structureChangeManager: manager,
+            selectedTab: .columns,
+            connection: TestFixtures.makeConnection(type: .postgresql),
+            tableName: "v_sales",
+            objectKind: .view,
+            coordinator: nil
+        )
+        view.dataGridDeleteRows([0])
+
+        #expect(manager.workingColumns.count == before)
+    }
+
+    @Test("A system table refuses every add")
+    func systemTableRefusesEveryAdd() {
+        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
+            let (delegate, manager) = makeDelegate(selectedTab: tab, type: .postgresql, objectKind: .systemTable)
+            delegate.dataGridAddRow()
+            #expect(manager.workingColumns.isEmpty, "\(tab.rawValue)")
+            #expect(manager.workingIndexes.isEmpty, "\(tab.rawValue)")
+            #expect(manager.workingForeignKeys.isEmpty, "\(tab.rawValue)")
+            #expect(manager.workingCheckConstraints.isEmpty, "\(tab.rawValue)")
+        }
     }
 }

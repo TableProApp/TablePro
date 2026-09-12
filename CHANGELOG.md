@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data & Results, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
 - Structure editor options the connected PostgreSQL server does not support left out: generated columns before 12, BRIN before 9.5, and the MySQL-only FULLTEXT and SPATIAL index types.
+- Structure tab read-only on a view, a materialized view, a foreign table or a system table outside PostgreSQL. (#2726)
 
 ### Removed
 
@@ -232,6 +233,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server parameters sent to the wrong placeholders when a column name holds a question mark.
 - `[` in a SQL Server filter value read as a wildcard.
 - Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, Preview Referenced Row, compare scripts and column defaults on SQL Server.
+- Structure tab offering column, index and constraint edits that views and materialized views refuse. (#2726)
 
 ### Security
 

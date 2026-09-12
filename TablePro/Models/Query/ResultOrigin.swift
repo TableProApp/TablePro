@@ -19,6 +19,9 @@ struct ResultOrigin: Equatable {
     var primaryKeyColumns: [String]
     var isEditable: Bool
     var isView: Bool
+    /// The kind of object these rows came from, so a result switched back to restores the tab's
+    /// structure gate rather than the table `isView` alone would imply. (#2726)
+    var objectType: TableInfo.TableType?
 
     /// Whether anything has actually looked up this table's key columns. An empty
     /// `primaryKeyColumns` means two different things: a table that genuinely has no key, which
@@ -33,6 +36,7 @@ struct ResultOrigin: Equatable {
         primaryKeyColumns: [String] = [],
         isEditable: Bool = false,
         isView: Bool = false,
+        objectType: TableInfo.TableType? = nil,
         keysResolved: Bool = false
     ) {
         self.tableName = tableName
@@ -41,6 +45,7 @@ struct ResultOrigin: Equatable {
         self.primaryKeyColumns = primaryKeyColumns
         self.isEditable = isEditable
         self.isView = isView
+        self.objectType = objectType
         self.keysResolved = keysResolved
     }
 }

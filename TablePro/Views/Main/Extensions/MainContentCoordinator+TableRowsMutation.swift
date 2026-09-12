@@ -113,6 +113,7 @@ extension MainContentCoordinator {
             tab.tableContext.primaryKeyColumns = origin?.primaryKeyColumns ?? []
             tab.tableContext.isEditable = origin?.isEditable ?? false
             tab.tableContext.isView = origin?.isView ?? false
+            tab.tableContext.objectType = origin?.objectType
             tab.schemaVersion += 1
         }
         let tab = tabManager.tabs[tabIdx]

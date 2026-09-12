@@ -21,6 +21,13 @@ struct DataGridConfiguration: Equatable {
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
 
+    /// Headings whose cells this grid must not let the user change, even though the rest of the grid
+    /// is editable. The Structure tab sets it per object kind: PostgreSQL takes a view's
+    /// `RENAME COLUMN` and `SET DEFAULT` and refuses its `SET NOT NULL` and `SET DATA TYPE`, so Name
+    /// and Default stay open while Nullable and Type lock. Name-keyed because that is the handle
+    /// `isColumnWritable` already works in. (#2726)
+    var lockedColumns: Set<String> = []
+
     /// This grid shows rows of a result, so the Data Grid sort preferences apply to it.
     ///
     /// `tabType` cannot answer this: the Structure grid runs inside a `.table` tab and lists columns,

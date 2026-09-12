@@ -12,7 +12,7 @@ struct ColumnReorderPolicyTests {
     private func resolve(
         support: ColumnReorderSupport = .alter,
         isColumnsTab: Bool = true,
-        isTable: Bool = true,
+        kindRefusal: String? = nil,
         canEditSchema: Bool = true,
         hasStagedChanges: Bool = false,
         isRearranged: Bool = false
@@ -21,7 +21,7 @@ struct ColumnReorderPolicyTests {
             support: support,
             engineName: "PostgreSQL",
             isColumnsTab: isColumnsTab,
-            isTable: isTable,
+            kindRefusal: kindRefusal,
             canEditSchema: canEditSchema,
             hasStagedChanges: hasStagedChanges,
             isRearranged: isRearranged
@@ -76,11 +76,11 @@ struct ColumnReorderPolicyTests {
     /// withheld rather than acted on against the wrong column.
     /// Every mechanism emits table DDL, and the SQLite one looks its target up as a table, so a
     /// view drag would end in a statement error instead of an explanation.
-    @Test("A view is withheld, whatever the engine can do to a table")
-    func viewWithholdsTheDrag() {
-        let availability = resolve(isTable: false)
+    @Test("A refusing object kind is withheld, whatever the engine can do to a table")
+    func refusingKindWithholdsTheDrag() {
+        let availability = resolve(kindRefusal: "A view has no column order of its own to change.")
         #expect(!availability.isAvailable)
-        #expect(availability.unavailableReason != nil)
+        #expect(availability.unavailableReason == "A view has no column order of its own to change.")
     }
 
     @Test("A filtered or sorted column list withholds the drag")

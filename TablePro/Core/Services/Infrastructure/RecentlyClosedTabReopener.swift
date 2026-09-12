@@ -70,6 +70,7 @@ internal enum RecentlyClosedTabReopener {
             databaseName: tab.tableContext.databaseName,
             schemaName: tab.tableContext.schemaName,
             isView: tab.tableContext.isView,
+            objectType: tab.tableContext.objectType,
             skipAutoExecute: true,
             sourceFileURL: tab.content.sourceFileURL,
             erDiagramSchemaKey: tab.display.erDiagramSchemaKey,

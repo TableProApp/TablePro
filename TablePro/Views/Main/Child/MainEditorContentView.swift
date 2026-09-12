@@ -665,7 +665,6 @@ struct MainEditorContentView: View {
                     connection: connection,
                     databaseName: scope?.database ?? "",
                     schemaName: scope?.schema,
-                    isViewObject: tab.tableContext.isView,
                     toolbarState: coordinator.toolbarState,
                     coordinator: coordinator,
                     selectionState: selectionState,
@@ -679,7 +678,8 @@ struct MainEditorContentView: View {
                             connection: connection,
                             databaseName: scope?.database ?? "",
                             schemaName: scope?.schema,
-                            tableName: tableName
+                            tableName: tableName,
+                            objectKind: tab.tableContext.resolvedObjectKind()
                         )
                     }
             }

@@ -43,6 +43,10 @@ internal final class StructureEditingSession {
     internal let schemaName: String?
     internal let tableName: String
 
+    /// What kind of object this session edits, which decides which edits it may offer at all. A tab
+    /// retargeted to another object gets a new session, so this never has to change under a session.
+    internal let objectKind: TableInfo.TableType
+
     internal let changeManager = StructureChangeManager()
 
     /// Built here, not seeded into the view's `@State`. `State(wrappedValue:)` runs only the first
@@ -105,18 +109,21 @@ internal final class StructureEditingSession {
         connection: DatabaseConnection,
         databaseName: String,
         schemaName: String?,
-        tableName: String
+        tableName: String,
+        objectKind: TableInfo.TableType = .table
     ) {
         self.identity = identity
         self.connection = connection
         self.databaseName = databaseName
         self.schemaName = schemaName
         self.tableName = tableName
+        self.objectKind = objectKind
         gridDelegate = StructureGridDelegate(
             structureChangeManager: changeManager,
             selectedTab: .columns,
             connection: connection,
             tableName: tableName,
+            objectKind: objectKind,
             coordinator: nil
         )
         gridDelegate.referenceMenus.schemaName = schemaName
