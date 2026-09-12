@@ -48,15 +48,15 @@ Unfiltered pages load through `GET /v1/objects`. A column filter or a sort becom
 
 Filter values are typed from the collection schema: an `int` property filters as a number, a `date` property needs a full RFC 3339 timestamp such as `2024-01-31T00:00:00Z`, and an array property filters on one element.
 
-| Operator | What Weaviate runs |
+| Operators | What Weaviate runs |
 |----------|--------------------|
-| **=**, **!=** | `Equal`, `NotEqual` |
-| **>**, **>=**, **<**, **<=** | Numbers and dates only |
-| **CONTAINS**, **NOT CONTAINS**, **STARTS WITH**, **ENDS WITH** | `Like` with `*` wildcards, text properties only |
-| **IN**, **NOT IN** | `ContainsAny`, `ContainsNone` over a comma-separated list |
-| **BETWEEN** | Two bounds, both inclusive |
-| **IS NULL**, **IS NOT NULL** | `IsNull`, which needs `indexNullState` on the collection |
-| **IS EMPTY**, **IS NOT EMPTY** | `len()`, which needs `indexPropertyLength` on the collection |
+| equals, not equals | `Equal`, `NotEqual` |
+| greater than, greater or equal, less than, less or equal | Numbers and dates only |
+| contains, not contains, starts with, ends with | `Like` with `*` wildcards, text properties only |
+| in list, not in list | `ContainsAny`, `ContainsNone` over a comma-separated list |
+| between | Two bounds, both inclusive |
+| is NULL, is not NULL | `IsNull`, which needs `indexNullState` on the collection |
+| is empty, is not empty | `len()`, which needs `indexPropertyLength` on the collection |
 
 **REGEX** has no Weaviate equivalent, and a filter Weaviate cannot run reports why instead of returning the whole collection.
 
