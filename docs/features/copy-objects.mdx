@@ -92,7 +92,9 @@ reshaped where the source and the target spell a value differently. `TINYINT(1)`
 `TINYINT(1)` as `1`.
 
 Nothing is dropped for want of a type. A type the target does not have becomes its widest text
-column, so the values arrive as text rather than the column going missing.
+column, so the values arrive as text rather than the column going missing. The target server's
+version counts too: a JSON column crossing into PostgreSQL arrives as `jsonb` from 9.4, `json` on 9.2
+and 9.3, and `text` on 9.1.
 
 The review step lists every column and index the crossing changed, one line each. It is the only
 place those conversions appear, and it is shown before **Copy** does anything.
@@ -194,6 +196,10 @@ Redshift takes PostgreSQL's type names and not all of PostgreSQL's types. A copy
 into it is treated as one engine and passes its types through, so a `jsonb`, `uuid` or array column
 is refused by the server with its own error. Change those columns to `varchar` on the source, or
 create the target table first and use **Add rows to it**.
+
+A copy from PostgreSQL into an older PostgreSQL passes its types through the same way, so a `jsonb`
+column is refused by a server before 9.4. Create the target table first with `json` or `text`, then
+use **Add rows to it**.
 
 Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
 the sheet names the engine that cannot rather than failing part way in.

@@ -101,7 +101,7 @@ New connections default to **Preferred** (libpq `sslmode=prefer`): TLS first, pl
 
 - Columns cannot be reordered. The structure editor adds, renames, retypes, and drops; changing the order of existing columns means recreating the table.
 - A cross-database tab cannot share session state with the main connection. Statements that depend on a temp table or an open transaction have to run on one database.
-- Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew.
+- Backup and restore need `pg_dump` and `pg_restore` on your Mac. Neither is bundled; install them with Homebrew. `pg_dump` 15 and later refuse PostgreSQL 9.1, so back one up with `pg_dump` 14 or earlier.
 - Before PostgreSQL 12, the [`run_maintenance`](/external-api/mcp-tools) tool's `REINDEX` with no `table` runs without `CONCURRENTLY` and rebuilds the system catalog indexes as well. While an index rebuilds, writes to its table wait, and so do reads that use that index. Run it when the database is quiet.
 
 ## Troubleshooting

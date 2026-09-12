@@ -117,7 +117,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isConnectCancelled: Bool = false
-    private var _postgisOidMap: [UInt32: String] = [:]
+    private var _postgisOidMap: [UInt32: PostGISType] = [:]
     private var _catalogTypeNames: [UInt32: String] = [:]
     private var _standardConformingStrings = true
 
@@ -411,13 +411,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - PostGIS OID Map
 
-    func setPostgisOidMap(_ map: [UInt32: String]) {
+    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
         stateLock.lock()
         _postgisOidMap = map
         stateLock.unlock()
     }
 
-    private var postgisOidMap: [UInt32: String] {
+    private var postgisOidMap: [UInt32: PostGISType] {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _postgisOidMap
@@ -1138,9 +1138,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let oidMap = postgisOidMap
         guard !oidMap.isEmpty else { return result }
 
-        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
-            guard let typeName = oidMap[oid] else { return nil }
-            return (index, typeName)
+        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, type: PostGISType)? in
+            guard let type = oidMap[oid] else { return nil }
+            return (index, type)
         }
         guard !spatialColumns.isEmpty else { return result }
 
@@ -1177,34 +1177,41 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func renderSpatialColumns(
         _ result: LibPQPluginQueryResult,
-        spatialColumns: [(index: Int, typeName: String)]
+        spatialColumns: [(index: Int, type: PostGISType)]
     ) -> LibPQPluginQueryResult {
         var rows = result.rows
         var columnTypeNames = result.columnTypeNames
 
+        var pending: [(index: Int, query: String, hexValues: [String?])] = []
         for column in spatialColumns {
             if column.index < columnTypeNames.count {
-                columnTypeNames[column.index] = column.typeName
+                columnTypeNames[column.index] = column.type.name
             }
 
-            guard let query = PostGISSpatialRewrite.conversionQuery(forTypeName: column.typeName) else { continue }
+            guard let query = PostGISSpatialRewrite.conversionQuery(for: column.type) else { continue }
 
             let hexValues: [String?] = rows.map { row in
                 guard column.index < row.count, case let .text(hex) = row[column.index] else { return nil }
                 return hex
             }
             guard hexValues.contains(where: { $0 != nil }) else { continue }
+            pending.append((index: column.index, query: query, hexValues: hexValues))
+        }
 
-            guard let converted = convertSpatialValues(hexValues, query: query),
-                  converted.count == hexValues.count else {
-                logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
-                continue
-            }
+        if !pending.isEmpty, let scope = SpatialRenderScope(connection: self) {
+            for column in pending {
+                guard let converted = scope.convert(column.hexValues, query: column.query),
+                      converted.count == column.hexValues.count else {
+                    logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
+                    continue
+                }
 
-            for (rowIndex, value) in converted.enumerated()
-                where hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
-                rows[rowIndex][column.index] = value
+                for (rowIndex, value) in converted.enumerated()
+                    where column.hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
+                    rows[rowIndex][column.index] = value
+                }
             }
+            scope.finish()
         }
 
         return LibPQPluginQueryResult(
@@ -1219,27 +1226,62 @@ final class LibPQPluginConnection: @unchecked Sendable {
         )
     }
 
-    private func convertSpatialValues(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
-        stateLock.lock()
-        let conn = self.conn
-        stateLock.unlock()
-        guard let conn else { return nil }
+    /// One savepoint for a whole rendering pass rather than one per column: the conversion is a
+    /// side query on the user's own session, and an open transaction must survive a PostGIS error
+    /// (an older server has no ST_AsEWKT at all) without costing three round trips per column.
+    private final class SpatialRenderScope {
+        private let conn: OpaquePointer
+        private let isInsideTransaction: Bool
 
-        let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
-        guard let paramCStr = strdup(arrayLiteral) else { return nil }
-        defer { free(paramCStr) }
-
-        let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
-        let result: OpaquePointer? = query.withCString { queryPtr in
-            PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+        init?(connection: LibPQPluginConnection) {
+            connection.stateLock.lock()
+            let handle = connection.conn
+            connection.stateLock.unlock()
+            guard let handle else { return nil }
+            self.conn = handle
+            switch PQtransactionStatus(handle) {
+            case PQTRANS_IDLE:
+                isInsideTransaction = false
+            case PQTRANS_INTRANS:
+                guard LibPQPluginConnection.runCommand(PostGISSpatialRewrite.savepoint, on: handle) else {
+                    return nil
+                }
+                isInsideTransaction = true
+            default:
+                return nil
+            }
         }
 
-        guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
-            if let result { PQclear(result) }
-            return nil
-        }
-        defer { PQclear(result) }
+        func convert(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
+            let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
+            guard let paramCStr = strdup(arrayLiteral) else { return nil }
+            defer { free(paramCStr) }
 
+            let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
+            let result = query.withCString { queryPtr in
+                PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+            }
+            guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
+                if let result { PQclear(result) }
+                rollback()
+                return nil
+            }
+            defer { PQclear(result) }
+            return LibPQPluginConnection.textColumn(from: result)
+        }
+
+        func finish() {
+            guard isInsideTransaction else { return }
+            _ = LibPQPluginConnection.runCommand(PostGISSpatialRewrite.releaseSavepoint, on: conn)
+        }
+
+        private func rollback() {
+            guard isInsideTransaction else { return }
+            _ = LibPQPluginConnection.runCommand(PostGISSpatialRewrite.rollbackToSavepoint, on: conn)
+        }
+    }
+
+    private static func textColumn(from result: OpaquePointer) -> [PluginCellValue] {
         let rowCount = Int(PQntuples(result))
         var converted: [PluginCellValue] = []
         converted.reserveCapacity(rowCount)
@@ -1255,6 +1297,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
         return converted
+    }
+
+    private static func runCommand(_ command: String, on conn: OpaquePointer) -> Bool {
+        guard let result = command.withCString({ PQexec(conn, $0) }) else { return false }
+        defer { PQclear(result) }
+        return PQresultStatus(result) == PGRES_COMMAND_OK
     }
 
     private static func decodeCell(

@@ -49,6 +49,7 @@ internal struct ObjectCopyTableDraft {
         existsInTarget: Bool,
         sourceSchema: String?,
         targetSchema: String?,
+        targetServerVersion: String?,
         request: ObjectCopyRequest
     ) {
         self.selection = selection
@@ -70,7 +71,10 @@ internal struct ObjectCopyTableDraft {
         self.targetTable = (writesStructure ? nil : targetSnapshot?.name) ?? snapshot.name
 
         let translation = CrossEngineStructureTranslator.translate(
-            snapshot, from: request.source.databaseType, to: request.target.databaseType
+            snapshot,
+            from: request.source.databaseType,
+            to: request.target.databaseType,
+            targetServerVersion: targetServerVersion
         )
         self.targetStructure = translation.snapshot
         self.isCrossEngine = translation.translated

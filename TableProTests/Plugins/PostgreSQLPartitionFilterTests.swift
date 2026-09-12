@@ -6,7 +6,7 @@ import Testing
 struct PostgreSQLPartitionFilterTests {
     private func awareQuery() -> String {
         PostgreSQLSchemaQueries.fetchTables(
-            schemaLiteral: "public",
+            schema: "public",
             includeMaterializedViews: false,
             includeForeignTables: false
         )
@@ -42,7 +42,7 @@ struct PostgreSQLPartitionFilterTests {
     @Test("Partition awareness degrades independently of the optional catalogs")
     func partitionAwarenessDegradesIndependently() {
         let query = PostgreSQLSchemaQueries.fetchTables(
-            schemaLiteral: "public",
+            schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true,
             includePartitionAwareness: false
@@ -56,7 +56,7 @@ struct PostgreSQLPartitionFilterTests {
     @Test("Every union branch still projects three aligned columns when partition aware")
     func unionBranchesStayAligned() {
         let query = PostgreSQLSchemaQueries.fetchTables(
-            schemaLiteral: "public",
+            schema: "public",
             includeMaterializedViews: true,
             includeForeignTables: true
         )

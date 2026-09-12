@@ -73,6 +73,24 @@ struct NativeDumpRegistryTests {
         }
     }
 
+    @Test("PostgreSQL matches its tools to the server, Redshift and MySQL keep the plain lookup")
+    func postgresToolsFollowTheServer() throws {
+        let postgres = try #require(NativeDumpRegistry.descriptor(for: .postgresql)?.commandLineTool)
+        let redshift = try #require(NativeDumpRegistry.descriptor(for: .redshift)?.commandLineTool)
+        let mysql = try #require(NativeDumpRegistry.descriptor(for: .mysql)?.commandLineTool)
+        #expect(postgres.toolForServer != nil)
+        #expect(redshift.toolForServer == nil)
+        #expect(mysql.toolForServer == nil)
+    }
+
+    @Test("One selector covers both directions, so a restore is matched to the server too")
+    func postgresRestoreUsesTheSameSelector() throws {
+        let postgres = try #require(NativeDumpRegistry.descriptor(for: .postgresql)?.commandLineTool)
+        #expect(postgres.binaries(for: .backup) == ["pg_dump"])
+        #expect(postgres.binaries(for: .restore) == ["pg_restore"])
+        #expect(postgres.toolForServer != nil)
+    }
+
     @Test("Each engine offers its own archive extension")
     func archiveExtensions() throws {
         #expect(try #require(NativeDumpRegistry.descriptor(for: .postgresql)).archiveFormat.fileExtension == "dump")

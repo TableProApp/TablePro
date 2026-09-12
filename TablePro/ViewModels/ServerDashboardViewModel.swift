@@ -52,6 +52,8 @@ final class ServerDashboardViewModel {
 
     @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private let services: AppServices
+    @ObservationIgnored private var providerServerVersion: String?
+    @ObservationIgnored private var hasAdoptedServerVersion = false
 
     // MARK: - Computed Properties
 
@@ -115,14 +117,28 @@ final class ServerDashboardViewModel {
 
     // MARK: - Data Fetching
 
+    /// The provider is built once per server version, because it also answers `supportedPanels`,
+    /// `canKillSessions` and `canCancelQueries` for the toolbar between refreshes.
+    private func adoptProvider(forServerVersion serverVersion: String?) {
+        guard serverVersion != providerServerVersion || !hasAdoptedServerVersion else { return }
+        providerServerVersion = serverVersion
+        hasAdoptedServerVersion = true
+        guard let resolved = ServerDashboardQueryProviderFactory.provider(
+            for: databaseType, serverVersion: serverVersion
+        ) else { return }
+        provider = resolved
+    }
+
     func refreshNow() async {
         guard !isRefreshing else { return }
-        guard let provider else {
+        guard provider != nil else {
             Self.logger.warning("No query provider available for \(self.databaseType.rawValue)")
             return
         }
 
-        guard services.databaseManager.driver(for: connectionId) != nil else { return }
+        guard let liveDriver = services.databaseManager.driver(for: connectionId) else { return }
+        adoptProvider(forServerVersion: liveDriver.serverVersion)
+        guard let provider else { return }
 
         isRefreshing = true
         defer { isRefreshing = false }

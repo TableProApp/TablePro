@@ -114,12 +114,15 @@ public enum PostgreSQLTypeDefinition {
         case owner
         case comment
         case enumLabels
-        case fields
+        case fieldNames
+        case fieldTypes
+        case fieldCollations
         case baseType
         case collation
         case isNotNull
         case defaultValue
-        case constraints
+        case constraintNames
+        case constraintDefinitions
         case rangeSubtype
         case rangeCanonical
         case rangeSubtypeDiff
@@ -142,19 +145,13 @@ public enum PostgreSQLTypeDefinition {
             kind: kind,
             owner: text(row, .owner),
             comment: text(row, .comment),
-            enumLabels: jsonStrings(text(row, .enumLabels)),
-            fields: jsonObjects(text(row, .fields)).compactMap { object in
-                guard let name = object["name"], let type = object["type"] else { return nil }
-                return PluginUserDefinedTypeField(name: name, type: type, collation: object["collation"])
-            },
+            enumLabels: PostgreSQLTextArray.values(text(row, .enumLabels)),
+            fields: fields(in: row),
             baseType: text(row, .baseType),
             collation: text(row, .collation),
-            isNotNull: text(row, .isNotNull) == "t" || text(row, .isNotNull) == "true",
+            isNotNull: PostgreSQLCatalogBoolean.isTrue(text(row, .isNotNull)),
             defaultValue: text(row, .defaultValue),
-            constraints: jsonObjects(text(row, .constraints)).compactMap { object in
-                guard let name = object["name"], let definition = object["definition"] else { return nil }
-                return PostgreSQLDomainConstraint(name: name, definition: definition)
-            },
+            constraints: constraints(in: row),
             rangeSubtype: text(row, .rangeSubtype),
             rangeCanonical: text(row, .rangeCanonical),
             rangeSubtypeDiff: text(row, .rangeSubtypeDiff),
@@ -298,19 +295,23 @@ public enum PostgreSQLTypeDefinition {
         return value
     }
 
-    private static func jsonStrings(_ json: String?) -> [String] {
-        guard let data = json?.data(using: .utf8),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
-        else { return [] }
-        return array.compactMap { $0 as? String }
+    private static func fields(in row: [PluginCellValue]) -> [PluginUserDefinedTypeField] {
+        let names = PostgreSQLTextArray.elements(text(row, .fieldNames))
+        let types = PostgreSQLTextArray.elements(text(row, .fieldTypes))
+        let collations = PostgreSQLTextArray.elements(text(row, .fieldCollations))
+        return names.indices.compactMap { index in
+            guard let name = names[index], let type = types[safe: index] ?? nil else { return nil }
+            let collation = collations[safe: index] ?? nil
+            return PluginUserDefinedTypeField(name: name, type: type, collation: collation)
+        }
     }
 
-    private static func jsonObjects(_ json: String?) -> [[String: String]] {
-        guard let data = json?.data(using: .utf8),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else { return [] }
-        return array.map { object in
-            object.compactMapValues { $0 as? String }
+    private static func constraints(in row: [PluginCellValue]) -> [PostgreSQLDomainConstraint] {
+        let names = PostgreSQLTextArray.elements(text(row, .constraintNames))
+        let definitions = PostgreSQLTextArray.elements(text(row, .constraintDefinitions))
+        return names.indices.compactMap { index in
+            guard let name = names[index], let definition = definitions[safe: index] ?? nil else { return nil }
+            return PostgreSQLDomainConstraint(name: name, definition: definition)
         }
     }
 }
