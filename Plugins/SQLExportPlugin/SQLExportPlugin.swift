@@ -58,6 +58,16 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     /// Kept apart for the same reason `indexFailures` is: an object whose definition came back fine
     /// and only lost its comments is a different thing to tell the user about.
     var commentFailures: [String] = []
+
+    /// The tables whose dependent sequences or enum types could not be read. Kept apart from
+    /// `ddlFailures` for the same reason `indexFailures` is: the table's own `CREATE TABLE` came
+    /// back fine, and what is missing is an object that statement names. Measured on PostgreSQL
+    /// 17.11 with `SELECT` revoked on `pg_catalog.pg_enum`: the enum query fails, `fetchTableDDL`
+    /// still returns a `CREATE TABLE` declaring `status order_status`, and the restore stops at
+    /// `type "order_status" does not exist` with nothing in the dump explaining it. One entry per
+    /// table, however many of its two fetches failed.
+    private var dependentObjectFailures: [String] = []
+
     var metadataWarnings: [String] = []
 
     /// The tables a foreign key cycle left the ordering unable to place. They keep the order the
@@ -119,6 +129,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         ddlFailures = []
         indexFailures = []
         commentFailures = []
+        dependentObjectFailures = []
         metadataWarnings = []
         exportSpansContainers = false
         tablesUnorderedByCycle = []
@@ -213,12 +224,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
-            try writer.commit()
+            /// The publication point. Every phase above can suspend on a driver call, and the
+            /// grant phase makes no cancellation check of its own, so a Stop arriving in one of
+            /// them used to resume and replace the user's file anyway. Nothing is published past
+            /// this line without the stop having been seen.
+            try progress.checkCancellation()
+            let writtenParts = try writer.commit()
             committed = true
-            if writer.didSplit {
+            if writer.didSplit, let first = writtenParts.first, let last = writtenParts.last {
                 metadataWarnings.append(String(
-                    format: String(localized: "The dump was written as %lld numbered parts. Restore them in order."),
-                    Int64(writer.partCount)))
+                    format: String(localized: """
+                        The dump was written as %1$lld numbered parts, %2$@ through %3$@. Restore \
+                        them in order.
+                        """),
+                    Int64(writtenParts.count),
+                    first.lastPathComponent,
+                    last.lastPathComponent))
             }
         } catch {
             if let snapshot {
@@ -228,18 +249,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
 
         if options.compressWithGzip, let gzipSource = gzipTempURL {
-            progress.setStatus("Compressing...")
-
-            do {
-                defer {
-                    try? FileManager.default.removeItem(at: gzipSource)
-                }
-
-                try await compressFile(source: gzipSource, destination: destination)
-            } catch {
-                try? FileManager.default.removeItem(at: destination)
-                throw error
-            }
+            progress.setStatus(String(localized: "Compressing\u{2026}"))
+            defer { try? FileManager.default.removeItem(at: gzipSource) }
+            try await SQLExportCompressor.compress(
+                source: gzipSource, to: destination, progress: progress)
         }
 
         progress.finalizeTable()
@@ -249,6 +262,14 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             let failedTables = ddlFailures.joined(separator: ", ")
             warnings.append(String(
                 format: String(localized: "Could not fetch table structure for: %@"), failedTables))
+        }
+        if !dependentObjectFailures.isEmpty {
+            warnings.append(String(
+                format: String(localized: """
+                    Could not fetch the types and sequences needed by: %@. A CREATE TABLE that \
+                    names one of them will not restore.
+                    """),
+                dependentObjectFailures.joined(separator: ", ")))
         }
         if !indexFailures.isEmpty {
             warnings.append(String(
@@ -262,6 +283,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         }
         if let oversized = Self.oversizedRowWarning(tally: statementTally) {
             warnings.append(oversized)
+        }
+        if let unrepresentable = Self.unrepresentableValueWarning(tally: statementTally) {
+            warnings.append(unrepresentable)
         }
         warnings.append(contentsOf: metadataWarnings)
         return ExportFormatResult(warnings: warnings, notes: Self.statementSizeNotes(tally: statementTally))
@@ -285,6 +309,23 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             format: template,
             formatted(bytes: tally.largestStatementBytes),
             Int64(tally.largestStatementRows))]
+    }
+
+    /// Named rather than left to the restore, because no single-statement form of such a value
+    /// exists on this engine: the dump carries the closest thing there is and says so.
+    private static func unrepresentableValueWarning(tally: SQLExportStatementTally) -> String? {
+        guard tally.unrepresentableValues > 0 else { return nil }
+        let ceiling = formatted(bytes: SQLExportBinaryLiteral.oracleLiteralByteCeiling)
+        let template = tally.unrepresentableValues == 1
+            ? String(localized: """
+                1 binary value is larger than the %1$@ this engine allows in one statement, so its \
+                INSERT may not restore.
+                """)
+            : String(localized: """
+                %2$lld binary values are larger than the %1$@ this engine allows in one statement, \
+                so their INSERTs may not restore.
+                """)
+        return String(format: template, ceiling, Int64(tally.unrepresentableValues))
     }
 
     /// The limit comes off the tally rather than the settings, so a second window moving the setting
@@ -491,7 +532,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     try writer.write("\(seq.ddl)\n\n")
                 }
             } catch {
+                let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
+                noteDependentObjectFailure(sanitizedName)
                 Self.logger.warning("Failed to fetch dependent sequences for table \(table.name): \(error)")
+                let warning = "Warning: failed to fetch dependent sequences for \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
             }
 
             do {
@@ -508,9 +553,18 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
                 }
             } catch {
+                let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
+                noteDependentObjectFailure(sanitizedName)
                 Self.logger.warning("Failed to fetch dependent types for table \(table.name): \(error)")
+                let warning = "Warning: failed to fetch dependent types for \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
             }
         }
+    }
+
+    private func noteDependentObjectFailure(_ sanitizedTableName: String) {
+        guard !dependentObjectFailures.contains(sanitizedTableName) else { return }
+        dependentObjectFailures.append(sanitizedTableName)
     }
 
     private func writeCreatePhase(
@@ -897,8 +951,14 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         /// SQL Server refuses an explicit value for an IDENTITY column unless the table is opened
         /// for it first. The rows are exported with their keys, so without this the dump restores
         /// nothing: every INSERT for the table is rejected while the export itself reported success.
+        /// The writer owns it as a scope so a rotation inside the table's rows carries it into the
+        /// next part: as two plain statements, one part ended on an unmatched `ON` and the next
+        /// opened with rows and none (#2533).
         let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
             && columnInfo.contains(where: \.isIdentity)
+        let identityInsert = needsIdentityInsert
+            ? SQLExportSessionScope.identityInsert(tableRef: tableRef)
+            : nil
 
         if !table.rowScope.isUnrestricted {
             let scopeNote = PluginExportUtilities.sanitizeForSQLComment(table.rowScope.summary)
@@ -924,19 +984,18 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         /// byte budget can hold rows well past `batchSize` before closing a statement, so a
         /// row-count trigger would write it in the wrong place or not at all.
         func emit(_ statement: String) throws {
-            if !wroteAnyRows {
-                if needsIdentityInsert {
-                    try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
-                }
-                wroteAnyRows = true
-            }
             if let warning = pendingModeWarning {
                 if !metadataWarnings.contains(warning) {
                     metadataWarnings.append(warning)
                 }
                 pendingModeWarning = nil
             }
-            try writer.write(statement)
+            guard !wroteAnyRows else {
+                try writer.write(statement)
+                return
+            }
+            wroteAnyRows = true
+            try writer.write(statement, opening: identityInsert)
         }
 
         let stream = dataSource.streamRows(for: table)
@@ -951,6 +1010,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     try emit(statement)
                 }
                 if let accumulator { tally.merge(accumulator.tally) }
+                /// The outgoing encoder's count goes with it. Only the last encoder used to reach
+                /// the tally, so a second header after rows dropped every unrepresentable value the
+                /// first segment rendered, and an export whose last segment held none reported clean.
+                if let encoder { tally.unrepresentableValues += encoder.unrepresentableValues.total }
                 let built = SQLExportRowValueEncoder(
                     columns: header.columns,
                     columnTypeNames: header.columnTypeNames ?? [],
@@ -996,9 +1059,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             try emit(statement)
         }
         if let accumulator { tally.merge(accumulator.tally) }
+        if let encoder { tally.unrepresentableValues += encoder.unrepresentableValues.total }
 
         if wroteAnyRows, needsIdentityInsert {
-            try writer.write("SET IDENTITY_INSERT \(tableRef) OFF;\n")
+            try writer.closeScope()
         }
 
         if wroteAnyRows {
@@ -1051,69 +1115,5 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 options.batchSize,
                 SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: databaseTypeId)),
             maxBytes: options.maxStatementBytes)
-    }
-
-
-    private func compressFile(source: URL, destination: URL) async throws {
-        let gzipPath = "/usr/bin/gzip"
-        guard FileManager.default.isExecutableFile(atPath: gzipPath) else {
-            throw PluginExportError.exportFailed(
-                "Compression unavailable: gzip not found at \(gzipPath)"
-            )
-        }
-
-        let sourcePath = source.standardizedFileURL.path(percentEncoded: false)
-
-        guard FileManager.default.createFile(atPath: destination.path(percentEncoded: false), contents: nil) else {
-            throw PluginExportError.fileWriteFailed(destination.path(percentEncoded: false))
-        }
-
-        let outputHandle: FileHandle
-        do {
-            outputHandle = try FileHandle(forWritingTo: destination)
-        } catch {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
-        }
-        let errorPipe = Pipe()
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: gzipPath)
-        process.arguments = ["-c", sourcePath]
-        process.standardOutput = outputHandle
-        process.standardError = errorPipe
-
-        do {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                    process.terminationHandler = { proc in
-                        try? outputHandle.close()
-                        let status = proc.terminationStatus
-                        if status == 0 {
-                            continuation.resume()
-                        } else {
-                            let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                            let errMsg = String(data: errData, encoding: .utf8)?
-                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                            let message = errMsg.isEmpty
-                                ? "Compression failed with exit status \(status)"
-                                : "Compression failed with exit status \(status): \(errMsg)"
-                            continuation.resume(throwing: PluginExportError.exportFailed(message))
-                        }
-                    }
-                    do {
-                        try process.run()
-                    } catch {
-                        try? outputHandle.close()
-                        continuation.resume(throwing: error)
-                    }
-                }
-            } onCancel: {
-                process.terminate()
-            }
-        } catch {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
-        }
     }
 }

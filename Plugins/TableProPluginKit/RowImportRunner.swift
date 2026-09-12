@@ -94,6 +94,12 @@ public enum RowImportRunner {
             try await sink.insertRows(batch.map(\.row))
             inserted += batch.count
             progress.incrementStatement(by: batch.count)
+        } catch is PluginImportCancellationError {
+            /// A Stop keeps its own type. The sink splits one hand-off into several statements and
+            /// checks cancellation before each, so this catch sees cancellation where it used to see
+            /// only driver errors; wrapped as a statement failure, Stop-and-Commit committed the
+            /// prefix already written and recorded the stop as a failed import.
+            throw PluginImportCancellationError()
         } catch {
             let firstLine = batch.first?.line ?? 0
             throw PluginImportError.statementFailed(

@@ -36,12 +36,18 @@ internal struct SQLExportStatementTally: Equatable {
     internal var oversizedRowCount = 0
     internal var limitBytes = 0
 
+    /// Values the engine cannot carry in one statement whatever spelling is used, so the dump holds
+    /// SQL that may not restore. Oracle caps a string literal at 4,000 characters, which is 2,000
+    /// binary bytes through `HEXTORAW`, and nothing else can express one in a single statement.
+    internal var unrepresentableValues = 0
+
     internal mutating func merge(_ other: SQLExportStatementTally) {
         if other.largestStatementBytes > largestStatementBytes {
             largestStatementBytes = other.largestStatementBytes
             largestStatementRows = other.largestStatementRows
         }
         oversizedRowCount += other.oversizedRowCount
+        unrepresentableValues += other.unrepresentableValues
         limitBytes = max(limitBytes, other.limitBytes)
     }
 }

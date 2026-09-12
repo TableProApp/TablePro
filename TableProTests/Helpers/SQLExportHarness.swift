@@ -47,4 +47,46 @@ internal actor SQLExportHarness {
         )
         return (try String(contentsOf: destination, encoding: .utf8), result)
     }
+
+    /// The parts a split export wrote, in restore order, and the whole dump as one part when it did
+    /// not split. A split export never writes the name the user chose, so reading that path back
+    /// finds nothing at all.
+    internal func dumpParts(
+        tables: [PluginExportTable],
+        dataSource: any PluginExportDataSource,
+        options: SQLExportOptions = SQLExportOptions(),
+        progress: PluginExportProgress? = nil
+    ) async throws -> (parts: [String], result: ExportFormatResult) {
+        let plugin = SQLExportPlugin()
+        let storedSettings = plugin.settings
+        plugin.settings = options
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).sql")
+        var written = [destination]
+        defer {
+            plugin.settings = storedSettings
+            for url in written {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        let result = try await plugin.export(
+            tables: tables,
+            dataSource: dataSource,
+            destination: destination,
+            progress: progress ?? PluginExportProgress(progress: Progress(totalUnitCount: 1))
+        )
+
+        var parts: [String] = []
+        var index = 1
+        while true {
+            let part = SQLExportFileWriter.partURL(for: destination, part: index)
+            guard FileManager.default.fileExists(atPath: part.path(percentEncoded: false)) else { break }
+            written.append(part)
+            parts.append(try String(contentsOf: part, encoding: .utf8))
+            index += 1
+        }
+        guard parts.isEmpty else { return (parts, result) }
+        return ([try String(contentsOf: destination, encoding: .utf8)], result)
+    }
 }

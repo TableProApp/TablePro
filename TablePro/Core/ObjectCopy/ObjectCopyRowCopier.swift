@@ -23,6 +23,10 @@
 //  thing it adds is the schema, because the table being written is not the one
 //  the target driver is pointed at.
 //
+//  A batch is bounded in bytes as well as in rows, through `SQLWriteBatchBudget`:
+//  a bind-parameter count says nothing about size, and one statement is one packet
+//  measured against the server's own `max_allowed_packet`.
+//
 
 import Foundation
 import os
@@ -30,22 +34,6 @@ import TableProPluginKit
 
 internal struct ObjectCopyRowCopier: Sendable {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ObjectCopyRowCopier")
-
-    /// A batch never carries more rows than this however narrow the table is. A single statement
-    /// holding 65,535 one-column rows parses slowly on every engine and cannot be cancelled
-    /// part-way, and the round-trip saving past a thousand rows is not measurable.
-    internal static let maximumBatchRows = 1_000
-
-    /// The flat cap above, clamped by what the engine can parse. `SQLMultiRowInsert` owns the second
-    /// half so the SQL export reads the same rule from the same place; Oracle takes one row per
-    /// statement because it has no `INSERT … VALUES (…), (…)` and the generic generator emits
-    /// exactly that. The two are deliberately separate numbers: this one is a round-trip cap that
-    /// stops measuring above a thousand rows, and that one is the point an engine stops parsing.
-    internal static func maximumBatchRows(for databaseType: DatabaseType) -> Int {
-        min(
-            maximumBatchRows,
-            SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: databaseType.rawValue))
-    }
 
     internal struct Outcome: Sendable {
         internal let inserted: Int
@@ -67,19 +55,20 @@ internal struct ObjectCopyRowCopier: Sendable {
             return try await copyOnServer(statement, using: targetDriver, onProgress: onProgress)
         }
         let generator = try makeGenerator(targetDriver: targetDriver)
-        let batchSize = Self.batchSize(columnCount: step.columns.count, generator: generator)
+        let budget = SQLWriteBatchBudget(columnCount: step.columns.count, generator: generator)
+        var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
         var stream = sourceDriver.streamRows(query: step.sourceQuery).makeAsyncIterator()
 
-        var pending: [[PluginCellValue]] = []
         var inserted = 0
 
         while let element = try await stream.next() {
             if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
             guard case .rows(let rows) = element else { continue }
             for row in rows {
-                pending.append(try aligned(row))
-                guard pending.count >= batchSize else { continue }
-                inserted += try await flush(&pending, generator: generator, driver: targetDriver)
+                let values = try aligned(row)
+                let rowBytes = budget.byteCount(of: values)
+                guard let batch = filler.append(values, bytes: rowBytes) else { continue }
+                inserted += try await write(batch, generator: generator, driver: targetDriver)
                 onProgress(inserted)
                 if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
             }
@@ -90,8 +79,8 @@ internal struct ObjectCopyRowCopier: Sendable {
         /// pending: writing them committed a batch the user had already stopped and reported the
         /// table as copied.
         if Task.isCancelled { return Outcome(inserted: inserted, cancelled: true) }
-        if !pending.isEmpty {
-            inserted += try await flush(&pending, generator: generator, driver: targetDriver)
+        if let batch = filler.take() {
+            inserted += try await write(batch, generator: generator, driver: targetDriver)
             onProgress(inserted)
         }
         return Outcome(inserted: inserted, cancelled: Task.isCancelled)
@@ -139,14 +128,12 @@ internal struct ObjectCopyRowCopier: Sendable {
         )
     }
 
-    private func flush(
-        _ rows: inout [[PluginCellValue]],
+    private func write(
+        _ batch: [[PluginCellValue]],
         generator: SQLStatementGenerator,
         driver: any PluginDatabaseDriver
     ) async throws -> Int {
-        guard !rows.isEmpty else { return 0 }
-        let batch = rows
-        rows.removeAll(keepingCapacity: true)
+        guard !batch.isEmpty else { return 0 }
         guard let statement = generator.insertStatement(columns: step.columns, rows: batch) else {
             throw ObjectCopyError.refused(String(
                 format: String(localized: "Could not build an INSERT for %@."), step.qualifiedTargetName
@@ -181,11 +168,4 @@ internal struct ObjectCopyRowCopier: Sendable {
         return coercer.coerce(row)
     }
 
-    /// Every value in the batch is one bind parameter, and each engine has its own ceiling on how
-    /// many a statement may carry: 32,766 on SQLite, 2,100 on SQL Server, 65,535 elsewhere.
-    internal static func batchSize(columnCount: Int, generator: SQLStatementGenerator) -> Int {
-        guard columnCount > 0 else { return 1 }
-        let rowCap = maximumBatchRows(for: generator.databaseType)
-        return max(1, min(rowCap, generator.maxBindParameters / columnCount))
-    }
 }

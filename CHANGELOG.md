@@ -58,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid and bottom bar cut off at both edges in a narrow window, with rows and pagination buttons out of reach.
 - Filter panel wider than the pane when a table has a long column name.
 - `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)
+- A gzipped SQL export emptying the file it was overwriting before compressing, and deleting it on failure. (#2533)
+- Parts of a split SQL export left on disk unnamed when a later part could not be written. (#2533)
+- `SET IDENTITY_INSERT` missing from every part after the first of a split SQL Server dump. (#2533)
+- `CREATE TYPE` and `CREATE SEQUENCE` left out of a SQL export with no warning when the lookup failed. (#2533)
+- Stop doing nothing while a gzipped SQL export was compressing. (#2533)
+- Export status never reaching the progress sheet, and an import showing a row count in place of its own. (#2533)
+- Binary values unrestorable in an Oracle SQL export. (#2533)
+- Transfer or copy of a table of megabyte values rejected as one oversized `INSERT`. (#2533)
+- Multi-row INSERT statements Oracle cannot parse when importing a CSV, JSON or XLSX file. (#2533)
 - Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
 - Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
 - ClickHouse **Drop Partition** and **Detach Partition** acting on the sidebar's database instead of the table on screen, and running without the connection's destructive-statement confirmation.

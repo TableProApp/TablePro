@@ -214,67 +214,46 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         XCTAssertEqual(reported.values, [1_000, 2_000, 2_500])
     }
 
-    // MARK: - Batch sizing
+    // MARK: - Batch bounds
 
-    func testTheBatchNeverExceedsTheEnginesBindParameterCeiling() throws {
-        let mssql = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .mssql
-        )
-        let sqlite = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .sqlite
-        )
+    /// A bind-parameter count is not a size: six rows of 400,000 characters sit well inside the row
+    /// cap and used to go out as one statement no server would take. The sizing arithmetic itself
+    /// moved to SQLWriteBatchBudgetTests, onto the type that now owns it.
+    func testAByteHeavyCopyIsSplitAcrossStatements() async throws {
+        let source = CopyDriver()
+        let wide = String(repeating: "a", count: 400_000)
+        source.streamed = (0 ..< 6).map { [.text(String($0)), .text(wide)] }
+        source.batchSize = 6
+        let target = CopyDriver()
 
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 100, generator: mssql), 21)
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 100, generator: sqlite), 327)
+        _ = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+            .copy(from: source, to: target) { _ in }
+
+        XCTAssertGreaterThan(target.executedQueries.count, 1, "one mebibyte holds two of these rows")
+        XCTAssertEqual(target.executedParameters.flatMap { $0 }.count, 12)
+        for batch in target.executedParameters {
+            XCTAssertLessThanOrEqual(
+                SQLWriteBatchBudget(maxRows: 1_000)
+                    .byteCount(of: batch.map { PluginCellValue.text($0.asText ?? "") }),
+                SQLWriteBatchBudget.maximumBytes + 400_012,
+                "no batch may exceed the budget by more than the one row that cannot be split"
+            )
+        }
     }
 
-    /// A one-column table would otherwise put 65,535 rows in one statement, which parses slowly
-    /// everywhere and cannot be cancelled part-way.
-    func testTheBatchIsCappedByRowsAsWellAsByParameters() throws {
-        let mysql = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .mysql
-        )
+    /// A row over the budget on its own cannot be split, so it goes out alone rather than being
+    /// dropped or looping forever.
+    func testARowOverTheBudgetIsStillWritten() async throws {
+        let source = CopyDriver()
+        source.streamed = [[.text("1"), .text(String(repeating: "a", count: 2_000_000))]]
+        source.batchSize = 1
+        let target = CopyDriver()
 
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 1, generator: mysql), 1_000)
-    }
+        let outcome = try await ObjectCopyRowCopier(step: step(), targetDatabaseType: .mysql)
+            .copy(from: source, to: target) { _ in }
 
-    /// Oracle before 23c rejects `INSERT … VALUES (…), (…)`, which is the only form the generic
-    /// generator emits, so its batches carry one row each however narrow the table is.
-    func testOracleWritesOneRowPerStatement() throws {
-        let oracle = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .oracle
-        )
-
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 2, generator: oracle), 1)
-    }
-
-    /// The row cap and the engine's syntax ceiling are two different numbers, and the copier takes
-    /// the smaller. `SQLMultiRowInsert` owns the second half so the SQL export reads the same rule,
-    /// and an engine it says nothing about has to keep the flat thousand: a five-column PostgreSQL
-    /// table would otherwise jump to 13,107 rows a batch on the strength of its parameter ceiling.
-    func testAnEngineWithNoSyntaxCeilingKeepsTheFlatRowCap() throws {
-        let postgres = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .postgresql
-        )
-
-        XCTAssertEqual(SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: "PostgreSQL"), .max)
-        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .postgresql), 1_000)
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 5, generator: postgres), 1_000)
-    }
-
-    func testTheSyntaxCeilingIsTakenWhenItIsTheSmallerOfTheTwo() {
-        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .oracle), 1)
-        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .mssql), 1_000)
-        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .mysql), 1_000)
-    }
-
-    /// A table wider than the ceiling still writes one row at a time rather than none.
-    func testAVeryWideTableStillWritesOneRowPerStatement() throws {
-        let mssql = try SQLStatementGenerator(
-            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .mssql
-        )
-
-        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 5_000, generator: mssql), 1)
+        XCTAssertEqual(outcome.inserted, 1)
+        XCTAssertEqual(target.executedQueries.count, 1)
     }
 
     // MARK: - Crossing engines

@@ -7,8 +7,14 @@ public final class PluginExportProgress: @unchecked Sendable {
     private var _currentTableIndex: Int = 0
     private let lock = NSLock()
 
+    /// `localizedAdditionalDescription` is the channel `setStatus` writes, and Foundation fills it
+    /// in when nobody has: measured, a `Progress` carrying a total reports "10 of 100" there and
+    /// posts a KVO change for it on every `completedUnitCount` write. Seeding it empty takes the
+    /// property over for good, so a host observing it hears the plugin and nothing else. The import
+    /// sheet showed that raw row count in place of its statement count for exactly this reason.
     public init(progress: Progress) {
         self.progress = progress
+        progress.localizedAdditionalDescription = ""
     }
 
     public func setCurrentTable(_ name: String, index: Int) {
