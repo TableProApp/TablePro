@@ -222,7 +222,10 @@ final class SQLSuggestionEntry: CodeSuggestionEntry {
         Image(systemName: item.kind.iconName)
     }
 
+    /// The suggestion protocol is nonisolated and the panel only ever reads this on the main
+    /// thread. The kind is lifted out first so the closure sends a value rather than `self`.
     var imageColor: Color {
-        Color(nsColor: item.kind.iconColor)
+        let kind = item.kind
+        return MainActor.assumeIsolated { Color(nsColor: kind.iconColor) }
     }
 }

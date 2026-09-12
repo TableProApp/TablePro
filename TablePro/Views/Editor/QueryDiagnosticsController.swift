@@ -75,6 +75,14 @@ final class QueryDiagnosticsController {
         apply(produced, in: controller)
     }
 
+    /// An emphasis bakes its colour into a `CAShapeLayer`, so a theme change inside one appearance
+    /// leaves an existing underline on the previous colour. `refresh(for:)` cannot repaint it: the
+    /// diagnostics themselves have not changed, so it returns early.
+    func reapplyColors(in controller: TextViewController) {
+        guard !diagnostics.isEmpty else { return }
+        apply(diagnostics, in: controller)
+    }
+
     func clear(in controller: TextViewController?) {
         pendingTask?.cancel()
         pendingTask = nil
@@ -104,8 +112,8 @@ final class QueryDiagnosticsController {
 
     private func color(for severity: QueryDiagnostic.Severity) -> NSColor {
         switch severity {
-        case .error: return .systemRed
-        case .warning: return .systemOrange
+        case .error: return ThemeEngine.shared.palette[.statusError]
+        case .warning: return ThemeEngine.shared.palette[.statusWarning]
         }
     }
 }

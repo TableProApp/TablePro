@@ -104,7 +104,7 @@ struct ForeignKeyPreviewView: View {
                 .frame(height: 60)
         } else if let errorMessage {
             RevealedTextView(errorMessage)
-                .foregroundStyle(.red)
+                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
                 .font(.callout)
                 .padding(10)
         } else if values.isEmpty {

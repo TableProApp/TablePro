@@ -71,7 +71,7 @@ struct HistoryRowView: View {
                 .foregroundStyle(Color.secondary)
         } else {
             Image(systemName: "exclamationmark.circle.fill")
-                .selectionAwareTint(.red)
+                .selectionAwareTint(ThemeEngine.shared.palette.color(.statusError))
         }
     }
 
