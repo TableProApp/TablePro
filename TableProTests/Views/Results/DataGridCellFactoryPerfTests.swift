@@ -409,7 +409,7 @@ struct ChangeReapplyVersionTests {
         let initialVersion = manager.reloadVersion
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 0,
             columnName: "name",
             oldValue: "old",

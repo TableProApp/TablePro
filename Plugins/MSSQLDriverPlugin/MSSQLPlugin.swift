@@ -670,15 +670,16 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await execute(query: query)
         }
 
-        let (convertedQuery, paramDecls, paramAssigns) = Self.buildSpExecuteSql(
-            query: query, parameters: parameters.map { $0.asText }
+        let statement = MSSQLParameterBatch.spExecuteSql(
+            query: query, parameters: parameters.map(Self.parameter)
         )
 
-        guard !paramDecls.isEmpty else {
+        guard !statement.isEmpty else {
             return try await execute(query: query)
         }
 
-        let sql = "EXEC sp_executesql N'\(Self.escapeNString(convertedQuery))', N'\(paramDecls)', \(paramAssigns)"
+        let sql = "EXEC sp_executesql N'\(Self.escapeNString(statement.query))', "
+            + "N'\(statement.declarations)', \(statement.assignments)"
         return try await execute(query: sql)
     }
 
@@ -831,61 +832,17 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     /// Convert `?` placeholders to `@p1, @p2, ...` and build sp_executesql components.
     /// Returns: (convertedQuery, paramDeclarations, paramAssignments)
-    private static func buildSpExecuteSql(
-        query: String,
-        parameters: [String?]
-    ) -> (String, String, String) {
-        var converted = ""
-        var paramIndex = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        let chars = Array(query)
-        let length = chars.count
-
-        var i = 0
-        while i < length {
-            let char = chars[i]
-
-            // Handle doubled quotes (T-SQL escape: '' inside strings, "" inside identifiers)
-            if char == "'" && inSingleQuote && i + 1 < length && chars[i + 1] == "'" {
-                converted.append("''")
-                i += 2
-                continue
-            }
-            if char == "\"" && inDoubleQuote && i + 1 < length && chars[i + 1] == "\"" {
-                converted.append("\"\"")
-                i += 2
-                continue
-            }
-
-            if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == "\"" && !inSingleQuote {
-                inDoubleQuote.toggle()
-            }
-
-            if char == "?" && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
-                paramIndex += 1
-                converted.append("@p\(paramIndex)")
-            } else {
-                converted.append(char)
-            }
-            i += 1
+    /// A binary cell has no text, and asking it for some is how every one of them reached the
+    /// server as `NULL`.
+    private static func parameter(_ value: PluginCellValue) -> MSSQLParameter {
+        switch value {
+        case .null:
+            return .null
+        case .text(let text):
+            return .text(text)
+        case .bytes(let data):
+            return .bytes(data)
         }
-
-        let count = paramIndex
-        guard count > 0 else {
-            return (converted, "", "")
-        }
-        let decls = (1...count).map { "@p\($0) NVARCHAR(MAX)" }.joined(separator: ", ")
-        let assigns = (1...count).map { i -> String in
-            if let value = parameters[i - 1] {
-                return "@p\(i) = N'\(escapeNString(value))'"
-            }
-            return "@p\(i) = NULL"
-        }.joined(separator: ", ")
-
-        return (converted, decls, assigns)
     }
 
     /// Escape single quotes for N'...' string literals in SQL Server.

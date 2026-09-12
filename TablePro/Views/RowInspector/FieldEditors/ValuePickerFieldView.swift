@@ -43,6 +43,7 @@ internal struct ValuePickerFieldView: View {
                 CustomValueContentView(
                     initialValue: context.value.wrappedValue,
                     escapeStringLiteral: escapeStringLiteral,
+                    stringLiteralPrefix: stringLiteralPrefix,
                     onCommit: { context.value.wrappedValue = $0 },
                     onDismiss: { isCustomPresented = false }
                 )
@@ -83,5 +84,16 @@ internal struct ValuePickerFieldView: View {
             return SQLEscaping.escapeStringLiteral
         }
         return driver.escapeStringLiteral
+    }
+
+    /// From the same connection the escaping comes from, so a default typed here is written the
+    /// way the engine reads it back. No connection means no prefix, which is what every engine but
+    /// SQL Server wants anyway.
+    private var stringLiteralPrefix: String {
+        guard let connectionId = context.userDefinedTypeScope?.connectionId,
+              let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            return ""
+        }
+        return SQLStringLiteralPrefix.forDatabaseType(driver.connection.type)
     }
 }

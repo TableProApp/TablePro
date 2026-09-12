@@ -8,19 +8,18 @@ protocol ChangeManaging: AnyObject {
     var reloadVersion: Int { get }
     var canRedo: Bool { get }
     var rowChanges: [RowChange] { get }
-    var insertedRowIndices: Set<Int> { get }
+    var insertedRowIDs: Set<RowID> { get }
     var generatedColumns: Set<String> { get }
-    func isRowDeleted(_ rowIndex: Int) -> Bool
+    func isRowDeleted(_ rowID: RowID) -> Bool
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]?
     )
-    func undoRowDeletion(rowIndex: Int)
-    func undoRowInsertion(rowIndex: Int)
+    func undoRowDeletion(rowID: RowID)
 }
 
 /// Only the data grid tracks server-computed columns; the structure and
@@ -38,15 +37,15 @@ final class AnyChangeManager {
     var reloadVersion: Int { wrapped.reloadVersion }
     var canRedo: Bool { wrapped.canRedo }
     var rowChanges: [RowChange] { wrapped.rowChanges }
-    var insertedRowIndices: Set<Int> { wrapped.insertedRowIndices }
+    var insertedRowIDs: Set<RowID> { wrapped.insertedRowIDs }
     var generatedColumns: Set<String> { wrapped.generatedColumns }
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool {
-        wrapped.isRowDeleted(rowIndex)
+    func isRowDeleted(_ rowID: RowID) -> Bool {
+        wrapped.isRowDeleted(rowID)
     }
 
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -54,7 +53,7 @@ final class AnyChangeManager {
         originalRow: [PluginCellValue]
     ) {
         wrapped.recordCellChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
@@ -63,12 +62,8 @@ final class AnyChangeManager {
         )
     }
 
-    func undoRowDeletion(rowIndex: Int) {
-        wrapped.undoRowDeletion(rowIndex: rowIndex)
-    }
-
-    func undoRowInsertion(rowIndex: Int) {
-        wrapped.undoRowInsertion(rowIndex: rowIndex)
+    func undoRowDeletion(rowID: RowID) {
+        wrapped.undoRowDeletion(rowID: rowID)
     }
 
     init(_ manager: any ChangeManaging) {

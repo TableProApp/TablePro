@@ -33,14 +33,14 @@ struct DisplayedResultReaderTests {
     private func read(
         displayIDs: [RowID]? = nil,
         selected: Set<Int> = [],
-        deleted: Set<Int> = [],
+        deleted: Set<RowID> = [],
         columns: VisibleColumnProjection = .identity
     ) -> DisplayedResultReader.Output {
         DisplayedResultReader.read(
             tableRows: makeTableRows(),
             displayIDs: displayIDs,
             selectedDisplayIndices: selected,
-            deletedDisplayIndices: deleted,
+            deletedRowIDs: deleted,
             columns: columns
         )
     }
@@ -83,9 +83,17 @@ struct DisplayedResultReaderTests {
 
     @Test("A row marked for deletion is left out and counted")
     func deletedRowsAreSkipped() {
-        let output = read(deleted: [1])
+        let output = read(deleted: [.existing(1)])
 
         #expect(texts(output) == [["a", "1"], ["c", "3"]])
+        #expect(output.skippedDeletedCount == 1)
+    }
+
+    @Test("A deletion is matched by the row it was made to, whatever position the filter gives it")
+    func deletedRowsFollowTheirRowUnderAFilter() {
+        let output = read(displayIDs: [.existing(2), .existing(0)], deleted: [.existing(0)])
+
+        #expect(texts(output) == [["c", "3"]])
         #expect(output.skippedDeletedCount == 1)
     }
 

@@ -46,23 +46,23 @@ struct RowChangeStatementFactory {
 
     func statements(
         for changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]] = [:],
-        deletedRowIndices: Set<Int> = [],
-        insertedRowIndices: Set<Int> = []
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = []
     ) throws -> [ParameterizedStatement] {
         if let pluginStatements = pluginGeneratedStatements(
             for: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         ) {
             return pluginStatements
         }
         return try attributedHostStatements(
             for: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         ).map(\.statement)
     }
 
@@ -72,40 +72,40 @@ struct RowChangeStatementFactory {
     /// which rows went into which statement and a guessed count is worse than no count.
     func attributedStatements(
         for changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]] = [:],
-        deletedRowIndices: Set<Int> = [],
-        insertedRowIndices: Set<Int> = []
+        insertedRowData: [RowID: [PluginCellValue]] = [:],
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = []
     ) throws -> [AttributedStatement]? {
         if pluginGeneratedStatements(
             for: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         ) != nil {
             return nil
         }
         return try attributedHostStatements(
             for: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         )
     }
 
     private func attributedHostStatements(
         for changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
     ) throws -> [AttributedStatement] {
         let statements = try hostGenerator().generateAttributedStatements(
             from: changes,
             insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         )
-        try validate(statements.map(\.statement), against: changes, deletedRowIndices: deletedRowIndices)
-        let deletableCount = changes.count { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) }
+        try validate(statements.map(\.statement), against: changes, deletedRowIDs: deletedRowIDs)
+        let deletableCount = changes.count { $0.type == .delete && deletedRowIDs.contains($0.rowID) }
         let identifiedDeletes = statements.filter { $0.kind == .delete }.reduce(0) { $0 + $1.rowCount }
         if identifiedDeletes < deletableCount {
             throw DataWriteError.rowsNotIdentifiable(tableName, .delete)
@@ -140,12 +140,13 @@ struct RowChangeStatementFactory {
         let generator = try hostGenerator()
         var statements: [ParameterizedStatement] = []
         for (offset, row) in rows.enumerated() {
-            let change = RowChange(rowIndex: offset, type: .insert, cellChanges: [], originalRow: row)
+            let rowID = RowID.existing(offset)
+            let change = RowChange(rowID: rowID, type: .insert, cellChanges: [], originalRow: row)
             let generated = generator.generateStatements(
                 from: [change],
-                insertedRowData: [offset: row],
-                deletedRowIndices: [],
-                insertedRowIndices: [offset]
+                insertedRowData: [rowID: row],
+                deletedRowIDs: [],
+                insertedRowIDs: [rowID]
             )
             guard let statement = generated.first else {
                 throw DataWriteError.statementGenerationFailed(tableName)
@@ -159,30 +160,35 @@ struct RowChangeStatementFactory {
     /// `SQLStatementGenerator`, which is what decides whether the host may fall back.
     var pluginOwnsStatementGeneration: Bool {
         pluginGeneratedStatements(
-            for: [RowChange(rowIndex: 0, type: .update, cellChanges: [], originalRow: nil)],
+            for: [RowChange(rowID: .existing(0), type: .update, cellChanges: [], originalRow: nil)],
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         ) != nil
     }
 
     private func pluginGeneratedStatements(
         for changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
     ) -> [ParameterizedStatement]? {
         guard let pluginDriver else { return nil }
-        let pluginChanges = changes.map(PluginRowChange.init(_:))
+        let keyed = PluginKeyedChanges(
+            changes: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
+        )
         guard let statements = pluginDriver.generateStatements(
             table: tableName,
             schema: schemaName,
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
-            changes: pluginChanges,
-            insertedRowData: insertedRowData,
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            changes: keyed.changes,
+            insertedRowData: keyed.insertedRowData,
+            deletedRowIndices: keyed.deletedRowIndices,
+            insertedRowIndices: keyed.insertedRowIndices
         ) else { return nil }
         return statements.map {
             ParameterizedStatement(sql: $0.statement, parameters: $0.parameters.map(\.asAny))
@@ -208,7 +214,7 @@ struct RowChangeStatementFactory {
     private func validate(
         _ statements: [ParameterizedStatement],
         against changes: [RowChange],
-        deletedRowIndices: Set<Int>
+        deletedRowIDs: Set<RowID>
     ) throws {
         let expectedUpdates = changes.count(where: { $0.type == .update })
         let actualUpdates = statements.count(where: { $0.sql.hasPrefix("UPDATE") })
@@ -216,17 +222,46 @@ struct RowChangeStatementFactory {
             throw DataWriteError.rowsNotIdentifiable(tableName, .update)
         }
 
-        let deletable = changes.filter { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) }
+        let deletable = changes.filter { $0.type == .delete && deletedRowIDs.contains($0.rowID) }
         if !deletable.isEmpty, deletable.allSatisfy({ $0.originalRow == nil }) {
             throw DataWriteError.rowsNotIdentifiable(tableName, .delete)
         }
     }
 }
 
+struct PluginKeyedChanges {
+    let changes: [PluginRowChange]
+    let insertedRowData: [Int: [PluginCellValue]]
+    let deletedRowIndices: Set<Int>
+    let insertedRowIndices: Set<Int>
+
+    init(
+        changes: [RowChange],
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>
+    ) {
+        var keys: [RowID: Int] = [:]
+        for change in changes where keys[change.rowID] == nil {
+            keys[change.rowID] = keys.count
+        }
+        self.changes = changes.compactMap { change in
+            keys[change.rowID].map { PluginRowChange(change, key: $0) }
+        }
+        self.insertedRowData = Dictionary(
+            uniqueKeysWithValues: insertedRowData.compactMap { rowID, values in
+                keys[rowID].map { ($0, values) }
+            }
+        )
+        self.deletedRowIndices = Set(deletedRowIDs.compactMap { keys[$0] })
+        self.insertedRowIndices = Set(insertedRowIDs.compactMap { keys[$0] })
+    }
+}
+
 private extension PluginRowChange {
-    init(_ change: RowChange) {
+    init(_ change: RowChange, key: Int) {
         self.init(
-            rowIndex: change.rowIndex,
+            rowIndex: key,
             type: {
                 switch change.type {
                 case .insert: return .insert

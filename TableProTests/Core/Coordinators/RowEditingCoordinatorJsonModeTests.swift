@@ -79,7 +79,7 @@ struct RowEditingCoordinatorJsonModeTests {
 
         coordinator.deleteSelectedRows(indices: [0])
 
-        #expect(coordinator.selectionState.indices == [0])
+        #expect(coordinator.selectionState.indices == [1])
     }
 
     @Test("duplicating in JSON mode leaves the selection alone")

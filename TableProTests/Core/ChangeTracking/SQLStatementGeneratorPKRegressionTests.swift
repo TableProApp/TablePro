@@ -27,9 +27,9 @@ struct SQLStatementGeneratorPKRegressionTests {
         )
     }
 
-    private func makeDeleteChange(rowIndex: Int, originalRow: [String?]) -> RowChange {
+    private func makeDeleteChange(rowID: RowID, originalRow: [String?]) -> RowChange {
         RowChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             type: .delete,
             cellChanges: [],
             originalRow: originalRow.map(PluginCellValue.fromOptional)
@@ -37,7 +37,7 @@ struct SQLStatementGeneratorPKRegressionTests {
     }
 
     private func makeUpdateChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: String?,
@@ -45,7 +45,7 @@ struct SQLStatementGeneratorPKRegressionTests {
         originalRow: [String?]
     ) -> RowChange {
         RowChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             type: .update,
             cellChanges: [CellChange(columnIndex: columnIndex, columnName: columnName, oldValue: PluginCellValue.fromOptional(oldValue), newValue: PluginCellValue.fromOptional(newValue))],
             originalRow: originalRow.map(PluginCellValue.fromOptional)
@@ -57,13 +57,13 @@ struct SQLStatementGeneratorPKRegressionTests {
     @Test("PostgreSQL delete with PK uses $N placeholder and PK-only WHERE")
     func testPostgreSQLDeleteWithPK() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
-        let changes = [makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"])]
+        let changes = [makeDeleteChange(rowID: .existing(0), originalRow: ["1", "John", "john@test.com"])]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -81,15 +81,15 @@ struct SQLStatementGeneratorPKRegressionTests {
     func testPostgreSQLBatchDeleteWithPK() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
         let changes = [
-            makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"]),
-            makeDeleteChange(rowIndex: 1, originalRow: ["2", "Jane", "jane@test.com"])
+            makeDeleteChange(rowID: .existing(0), originalRow: ["1", "John", "john@test.com"]),
+            makeDeleteChange(rowID: .existing(1), originalRow: ["2", "Jane", "jane@test.com"])
         ]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0, 1],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0), .existing(1)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -106,13 +106,13 @@ struct SQLStatementGeneratorPKRegressionTests {
     @Test("MSSQL delete with PK uses ? placeholder and PK-only WHERE")
     func testMSSQLDeleteWithPK() throws {
         let generator = try makeGenerator(databaseType: .mssql)
-        let changes = [makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"])]
+        let changes = [makeDeleteChange(rowID: .existing(0), originalRow: ["1", "John", "john@test.com"])]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -133,15 +133,15 @@ struct SQLStatementGeneratorPKRegressionTests {
     func testPostgreSQLUpdateWithPK() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
         let changes = [makeUpdateChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane",
+            rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane",
             originalRow: ["1", "John", "john@test.com"]
         )]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -156,15 +156,15 @@ struct SQLStatementGeneratorPKRegressionTests {
     func testMSSQLUpdateWithPK() throws {
         let generator = try makeGenerator(databaseType: .mssql)
         let changes = [makeUpdateChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane",
+            rowID: .existing(0), columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane",
             originalRow: ["1", "John", "john@test.com"]
         )]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -180,13 +180,13 @@ struct SQLStatementGeneratorPKRegressionTests {
     @Test("Redshift delete with PK uses $N placeholder and PK-only WHERE")
     func testRedshiftDeleteWithPK() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let changes = [makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"])]
+        let changes = [makeDeleteChange(rowID: .existing(0), originalRow: ["1", "John", "john@test.com"])]
 
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)

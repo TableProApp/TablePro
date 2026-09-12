@@ -45,7 +45,7 @@ struct DataChangeManagerTests {
     func generateSQLThrowsWhenDialectNotConfigured() {
         let manager = DataChangeManager()
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -70,7 +70,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -114,7 +114,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -136,7 +136,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -145,7 +145,7 @@ struct DataChangeManagerTests {
 
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .update)
-        #expect(manager.changes[0].rowIndex == 0)
+        #expect(manager.changes[0].rowID == .existing(0))
         #expect(manager.changes[0].cellChanges.count == 1)
         #expect(manager.changes[0].cellChanges[0].columnName == "name")
         #expect(manager.changes[0].cellChanges[0].oldValue == "Alice")
@@ -164,7 +164,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -187,7 +187,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -195,7 +195,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Bob",
@@ -220,7 +220,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -229,7 +229,7 @@ struct DataChangeManagerTests {
         #expect(manager.hasChanges)
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Bob",
@@ -252,7 +252,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -260,7 +260,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 1,
+            rowID: .existing(1),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Charlie",
@@ -268,8 +268,8 @@ struct DataChangeManagerTests {
         )
 
         #expect(manager.changes.count == 2)
-        #expect(manager.changes[0].rowIndex == 0)
-        #expect(manager.changes[1].rowIndex == 1)
+        #expect(manager.changes[0].rowID == .existing(0))
+        #expect(manager.changes[1].rowID == .existing(1))
     }
 
     // MARK: - Row Deletion Tests
@@ -285,7 +285,7 @@ struct DataChangeManagerTests {
             generatedColumns: []
         )
 
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Alice"])
 
         #expect(manager.hasChanges)
     }
@@ -302,7 +302,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -311,11 +311,11 @@ struct DataChangeManagerTests {
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .update)
 
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Bob"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Bob"])
 
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .delete)
-        #expect(manager.changes[0].rowIndex == 0)
+        #expect(manager.changes[0].rowID == .existing(0))
     }
 
     @Test("Deleted row tracked in changes with type delete")
@@ -329,11 +329,11 @@ struct DataChangeManagerTests {
             generatedColumns: []
         )
 
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie"])
 
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .delete)
-        #expect(manager.changes[0].rowIndex == 2)
+        #expect(manager.changes[0].rowID == .existing(2))
         #expect(manager.changes[0].originalRow == ["3", "Charlie"])
     }
 
@@ -348,10 +348,10 @@ struct DataChangeManagerTests {
             generatedColumns: []
         )
 
-        let rows: [(rowIndex: Int, originalRow: [PluginCellValue])] = [
-            (rowIndex: 0, originalRow: [.text("1"), .text("Alice")]),
-            (rowIndex: 1, originalRow: [.text("2"), .text("Bob")]),
-            (rowIndex: 2, originalRow: [.text("3"), .text("Charlie")])
+        let rows: [(rowID: RowID, originalRow: [PluginCellValue])] = [
+            (rowID: .existing(0), originalRow: [.text("1"), .text("Alice")]),
+            (rowID: .existing(1), originalRow: [.text("2"), .text("Bob")]),
+            (rowID: .existing(2), originalRow: [.text("3"), .text("Charlie")])
         ]
 
         manager.recordBatchRowDeletion(rows: rows)
@@ -375,13 +375,13 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
             newValue: "Bob"
         )
-        manager.recordRowDeletion(rowIndex: 1, originalRow: ["2", "Charlie"])
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: ["2", "Charlie"])
 
         manager.clearChanges()
 
@@ -402,7 +402,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -429,7 +429,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -451,7 +451,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -477,7 +477,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -501,7 +501,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -512,7 +512,7 @@ struct DataChangeManagerTests {
         #expect(manager.canRedo)
 
         manager.recordCellChange(
-            rowIndex: 1,
+            rowID: .existing(1),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Charlie",
@@ -551,7 +551,7 @@ struct DataChangeManagerTests {
         let initialVersion = manager.reloadVersion
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -577,7 +577,7 @@ struct DataChangeManagerTests {
         )
 
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -615,7 +615,7 @@ struct DataChangeManagerNonWritableTests {
         let manager = makeManager(generatedColumns: ["id"])
 
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 0, columnName: "id",
+            rowID: .existing(0), columnIndex: 0, columnName: "id",
             oldValue: .text("1"), newValue: .text("99")
         )
 
@@ -628,7 +628,7 @@ struct DataChangeManagerNonWritableTests {
         let manager = makeManager(generatedColumns: ["id"])
 
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: .text("Alice"), newValue: .text("Bob")
         )
 
@@ -641,11 +641,11 @@ struct DataChangeManagerNonWritableTests {
         let manager = makeManager(generatedColumns: ["id"])
 
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: .text("Alice"), newValue: .text("Bob")
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 0, columnName: "id",
+            rowID: .existing(0), columnIndex: 0, columnName: "id",
             oldValue: .text("1"), newValue: .text("99")
         )
 

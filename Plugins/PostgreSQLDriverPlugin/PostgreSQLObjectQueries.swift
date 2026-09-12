@@ -52,7 +52,7 @@ public enum PostgreSQLObjectQueries {
     /// pg_get_functiondef raises on them, which would fail the whole listing over one object the
     /// viewer could not have shown anyway.
     public static func routineList(schema: String, serverVersionNumber: Int32) -> String {
-        let schemaLiteral = escapeLiteral(schema)
+        let schemaLiteral = quoteLiteral(schema)
         let modern = usesProkind(serverVersionNumber: serverVersionNumber)
         let kindColumn = modern
             ? "p.prokind"
@@ -75,7 +75,7 @@ public enum PostgreSQLObjectQueries {
             FROM pg_catalog.pg_proc p
             JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             JOIN pg_catalog.pg_language l ON l.oid = p.prolang
-            WHERE n.nspname = '\(schemaLiteral)'
+            WHERE n.nspname = \(schemaLiteral)
                 AND \(kindFilter)
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
@@ -89,22 +89,22 @@ public enum PostgreSQLObjectQueries {
     /// instead of whichever row the planner happened to return first.
     public static func routineDefinition(identity: String) -> String {
         """
-        SELECT pg_catalog.pg_get_functiondef('\(escapeLiteral(identity))'::oid)
+        SELECT pg_catalog.pg_get_functiondef(\(quoteLiteral(identity))::oid)
         """
     }
 
     public static func routineDefinitionByName(name: String, schema: String, arguments: String?) -> String {
-        let nameLiteral = escapeLiteral(name)
-        let schemaLiteral = escapeLiteral(schema)
+        let nameLiteral = quoteLiteral(name)
+        let schemaLiteral = quoteLiteral(schema)
         let argumentsPredicate = arguments.map {
-            "AND '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' = '\(escapeLiteral($0))'"
+            "AND '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' = \(quoteLiteral($0))"
         } ?? ""
         return """
             SELECT pg_catalog.pg_get_functiondef(p.oid)
             FROM pg_catalog.pg_proc p
             JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-            WHERE n.nspname = '\(schemaLiteral)'
-                AND p.proname = '\(nameLiteral)'
+            WHERE n.nspname = \(schemaLiteral)
+                AND p.proname = \(nameLiteral)
                 \(argumentsPredicate)
             ORDER BY p.oid
             LIMIT 1
@@ -114,8 +114,8 @@ public enum PostgreSQLObjectQueries {
     /// One query for the whole schema. The per-table fetch is the same SELECT with one more
     /// predicate, so the two lists cannot disagree about a table they both cover.
     public static func triggerList(schema: String, table: String?) -> String {
-        let schemaLiteral = escapeLiteral(schema)
-        let tablePredicate = table.map { "AND c.relname = '\(escapeLiteral($0))'" } ?? ""
+        let schemaLiteral = quoteLiteral(schema)
+        let tablePredicate = table.map { "AND c.relname = \(quoteLiteral($0))" } ?? ""
         return """
             SELECT
                 t.tgname AS name,
@@ -137,7 +137,7 @@ public enum PostgreSQLObjectQueries {
             FROM pg_catalog.pg_trigger t
             JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = '\(schemaLiteral)'
+            WHERE n.nspname = \(schemaLiteral)
                 AND NOT t.tgisinternal
                 \(tablePredicate)
             ORDER BY c.relname, t.tgname

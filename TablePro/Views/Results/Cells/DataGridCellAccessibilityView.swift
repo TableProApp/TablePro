@@ -87,22 +87,32 @@ internal final class DataGridCellAccessibilityView: NSView {
 
     override internal func accessibilityValue() -> Any? { text }
 
+    /// Every combination is its own format string rather than pieces joined at run time, so a
+    /// translator sees a whole sentence and can order its parts. The pending change comes before the
+    /// highlight rule, because it is the one the reader is about to save.
     override internal func accessibilityLabel() -> String? {
-        guard let highlight = coordinator?.highlightDescription(row: row, columnIndex: dataColumn) else {
+        let pendingChange = coordinator?.pendingChangeDescription(row: row, columnIndex: dataColumn)
+        let highlight = coordinator?.highlightDescription(row: row, columnIndex: dataColumn)
+
+        if let pendingChange, let highlight {
             return String(
-                format: String(localized: "Row %d, column %d: %@"),
-                row + 1,
-                dataColumn + 1,
-                text
+                format: String(localized: "Row %d, column %d: %@, %@, highlighted where %@"),
+                row + 1, dataColumn + 1, text, pendingChange, highlight
             )
         }
-        return String(
-            format: String(localized: "Row %d, column %d: %@, highlighted where %@"),
-            row + 1,
-            dataColumn + 1,
-            text,
-            highlight
-        )
+        if let pendingChange {
+            return String(
+                format: String(localized: "Row %d, column %d: %@, %@"),
+                row + 1, dataColumn + 1, text, pendingChange
+            )
+        }
+        if let highlight {
+            return String(
+                format: String(localized: "Row %d, column %d: %@, highlighted where %@"),
+                row + 1, dataColumn + 1, text, highlight
+            )
+        }
+        return String(format: String(localized: "Row %d, column %d: %@"), row + 1, dataColumn + 1, text)
     }
 
     /// Read through rather than stored, so an edit, an undo or a display-format change is spoken

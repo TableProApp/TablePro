@@ -17,15 +17,8 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridUndo()
     func dataGridRedo()
     func dataGridAddRow()
-    func dataGridUndoInsert(at index: Int)
     func dataGridMoveRow(from source: Int, to destination: Int)
     func dataGridSortStateChanged(_ state: SortState)
-    /// Asks the owner to approve a change that re-points the display order before it happens.
-    ///
-    /// A pending cell edit is recorded against a display row, so anything that changes which row
-    /// a position names re-points it: the tint moves and a later edit at that position merges
-    /// into another row's change. Sort, pagination and the WHERE filter already confirm; a grid
-    /// with no owner has no edits to lose and runs the work directly.
     func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void)
     func dataGridFilterColumn(_ columnName: String)
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool)
@@ -70,7 +63,6 @@ extension DataGridViewDelegate {
     func dataGridUndo() {}
     func dataGridRedo() {}
     func dataGridAddRow() {}
-    func dataGridUndoInsert(at index: Int) {}
     func dataGridMoveRow(from source: Int, to destination: Int) {}
     func dataGridSortStateChanged(_ state: SortState) {}
     func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void) { apply() }
