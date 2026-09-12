@@ -55,6 +55,15 @@ internal struct StatusThemeColors: Equatable, Sendable {
     var error: ThemeColorValue
 }
 
+internal struct PanelThemeColors: Equatable, Sendable {
+    var background: ThemeColorValue
+    var controlBackground: ThemeColorValue
+    var text: ThemeColorValue
+    var secondaryText: ThemeColorValue
+    var tertiaryText: ThemeColorValue
+    var separator: ThemeColorValue
+}
+
 internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     var id: String
     var name: String
@@ -62,6 +71,7 @@ internal struct ThemeDefinition: Identifiable, Equatable, Sendable {
     var appearance: ThemeAppearance
     var editor: EditorThemeColors
     var dataGrid: DataGridThemeColors
+    var panel: PanelThemeColors
     var status: StatusThemeColors
 
     internal static let builtInPrefix = "tablepro."
@@ -115,9 +125,17 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
     case gridDeleted = "content.dataGrid.deleted"
     case gridDeletedText = "content.dataGrid.deletedText"
 
+    case panelBackground = "content.panel.background"
+    case panelControlBackground = "content.panel.controlBackground"
+    case panelText = "content.panel.text"
+    case panelSecondaryText = "content.panel.secondaryText"
+    case panelTertiaryText = "content.panel.tertiaryText"
+    case panelSeparator = "content.panel.separator"
+
     case statusSuccess = "content.status.success"
     case statusWarning = "content.status.warning"
     case statusError = "content.status.error"
+
 
     internal var since: Int { 2 }
 
@@ -134,6 +152,9 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
              .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
              .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .dataGrid
+        case .panelBackground, .panelControlBackground, .panelText,
+             .panelSecondaryText, .panelTertiaryText, .panelSeparator:
+            return .panel
         case .statusSuccess, .statusWarning, .statusError:
             return .status
         }
@@ -178,9 +199,17 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
         case .gridDeleted: return \.dataGrid.deleted
         case .gridDeletedText: return \.dataGrid.deletedText
 
+        case .panelBackground: return \.panel.background
+        case .panelControlBackground: return \.panel.controlBackground
+        case .panelText: return \.panel.text
+        case .panelSecondaryText: return \.panel.secondaryText
+        case .panelTertiaryText: return \.panel.tertiaryText
+        case .panelSeparator: return \.panel.separator
+
         case .statusSuccess: return \.status.success
         case .statusWarning: return \.status.warning
         case .statusError: return \.status.error
+
         }
     }
 
@@ -220,6 +249,12 @@ internal enum ThemeSlot: String, CaseIterable, Sendable {
         case .statusSuccess: return String(localized: "Success")
         case .statusWarning: return String(localized: "Warning")
         case .statusError: return String(localized: "Error")
+        case .panelBackground: return String(localized: "Pane Background")
+        case .panelControlBackground: return String(localized: "Field Background")
+        case .panelText: return String(localized: "Pane Text")
+        case .panelSecondaryText: return String(localized: "Secondary Text")
+        case .panelTertiaryText: return String(localized: "Tertiary Text")
+        case .panelSeparator: return String(localized: "Separator")
         }
     }
 }
@@ -228,6 +263,7 @@ internal enum ThemeSlotGroup: String, CaseIterable, Sendable {
     case editor
     case syntax
     case dataGrid
+    case panel
     case status
 
     internal var label: String {
@@ -235,6 +271,7 @@ internal enum ThemeSlotGroup: String, CaseIterable, Sendable {
         case .editor: return String(localized: "Editor")
         case .syntax: return String(localized: "Syntax Colors")
         case .dataGrid: return String(localized: "Data Grid")
+        case .panel: return String(localized: "Panels")
         case .status: return String(localized: "Status")
         }
     }

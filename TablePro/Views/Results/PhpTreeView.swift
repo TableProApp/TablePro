@@ -30,7 +30,7 @@ private struct PhpTreeRowView: View {
             if let key = node.key {
                 Text(key)
                     .font(ThemeEngine.shared.valueFontEmphasizedSwiftUI)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(ThemeEngine.shared.palette.color(.syntaxKeyword))
                     .lineLimit(1)
                 if let badge = node.visibilityBadge {
                     Text(badge)
