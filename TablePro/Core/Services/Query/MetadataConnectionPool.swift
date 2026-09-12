@@ -228,7 +228,10 @@ final class MetadataConnectionPool {
         let plan = Self.planConnection(
             configuredDatabase: connection.database,
             targetDatabase: key.scope.database,
-            authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped
+            authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped,
+            runsStartupCommands: DatabaseManager.hasStartupCommands(session.connection.startupCommands),
+            switchesDatabaseWithoutReconnecting: PluginManager.shared
+                .switchesDatabaseWithoutReconnecting(for: connection.type)
         )
         connection.database = plan.connectDatabase
 
@@ -274,13 +277,32 @@ final class MetadataConnectionPool {
         let switchDatabase: String?
     }
 
+    /// A pooled entry is pinned once, at creation, and then answered from for up to the idle
+    /// timeout, where the session driver is pinned again before every scoped operation. So anything
+    /// that moves the connection between `connect` and the first read moves it for the entry's whole
+    /// life, and the only thing that runs in between is the user's own startup commands. A `USE
+    /// other` there leaves every unqualified read answering from `other` while the driver still
+    /// reports the database it was asked for, which is how an unqualified `ALTER TABLE` from the
+    /// structure editor reached the wrong one.
+    ///
+    /// Re-asserted only when there is something to undo and only where the engine takes a switch as
+    /// a statement: an engine that reconnects to switch would throw away the startup commands it
+    /// just ran, and one that cannot switch at all would fail a connection that works today. That is
+    /// the same pair `pin(_:to:)` already trusts, so the pool issues no statement the session driver
+    /// does not issue for the same scope.
     static func planConnection(
         configuredDatabase: String,
         targetDatabase: String,
-        authenticationIsDatabaseScoped: Bool
+        authenticationIsDatabaseScoped: Bool,
+        runsStartupCommands: Bool = false,
+        switchesDatabaseWithoutReconnecting: Bool = false
     ) -> ConnectionPlan {
         guard authenticationIsDatabaseScoped, targetDatabase != configuredDatabase else {
-            return ConnectionPlan(connectDatabase: targetDatabase, switchDatabase: nil)
+            let reassert = runsStartupCommands && switchesDatabaseWithoutReconnecting
+                && !targetDatabase.isEmpty
+            return ConnectionPlan(
+                connectDatabase: targetDatabase, switchDatabase: reassert ? targetDatabase : nil
+            )
         }
         return ConnectionPlan(connectDatabase: configuredDatabase, switchDatabase: targetDatabase)
     }

@@ -660,18 +660,26 @@ struct RowImportSheet: View {
     /// Both failures used to leave an empty list and say nothing, so the destination picker offered
     /// "Select a table…" and nothing else with no way to tell an empty database from an unreachable
     /// one, and no way to ask again.
+    ///
+    /// Read through the browse scope, which is what the import itself writes to. The shared session
+    /// driver is wherever a tab's execution last pinned it and nothing puts it back, so reading from
+    /// it listed one database's tables and mapped their columns while the rows went to another's.
     @MainActor
     private func loadTables() async {
         guard !isLoadingTables else { return }
         isLoadingTables = true
         defer { isLoadingTables = false }
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+        guard DatabaseManager.shared.browseScope(for: connection.id) != nil else {
             catalogNameKeys = nil
             tableListError = String(localized: "This connection is not open.")
             return
         }
         do {
-            databaseObjects = try await driver.fetchTables()
+            databaseObjects = try await DatabaseManager.shared.withBrowseMetadataDriver(
+                connectionId: connection.id
+            ) { driver in
+                try await driver.fetchTables()
+            }
             catalogNameKeys = NewTableNaming.comparisonKeys(for: databaseObjects.map(\.name))
             tableListError = nil
             suggestNewTableName()
@@ -749,13 +757,17 @@ struct RowImportSheet: View {
 
     @MainActor
     private func loadExistingContext(table: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id),
-              let plugin = currentPlugin else { return }
+        guard let plugin = currentPlugin,
+              DatabaseManager.shared.browseScope(for: connection.id) != nil else { return }
         isLoadingContext = true
         loadError = nil
         defer { isLoadingContext = false }
         do {
-            let columns = try await driver.fetchColumns(table: table).map(\.name)
+            let columns = try await DatabaseManager.shared.withBrowseMetadataDriver(
+                connectionId: connection.id
+            ) { driver in
+                try await driver.fetchColumns(table: table)
+            }.map(\.name)
             let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             targetColumns = columns
             mappings = fields.map { field in

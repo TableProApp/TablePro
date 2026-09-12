@@ -62,7 +62,10 @@ extension MainContentCoordinator {
         /// from the same table opened from the sidebar: its own filters, its own column layout, no
         /// tab to reuse, and a rename that never found it.
         let target = ForeignKeyTargetScope.resolve(
-            origin: sourceScope, referencedSchema: fkInfo.referencedSchema, databaseType: connection.type
+            origin: sourceScope,
+            referencedDatabase: fkInfo.referencedDatabase,
+            referencedSchema: fkInfo.referencedSchema,
+            databaseType: connection.type
         )
         let targetDatabase = target.database
         let targetSchema = target.schema

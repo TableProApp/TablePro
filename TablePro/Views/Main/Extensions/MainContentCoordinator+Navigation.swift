@@ -450,8 +450,23 @@ extension MainContentCoordinator {
 
         // SQL databases: delegate to plugin driver
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
-        let schema = (driver as? SchemaSwitchable)?.escapedSchema
-        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: schema)
+        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+    }
+
+    /// The container this listing is about, named rather than left to the driver.
+    ///
+    /// A schema-less engine answers an unnamed container with whatever database the shared driver
+    /// was last pinned to, which a cross-database tab moves and nothing restores, so the listing
+    /// described a database the user was not browsing.
+    private func allTablesContainer(_ driver: DatabaseDriver) -> String? {
+        switch EngineNamespaceSlot(databaseType: connection.type) {
+        case .schema:
+            return (driver as? SchemaSwitchable)?.escapedSchema
+        case .database:
+            return browseDatabaseName.nilIfEmpty
+        case .unqualified:
+            return nil
+        }
     }
 
     // MARK: - Database Switching

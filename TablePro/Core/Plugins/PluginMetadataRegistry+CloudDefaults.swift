@@ -564,7 +564,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    pooledDriversShareOneSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "PUBLIC",

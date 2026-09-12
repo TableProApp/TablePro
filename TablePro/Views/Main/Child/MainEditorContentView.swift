@@ -631,6 +631,7 @@ struct MainEditorContentView: View {
             if let draft = coordinator.createTableDrafts[tab.id] {
                 CreateTableView(
                     connection: connection,
+                    scope: structureScope(for: tab),
                     coordinator: coordinator,
                     selectionState: selectionState,
                     draft: draft

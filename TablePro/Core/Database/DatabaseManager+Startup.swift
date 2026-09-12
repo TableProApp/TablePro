@@ -14,13 +14,19 @@ import TableProPluginKit
 extension DatabaseManager {
     nonisolated private static let startupLogger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
+    /// Whether `executeStartupCommands` would run anything. Shared with the metadata pool, which has
+    /// to know whether the connection could have been moved out from under it, so the two cannot
+    /// disagree about what counts as an empty command list.
+    nonisolated internal static func hasStartupCommands(_ commands: String?) -> Bool {
+        guard let commands else { return false }
+        return !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     @discardableResult
     nonisolated internal func executeStartupCommands(
         _ commands: String?, on driver: DatabaseDriver, connectionName: String
     ) async -> [(statement: String, error: String)] {
-        guard let commands, !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return []
-        }
+        guard Self.hasStartupCommands(commands), let commands else { return [] }
 
         let statements = commands
             .components(separatedBy: CharacterSet(charactersIn: ";\n"))

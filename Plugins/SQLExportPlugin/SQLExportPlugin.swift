@@ -124,10 +124,16 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         tablesUnorderedByCycle = []
         emittedSequenceNames = []
 
+        /// Read once, because `PluginManager` hands every window the same plugin instance and a
+        /// second window's options pane can write `settings` while this export is still running. A
+        /// cap re-read per table would let one export start at a mebibyte and finish unbounded.
+        let options = settings
+        var statementTally = SQLExportStatementTally()
+
         let actualDestination: URL
         let gzipTempURL: URL?
 
-        if settings.compressWithGzip {
+        if options.compressWithGzip {
             let tempSQL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString + ".sql")
             gzipTempURL = tempSQL
@@ -139,8 +145,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         /// Compression runs over one file, so a compressed export never splits. Saying so beats
         /// silently gzipping the first part and dropping the rest.
-        let splitSize = settings.compressWithGzip ? 0 : settings.splitSizeMegabytes
-        if settings.compressWithGzip, settings.splitSizeMegabytes > 0 {
+        let splitSize = options.compressWithGzip ? 0 : options.splitSizeMegabytes
+        if options.compressWithGzip, options.splitSizeMegabytes > 0 {
             metadataWarnings.append(String(localized:
                 "A compressed export is written as one file, so the split size was not applied."))
         }
@@ -154,7 +160,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             if !committed { writer.rollback() }
         }
 
-        let snapshot = settings.consistentSnapshot
+        let snapshot = options.consistentSnapshot
             ? SQLExportSnapshot(dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId))
             : nil
 
@@ -182,8 +188,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 tables: rowObjects, dataSource: dataSource, to: writer)
             try await writeCreatePhase(
                 sortedTables: sortedTables, dataSource: dataSource, to: writer, progress: progress)
-            try await writeDataPhase(
-                sortedTables: sortedTables, columnsByTable: columnsByTable,
+            statementTally = try await writeDataPhase(
+                sortedTables: sortedTables, columnsByTable: columnsByTable, options: options,
                 dataSource: dataSource, to: writer, progress: progress)
             try await writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
@@ -221,7 +227,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             throw error
         }
 
-        if settings.compressWithGzip, let gzipSource = gzipTempURL {
+        if options.compressWithGzip, let gzipSource = gzipTempURL {
             progress.setStatus("Compressing...")
 
             do {
@@ -254,8 +260,44 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 format: String(localized: "Could not fetch comments for: %@"),
                 commentFailures.joined(separator: ", ")))
         }
+        if let oversized = Self.oversizedRowWarning(tally: statementTally) {
+            warnings.append(oversized)
+        }
         warnings.append(contentsOf: metadataWarnings)
-        return ExportFormatResult(warnings: warnings)
+        return ExportFormatResult(warnings: warnings, notes: Self.statementSizeNotes(tally: statementTally))
+    }
+
+    /// The size a byte limit should be judged against, in the same binary units the limit's own menu
+    /// names, so a statement that hit a 1 MB limit reads as 1 MB rather than 1.05 MB.
+    private static func formatted(bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    private static func statementSizeNotes(tally: SQLExportStatementTally) -> [String] {
+        guard tally.largestStatementBytes > 0 else { return [] }
+        let template = tally.largestStatementRows == 1
+            ? String(localized: "Largest INSERT written: %1$@ (1 row).")
+            : String(localized: "Largest INSERT written: %1$@ (%2$lld rows).")
+        return [String(
+            format: template,
+            formatted(bytes: tally.largestStatementBytes),
+            Int64(tally.largestStatementRows))]
+    }
+
+    /// The limit comes off the tally rather than the settings, so a second window moving the setting
+    /// mid-export cannot make this name a size this export never ran under.
+    private static func oversizedRowWarning(tally: SQLExportStatementTally) -> String? {
+        guard tally.oversizedRowCount > 0, tally.limitBytes > 0 else { return nil }
+        let template = tally.oversizedRowCount == 1
+            ? String(localized: "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size.")
+            : String(localized: "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size.")
+        return String(
+            format: template,
+            formatted(bytes: tally.limitBytes),
+            Int64(tally.oversizedRowCount))
     }
 
     private func writeHeader(
@@ -645,19 +687,23 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     private func writeDataPhase(
         sortedTables: [PluginExportTable],
         columnsByTable: [String: [PluginColumnInfo]],
+        options: SQLExportOptions,
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> SQLExportStatementTally {
+        var tally = SQLExportStatementTally()
         for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
             try progress.checkCancellation()
-            try await writeTableData(
+            tally.merge(try await writeTableData(
                 table: table,
                 columnInfo: columnsByTable[node(for: table).identifier] ?? [],
+                options: options,
                 dataSource: dataSource,
                 to: writer,
-                progress: progress)
+                progress: progress))
         }
+        return tally
     }
 
     private func writeFinalizationPhase(
@@ -834,15 +880,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     private func writeTableData(
         table: PluginExportTable,
         columnInfo: [PluginColumnInfo],
+        options: SQLExportOptions,
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
         progress: PluginExportProgress
-    ) async throws {
-        let batchSize = settings.batchSize
+    ) async throws -> SQLExportStatementTally {
         var wroteAnyRows = false
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        var rowBatch: [[PluginCellValue]] = []
+        var tally = SQLExportStatementTally()
 
         let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
         let primaryKeyColumns = columnInfo.filter(\.isPrimaryKey).map(\.name)
@@ -866,60 +910,92 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     "The row filter on %@ was not a single expression, so every row was exported."),
                 table.name))
         }
+        var encoder: SQLExportRowValueEncoder?
+        var accumulator: SQLExportStatementAccumulator?
+
+        /// The insert mode the engine cannot spell is only worth reporting once a row is actually
+        /// written under it. Held until then, because a table whose scope selected nothing still
+        /// produces a header, and a warning raised from that alone brands a clean export a failed
+        /// one: `warnings` is what retitles the summary alert and takes away its suppression.
+        var pendingModeWarning: String?
+
+        /// `SET IDENTITY_INSERT` opens the table and has to precede the first statement that carries
+        /// a key, so it is written from whatever hands one over rather than from a row count. The
+        /// byte budget can hold rows well past `batchSize` before closing a statement, so a
+        /// row-count trigger would write it in the wrong place or not at all.
+        func emit(_ statement: String) throws {
+            if !wroteAnyRows {
+                if needsIdentityInsert {
+                    try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
+                }
+                wroteAnyRows = true
+            }
+            if let warning = pendingModeWarning {
+                if !metadataWarnings.contains(warning) {
+                    metadataWarnings.append(warning)
+                }
+                pendingModeWarning = nil
+            }
+            try writer.write(statement)
+        }
+
         let stream = dataSource.streamRows(for: table)
         for try await element in stream {
             try progress.checkCancellation()
 
             switch element {
             case .header(let header):
-                columns = header.columns
-                columnTypeNames = header.columnTypeNames ?? []
+                /// A second header describes different columns, so the statement built under the
+                /// first one is closed before anything is rendered against the new prefix.
+                if let statement = accumulator?.finish() {
+                    try emit(statement)
+                }
+                if let accumulator { tally.merge(accumulator.tally) }
+                let built = SQLExportRowValueEncoder(
+                    columns: header.columns,
+                    columnTypeNames: header.columnTypeNames ?? [],
+                    excludedColumnNames: generatedColumnNames,
+                    databaseTypeId: dataSource.databaseTypeId,
+                    escapeStringLiteral: dataSource.escapeStringLiteral
+                )
+                guard !built.writesNothing else {
+                    encoder = nil
+                    accumulator = nil
+                    continue
+                }
+                encoder = built
+                let statementWriter = makeStatementAccumulator(
+                    tableRef: tableRef,
+                    columns: header.columns,
+                    encoder: built,
+                    primaryKeyColumns: primaryKeyColumns,
+                    usesOverridingSystemValue: usesOverridingSystemValue,
+                    options: options,
+                    dataSource: dataSource)
+                accumulator = statementWriter.accumulator
+                pendingModeWarning = statementWriter.modeWarning
             case .rows(let rows):
+                guard let encoder, let accumulator else { continue }
                 for row in rows {
-                    rowBatch.append(row)
-                    if rowBatch.count >= batchSize {
-                        if needsIdentityInsert, !wroteAnyRows {
-                            try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
-                        }
-                        try writeInsertStatements(
-                            tableRef: tableRef,
-                            columns: columns,
-                            columnTypeNames: columnTypeNames,
-                            rows: rowBatch,
-                            batchSize: batchSize,
-                            excludedColumnNames: generatedColumnNames,
-                            primaryKeyColumns: primaryKeyColumns,
-                            usesOverridingSystemValue: usesOverridingSystemValue,
-                            dataSource: dataSource,
-                            to: writer,
-                            progress: progress
-                        )
-                        wroteAnyRows = true
-                        rowBatch.removeAll(keepingCapacity: true)
+                    try progress.checkCancellation()
+                    if let statement = accumulator.append(encoder.render(row)) {
+                        try emit(statement)
                     }
+                    progress.incrementRow()
                 }
             }
         }
 
-        if !rowBatch.isEmpty {
-            if needsIdentityInsert, !wroteAnyRows {
-                try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
-            }
-            try writeInsertStatements(
-                tableRef: tableRef,
-                columns: columns,
-                columnTypeNames: columnTypeNames,
-                rows: rowBatch,
-                batchSize: batchSize,
-                excludedColumnNames: generatedColumnNames,
-                primaryKeyColumns: primaryKeyColumns,
-                usesOverridingSystemValue: usesOverridingSystemValue,
-                dataSource: dataSource,
-                to: writer,
-                progress: progress
-            )
-            wroteAnyRows = true
+        /// Stop can land between the last row and the end of the stream, where the loop's own checks
+        /// no longer run. Without this, a cancelled export writes its last statement, commits the
+        /// file and reports success; the batch path this replaced checked cancellation per row and
+        /// so threw instead, which is what makes the writer roll the whole dump back.
+        try progress.checkCancellation()
+
+        if let statement = accumulator?.finish() {
+            try emit(statement)
         }
+        if let accumulator { tally.merge(accumulator.tally) }
 
         if wroteAnyRows, needsIdentityInsert {
             try writer.write("SET IDENTITY_INSERT \(tableRef) OFF;\n")
@@ -928,92 +1004,55 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         if wroteAnyRows {
             try writer.write("\n")
         }
+        return tally
     }
 
-    private func writeInsertStatements(
+    /// The accumulator for one table, with its prefix and suffix rendered once, and whatever the
+    /// insert mode could not spell on this engine. The caller holds that warning until a row is
+    /// written under it rather than raising it here.
+    private func makeStatementAccumulator(
         tableRef: String,
         columns: [String],
-        columnTypeNames: [String],
-        rows: [[PluginCellValue]],
-        batchSize: Int,
-        excludedColumnNames: Set<String>,
+        encoder: SQLExportRowValueEncoder,
         primaryKeyColumns: [String],
         usesOverridingSystemValue: Bool,
-        dataSource: any PluginExportDataSource,
-        to writer: SQLExportFileWriter,
-        progress: PluginExportProgress
-    ) throws {
-        let includedColumnIndices = columns.enumerated().compactMap { index, name in
-            excludedColumnNames.contains(name) ? nil : index
-        }
-        guard !includedColumnIndices.isEmpty else { return }
-
-        let quotedColumns = includedColumnIndices
+        options: SQLExportOptions,
+        dataSource: any PluginExportDataSource
+    ) -> (accumulator: SQLExportStatementAccumulator, modeWarning: String?) {
+        let quotedColumns = encoder.includedColumnIndices
             .map { dataSource.quoteIdentifier(columns[$0]) }
             .joined(separator: ", ")
-        let overriding = usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
         let rendered = SQLExportInsertRenderer(
             dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId),
             quoteIdentifier: dataSource.quoteIdentifier
         ).render(
-            mode: settings.insertMode,
+            mode: options.insertMode,
             tableRef: tableRef,
             quotedColumns: quotedColumns,
-            overriding: overriding,
-            columnNames: includedColumnIndices.map { columns[$0] },
+            overriding: usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : "",
+            columnNames: encoder.columnNames(from: columns),
             primaryKeyColumns: primaryKeyColumns
         )
-        if let warning = rendered.warning, !metadataWarnings.contains(warning) {
-            metadataWarnings.append(warning)
-        }
-        let insertPrefix = rendered.prefix
-        let insertSuffix = rendered.suffix
-
-        let numericIndices: Set<Int> = Set(includedColumnIndices.filter { idx in
-            idx < columnTypeNames.count && PluginExportUtilities.isNumericColumnType(columnTypeNames[idx])
-        })
-
-        let effectiveBatchSize = batchSize <= 1 ? 1 : batchSize
-        var valuesBatch: [String] = []
-        valuesBatch.reserveCapacity(effectiveBatchSize)
-
-        for row in rows {
-            try progress.checkCancellation()
-
-            let values = includedColumnIndices.map { colIndex -> String in
-                guard colIndex < row.count else { return "NULL" }
-                let cell = row[colIndex]
-                switch cell {
-                case .null:
-                    return "NULL"
-                case .bytes(let data):
-                    let hex = data.map { String(format: "%02X", $0) }.joined()
-                    return "X'\(hex)'"
-                case .text(let val):
-                    if numericIndices.contains(colIndex) && PluginNumericLiteral.isValid(val) {
-                        return val
-                    }
-                    let escaped = dataSource.escapeStringLiteral(val)
-                    return "'\(escaped)'"
-                }
-            }.joined(separator: ", ")
-
-            valuesBatch.append("  (\(values))")
-
-            if valuesBatch.count >= effectiveBatchSize {
-                let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
-                try writer.write(statement)
-                valuesBatch.removeAll(keepingCapacity: true)
-            }
-
-            progress.incrementRow()
-        }
-
-        if !valuesBatch.isEmpty {
-            let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
-            try writer.write(statement)
-        }
+        let accumulator = SQLExportStatementAccumulator(
+            prefix: rendered.prefix,
+            suffix: rendered.suffix,
+            budget: statementBudget(for: dataSource.databaseTypeId, options: options))
+        return (accumulator, rendered.warning)
     }
+
+    /// The row ceiling is the user's choice clamped by what the engine can parse, so a dialect that
+    /// rejects a multi-row `VALUES` gets one row per statement rather than a dump it cannot read.
+    private func statementBudget(
+        for databaseTypeId: String,
+        options: SQLExportOptions
+    ) -> SQLExportStatementBudget {
+        SQLExportStatementBudget(
+            maxRows: min(
+                options.batchSize,
+                SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: databaseTypeId)),
+            maxBytes: options.maxStatementBytes)
+    }
+
 
     private func compressFile(source: URL, destination: URL) async throws {
         let gzipPath = "/usr/bin/gzip"

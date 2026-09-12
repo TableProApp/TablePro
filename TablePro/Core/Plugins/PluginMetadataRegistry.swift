@@ -73,6 +73,11 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
+        /// Whether two pooled drivers for the same connection sit on one physical session. Snowflake
+        /// keys its session on the account and role and deliberately not on the database, so every
+        /// pooled scope shares one mutable `currentDatabase`: a statement that selects a database on
+        /// behalf of one entry selects it for all of them.
+        var pooledDriversShareOneSession: Bool = false
         var authenticationIsDatabaseScoped: Bool = false
         var pagination: PaginationCapability = .offset
         var isEngineReadOnly: Bool = false
@@ -640,6 +645,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
+                pooledDriversShareOneSession: existingSnapshot?.capabilities
+                    .pooledDriversShareOneSession ?? false,
                 authenticationIsDatabaseScoped: existingSnapshot?.capabilities
                     .authenticationIsDatabaseScoped ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,

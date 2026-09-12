@@ -12,6 +12,13 @@ struct PaginationControlsView: View {
     /// discards a half-typed page number so it cannot be submitted against the next tab.
     let tabId: UUID?
     var showsPageNavigation = true
+    /// First and Last. The Query menu carries all four page commands, so the two edges are the first
+    /// thing this cluster gives up when the bar runs out of room.
+    var showsEdgePageButtons = true
+    /// Whether rows-per-page stands beside the page indicator or moves inside its menu. Rows-per-page
+    /// has no menu-bar home, so the narrow bar folds it in rather than dropping it, which is where
+    /// TablePlus and Sequel Ace both keep theirs.
+    var pageSizeIsInline = true
     /// The most rows the engine returns from one statement, when it caps them.
     var maximumPageSize: Int?
     let onFirst: () -> Void
@@ -44,9 +51,17 @@ struct PaginationControlsView: View {
         min(maximumPageSize ?? Self.maximumPageSize, Self.maximumPageSize)
     }
 
+    /// An engine that cannot seek shows no page indicator, so there is nowhere to fold rows-per-page
+    /// into and it has to stand on its own however narrow the bar is.
+    private var showsInlinePageSize: Bool {
+        pageSizeIsInline || !showsPageNavigation
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            pageSizeMenu
+            if showsInlinePageSize {
+                pageSizeMenu
+            }
             if showsPageNavigation {
                 navigationCluster
             }
@@ -66,23 +81,7 @@ struct PaginationControlsView: View {
     /// sat visibly shorter than the 20pt bordered controls beside it.
     private var pageSizeMenu: some View {
         Menu {
-            Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
-                ForEach(Self.pageSizePresets(upTo: maximumPageSize), id: \.self) { size in
-                    Text(size.formatted()).tag(size)
-                }
-            }
-            .pickerStyle(.inline)
-
-            Divider()
-
-            if showsPageNavigation {
-                Button(String(localized: "All rows…")) { onShowAll() }
-                    .disabled(!pagination.hasExactRowCount)
-            }
-            Button(String(localized: "Custom…")) {
-                customPageSize = pagination.pageSize
-                showCustomPopover = true
-            }
+            pageSizeMenuItems
         } label: {
             Text(pagination.pageSize.formatted())
                 .monospacedDigit()
@@ -100,6 +99,29 @@ struct PaginationControlsView: View {
         }
     }
 
+    /// Shared by the standalone pull-down and by the page indicator that swallows it when the bar is
+    /// narrow, so rows-per-page offers the same choices whichever control carries it.
+    @ViewBuilder
+    private var pageSizeMenuItems: some View {
+        Picker(String(localized: "Rows per page"), selection: pageSizeBinding) {
+            ForEach(Self.pageSizePresets(upTo: maximumPageSize), id: \.self) { size in
+                Text(size.formatted()).tag(size)
+            }
+        }
+        .pickerStyle(.inline)
+
+        Divider()
+
+        if showsPageNavigation {
+            Button(String(localized: "All rows…")) { onShowAll() }
+                .disabled(!pagination.hasExactRowCount)
+        }
+        Button(String(localized: "Custom…")) {
+            customPageSize = pagination.pageSize
+            showCustomPopover = true
+        }
+    }
+
     private var pageSizeBinding: Binding<Int> {
         Binding(get: { pagination.pageSize }, set: { onPageSizeChange($0) })
     }
@@ -111,13 +133,15 @@ struct PaginationControlsView: View {
     /// the readout's own indicator already reports without moving anything.
     private var navigationCluster: some View {
         HStack(spacing: 0) {
-            navButton(
-                "chevron.backward.to.line",
-                label: String(localized: "First page"),
-                enabled: pagination.hasPreviousPage,
-                action: onFirst,
-                shortcut: .firstPage
-            )
+            if showsEdgePageButtons {
+                navButton(
+                    "chevron.backward.to.line",
+                    label: String(localized: "First page"),
+                    enabled: pagination.hasPreviousPage,
+                    action: onFirst,
+                    shortcut: .firstPage
+                )
+            }
             navButton(
                 "chevron.backward",
                 label: String(localized: "Previous page"),
@@ -135,13 +159,15 @@ struct PaginationControlsView: View {
                 action: onNext,
                 shortcut: .nextPage
             )
-            navButton(
-                "chevron.forward.to.line",
-                label: String(localized: "Last page"),
-                enabled: pagination.hasExactRowCount && pagination.currentPage != pagination.totalPages,
-                action: onLast,
-                shortcut: .lastPage
-            )
+            if showsEdgePageButtons {
+                navButton(
+                    "chevron.forward.to.line",
+                    label: String(localized: "Last page"),
+                    enabled: pagination.hasExactRowCount && pagination.currentPage != pagination.totalPages,
+                    action: onLast,
+                    shortcut: .lastPage
+                )
+            }
         }
     }
 
@@ -165,26 +191,61 @@ struct PaginationControlsView: View {
         AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
     }
 
+    /// A button straight to the jump popover while rows-per-page has its own control, and a menu
+    /// carrying both once it does not. The menu is what keeps rows-per-page reachable on a narrow
+    /// bar: it has no menu-bar equivalent, so it cannot simply be dropped.
+    @ViewBuilder
     private var pageIndicator: some View {
-        Button {
-            jumpPage = pagination.currentPage
-            showJumpPopover = true
-        } label: {
-            pageIndicatorText
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 44)
+        if showsInlinePageSize {
+            Button {
+                jumpPage = pagination.currentPage
+                showJumpPopover = true
+            } label: {
+                pageIndicatorLabel
+            }
+            .buttonStyle(.plain)
+            .disabled(!pagination.hasRowCountTotal || pagination.isLoading)
+            .help(String(localized: "Go to page"))
+            .pageIndicatorAccessibility(value: pageIndicatorAccessibilityValue)
+            .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
+                jumpPopover
+            }
+        } else {
+            Menu {
+                /// The catalog's existing spelling, which is also this control's tooltip when it is
+                /// a plain button. A new string here would fall back to English in every translated
+                /// locale at exactly the width where the menu is the only route to these commands.
+                Button(String(localized: "Go to page")) {
+                    jumpPage = pagination.currentPage
+                    showJumpPopover = true
+                }
+                .disabled(!pagination.hasRowCountTotal)
+
+                Divider()
+
+                pageSizeMenuItems
+            } label: {
+                pageIndicatorLabel
+            }
+            .menuStyle(.borderlessButton)
+            .disabled(pagination.isLoading)
+            .help(String(localized: "Go to page"))
+            .pageIndicatorAccessibility(value: pageIndicatorAccessibilityValue)
+            .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
+                jumpPopover
+            }
+            .popover(isPresented: $showCustomPopover, arrowEdge: .top) {
+                customPageSizePopover
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!pagination.hasRowCountTotal || pagination.isLoading)
-        .help(String(localized: "Go to page"))
-        .accessibilityLabel(String(localized: "Page"))
-        .accessibilityValue(pageIndicatorAccessibilityValue)
-        .accessibilityIdentifier("pagination-page-indicator")
-        .popover(isPresented: $showJumpPopover, arrowEdge: .top) {
-            jumpPopover
-        }
+    }
+
+    private var pageIndicatorLabel: some View {
+        pageIndicatorText
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 44)
     }
 
     /// The total is marked when it came from a driver estimate, so a page count the user cannot
@@ -265,4 +326,14 @@ struct PaginationControlsView: View {
         )
     }
     .padding()
+}
+
+private extension View {
+    /// One home for the page indicator's accessibility, because XCUITest keys on the identifier and
+    /// the control is a button or a menu depending on how much room the bar has.
+    func pageIndicatorAccessibility(value: String) -> some View {
+        accessibilityLabel(String(localized: "Page"))
+            .accessibilityValue(value)
+            .accessibilityIdentifier("pagination-page-indicator")
+    }
 }
