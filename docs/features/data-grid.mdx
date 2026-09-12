@@ -167,11 +167,6 @@ A chart draws the loaded rows, up to 2,000 points, 20 series, and 50,000 inspect
 
 A geometry or geography column in the result puts **Map** in the switcher. Nothing else does, so a result of plain columns never carries the segment.
 
-<Frame caption="A PostGIS result drawn over Apple Maps, with the clicked shape selected">
-  <img className="block dark:hidden" src="/images/result-map.png" alt="Map pane showing filled polygons over a street map, one highlighted in orange" />
-  <img className="hidden dark:block" src="/images/result-map-dark.png" alt="Map pane showing filled polygons over a street map, one highlighted in orange" />
-</Frame>
-
 Points, lines and polygons draw over Apple's own tiles. Nothing about the result reaches a third-party tile server. Click a shape to select its row, then switch to **Data** to see that row selected in the grid; select rows in the grid and their shapes come back highlighted. **Fit to Result** frames every drawn shape. A result with more than one geometry column gets a picker to choose between them.
 
 Values are read as WKT, EWKT, WKB or EWKB hex, and GeoJSON, so PostGIS, MySQL, MariaDB and MongoDB draw without any setup. The map draws the rows the grid is showing, so a value filter narrows it and the page controls and **Fetch All** stay in the status bar.
