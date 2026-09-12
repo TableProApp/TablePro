@@ -51,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
+- TablePlus import saving a password for a connection TablePlus was set never to store one for.
+- TablePlus import reading the CA certificate and client key paths the wrong way round.
 - MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
 - Column header shown as selected after a cell drag reached the first and last row of the page.
@@ -239,6 +242,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- TablePlus connections set to VERIFY-IDENTITY or VERIFY-FULL imported with TLS turned off.
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
 - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)

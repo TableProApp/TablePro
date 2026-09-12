@@ -47,6 +47,8 @@ SSH tunnel and SSL settings come across with the connection. Which engines each 
 
 A DataGrip project protected by a master password cannot be read at all. Import those connections and set their passwords in TablePro.
 
+TablePlus's password dropdown comes across too. **Ask everytime** arrives as **Prompt for password**, and nothing is read from the Keychain for that connection. **Command Line** arrives the same way, since the command itself does not travel: type the password each connect, or set a [password source](/features/connection-sharing#password-sources) on the connection. The SSH pane has the same dropdown and TablePro has no prompt behind it, so a tunnel set to **Ask everytime** or **No password** imports blank. Fill it in before you connect.
+
 ## What does not come across
 
 | Not imported | What to do |
