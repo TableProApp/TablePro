@@ -281,6 +281,10 @@ struct ForeignKeyInfo: Identifiable, Hashable {
     let column: String
     let referencedTable: String
     let referencedColumn: String
+    /// Set only by an engine that names objects in three parts and reports a key pointing outside
+    /// the database it was read from. An engine with no schema layer names its referenced database
+    /// in `referencedSchema` instead, because that is the column its catalog puts it in.
+    let referencedDatabase: String?
     let referencedSchema: String?
     let onDelete: String  // CASCADE, SET NULL, RESTRICT, NO ACTION
     let onUpdate: String
@@ -290,6 +294,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         column: String,
         referencedTable: String,
         referencedColumn: String,
+        referencedDatabase: String? = nil,
         referencedSchema: String? = nil,
         onDelete: String = "NO ACTION",
         onUpdate: String = "NO ACTION"
@@ -298,6 +303,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         self.column = column
         self.referencedTable = referencedTable
         self.referencedColumn = referencedColumn
+        self.referencedDatabase = referencedDatabase
         self.referencedSchema = referencedSchema
         self.onDelete = onDelete
         self.onUpdate = onUpdate

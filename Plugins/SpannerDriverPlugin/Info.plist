@@ -5,7 +5,7 @@
 	<key>TableProMinAppVersion</key>
 	<string>0.42.0</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>29</integer>
+	<integer>30</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Spanner</string>

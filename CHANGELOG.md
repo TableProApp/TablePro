@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Snowflake foreign keys into another database opening the current database's same-named table.
 - Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **None** in the foreign key picker's Label menu forgotten on reopen.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.

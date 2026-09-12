@@ -466,6 +466,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
               let pkColumnIdx = columnIndex(of: "pk_column_name", in: result) else { return [] }
         let fkNameIdx = columnIndex(of: "fk_name", in: result)
         let pkSchemaIdx = columnIndex(of: "pk_schema_name", in: result)
+        let pkDatabaseIdx = columnIndex(of: "pk_database_name", in: result)
 
         return result.rows.compactMap { row in
             guard let column = Self.text(row, fkColumnIdx),
@@ -476,6 +477,9 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 column: column,
                 referencedTable: referencedTable,
                 referencedColumn: referencedColumn,
+                referencedDatabase: SnowflakeSchemaQueries.referencedDatabase(
+                    reported: pkDatabaseIdx.flatMap { Self.text(row, $0) }, local: database
+                ),
                 referencedSchema: pkSchemaIdx.flatMap { Self.text(row, $0) }
             )
         }
