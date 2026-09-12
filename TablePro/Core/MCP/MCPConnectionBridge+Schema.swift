@@ -51,11 +51,15 @@ extension MCPConnectionBridge {
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             let columns = try await driver.fetchColumns(table: table, schema: schema)
-            let indexes = try await driver.fetchIndexes(table: table)
-            let foreignKeys = try await driver.fetchForeignKeys(table: table)
-            let checkConstraints = (try? await driver.fetchCheckConstraints(table: table)) ?? []
-            let approximateRowCount = (try? await driver.fetchApproximateRowCount(table: table)) ?? nil
-            let ddl = await MCPConnectionBridge.composedTableDDL(driver: driver, table: table)
+            let indexes = try await driver.fetchIndexes(table: table, schema: schema)
+            let foreignKeys = try await driver.fetchForeignKeys(table: table, schema: schema)
+            let checkConstraints = (try? await driver.fetchCheckConstraints(table: table, schema: schema)) ?? []
+            let approximateRowCount = (
+                try? await driver.fetchApproximateRowCount(table: table, schema: schema)
+            ) ?? nil
+            let ddl = await MCPConnectionBridge.composedTableDDL(
+                driver: driver, table: table, schema: schema
+            )
 
             var result: [String: JsonValue] = [
                 "table": .string(table),
@@ -97,14 +101,18 @@ extension MCPConnectionBridge {
 
     /// The table's own statement plus the indexes it does not declare, because a caller asking for
     /// a table's DDL wants what recreates it, not the half the export replays first.
-    static func composedTableDDL(driver: DatabaseDriver, table: String) async -> String? {
-        try? await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
+    static func composedTableDDL(driver: DatabaseDriver, table: String, schema: String?) async -> String? {
+        try? await TableDDLComposer.fetchDDL(
+            for: table, using: driver, includesDependencies: false, schema: schema
+        )
     }
 
     func getTableDDL(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let ddl = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
+            try await TableDDLComposer.fetchDDL(
+                for: table, using: driver, includesDependencies: false, schema: scope.schema
+            )
         }
         return .object([
             "table": .string(table),

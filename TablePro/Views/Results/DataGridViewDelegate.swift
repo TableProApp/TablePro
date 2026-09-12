@@ -21,7 +21,7 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridSortStateChanged(_ state: SortState)
     func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void)
     func dataGridFilterColumn(_ columnName: String)
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool)
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, intent: ReferenceOpenIntent)
     func dataGridShowRowAsJSON()
     func dataGridDuplicateRow()
     func dataGridExportResults()
@@ -67,7 +67,7 @@ extension DataGridViewDelegate {
     func dataGridSortStateChanged(_ state: SortState) {}
     func dataGridConfirmDisplayOrderChange(then apply: @escaping () -> Void) { apply() }
     func dataGridFilterColumn(_ columnName: String) {}
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {}
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, intent: ReferenceOpenIntent) {}
     func dataGridShowRowAsJSON() {}
     func dataGridDuplicateRow() {}
     func dataGridExportResults() {}
