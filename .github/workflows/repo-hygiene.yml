@@ -80,6 +80,13 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # The iOS app compiles source files that belong to macOS plugin targets, and it alone sets
+      # SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, so one unmarked declaration in a shared file is
+      # @MainActor on iOS and nonisolated in the plugin. The macOS suite cannot see it and the iOS
+      # job reports it one symbol at a time, which took main red three times over one keyword.
+      - name: Check shared plugin sources are explicitly isolated for iOS
+        run: python3 scripts/ci/check-ios-shared-isolation.py
+
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
