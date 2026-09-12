@@ -13,7 +13,6 @@ import TableProPluginKit
 /// Read-only text view that applies SQL/MQL syntax highlighting via regex
 struct HighlightedSQLTextView: NSViewRepresentable {
     let sql: String
-    var fontSize: CGFloat = 13
     var databaseType: DatabaseType = .mysql
     /// A SwiftUI `.accessibilityIdentifier` lands on the representable's wrapper, not on the text
     /// view AppKit publishes, so the only way to name this element is to set it on the text view.
@@ -30,10 +29,10 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textView.setAccessibilityLabel(String(localized: "Query preview"))
         textView.isEditable = false
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        textView.font = ThemeEngine.shared.editorFonts.font
         textView.textContainerInset = NSSize(width: 12, height: 12)
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.labelColor
+        textView.backgroundColor = ThemeEngine.shared.palette[.editorBackground]
+        textView.textColor = ThemeEngine.shared.palette[.editorText]
 
         // Disable line wrapping
         textView.textContainer?.widthTracksTextView = false
@@ -49,27 +48,47 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        if let currentFont = textView.font, currentFont.pointSize != fontSize {
-            textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            if !textView.string.isEmpty {
-                applyHighlighting(to: textView)
-            }
+        let editorFont = ThemeEngine.shared.editorFonts.font
+        let fontChanged = textView.font != editorFont
+        let textChanged = textView.string != sql
+
+        if fontChanged {
+            textView.font = editorFont
+        }
+        textView.backgroundColor = ThemeEngine.shared.palette[.editorBackground]
+        textView.textColor = ThemeEngine.shared.palette[.editorText]
+
+        if textChanged {
+            textView.string = sql
         }
 
-        if textView.string != sql {
-            textView.string = sql
-            if !sql.isEmpty {
-                applyHighlighting(to: textView)
-            }
+        /// The highlighting bakes a colour per range, so it is applied again whenever the theme or
+        /// the editor font moves, not only when the query does.
+        guard !sql.isEmpty, textChanged || fontChanged || context.coordinator.revision != themeRevision else {
+            return
         }
+        context.coordinator.revision = themeRevision
+        applyHighlighting(to: textView)
+    }
+
+    private var themeRevision: Int {
+        ThemeEngine.shared.revision
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var revision = -1
     }
 
     // MARK: - Syntax Highlighting
 
     // MARK: - Pre-compiled Syntax Patterns
 
-    private static let syntaxPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
-        var patterns: [(NSRegularExpression, NSColor)] = []
+    private static let syntaxPatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] = {
+        var patterns: [(NSRegularExpression, ThemeSlot)] = []
 
         // SQL Keywords (blue) — single alternation regex for all keywords
         let keywords = [
@@ -86,22 +105,22 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         ]
         let keywordPattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
         if let regex = try? NSRegularExpression(pattern: keywordPattern, options: .caseInsensitive) {
-            patterns.append((regex, .systemBlue))
+            patterns.append((regex, .syntaxKeyword))
         }
 
         // Strings (red)
         if let regex = try? NSRegularExpression(pattern: "'[^']*'", options: .caseInsensitive) {
-            patterns.append((regex, .systemRed))
+            patterns.append((regex, .syntaxString))
         }
 
         // Backticks (orange)
         if let regex = try? NSRegularExpression(pattern: "`[^`]*`", options: .caseInsensitive) {
-            patterns.append((regex, .systemOrange))
+            patterns.append((regex, .syntaxNull))
         }
 
         // Numbers (purple)
         if let regex = try? NSRegularExpression(pattern: "\\b\\d+\\b", options: .caseInsensitive) {
-            patterns.append((regex, .systemPurple))
+            patterns.append((regex, .syntaxNumber))
         }
 
         return patterns
@@ -109,8 +128,8 @@ struct HighlightedSQLTextView: NSViewRepresentable {
 
     // MARK: - Pre-compiled MQL Syntax Patterns
 
-    private static let mqlPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
-        var patterns: [(NSRegularExpression, NSColor)] = []
+    private static let mqlPatterns: [(regex: NSRegularExpression, slot: ThemeSlot)] = {
+        var patterns: [(NSRegularExpression, ThemeSlot)] = []
 
         // MongoDB methods (blue) — single alternation regex for all methods
         let methods = [
@@ -121,12 +140,12 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         ]
         let methodPattern = "\\.(" + methods.joined(separator: "|") + ")\\s*\\("
         if let regex = try? NSRegularExpression(pattern: methodPattern, options: []) {
-            patterns.append((regex, .systemBlue))
+            patterns.append((regex, .syntaxKeyword))
         }
 
         // db. prefix (blue)
         if let regex = try? NSRegularExpression(pattern: "\\bdb\\.", options: []) {
-            patterns.append((regex, .systemBlue))
+            patterns.append((regex, .syntaxKeyword))
         }
 
         // MongoDB operators $gt, $lt, $in, etc. (teal)
@@ -137,22 +156,22 @@ struct HighlightedSQLTextView: NSViewRepresentable {
                 + "oid|numberInt|numberLong|numberDouble|date|binary|timestamp|numberDecimal)\"",
             options: []
         ) {
-            patterns.append((regex, .systemTeal))
+            patterns.append((regex, .syntaxType))
         }
 
         // Strings (red)
         if let regex = try? NSRegularExpression(pattern: "\"[^\"]*\"", options: []) {
-            patterns.append((regex, .systemRed))
+            patterns.append((regex, .syntaxString))
         }
 
         // Numbers (purple)
         if let regex = try? NSRegularExpression(pattern: "\\b\\d+\\.?\\d*\\b", options: []) {
-            patterns.append((regex, .systemPurple))
+            patterns.append((regex, .syntaxNumber))
         }
 
         // Booleans and null (orange)
         if let regex = try? NSRegularExpression(pattern: "\\b(true|false|null)\\b", options: []) {
-            patterns.append((regex, .systemOrange))
+            patterns.append((regex, .syntaxNull))
         }
 
         return patterns
@@ -167,12 +186,12 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         textStorage.beginEditing()
 
         // Reset to base style
-        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        let font = ThemeEngine.shared.editorFonts.font
         textStorage.addAttribute(.font, value: font, range: fullRange)
-        textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        textStorage.addAttribute(.foregroundColor, value: ThemeEngine.shared.palette[.editorText], range: fullRange)
 
         // Apply pre-compiled patterns
-        let activePatterns: [(regex: NSRegularExpression, color: NSColor)]
+        let activePatterns: [(regex: NSRegularExpression, slot: ThemeSlot)]
         switch PluginManager.shared.editorLanguage(for: databaseType) {
         case .javascript:
             activePatterns = Self.mqlPatterns
@@ -187,10 +206,12 @@ struct HighlightedSQLTextView: NSViewRepresentable {
         } else {
             highlightRange = fullRange
         }
-        for (regex, color) in activePatterns {
+        let palette = ThemeEngine.shared.palette
+
+        for (regex, slot) in activePatterns {
             let matches = regex.matches(in: text, options: [], range: highlightRange)
             for match in matches {
-                textStorage.addAttribute(.foregroundColor, value: color, range: match.range)
+                textStorage.addAttribute(.foregroundColor, value: palette[slot], range: match.range)
             }
         }
 

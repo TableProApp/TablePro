@@ -117,6 +117,6 @@ struct DataGridCellAppearance: Equatable {
         guard kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) else {
             return palette.text
         }
-        return (isTrue ? palette.booleanTrueText : palette.booleanFalseText) ?? palette.text
+        return isTrue ? palette.booleanTrueText : palette.booleanFalseText
     }
 }

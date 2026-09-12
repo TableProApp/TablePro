@@ -100,10 +100,18 @@ extension MainSplitViewController {
     }
 
     @objc func increaseEditorTextSize(_ sender: Any?) {
-        ThemeEngine.shared.adjustEditorFontSize(by: 1)
+        adjustEditorTextSize(by: 1)
     }
 
     @objc func decreaseEditorTextSize(_ sender: Any?) {
-        ThemeEngine.shared.adjustEditorFontSize(by: -1)
+        adjustEditorTextSize(by: -1)
+    }
+
+    private func adjustEditorTextSize(by delta: Int) {
+        var typography = AppSettingsManager.shared.typography
+        let size = TypographySettings.clamp(typography.editorFontSize + delta)
+        guard size != typography.editorFontSize else { return }
+        typography.editorFontSize = size
+        AppSettingsManager.shared.typography = typography
     }
 }

@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 
 enum CellOverlayDismissReason {
     case userAction
@@ -233,16 +234,27 @@ class CellOverlayBase: NSObject {
 final class CellOverlayContainerView: NSView {
     override var isFlipped: Bool { true }
 
+    private var themeCancellable: AnyCancellable?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, themeCancellable == nil else { return }
+
+        themeCancellable = AppEvents.shared.themeChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyLayerColors() }
+    }
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyLayerColors()
     }
 
     /// A `CGColor` is a resolved colour and a layer never resolves it again, so the two layer
-    /// colours are reapplied whenever the appearance changes under an open overlay.
+    /// colours are reapplied whenever the appearance or the theme changes under an open overlay.
     func applyLayerColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
+            layer?.borderColor = ThemeEngine.shared.palette[.gridFocusBorder].cgColor
             layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
         }
     }

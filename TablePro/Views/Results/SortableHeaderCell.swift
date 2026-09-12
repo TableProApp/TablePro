@@ -190,7 +190,9 @@ final class SortableHeaderCell: NSTableHeaderCell {
     }
 
     private func foregroundColor(emphasized: Bool) -> NSColor {
-        emphasized ? .alternateSelectedControlTextColor : .headerTextColor
+        emphasized
+            ? ThemeEngine.shared.palette[.gridSelectionText]
+            : ThemeEngine.shared.palette[.gridHeaderText]
     }
 
     private func commentColor(emphasized: Bool) -> NSColor {

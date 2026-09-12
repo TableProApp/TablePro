@@ -1,298 +1,116 @@
-//
-//  ThemeEditorColorsSection.swift
-//  TablePro
-//
-
 import AppKit
 import os
 import SwiftUI
 
-// MARK: - HexColorPicker
+/// One well per registered slot, driven by `ThemeSlot.allCases`, so a slot the app gains appears
+/// here without a second hand-maintained list to keep in step.
+internal struct ThemeEditorColorsSection: View {
+    internal let theme: ThemeDefinition
 
-struct HexColorPicker: View {
-    let label: String
-    @Binding var hex: String
+    @State private var draft: ThemeDefinition?
+    @State private var saveTask: Task<Void, Never>?
 
-    var body: some View {
-        let colorBinding = Binding<Color>(
-            get: { hex.swiftUIColor },
-            set: { newColor in
-                if let converted = NSColor(newColor).usingColorSpace(.sRGB) {
-                    hex = converted.hexString
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorColors")
+    private static let saveDelay = Duration.milliseconds(250)
+
+    private var edited: ThemeDefinition {
+        guard let draft, draft.id == theme.id else { return theme }
+        return draft
+    }
+
+    internal var body: some View {
+        Form {
+            ForEach(ThemeSlotGroup.allCases, id: \.self) { group in
+                Section(group.label) {
+                    ForEach(group.slots, id: \.self) { slot in
+                        row(for: slot)
+                    }
                 }
             }
-        )
-        ColorPicker(label, selection: colorBinding, supportsOpacity: true)
-    }
-}
-
-// MARK: - ThemeEditorColorsSection
-
-internal struct ThemeEditorColorsSection: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorColorsSection")
-    private var engine: ThemeEngine { ThemeEngine.shared }
-    private var theme: ThemeDefinition { engine.activeTheme }
-
-    var body: some View {
-        Form {
-            editorSection
-            syntaxSection
-            dataGridSection
-            interfaceSection
-            statusSection
-            badgesSection
-            sidebarSection
-            toolbarSection
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        .onDisappear { flush() }
     }
 
-    // MARK: - Editor
+    private func row(for slot: ThemeSlot) -> some View {
+        let value = edited[keyPath: slot.keyPath]
 
-    private var editorSection: some View {
-        Section(String(localized: "Editor")) {
-            LabeledContent(String(localized: "Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.background))
-            }
-            LabeledContent(String(localized: "Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.text))
-            }
-            LabeledContent(String(localized: "Cursor")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.cursor))
-            }
-            LabeledContent(String(localized: "Current Line")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.currentLineHighlight))
-            }
-            LabeledContent(String(localized: "Selection")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.selection))
-            }
-            LabeledContent(String(localized: "Line Number")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.lineNumber))
-            }
-            LabeledContent(String(localized: "Invisibles")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.invisibles))
-            }
-        }
-    }
-
-    private var syntaxSection: some View {
-        Section(String(localized: "Syntax Colors")) {
-            LabeledContent(String(localized: "Keyword")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.keyword))
-            }
-            LabeledContent(String(localized: "String")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.string))
-            }
-            LabeledContent(String(localized: "Number")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.number))
-            }
-            LabeledContent(String(localized: "Comment")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.comment))
-            }
-            LabeledContent(String(localized: "NULL")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.null))
-            }
-            LabeledContent(String(localized: "Operator")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.operator))
-            }
-            LabeledContent(String(localized: "Function")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.function))
-            }
-            LabeledContent(String(localized: "Type")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.editor.syntax.type))
-            }
-        }
-    }
-
-    // MARK: - Data Grid
-
-    private var dataGridSection: some View {
-        let system = ResolvedDataGridColors(from: .defaultLight)
-        let resolved = ResolvedDataGridColors(from: theme.dataGrid)
-        return Section(String(localized: "Data Grid")) {
-            optionalColorRow(String(localized: "Background"), keyPath: \.dataGrid.background,
-                             fallback: system.background)
-            optionalColorRow(String(localized: "Text"), keyPath: \.dataGrid.text,
-                             fallback: system.text)
-            optionalColorRow(String(localized: "Alternate Row"), keyPath: \.dataGrid.alternateRow,
-                             fallback: system.alternateRow)
-            optionalColorRow(String(localized: "NULL Value"), keyPath: \.dataGrid.nullValue,
-                             fallback: system.nullValue)
-            optionalColorRow(String(localized: "Bool True"), keyPath: \.dataGrid.boolTrue,
-                             fallback: resolved.text)
-            optionalColorRow(String(localized: "Bool False"), keyPath: \.dataGrid.boolFalse,
-                             fallback: resolved.text)
-            optionalColorRow(String(localized: "Row Number"), keyPath: \.dataGrid.rowNumber,
-                             fallback: system.rowNumber)
-            LabeledContent(String(localized: "Modified")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.modified))
-            }
-            LabeledContent(String(localized: "Inserted")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.inserted))
-            }
-            LabeledContent(String(localized: "Deleted")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.deleted))
-            }
-            LabeledContent(String(localized: "Deleted Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.dataGrid.deletedText))
-            }
-        }
-    }
-
-    // MARK: - Interface
-
-    private var interfaceSection: some View {
-        Section(String(localized: "Interface")) {
-            optionalColorRow(String(localized: "Window Background"), keyPath: \.ui.windowBackground,
-                             fallback: .windowBackgroundColor)
-            optionalColorRow(String(localized: "Control Background"), keyPath: \.ui.controlBackground,
-                             fallback: .controlBackgroundColor)
-            optionalColorRow(String(localized: "Card Background"), keyPath: \.ui.cardBackground,
-                             fallback: .controlBackgroundColor)
-            optionalColorRow(String(localized: "Border"), keyPath: \.ui.border,
-                             fallback: .separatorColor)
-            optionalColorRow(String(localized: "Primary Text"), keyPath: \.ui.primaryText,
-                             fallback: .labelColor)
-            optionalColorRow(String(localized: "Secondary Text"), keyPath: \.ui.secondaryText,
-                             fallback: .secondaryLabelColor)
-            optionalColorRow(String(localized: "Tertiary Text"), keyPath: \.ui.tertiaryText,
-                             fallback: .tertiaryLabelColor)
-            optionalColorRow(String(localized: "Selection"), keyPath: \.ui.selectionBackground,
-                             fallback: .selectedContentBackgroundColor)
-            optionalColorRow(String(localized: "Hover"), keyPath: \.ui.hoverBackground,
-                             fallback: .unemphasizedSelectedContentBackgroundColor)
-        }
-    }
-
-    private var statusSection: some View {
-        Section(String(localized: "Status Colors")) {
-            LabeledContent(String(localized: "Success")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.status.success))
-            }
-            LabeledContent(String(localized: "Warning")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.status.warning))
-            }
-            LabeledContent(String(localized: "Error")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.status.error))
-            }
-            LabeledContent(String(localized: "Info")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.status.info))
-            }
-        }
-    }
-
-    private var badgesSection: some View {
-        Section(String(localized: "Badges")) {
-            LabeledContent(String(localized: "Badge Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.badges.background))
-            }
-            LabeledContent(String(localized: "Primary Key")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.badges.primaryKey))
-            }
-            LabeledContent(String(localized: "Auto Increment")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.badges.autoIncrement))
-            }
-        }
-    }
-
-    // MARK: - Sidebar
-
-    private var sidebarSection: some View {
-        Section(String(localized: "Sidebar")) {
-            optionalColorRow(String(localized: "Background"), keyPath: \.sidebar.background,
-                             fallback: .windowBackgroundColor)
-            optionalColorRow(String(localized: "Text"), keyPath: \.sidebar.text,
-                             fallback: .labelColor)
-            optionalColorRow(String(localized: "Selected Item"), keyPath: \.sidebar.selectedItem,
-                             fallback: .selectedContentBackgroundColor)
-            optionalColorRow(String(localized: "Hover"), keyPath: \.sidebar.hover,
-                             fallback: .unemphasizedSelectedContentBackgroundColor)
-            optionalColorRow(String(localized: "Section Header"), keyPath: \.sidebar.sectionHeader,
-                             fallback: .secondaryLabelColor)
-        }
-    }
-
-    // MARK: - Toolbar
-
-    private var toolbarSection: some View {
-        Section(String(localized: "Toolbar")) {
-            optionalColorRow(String(localized: "Secondary Text"), keyPath: \.toolbar.secondaryText,
-                             fallback: .secondaryLabelColor)
-            optionalColorRow(String(localized: "Tertiary Text"), keyPath: \.toolbar.tertiaryText,
-                             fallback: .tertiaryLabelColor)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func colorBinding(for keyPath: WritableKeyPath<ThemeDefinition, String>) -> Binding<String> {
-        Binding(
-            get: { theme[keyPath: keyPath] },
-            set: { newValue in
-                guard theme.isEditable else { return }
-                var updated = theme
-                updated[keyPath: keyPath] = newValue
-                do {
-                    try engine.saveUserTheme(updated)
-                } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+        return LabeledContent(slot.label) {
+            HStack(spacing: 8) {
+                if case let .system(name) = value {
+                    Text(name.rawValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            }
-        )
-    }
 
-    private func optionalColorBinding(
-        for keyPath: WritableKeyPath<ThemeDefinition, String?>,
-        fallback: NSColor
-    ) -> Binding<String> {
-        Binding(
-            get: {
-                if let hex = theme[keyPath: keyPath] {
-                    return hex
-                }
-                return (fallback.usingColorSpace(.sRGB) ?? fallback).hexString
-            },
-            set: { newValue in
-                guard theme.isEditable else { return }
-                var updated = theme
-                updated[keyPath: keyPath] = newValue
-                do {
-                    try engine.saveUserTheme(updated)
-                } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
-                }
+                ColorPicker("", selection: binding(for: slot), supportsOpacity: true)
+                    .labelsHidden()
             }
-        )
-    }
-
-    @ViewBuilder
-    private func optionalColorRow(
-        _ label: String,
-        keyPath: WritableKeyPath<ThemeDefinition, String?>,
-        fallback: NSColor
-    ) -> some View {
-        LabeledContent(label) {
-            HStack(spacing: 4) {
-                HexColorPicker(label: "", hex: optionalColorBinding(for: keyPath, fallback: fallback))
-                if theme[keyPath: keyPath] != nil {
-                    Button {
-                        guard theme.isEditable else { return }
-                        var updated = theme
-                        updated[keyPath: keyPath] = nil
-                        do {
-                            try engine.saveUserTheme(updated)
-                        } catch {
-                            Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
-                        }
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.caption)
+            .contextMenu {
+                if case .hex = value, case let .system(name) = BuiltInThemes.default(for: theme.appearance)[keyPath: slot.keyPath] {
+                    Button(String(format: String(localized: "Use System Color (%@)"), name.rawValue)) {
+                        write(.system(name), to: slot)
                     }
-                    .buttonStyle(.borderless)
-                    .help(String(localized: "Reset to System Default"))
                 }
             }
+        }
+    }
+
+    private var editedAppearance: NSAppearance? {
+        NSAppearance(named: theme.appearance == .dark ? .darkAqua : .aqua)
+    }
+
+    private func resolved(_ value: ThemeColorValue) -> NSColor {
+        guard value.isSystem, let editedAppearance else { return value.nsColor }
+
+        var color = value.nsColor
+        editedAppearance.performAsCurrentDrawingAppearance {
+            color = value.nsColor.usingColorSpace(.sRGB) ?? value.nsColor
+        }
+        return color
+    }
+
+    private func binding(for slot: ThemeSlot) -> Binding<Color> {
+        Binding(
+            get: { Color(nsColor: resolved(edited[keyPath: slot.keyPath])) },
+            set: { newColor in
+                write(.hex(HexColor.string(from: NSColor(newColor))), to: slot)
+            }
+        )
+    }
+
+    /// The well emits on every drag tick, and each one used to write the file, rescan the themes
+    /// directory and re-activate. The draft absorbs the ticks and one save follows the settle.
+    private func write(_ value: ThemeColorValue, to slot: ThemeSlot) {
+        var updated = edited
+        updated[keyPath: slot.keyPath] = value
+        draft = updated
+
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.saveDelay)
+            guard !Task.isCancelled else { return }
+            save(updated)
+        }
+    }
+
+    private func flush() {
+        saveTask?.cancel()
+        saveTask = nil
+        guard let draft, draft != theme else { return }
+        save(draft)
+    }
+
+    private func save(_ updated: ThemeDefinition) {
+        do {
+            try ThemeCatalog.shared.save(updated)
+            let appearance = AppSettingsManager.shared.appearance
+            ThemeEngine.shared.reapply(
+                lightThemeId: appearance.preferredLightThemeId,
+                darkThemeId: appearance.preferredDarkThemeId
+            )
+        } catch {
+            Self.logger.error("Could not save theme: \(error.localizedDescription)")
         }
     }
 }
