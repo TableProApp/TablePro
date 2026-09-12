@@ -11,7 +11,7 @@ import TableProPluginKit
 
 /// Owns the map's overlays, its hit-testing and its selection highlight.
 @MainActor
-final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
+final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecognizerDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ResultMap")
 
     /// How far off a line a click may land and still hit it, in points. A line is one pixel of
@@ -38,11 +38,15 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
         self.onSelect = onSelect
     }
 
+    /// `MKMapView` installs its own recognizers for panning and zooming, and a click recognizer
+    /// added beside them has to agree to share: without a delegate answering
+    /// `shouldRecognizeSimultaneouslyWith`, MapKit's recognizers win every arbitration and the
+    /// click action is never sent. `delaysPrimaryMouseButtonEvents` is left at its default for the
+    /// same reason; setting it to false hands the events to the map view before this recognizer has
+    /// decided anything.
     func attach(to mapView: MKMapView) {
         let recognizer = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
-        /// Delaying nothing keeps panning and zooming exactly as MapKit implements them; the
-        /// recognizer only ever reports a completed click.
-        recognizer.delaysPrimaryMouseButtonEvents = false
+        recognizer.delegate = self
         mapView.addGestureRecognizer(recognizer)
         clickRecognizer = recognizer
     }
@@ -223,10 +227,13 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
 
     // MARK: - Hit-testing
 
-    /// Resolves a click to a row by asking each aggregate overlay's renderer for its `CGPath`.
+    /// Resolves a click to a row through `ResultMapHitTesting`, which asks each shape's renderer
+    /// for its `CGPath`.
     ///
     /// This is the whole reason the pane is AppKit: it is the only route MapKit publishes to a
-    /// polygon or polyline hit, and it costs 0.116ms over 20,000 shapes.
+    /// polygon or polyline hit, and it costs 0.116ms over 20,000 shapes. The geometry lives in a
+    /// pure type so it can be tested without a map view, which is what the first version could not
+    /// be and why it shipped not working.
     @objc
     private func handleClick(_ recognizer: NSClickGestureRecognizer) {
         guard let mapView = recognizer.view as? MKMapView else { return }
@@ -244,55 +251,48 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
         let mapPoint = MKMapPoint(coordinate)
         let slop = Self.lineHitSlopPoints * mapView.visibleMapRect.width / Double(mapView.bounds.width)
 
-        if let rowID = polygonHit(at: mapPoint, in: mapView) {
+        if let rowID = polygonHit(at: mapPoint) {
             onSelect(rowID)
             return
         }
-        if let rowID = polylineHit(at: mapPoint, slop: slop, in: mapView) {
+        if let rowID = polylineHit(at: mapPoint, slop: slop) {
             onSelect(rowID)
             return
         }
         onSelect(nil)
     }
 
-    private func polygonHit(at mapPoint: MKMapPoint, in mapView: MKMapView) -> RowID? {
-        guard let overlay = polygonOverlay, mapView.renderer(for: overlay) != nil else { return nil }
-        /// Later shapes draw over earlier ones, so the topmost match is the one the user clicked.
-        /// The bounding-rect test comes first because it rejects almost every member for the cost
-        /// of a comparison, which is what keeps this at a fraction of a millisecond over 20,000
-        /// shapes.
-        for (index, polygon) in overlay.polygons.enumerated().reversed()
-            where polygon.boundingMapRect.contains(mapPoint)
-        {
-            let renderer = MKPolygonRenderer(polygon: polygon)
-            guard let path = renderer.path, path.contains(renderer.point(for: mapPoint)) else { continue }
-            guard index < polygonRowIDs.count else { continue }
-            return polygonRowIDs[index]
+    private func polygonHit(at mapPoint: MKMapPoint) -> RowID? {
+        guard let overlay = polygonOverlay,
+              let index = ResultMapHitTesting.polygonIndex(at: mapPoint, in: overlay.polygons),
+              index < polygonRowIDs.count
+        else {
+            return nil
         }
-        return nil
+        return polygonRowIDs[index]
     }
 
-    private func polylineHit(at mapPoint: MKMapPoint, slop: Double, in mapView: MKMapView) -> RowID? {
-        guard let overlay = polylineOverlay else { return nil }
-        let padded = MKMapRect(
-            x: mapPoint.x - slop,
-            y: mapPoint.y - slop,
-            width: slop * 2,
-            height: slop * 2
-        )
-        for (index, polyline) in overlay.polylines.enumerated().reversed()
-            where polyline.boundingMapRect.intersects(padded)
-        {
-            let renderer = MKPolylineRenderer(polyline: polyline)
-            guard let cgPath = renderer.path else { continue }
-            let localSlop = abs(renderer.point(for: MKMapPoint(x: mapPoint.x + slop, y: mapPoint.y)).x
-                - renderer.point(for: mapPoint).x)
-            let stroked = cgPath.copy(strokingWithWidth: max(localSlop * 2, 1), lineCap: .round, lineJoin: .round, miterLimit: 1)
-            guard stroked.contains(renderer.point(for: mapPoint)) else { continue }
-            guard index < polylineRowIDs.count else { continue }
-            return polylineRowIDs[index]
+    private func polylineHit(at mapPoint: MKMapPoint, slop: Double) -> RowID? {
+        guard let overlay = polylineOverlay,
+              let index = ResultMapHitTesting.polylineIndex(
+                  at: mapPoint,
+                  in: overlay.polylines,
+                  slopInMapPoints: slop
+              ),
+              index < polylineRowIDs.count
+        else {
+            return nil
         }
-        return nil
+        return polylineRowIDs[index]
+    }
+
+    // MARK: - NSGestureRecognizerDelegate
+
+    nonisolated func gestureRecognizer(
+        _ gestureRecognizer: NSGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer
+    ) -> Bool {
+        true
     }
 
     // MARK: - Shape building
