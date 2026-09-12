@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Silently lost edit on a table with no primary key holding a `FLOAT`, `DOUBLE` or `JSON` column.
+- A save on a table with no primary key reporting success when it matched no row.
+- SQL Server and Oracle reporting zero rows affected for every `INSERT`, `UPDATE` and `DELETE`.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
 - Add Row under a column value filter selecting and opening the wrong row for editing.

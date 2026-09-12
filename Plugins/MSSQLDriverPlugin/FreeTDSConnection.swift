@@ -399,6 +399,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         var allRows: [[MSSQLRawCell]] = []
         var firstResultSet = true
         var truncated = false
+        var rowsWritten = 0
 
         while true {
             lock.lock()
@@ -418,7 +419,10 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             }
 
             let numCols = dbnumcols(proc)
-            if numCols <= 0 { continue }
+            if numCols <= 0 {
+                rowsWritten += Int(dbcount(proc))
+                continue
+            }
 
             var descriptors: [MSSQLColumnDescriptor] = []
             for i in 1...numCols {
@@ -472,7 +476,11 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
             }
         }
 
-        let affectedRows = allColumns.isEmpty ? 0 : allRows.count
+        // A statement that returns no rows still reports how many it wrote, and db-lib carries that
+        // in dbcount() for the result set just walked. Deriving the count from the rows read instead
+        // answered 0 for every INSERT, UPDATE and DELETE, so nothing downstream could tell a write
+        // that changed nothing from one that changed everything it meant to.
+        let affectedRows = allColumns.isEmpty ? rowsWritten : allRows.count
         return MSSQLRawResult(
             columns: allColumns,
             rows: allRows,

@@ -77,6 +77,19 @@ struct MySQLVariantSupportTests {
         #expect(PluginManager.shared.rowMatchExcludedTypePrefixes(for: .tidb).isEmpty)
     }
 
+    @Test("Every MySQL-family engine matches a keyless row on the text of the types that cannot compare")
+    func mysqlFamilyMatchesLossyTypesAsText() {
+        for type in [DatabaseType.mysql, .mariadb, .tidb] {
+            let prefixes = PluginManager.shared.rowMatchTextTypePrefixes(for: type)
+            #expect(prefixes.contains("FLOAT"))
+            #expect(prefixes.contains("DOUBLE"))
+            #expect(prefixes.contains("JSON"))
+            #expect(!prefixes.contains("BIT"))
+        }
+        #expect(PluginManager.shared.rowMatchTextTypePrefixes(for: .postgresql).isEmpty)
+        #expect(PluginManager.shared.rowMatchTextTypePrefixes(for: .sqlite).isEmpty)
+    }
+
     @Test("The inspector's function menu offers only what each engine has")
     func functionMenu() {
         let tidb = SQLFunctionProvider.functions(for: .tidb).map(\.expression)

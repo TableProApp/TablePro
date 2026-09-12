@@ -284,7 +284,8 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -348,7 +349,8 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,

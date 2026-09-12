@@ -46,7 +46,7 @@ struct ParsedSchemaMetadata {
     /// to carry. Only the schema knows which columns the server owns, so a command that stages a
     /// value from that knowledge waits for it rather than guessing from an empty set.
     let isAuthoritative: Bool
-    var rowMatchExcludedColumns: Set<String> = []
+    var rowMatchPolicy: RowMatchPolicy = .none
 
     /// The metadata a tab already holds, captured at the moment the cache decision is made.
     ///
@@ -65,7 +65,7 @@ struct ParsedSchemaMetadata {
             columnEnumValues: rows.columnEnumValues,
             columnComments: rows.columnComments,
             isAuthoritative: rows.hasAuthoritativeSchema,
-            rowMatchExcludedColumns: rows.rowMatchExcludedColumns
+            rowMatchPolicy: rows.rowMatchPolicy
         )
     }
 }
@@ -223,7 +223,8 @@ final class QueryExecutor {
 
     static func parseSchemaMetadata(
         _ schema: FetchedTableSchema,
-        rowMatchExcludedTypePrefixes: [String] = []
+        rowMatchExcludedTypePrefixes: [String] = [],
+        rowMatchTextTypePrefixes: [String] = []
     ) -> ParsedSchemaMetadata {
         var defaults: [String: String?] = [:]
         var nullable: [String: Bool] = [:]
@@ -268,13 +269,16 @@ final class QueryExecutor {
             columnEnumValues: enumValues,
             columnComments: comments,
             isAuthoritative: true,
-            rowMatchExcludedColumns: rowMatchExcludedColumns(
-                in: schema.columns, typePrefixes: rowMatchExcludedTypePrefixes
+            rowMatchPolicy: RowMatchPolicy(
+                excludedColumns: columns(in: schema.columns, typedAnyOf: rowMatchExcludedTypePrefixes),
+                textColumns: columns(in: schema.columns, typedAnyOf: rowMatchTextTypePrefixes)
             )
         )
     }
 
-    static func rowMatchExcludedColumns(in columns: [ColumnInfo], typePrefixes: [String]) -> Set<String> {
+    /// Both halves of a `RowMatchPolicy` are the columns whose declared type starts with one of the
+    /// given prefixes, so they share one resolver.
+    static func columns(in columns: [ColumnInfo], typedAnyOf typePrefixes: [String]) -> Set<String> {
         guard !typePrefixes.isEmpty else { return [] }
         return Set(columns.filter { column in
             let dataType = column.dataType.uppercased()

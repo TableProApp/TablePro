@@ -141,6 +141,15 @@ struct PluginMetadataSnapshot: Sendable {
         let structureColumnFields: [StructureColumnField]
         let implicitSchemaName: String?
         let rowMatchExcludedTypePrefixes: [String]
+        /// Column types whose keyless row match has to compare the server's own text rendering
+        /// rather than the value itself. A grid reads every cell back as text, and on these types
+        /// that text does not compare equal to what it was read from: measured on MySQL 8.4.11 and
+        /// OceanBase 4.4.2.1, a `FLOAT` holding 1.1 reads back `1.1` and `WHERE f = '1.1'` matches
+        /// no row, because the server widens the stored single to a different double than it parses
+        /// the literal into. `JSON` never compares equal to a string at all. Listing a type here
+        /// wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
+        /// over a `BIT` column returns its raw bytes and breaks a match that works today.
+        let rowMatchTextTypePrefixes: [String]
 
         init(
             defaultSchemaName: String,
@@ -157,7 +166,8 @@ struct PluginMetadataSnapshot: Sendable {
             databaseGroupingStrategy: GroupingStrategy,
             structureColumnFields: [StructureColumnField],
             implicitSchemaName: String? = nil,
-            rowMatchExcludedTypePrefixes: [String] = []
+            rowMatchExcludedTypePrefixes: [String] = [],
+            rowMatchTextTypePrefixes: [String] = []
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -174,6 +184,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.structureColumnFields = structureColumnFields
             self.implicitSchemaName = implicitSchemaName
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
+            self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
         }
 
         static let defaults = SchemaInfo(
@@ -342,7 +353,8 @@ struct PluginMetadataSnapshot: Sendable {
                 databaseGroupingStrategy: source.schema.databaseGroupingStrategy,
                 structureColumnFields: schema.structureColumnFields,
                 implicitSchemaName: source.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
             ),
             editor: editor, connection: connection
         )
@@ -653,7 +665,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 databaseGroupingStrategy: driverType.databaseGroupingStrategy,
                 structureColumnFields: driverType.structureColumnFields,
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? []
+                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
+                rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? []
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,

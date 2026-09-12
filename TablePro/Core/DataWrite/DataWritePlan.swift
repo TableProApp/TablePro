@@ -77,17 +77,23 @@ struct DataWriteStep: Sendable {
     /// nothing tells the host which rows went into it.
     let expectedRowCount: Int?
     let tableName: String?
+    /// Whether this statement finds its rows by matching every column, because the table declares no
+    /// primary key. Such a match can silently find nothing, so unlike a keyed write it is held to
+    /// the count it expected rather than only to an upper bound.
+    let matchesRowsWithoutKey: Bool
 
     init(
         kind: Kind,
         statement: ParameterizedStatement,
         expectedRowCount: Int? = nil,
-        tableName: String? = nil
+        tableName: String? = nil,
+        matchesRowsWithoutKey: Bool = false
     ) {
         self.kind = kind
         self.statement = statement
         self.expectedRowCount = expectedRowCount
         self.tableName = tableName
+        self.matchesRowsWithoutKey = matchesRowsWithoutKey
     }
 }
 

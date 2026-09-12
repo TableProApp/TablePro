@@ -11,8 +11,15 @@
 //  affected count against the count the plan expected is what catches it, and inside a transaction
 //  it is caught before it lands.
 //
-//  The comparison is `actual > expected`, never `actual != expected`. MySQL reports zero affected
-//  rows for an UPDATE that writes a value a row already holds, which is a normal save, not a fault.
+//  For a keyed write the comparison is `actual > expected`, never `actual != expected`. MySQL reports
+//  zero affected rows for an UPDATE that writes a value a row already holds, which is a normal save,
+//  not a fault.
+//
+//  A keyless write is held to both ends. It finds its row by matching every column against the text
+//  the grid read, and that match can simply find nothing: measured on MySQL 8.4.11 and OceanBase
+//  4.4.2.1, a row holding a FLOAT or a JSON column matched zero rows, the statement wrote nothing,
+//  and the save reported success while the edit disappeared on the next reload. Only the engines
+//  whose drivers report a real count can be held to it, which `reportsRowsAffected` decides.
 //
 
 import Foundation
@@ -123,7 +130,12 @@ enum DataWriteExecutor {
                     )
                 }
 
-                try verify(step, rowsAffected: result.rowsAffected, canRollBack: useTransaction)
+                try verify(
+                    step,
+                    rowsAffected: result.rowsAffected,
+                    canRollBack: useTransaction,
+                    countsAreMeaningful: DataWriteRowCounts.areMeaningful(for: plan.databaseType)
+                )
                 results.append(
                     DataWriteStepResult(
                         executionTime: Date().timeIntervalSince(start),
@@ -186,14 +198,30 @@ enum DataWriteExecutor {
         )
     }
 
-    private static func verify(_ step: DataWriteStep, rowsAffected: Int, canRollBack: Bool) throws {
-        guard let expected = step.expectedRowCount, rowsAffected > expected else { return }
+    private static func verify(
+        _ step: DataWriteStep,
+        rowsAffected: Int,
+        canRollBack: Bool,
+        countsAreMeaningful: Bool
+    ) throws {
+        guard let expected = step.expectedRowCount else { return }
         let table = step.tableName ?? ""
+
+        if rowsAffected > expected {
+            logger.error(
+                "Statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
+            )
+            throw canRollBack
+                ? DataWriteError.tooManyRowsAffected(table: table, expected: expected, actual: rowsAffected)
+                : DataWriteError.tooManyRowsAffectedUnrecoverable(
+                    table: table, expected: expected, actual: rowsAffected
+                )
+        }
+
+        guard step.matchesRowsWithoutKey, countsAreMeaningful, rowsAffected < expected else { return }
         logger.error(
-            "Statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
+            "Keyless statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
         )
-        throw canRollBack
-            ? DataWriteError.tooManyRowsAffected(table: table, expected: expected, actual: rowsAffected)
-            : DataWriteError.tooManyRowsAffectedUnrecoverable(table: table, expected: expected, actual: rowsAffected)
+        throw DataWriteError.rowsNoLongerMatch(table: table, expected: expected, actual: rowsAffected)
     }
 }
