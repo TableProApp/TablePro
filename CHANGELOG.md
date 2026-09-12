@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
 - Column header shown as selected after a cell drag reached the first and last row of the page.
 - No outline around a swept cell block whose rows reached both ends of the page.

@@ -64,8 +64,8 @@ extension MySQLPluginDriver {
         return flavor.killTarget(connectionIdentifier: identifier)
     }
 
-    func tidbCheckConstraints(table: String) async throws -> [PluginCheckConstraintInfo] {
-        let result = try await execute(query: "SHOW CREATE TABLE \(quoteIdentifier(table))")
+    func tidbCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [] }
         return TiDBCheckConstraints.parse(createTable: createTable)
     }
