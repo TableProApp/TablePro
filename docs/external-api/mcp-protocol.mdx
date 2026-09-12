@@ -255,6 +255,8 @@ Without `elicitation`, TablePro shows its own confirmation dialog on the user's 
 }
 ```
 
+The `description` carries the statement verbatim, line breaks and all, up to 2,000 characters. Render it as a block rather than a one-line label: it is the only thing the person sees before they approve, and a `WHERE` clause that falls off the end changes what they agreed to.
+
 Present the form, then repeat the **same** call with the answer and the state echoed back:
 
 ```json
@@ -271,6 +273,8 @@ Present the form, then repeat the **same** call with the answer and the state ec
 `requestState` is signed and bound to the token, the method, and a digest of the parameters. Change any argument between the two calls and it is rejected with `-32602`. It expires after 5 minutes. An `action` other than `accept`, or `approved: false`, fails the call with a `denied` tool error.
 
 A call that carries `inputResponses` or `requestState` is never cached, whatever the method's normal hint says.
+
+An accepted form stands in for TablePro's own dialog only on a `fullAccess` token. On a `readOnly` or `readWrite` token, and on the anonymous loopback principal, Safe Mode still puts its dialog on the Mac afterwards, so a write is confirmed twice: once in your interface, once in TablePro's. Ask for `fullAccess` at [pairing](/external-api/pairing) if the second prompt is not what you want.
 
 ## Errors
 

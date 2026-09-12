@@ -1,3 +1,11 @@
+//
+//  ThemeEngine.swift
+//  TablePro
+//
+//  Central @Observable singleton managing the active theme.
+//  Replaces Theme.swift, SQLEditorTheme, DataGridFontCache, ToolbarDesignTokens.
+//
+
 import AppKit
 import CodeEditSourceEditor
 import Combine
@@ -6,6 +14,9 @@ import Observation
 import os
 import SwiftUI
 
+// MARK: - Font Caches
+
+/// Tags stored on NSTextField.tag to identify which font variant a cell uses.
 internal enum DataGridFontVariant {
     static let regular = 0
     static let italic = 1
@@ -13,263 +24,447 @@ internal enum DataGridFontVariant {
     static let rowNumber = 3
 }
 
-internal struct EditorFontCache: Equatable {
-    internal let font: NSFont
-    internal let lineNumberFont: NSFont
-    internal let scaleFactor: CGFloat
+internal struct EditorFontCache {
+    let font: NSFont
+    let lineNumberFont: NSFont
+    let scaleFactor: CGFloat
 
-    internal init(from typography: TypographySettings) {
-        let scale = Self.accessibilityScale()
+    init(from fonts: ThemeFonts) {
+        let scale = Self.computeAccessibilityScale()
         scaleFactor = scale
-
-        let size = round(CGFloat(typography.clampedEditorFontSize) * scale)
-        font = EditorFontResolver.resolve(familyId: typography.editorFontFamily, size: size)
-        lineNumberFont = NSFont.monospacedSystemFont(ofSize: max(round(size - 2), 9), weight: .regular)
+        let scaledSize = round(CGFloat(min(max(fonts.editorFontSize, 11), 18)) * scale)
+        font = EditorFontResolver.resolve(familyId: fonts.editorFontFamily, size: scaledSize)
+        let lineNumSize = max(round((scaledSize - 2)), 9)
+        lineNumberFont = NSFont.monospacedSystemFont(ofSize: lineNumSize, weight: .regular)
     }
 
-    internal static func accessibilityScale() -> CGFloat {
-        let preferred = NSFont.preferredFont(forTextStyle: .body)
-        return min(max(preferred.pointSize / 13.0, 0.5), 3.0)
+    static func computeAccessibilityScale() -> CGFloat {
+        let preferredBodyFont = NSFont.preferredFont(forTextStyle: .body)
+        let scale = preferredBodyFont.pointSize / 13.0
+        return min(max(scale, 0.5), 3.0)
     }
 }
 
-internal struct DataGridFontCache: Equatable {
-    internal let regular: NSFont
-    internal let italic: NSFont
-    internal let medium: NSFont
-    internal let rowNumber: NSFont
-    internal let monoCharWidth: CGFloat
+internal struct DataGridFontCacheResolved {
+    let regular: NSFont
+    let italic: NSFont
+    let medium: NSFont
+    let rowNumber: NSFont
+    let monoCharWidth: CGFloat
 
-    internal init(from typography: TypographySettings) {
-        let scale = EditorFontCache.accessibilityScale()
-        let size = round(CGFloat(typography.clampedDataGridFontSize) * scale)
-
-        regular = EditorFontResolver.resolve(familyId: typography.dataGridFontFamily, size: size)
+    init(from fonts: ThemeFonts) {
+        let scale = EditorFontCache.computeAccessibilityScale()
+        let scaledSize = round(CGFloat(min(max(fonts.dataGridFontSize, 10), 18)) * scale)
+        regular = EditorFontResolver.resolve(familyId: fonts.dataGridFontFamily, size: scaledSize)
         italic = regular.withTraits(.italic)
         medium = NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask)
-        rowNumber = NSFont.monospacedDigitSystemFont(ofSize: max(round(size - 1), 9), weight: .regular)
-        monoCharWidth = ("M" as NSString).size(withAttributes: [.font: regular]).width
+        let rowNumSize = max(round(scaledSize - 1), 9)
+        rowNumber = NSFont.monospacedDigitSystemFont(ofSize: rowNumSize, weight: .regular)
+        let attrs: [NSAttributedString.Key: Any] = [.font: regular]
+        monoCharWidth = ("M" as NSString).size(withAttributes: attrs).width
     }
 }
 
-/// Owns the active palette and the font caches, and nothing else: the catalog is `ThemeCatalog`,
-/// the choice is `ThemeResolver`, and the fonts come from settings. It never writes settings back,
-/// so the flow is one way.
+// MARK: - ThemeEngine
+
 @Observable
 @MainActor
 internal final class ThemeEngine {
-    internal static let shared = ThemeEngine()
+    static let shared = ThemeEngine()
 
-    internal private(set) var pair: ThemePair
-    internal private(set) var effectiveAppearance: ThemeAppearance
-    internal private(set) var revision: Int
-    internal private(set) var palette: ThemePalette
-    internal private(set) var resolved: ResolvedTheme
-    internal private(set) var editorFonts: EditorFontCache
-    internal private(set) var dataGridFonts: DataGridFontCache
+    // MARK: - Active Theme
 
-    internal var activeTheme: ThemeDefinition { pair[effectiveAppearance] }
+    private(set) var activeTheme: ThemeDefinition
 
-    internal var change: ThemeChange {
-        ThemeChange(revision: revision, appearance: effectiveAppearance)
-    }
+    /// Pre-resolved colors (rebuilt on theme change)
+    private(set) var colors: ResolvedThemeColors
 
-    /// Every control that shows or edits a stored value takes this, so one value reads the same in
-    /// the grid cell, its inline editor, the row inspector, a cell popover and a pop-out window.
-    internal var valueFont: NSFont { dataGridFonts.regular }
-    internal var valueFontSwiftUI: Font { Font(valueFont) }
-    internal var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
+    /// Cached editor fonts
+    private(set) var editorFonts: EditorFontCache
 
-    @ObservationIgnored
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
+    /// Cached data grid fonts
+    private(set) var dataGridFonts: DataGridFontCacheResolved
 
-    @ObservationIgnored private var mode: AppAppearanceMode = .auto
-    @ObservationIgnored private var typography: TypographySettings = .default
-    @ObservationIgnored private var appearanceObservation: NSKeyValueObservation?
+    // MARK: - Stored Value Font
+
+    /// The font every control that shows or edits a stored value uses, so one value reads the same in
+    /// the grid cell, its inline editor, the row inspector and a pop-out window. It is the data grid
+    /// font today; a viewer that also wears the editor's colours and syntax palette takes
+    /// `editorFonts` instead.
+    var valueFont: NSFont { dataGridFonts.regular }
+
+    var valueFontSwiftUI: Font { Font(valueFont) }
+
+    /// The emphasised variant, for the key half of a key/value pair.
+    var valueFontEmphasizedSwiftUI: Font { Font(dataGridFonts.medium) }
+
+    // MARK: - Available Themes
+
+    private(set) var availableThemes: [ThemeDefinition]
+
+    // MARK: - Editor Behavioral Settings (read from AppSettingsManager)
+
+    /// These are not theme properties but are needed by makeEditorTheme()
+    @ObservationIgnored var highlightCurrentLine: Bool = true
+    @ObservationIgnored var highlightCurrentStatement: Bool = true
+    @ObservationIgnored var showLineNumbers: Bool = true
+    @ObservationIgnored var tabWidth: Int = 4
+    @ObservationIgnored var wordWrap: Bool = false
+
+    // MARK: - Private
+
+    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
     @ObservationIgnored private var accessibilityObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1
+    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
+
+    // MARK: - Init
 
     private init() {
-        pair = .builtIn
-        effectiveAppearance = .light
-        revision = 1
-        palette = ThemePalette(revision: 1)
-        resolved = ResolvedTheme(definition: BuiltInThemes.light, appearance: .light)
-        editorFonts = EditorFontCache(from: .default)
-        dataGridFonts = DataGridFontCache(from: .default)
+        let theme = ThemeDefinition.default
+
+        self.activeTheme = theme
+        self.colors = ResolvedThemeColors(from: theme)
+        self.editorFonts = EditorFontCache(from: theme.fonts)
+        self.dataGridFonts = DataGridFontCacheResolved(from: theme.fonts)
+        self.availableThemes = [theme]
 
         observeAccessibilityChanges()
+
+        Task {
+            let themes = await Task.detached { ThemeStorage.loadAllThemes() }.value
+            self.availableThemes = themes
+        }
     }
 
-    // MARK: - Settings entry points
+    // MARK: - Theme Lifecycle
 
-    internal func apply(mode: AppAppearanceMode, lightThemeId: String, darkThemeId: String) {
-        self.mode = mode
-        applyApplicationAppearance(mode)
-        updateSystemAppearanceObserver(mode)
+    func activateTheme(id: String) {
+        if let theme = availableThemes.first(where: { $0.id == id })
+            ?? ThemeStorage.loadTheme(id: id) {
+            activateTheme(theme)
+            return
+        }
 
-        let selection = ThemeResolver.resolve(
-            mode: mode,
-            lightThemeId: lightThemeId,
-            darkThemeId: darkThemeId,
-            themes: ThemeCatalog.shared.themes,
-            systemIsDark: Self.systemIsDark()
+        Self.logger.warning("Theme '\(id)' not found; falling back to default")
+        activateTheme(.default)
+    }
+
+    func activateTheme(_ theme: ThemeDefinition) {
+        activeTheme = theme
+        colors = ResolvedThemeColors(from: theme)
+        editorFonts = EditorFontCache(from: theme.fonts)
+        dataGridFonts = DataGridFontCacheResolved(from: theme.fonts)
+
+        notifyThemeDidChange()
+
+        Self.logger.info("Activated theme: \(theme.name) (\(theme.id))")
+    }
+
+    // MARK: - Theme CRUD
+
+    func saveUserTheme(_ theme: ThemeDefinition) throws {
+        try ThemeStorage.saveUserTheme(theme)
+
+        if let index = availableThemes.firstIndex(where: { $0.id == theme.id }) {
+            availableThemes[index] = theme
+        } else {
+            availableThemes.append(theme)
+        }
+        reloadAvailableThemes()
+
+        if theme.id == activeTheme.id {
+            activateTheme(theme)
+        }
+    }
+
+    func deleteUserTheme(id: String) throws {
+        guard !id.hasPrefix("tablepro."), !id.hasPrefix("registry.") else { return }
+        try ThemeStorage.deleteUserTheme(id: id)
+        reloadAvailableThemes()
+
+        // If deleted a preferred theme, reset that slot to default
+        var appearance = AppSettingsManager.shared.appearance
+        var changed = false
+        if id == appearance.preferredLightThemeId {
+            appearance.preferredLightThemeId = "tablepro.default-light"
+            changed = true
+        }
+        if id == appearance.preferredDarkThemeId {
+            appearance.preferredDarkThemeId = "tablepro.default-dark"
+            changed = true
+        }
+        if changed {
+            AppSettingsManager.shared.appearance = appearance
+        } else if id == activeTheme.id {
+            // Deleted a non-preferred but currently active theme — re-anchor to preferred
+            let appearance = AppSettingsManager.shared.appearance
+            updateAppearanceAndTheme(
+                mode: appearance.appearanceMode,
+                lightThemeId: appearance.preferredLightThemeId,
+                darkThemeId: appearance.preferredDarkThemeId
+            )
+        }
+    }
+
+    func duplicateTheme(_ theme: ThemeDefinition, newName: String) -> ThemeDefinition {
+        var copy = theme
+        copy.id = "user.\(UUID().uuidString.lowercased().prefix(8))"
+        copy.name = newName
+        copy.author = theme.author
+        return copy
+    }
+
+    func importTheme(from url: URL) throws -> ThemeDefinition {
+        let theme = try ThemeStorage.importTheme(from: url)
+        reloadAvailableThemes()
+        return theme
+    }
+
+    func exportTheme(_ theme: ThemeDefinition, to url: URL) throws {
+        try ThemeStorage.exportTheme(theme, to: url)
+    }
+
+    var registryThemes: [ThemeDefinition] {
+        availableThemes.filter(\.isRegistry)
+    }
+
+    func uninstallRegistryTheme(registryPluginId: String) throws {
+        try ThemeRegistryInstaller.shared.uninstall(registryPluginId: registryPluginId)
+    }
+
+    func reloadAvailableThemes() {
+        Task {
+            let themes = await Task.detached { ThemeStorage.loadAllThemes() }.value
+            self.availableThemes = themes
+        }
+    }
+
+    // MARK: - Editor Font Size Zoom
+
+    func adjustEditorFontSize(by delta: Int) {
+        var theme = activeTheme
+        let newSize = max(9, min(24, theme.fonts.editorFontSize + delta))
+        guard newSize != theme.fonts.editorFontSize else { return }
+        theme.fonts.editorFontSize = newSize
+        activeTheme = theme
+        editorFonts = EditorFontCache(from: theme.fonts)
+        notifyThemeDidChange()
+
+        // Persist so the zoom survives re-activation (e.g. system appearance change)
+        if theme.isEditable {
+            try? ThemeStorage.saveUserTheme(theme)
+        }
+    }
+
+    // MARK: - Font Cache Reload (accessibility)
+
+    func reloadFontCaches() {
+        editorFonts = EditorFontCache(from: activeTheme.fonts)
+        dataGridFonts = DataGridFontCacheResolved(from: activeTheme.fonts)
+        notifyThemeDidChange()
+    }
+
+    // MARK: - Update Editor Behavioral Settings
+
+    func updateEditorSettings(
+        highlightCurrentLine: Bool,
+        highlightCurrentStatement: Bool,
+        showLineNumbers: Bool,
+        tabWidth: Int,
+        wordWrap: Bool
+    ) {
+        self.highlightCurrentLine = highlightCurrentLine
+        self.highlightCurrentStatement = highlightCurrentStatement
+        self.showLineNumbers = showLineNumbers
+        self.tabWidth = tabWidth
+        self.wordWrap = wordWrap
+    }
+
+    // MARK: - CodeEditSourceEditor Theme
+
+    func makeEditorTheme() -> EditorTheme {
+        let c = colors.editor
+
+        let textAttr = EditorTheme.Attribute(color: srgb(c.text))
+        let commentAttr = EditorTheme.Attribute(color: srgb(c.comment))
+        let keywordAttr = EditorTheme.Attribute(color: srgb(c.keyword), bold: true)
+        let stringAttr = EditorTheme.Attribute(color: srgb(c.string))
+        let numberAttr = EditorTheme.Attribute(color: srgb(c.number))
+        let variableAttr = EditorTheme.Attribute(color: srgb(c.null))
+        let typeAttr = EditorTheme.Attribute(color: srgb(c.type))
+        let operatorAttr = EditorTheme.Attribute(color: srgb(c.operator))
+        let functionAttr = EditorTheme.Attribute(color: srgb(c.function))
+
+        let lineHighlight: NSColor = highlightCurrentLine ? c.currentLineHighlight : .clear
+        let statementHighlight: NSColor = highlightCurrentStatement ? resolvedStatementHighlight(c) : .clear
+
+        return EditorTheme(
+            text: textAttr,
+            insertionPoint: srgb(c.cursor),
+            invisibles: EditorTheme.Attribute(color: srgb(c.invisibles)),
+            background: srgb(c.background),
+            lineHighlight: srgb(lineHighlight),
+            statementHighlight: srgb(statementHighlight),
+            selection: srgb(c.selection),
+            keywords: keywordAttr,
+            commands: keywordAttr,
+            types: typeAttr,
+            attributes: variableAttr,
+            variables: variableAttr,
+            values: variableAttr,
+            numbers: numberAttr,
+            strings: stringAttr,
+            characters: stringAttr,
+            comments: commentAttr,
+            operators: operatorAttr,
+            functions: functionAttr
         )
-
-        adopt(selection)
     }
 
-    internal func apply(typography: TypographySettings) {
-        guard typography != self.typography else { return }
-        self.typography = typography
-        editorFonts = EditorFontCache(from: typography)
-        dataGridFonts = DataGridFontCache(from: typography)
-        bumpRevision()
-        publishChange()
+    /// The band's colour, corrected for a theme that never declared one.
+    ///
+    /// `EditorThemeColors` falls back to its light defaults for any key a theme omits, and every theme written before
+    /// this key existed omits it. On a dark custom theme that fallback is a near-black wash on a near-black
+    /// background: invisible, and indistinguishable from the feature being broken. Deriving the band from the
+    /// theme's own text colour instead is what the gutter glyph already does.
+    private func resolvedStatementHighlight(_ colors: ResolvedEditorColors) -> NSColor {
+        let declared = colors.currentStatementHighlight
+        let backgroundIsDark = (colors.background.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 1) < 0.5
+        let bandIsDark = (declared.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0) < 0.5
+        guard backgroundIsDark, bandIsDark else { return declared }
+        return colors.text.withAlphaComponent(declared.alphaComponent)
     }
 
-    /// Called when the catalog changes under a selection that is already live, so a saved edit is
-    /// visible without the settings round trip that used to re-activate a stale cached copy.
-    internal func reapply(lightThemeId: String, darkThemeId: String) {
-        apply(mode: mode, lightThemeId: lightThemeId, darkThemeId: darkThemeId)
+    // MARK: - Appearance
+
+    @ObservationIgnored private(set) var appearanceMode: AppAppearanceMode = .auto
+    private(set) var effectiveAppearance: ThemeAppearance = .light
+    @ObservationIgnored private var currentLightThemeId: String = "tablepro.default-light"
+    @ObservationIgnored private var currentDarkThemeId: String = "tablepro.default-dark"
+    @ObservationIgnored private var systemAppearanceObservation: NSKeyValueObservation?
+
+    /// Central entry point: resolves effective appearance, picks the correct theme, activates it,
+    /// and derives NSApp.appearance from the theme's own appearance metadata.
+    func updateAppearanceAndTheme(
+        mode: AppAppearanceMode,
+        lightThemeId: String,
+        darkThemeId: String
+    ) {
+        appearanceMode = mode
+        currentLightThemeId = lightThemeId
+        currentDarkThemeId = darkThemeId
+
+        applyNSAppAppearance(mode: mode)
+
+        let resolved = resolveEffectiveAppearance(mode)
+        effectiveAppearance = resolved
+
+        let themeId = resolved == .dark ? darkThemeId : lightThemeId
+        activateTheme(id: themeId)
+
+        updateSystemAppearanceObserver(mode: mode)
     }
 
-    /// The resolver's output applied to the engine. Every entry point above funnels here, and it
-    /// is the seam a test uses to put a known pair in front of the grid without touching settings.
-    internal func adopt(_ selection: ThemeSelection) {
-        let appearanceChanged = selection.effectiveAppearance != effectiveAppearance
-        let pairChanged = selection.pair != pair
-
-        guard appearanceChanged || pairChanged else { return }
-
-        pair = selection.pair
-        effectiveAppearance = selection.effectiveAppearance
-        ThemeSource.shared.update(selection.pair)
-
-        if pairChanged {
-            bumpRevision()
-        }
-        resolved = ResolvedTheme(definition: activeTheme, appearance: effectiveAppearance)
-
-        publishChange()
-        Self.logger.info("Theme \(self.activeTheme.id, privacy: .public) revision \(self.revision)")
-    }
-
-    private func bumpRevision() {
-        revision += 1
-        palette = ThemePalette(revision: revision)
-    }
-
-    private func publishChange() {
-        AppEvents.shared.themeChanged.send(change)
-    }
-
-    // MARK: - Application appearance
-
-    private func applyApplicationAppearance(_ mode: AppAppearanceMode) {
+    /// Resolve which appearance is in effect right now.
+    private func resolveEffectiveAppearance(_ mode: AppAppearanceMode) -> ThemeAppearance {
         switch mode {
-        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
-        case .dark: NSApp?.appearance = NSAppearance(named: .darkAqua)
-        case .auto: NSApp?.appearance = nil
+        case .light: return .light
+        case .dark: return .dark
+        case .auto: return systemIsDark() ? .dark : .light
         }
     }
 
-    private static func systemIsDark() -> Bool {
-        NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    private func systemIsDark() -> Bool {
+        NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
-    /// KVO on `NSApplication.effectiveAppearance` is the channel Apple names in the
-    /// `NSControlTintDidChangeNotification` deprecation text. Only the static tier and the change
-    /// signal depend on it: the dynamic slot colours answer for the drawing appearance themselves.
-    private func updateSystemAppearanceObserver(_ mode: AppAppearanceMode) {
-        appearanceObservation = nil
+    /// Set NSApp.appearance based on the appearance mode (not the theme).
+    /// Auto mode sets nil so the system controls the chrome.
+    private func applyNSAppAppearance(mode: AppAppearanceMode) {
+        switch mode {
+        case .light:
+            NSApp?.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApp?.appearance = NSAppearance(named: .darkAqua)
+        case .auto:
+            NSApp?.appearance = nil
+        }
+    }
+
+    // MARK: - System Appearance Observer
+
+    private func updateSystemAppearanceObserver(mode: AppAppearanceMode) {
+        systemAppearanceObservation = nil
+
         guard mode == .auto else { return }
 
-        appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+        systemAppearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor [weak self] in
-                self?.systemAppearanceDidChange()
+                guard let self, self.appearanceMode == .auto else { return }
+                let newAppearance: ThemeAppearance = self.systemIsDark() ? .dark : .light
+                guard newAppearance != self.effectiveAppearance else { return }
+                self.effectiveAppearance = newAppearance
+                let themeId = newAppearance == .dark ? self.currentDarkThemeId : self.currentLightThemeId
+                self.activateTheme(id: themeId)
             }
         }
     }
 
-    private func systemAppearanceDidChange() {
-        guard mode == .auto else { return }
-        let appearance: ThemeAppearance = Self.systemIsDark() ? .dark : .light
-        guard appearance != effectiveAppearance else { return }
+    // MARK: - Notifications
 
-        effectiveAppearance = appearance
-        resolved = ResolvedTheme(definition: activeTheme, appearance: appearance)
-        publishChange()
-    }
-
-    // MARK: - CodeEditSourceEditor
-
-    internal func makeEditorTheme() -> EditorTheme {
-        let editorSettings = AppSettingsManager.shared.editor
-        let text = EditorTheme.Attribute(color: resolved[.editorText])
-        let comment = EditorTheme.Attribute(color: resolved[.syntaxComment])
-        let keyword = EditorTheme.Attribute(color: resolved[.syntaxKeyword], bold: true)
-        let string = EditorTheme.Attribute(color: resolved[.syntaxString])
-        let number = EditorTheme.Attribute(color: resolved[.syntaxNumber])
-        let variable = EditorTheme.Attribute(color: resolved[.syntaxNull])
-        let type = EditorTheme.Attribute(color: resolved[.syntaxType])
-        let operatorAttribute = EditorTheme.Attribute(color: resolved[.syntaxOperator])
-        let function = EditorTheme.Attribute(color: resolved[.syntaxFunction])
-
-        return EditorTheme(
-            text: text,
-            insertionPoint: resolved[.editorCursor],
-            invisibles: EditorTheme.Attribute(color: resolved[.editorInvisibles]),
-            background: resolved[.editorBackground],
-            lineHighlight: editorSettings.highlightCurrentLine ? resolved[.editorCurrentLine] : .clear,
-            statementHighlight: editorSettings.highlightCurrentStatement ? resolved[.editorCurrentStatement] : .clear,
-            selection: resolved[.editorSelection],
-            lineNumber: resolved[.editorLineNumber],
-            keywords: keyword,
-            commands: keyword,
-            types: type,
-            attributes: variable,
-            variables: variable,
-            values: variable,
-            numbers: number,
-            strings: string,
-            characters: string,
-            comments: comment,
-            operators: operatorAttribute,
-            functions: function
-        )
+    private func notifyThemeDidChange() {
+        AppEvents.shared.themeChanged.send(())
     }
 
     // MARK: - Accessibility
 
     private func observeAccessibilityChanges() {
-        lastAccessibilityScale = EditorFontCache.accessibilityScale()
+        lastAccessibilityScale = EditorFontCache.computeAccessibilityScale()
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.accessibilityDisplayOptionsDidChange()
+                guard let self else { return }
+                let newScale = EditorFontCache.computeAccessibilityScale()
+                guard abs(newScale - lastAccessibilityScale) > 0.01 else { return }
+                lastAccessibilityScale = newScale
+                Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
+                reloadFontCaches()
+                AppEvents.shared.accessibilityTextSizeChanged.send(())
             }
         }
     }
 
-    private func accessibilityDisplayOptionsDidChange() {
-        let scale = EditorFontCache.accessibilityScale()
-        guard abs(scale - lastAccessibilityScale) > 0.01 else { return }
-        lastAccessibilityScale = scale
+    // MARK: - Helpers
 
-        editorFonts = EditorFontCache(from: typography)
-        dataGridFonts = DataGridFontCache(from: typography)
-        bumpRevision()
-        publishChange()
-        AppEvents.shared.accessibilityTextSizeChanged.send(())
+    private func srgb(_ color: NSColor) -> NSColor {
+        if let converted = color.usingColorSpace(.sRGB) {
+            return converted
+        }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        if let deviceRgb = color.usingColorSpace(.deviceRGB) {
+            deviceRgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        }
+        return NSColor(srgbRed: r, green: g, blue: b, alpha: a)
     }
 }
 
-internal extension DatabaseType {
+// MARK: - Database Type Colors (preserved from old Theme.swift)
+
+extension DatabaseType {
     @MainActor var themeColor: Color {
         PluginManager.shared.brandColor(for: self)
+    }
+}
+
+// MARK: - View Extensions (preserved from old Theme.swift)
+
+extension View {
+    func cardStyle() -> some View {
+        self
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }

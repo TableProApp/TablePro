@@ -31,12 +31,10 @@ internal final class ThemeRegistryInstaller {
 
         let decodedThemes = try await downloadAndDecode(plugin, progress: progress)
 
-        _ = try? removeRegistryFiles(for: plugin.id)
-
         var installedThemes: [InstalledRegistryTheme] = []
 
         for theme in decodedThemes {
-            try ThemeCatalog.shared.saveRegistryTheme(theme)
+            try ThemeStorage.saveRegistryTheme(theme)
 
             installedThemes.append(InstalledRegistryTheme(
                 id: theme.id,
@@ -46,12 +44,11 @@ internal final class ThemeRegistryInstaller {
             ))
         }
 
-        var meta = ThemeCatalog.shared.loadRegistryMeta()
+        var meta = ThemeStorage.loadRegistryMeta()
         meta.installed.append(contentsOf: installedThemes)
-        try ThemeCatalog.shared.saveRegistryMeta(meta)
+        try ThemeStorage.saveRegistryMeta(meta)
 
-        ThemeCatalog.shared.reloadSynchronously()
-        reactivate()
+        ThemeEngine.shared.reloadAvailableThemes()
         progress(1.0)
 
         Self.logger.info("Installed \(installedThemes.count) theme(s) from registry plugin: \(plugin.id)")
@@ -60,10 +57,26 @@ internal final class ThemeRegistryInstaller {
     // MARK: - Uninstall
 
     func uninstall(registryPluginId: String) throws {
-        _ = try removeRegistryFiles(for: registryPluginId)
+        let removedThemeIds = try removeRegistryFiles(for: registryPluginId)
 
-        ThemeCatalog.shared.reloadSynchronously()
-        reactivate()
+        ThemeEngine.shared.reloadAvailableThemes()
+
+        // Reset preferred theme slots if the uninstalled theme was preferred
+        var appearance = AppSettingsManager.shared.appearance
+        var changed = false
+        for id in removedThemeIds {
+            if id == appearance.preferredLightThemeId {
+                appearance.preferredLightThemeId = "tablepro.default-light"
+                changed = true
+            }
+            if id == appearance.preferredDarkThemeId {
+                appearance.preferredDarkThemeId = "tablepro.default-dark"
+                changed = true
+            }
+        }
+        if changed {
+            AppSettingsManager.shared.appearance = appearance
+        }
 
         Self.logger.info("Uninstalled registry themes for plugin: \(registryPluginId)")
     }
@@ -74,6 +87,9 @@ internal final class ThemeRegistryInstaller {
         _ plugin: RegistryPlugin,
         progress: @escaping @MainActor @Sendable (Double) -> Void
     ) async throws {
+        let activeId = ThemeEngine.shared.activeTheme.id
+
+        // Download, verify, and decode new themes first (no side effects yet)
         let stagedThemes = try await downloadAndDecode(plugin, progress: progress)
 
         // Remove old files without triggering theme reload or fallback
@@ -81,7 +97,7 @@ internal final class ThemeRegistryInstaller {
 
         var installedThemes: [InstalledRegistryTheme] = []
         for theme in stagedThemes {
-            try ThemeCatalog.shared.saveRegistryTheme(theme)
+            try ThemeStorage.saveRegistryTheme(theme)
             installedThemes.append(InstalledRegistryTheme(
                 id: theme.id,
                 registryPluginId: plugin.id,
@@ -90,12 +106,20 @@ internal final class ThemeRegistryInstaller {
             ))
         }
 
-        var meta = ThemeCatalog.shared.loadRegistryMeta()
+        var meta = ThemeStorage.loadRegistryMeta()
         meta.installed.append(contentsOf: installedThemes)
-        try ThemeCatalog.shared.saveRegistryMeta(meta)
+        try ThemeStorage.saveRegistryMeta(meta)
 
-        ThemeCatalog.shared.reloadSynchronously()
-        reactivate()
+        // Single reload after swap is complete — no intermediate flicker
+        ThemeEngine.shared.reloadAvailableThemes()
+
+        // Re-activate the correct theme for the current appearance
+        let appearance = AppSettingsManager.shared.appearance
+        ThemeEngine.shared.updateAppearanceAndTheme(
+            mode: appearance.appearanceMode,
+            lightThemeId: appearance.preferredLightThemeId,
+            darkThemeId: appearance.preferredDarkThemeId
+        )
 
         Self.logger.info("Updated \(installedThemes.count) theme(s) for registry plugin: \(plugin.id)")
     }
@@ -104,16 +128,16 @@ internal final class ThemeRegistryInstaller {
     /// Does NOT reload ThemeEngine or trigger fallback — callers manage that.
     @discardableResult
     private func removeRegistryFiles(for registryPluginId: String) throws -> Set<String> {
-        var meta = ThemeCatalog.shared.loadRegistryMeta()
+        var meta = ThemeStorage.loadRegistryMeta()
         let themesToRemove = meta.installed.filter { $0.registryPluginId == registryPluginId }
         let removedIds = Set(themesToRemove.map(\.id))
 
         meta.installed.removeAll { $0.registryPluginId == registryPluginId }
-        try ThemeCatalog.shared.saveRegistryMeta(meta)
+        try ThemeStorage.saveRegistryMeta(meta)
 
         for entry in themesToRemove {
             do {
-                try ThemeCatalog.shared.deleteRegistryTheme(id: entry.id)
+                try ThemeStorage.deleteRegistryTheme(id: entry.id)
             } catch {
                 Self.logger.warning("Failed to delete registry theme file \(entry.id): \(error)")
             }
@@ -125,20 +149,17 @@ internal final class ThemeRegistryInstaller {
     // MARK: - Query
 
     func isInstalled(_ registryPluginId: String) -> Bool {
-        let entries = ThemeCatalog.shared.loadRegistryMeta().installed
-            .filter { $0.registryPluginId == registryPluginId }
-
-        guard !entries.isEmpty else { return false }
-        return entries.allSatisfy { ThemeCatalog.shared.theme(id: $0.id) != nil }
+        let meta = ThemeStorage.loadRegistryMeta()
+        return meta.installed.contains { $0.registryPluginId == registryPluginId }
     }
 
     func installedVersion(for registryPluginId: String) -> String? {
-        let meta = ThemeCatalog.shared.loadRegistryMeta()
+        let meta = ThemeStorage.loadRegistryMeta()
         return meta.installed.first { $0.registryPluginId == registryPluginId }?.version
     }
 
     func availableUpdates(manifest: RegistryManifest) -> [RegistryPlugin] {
-        let meta = ThemeCatalog.shared.loadRegistryMeta()
+        let meta = ThemeStorage.loadRegistryMeta()
         let installedVersions = Dictionary(
             meta.installed.map { ($0.registryPluginId, $0.version) },
             uniquingKeysWith: { first, _ in first }
@@ -229,12 +250,14 @@ internal final class ThemeRegistryInstaller {
 
         progress(0.9)
 
+        let decoder = JSONDecoder()
         var decodedThemes: [ThemeDefinition] = []
 
         for jsonURL in jsonFiles {
-            let document = try ThemeDocument(data: try Data(contentsOf: jsonURL))
-            var theme = document.resolved()
-            theme.id = "\(ThemeDefinition.registryPrefix)\(plugin.id).\(theme.id)"
+            let data = try Data(contentsOf: jsonURL)
+            var theme = try decoder.decode(ThemeDefinition.self, from: data)
+            let originalId = theme.id
+            theme.id = "registry.\(plugin.id).\(originalId)"
             decodedThemes.append(theme)
         }
 
@@ -247,14 +270,6 @@ internal final class ThemeRegistryInstaller {
     }
 
     // MARK: - Helpers
-
-    private func reactivate() {
-        let appearance = AppSettingsManager.shared.appearance
-        ThemeEngine.shared.reapply(
-            lightThemeId: appearance.preferredLightThemeId,
-            darkThemeId: appearance.preferredDarkThemeId
-        )
-    }
 
     private func findJsonFiles(in directory: URL) throws -> [URL] {
         var results: [URL] = []

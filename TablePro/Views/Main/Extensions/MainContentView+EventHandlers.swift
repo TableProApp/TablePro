@@ -96,7 +96,7 @@ extension MainContentView {
             primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type,
             generatedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).generatedColumns,
-            rowMatchExcludedColumns: coordinator.tabSessionRegistry.tableRows(for: tab.id).rowMatchExcludedColumns
+            rowMatchPolicy: coordinator.tabSessionRegistry.tableRows(for: tab.id).rowMatchPolicy
         )
     }
 

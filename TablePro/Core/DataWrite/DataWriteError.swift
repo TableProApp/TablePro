@@ -12,6 +12,7 @@ enum DataWriteError: LocalizedError, Equatable {
     case identityNotPreservable(String)
     case tooManyRowsAffected(table: String, expected: Int, actual: Int)
     case tooManyRowsAffectedUnrecoverable(table: String, expected: Int, actual: Int)
+    case rowsNoLongerMatch(table: String, expected: Int, actual: Int)
 
     var errorDescription: String? {
         switch self {
@@ -55,6 +56,13 @@ enum DataWriteError: LocalizedError, Equatable {
                 ),
                 table, actual, expected
             )
+        case .rowsNoLongerMatch(let table, let expected, let actual):
+            return String(
+                format: String(
+                    localized: "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved."
+                ),
+                table, actual, expected
+            )
         case .tooManyRowsAffectedUnrecoverable(let table, let expected, let actual):
             return String(
                 format: String(
@@ -78,6 +86,17 @@ enum DataWriteError: LocalizedError, Equatable {
             return String(
                 format: String(
                     localized: "This engine has no transactions, so the extra rows were already written. '%@' has no primary key, so identical rows cannot be told apart."
+                ),
+                table
+            )
+        case .rowsNoLongerMatch(let table, _, _):
+            return String(
+                format: String(
+                    localized: """
+                    '%@' has no primary key, so the row is found by matching every column. \
+                    Another client may have changed it, or a value in it cannot be compared. \
+                    Your edit is still here.
+                    """
                 ),
                 table
             )

@@ -37,7 +37,7 @@ struct HistoryDetailPane: View {
                 databaseType: entry.databaseType,
                 accessibilityIdentifier: "query-history-detail-query"
             )
-            .background(ThemeEngine.shared.palette.color(.editorBackground))
+            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -66,7 +66,7 @@ struct HistoryDetailPane: View {
             if let errorMessage = entry.errorMessage {
                 RevealedTextView(errorMessage)
                     .font(.caption)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                    .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }

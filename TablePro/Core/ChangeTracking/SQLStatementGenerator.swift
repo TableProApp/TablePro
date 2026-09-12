@@ -38,7 +38,7 @@ struct SQLStatementGenerator {
     /// Server-computed columns. They reject any written value, so they are
     /// dropped from every INSERT and UPDATE this generator produces.
     let generatedColumns: Set<String>
-    let rowMatchExcludedColumns: Set<String>
+    let rowMatchPolicy: RowMatchPolicy
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
     private let quoteIdentifierFn: (String) -> String
@@ -50,7 +50,7 @@ struct SQLStatementGenerator {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         generatedColumns: Set<String> = [],
-        rowMatchExcludedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
         quoteIdentifier: ((String) -> String)? = nil
@@ -60,7 +60,7 @@ struct SQLStatementGenerator {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         if let quoteIdentifier {
@@ -384,14 +384,15 @@ struct SQLStatementGenerator {
 
             var conditions: [String] = []
             for (index, columnName) in columns.enumerated() {
-                guard index < originalRow.count, !rowMatchExcludedColumns.contains(columnName) else { continue }
+                guard index < originalRow.count,
+                      !rowMatchPolicy.excludedColumns.contains(columnName) else { continue }
                 let value = originalRow[index]
-                let quotedColumn = quoteIdentifierFn(columnName)
+                let matched = rowMatchExpression(for: columnName)
                 if value.isNull {
-                    conditions.append("\(quotedColumn) IS NULL")
+                    conditions.append("\(matched) IS NULL")
                 } else {
                     parameters.append(value.asAny)
-                    conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
+                    conditions.append("\(matched) = \(placeholder(at: parameters.count - 1))")
                 }
             }
 
@@ -426,7 +427,7 @@ struct SQLStatementGenerator {
             )
         }
 
-        let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchExcludedColumns.isEmpty
+        let matchesOneRowPerStatement = primaryKeyColumns.isEmpty && !rowMatchPolicy.excludedColumns.isEmpty
         for matches in rowMatches {
             let rowParameterCount = matches.count(where: { $0.boundValue != nil })
             if !chunk.isEmpty,
@@ -464,7 +465,8 @@ struct SQLStatementGenerator {
 
         var matches: [DeleteColumnMatch] = []
         for (index, columnName) in columns.enumerated() {
-            guard index < originalRow.count, !rowMatchExcludedColumns.contains(columnName) else { continue }
+            guard index < originalRow.count,
+                  !rowMatchPolicy.excludedColumns.contains(columnName) else { continue }
             let value = originalRow[index]
             if value.isNull {
                 matches.append(DeleteColumnMatch(column: columnName, boundValue: nil))
@@ -479,11 +481,12 @@ struct SQLStatementGenerator {
         var parameters: [Any?] = []
         let rowClauses = rows.map { matches -> String in
             let conditions = matches.map { match -> String in
+                let matched = rowMatchExpression(for: match.column)
                 guard let value = match.boundValue else {
-                    return "\(quoteIdentifierFn(match.column)) IS NULL"
+                    return "\(matched) IS NULL"
                 }
                 parameters.append(value.asAny)
-                return "\(quoteIdentifierFn(match.column)) = \(placeholder(at: parameters.count - 1))"
+                return "\(matched) = \(placeholder(at: parameters.count - 1))"
             }
             let joined = conditions.joined(separator: " AND ")
             return matches.count > 1 ? "(\(joined))" : joined
@@ -495,6 +498,19 @@ struct SQLStatementGenerator {
     }
 
     // MARK: - Helper Functions
+
+    /// What a keyless row match compares against for one column.
+    ///
+    /// A keyed match never reaches here: it compares the primary key, which is the one thing the
+    /// engine guarantees round-trips. For a keyless match the app has only the text the grid read,
+    /// and on the types the policy lists that text does not compare equal to the value it came
+    /// from, so the server is asked to render the column the same way before comparing. `CONCAT`
+    /// is what MySQL spells that; only MySQL-family engines list any such type today.
+    private func rowMatchExpression(for column: String) -> String {
+        let quoted = quoteIdentifierFn(column)
+        guard rowMatchPolicy.textColumns.contains(column) else { return quoted }
+        return "CONCAT(\(quoted))"
+    }
 
     /// Check if a string is a SQL function expression that should not be quoted
     private func isSQLFunctionExpression(_ value: String) -> Bool {

@@ -58,7 +58,7 @@ final class DataChangeManager: ChangeManaging {
     /// Columns the server computes. They reject any written value, so they are
     /// never editable and never appear in a generated INSERT or UPDATE.
     var generatedColumns: Set<String> = []
-    private(set) var rowMatchExcludedColumns: Set<String> = []
+    private(set) var rowMatchPolicy: RowMatchPolicy = .none
     var databaseType: DatabaseType?
     var pluginDriver: (any PluginDatabaseDriver)?
 
@@ -103,7 +103,7 @@ final class DataChangeManager: ChangeManaging {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
-        rowMatchExcludedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -112,7 +112,7 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
 
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
@@ -131,8 +131,8 @@ final class DataChangeManager: ChangeManaging {
         self.generatedColumns = generatedColumns
     }
 
-    func setRowMatchExcludedColumns(_ rowMatchExcludedColumns: Set<String>) {
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+    func setRowMatchPolicy(_ rowMatchPolicy: RowMatchPolicy) {
+        self.rowMatchPolicy = rowMatchPolicy
     }
 
     /// Whether the app may send a value for this column at all: the server computes or allocates it,
@@ -452,7 +452,8 @@ final class DataChangeManager: ChangeManaging {
                     kind: .rowWrite,
                     statement: $0.statement,
                     expectedRowCount: $0.rowCount,
-                    tableName: tableName
+                    tableName: tableName,
+                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert
                 )
             }
             return RowWriteBuild(steps: steps, operations: operations)
@@ -479,7 +480,7 @@ final class DataChangeManager: ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
-            rowMatchExcludedColumns: rowMatchExcludedColumns,
+            rowMatchPolicy: rowMatchPolicy,
             databaseType: databaseType,
             pluginDriver: pluginDriver
         )
@@ -519,7 +520,7 @@ final class DataChangeManager: ChangeManaging {
         schemaName: String? = nil,
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
-        rowMatchExcludedColumns: Set<String> = []
+        rowMatchPolicy: RowMatchPolicy = .none
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -527,7 +528,7 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

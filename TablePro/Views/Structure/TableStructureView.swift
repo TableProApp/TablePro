@@ -527,7 +527,7 @@ struct TableStructureView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             RevealedTextView(message)
                 .foregroundStyle(.secondary)

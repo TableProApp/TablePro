@@ -380,10 +380,19 @@ public final class OracleCoreConnection: @unchecked Sendable {
             }
         }
 
+        // A statement that returns no rows still wrote some, and the stream carries that count once
+        // it has completed. Reporting the rows read instead answered 0 for every INSERT, UPDATE and
+        // DELETE, so nothing downstream could tell a write that changed nothing from one that did
+        // what it meant to. A truncated read never completed, so its count is not available.
+        var affectedRows = allRows.count
+        if allRows.isEmpty, !truncated {
+            affectedRows = (try? await stream.affectedRows) ?? 0
+        }
+
         return OracleRawResult(
             columns: Self.descriptors(names: columnNames, typeNames: didReadTypes ? columnTypeNames : []),
             rows: allRows,
-            affectedRows: allRows.count,
+            affectedRows: affectedRows,
             isTruncated: truncated
         )
     }

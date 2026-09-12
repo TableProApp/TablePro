@@ -77,11 +77,13 @@ Press `Cmd+S`, or click the toolbar checkmark. Values go out as bound parameters
 | Row insertion | `INSERT INTO … (columns) VALUES (?, …)` |
 | Row deletion | `DELETE FROM … WHERE pk = ? OR pk = ?` |
 
-A table without a primary key is matched on every original column value instead, with `IS NULL` for the nulls.
+A table without a primary key is matched on every original column value instead, with `IS NULL` for the nulls. On MySQL, MariaDB, TiDB and OceanBase a `FLOAT`, `DOUBLE` or `JSON` column is compared through `CONCAT()`, because the text those types read back as does not compare equal to the value it came from.
 
 On an engine with transactions, the statements run inside one, so a failure rolls the whole save back and the table is left as it was. Without them, the statements that ran before the failure stand. Either way a failed save reports **Save Failed** with the server's message and keeps the queue intact, so correct the value and save again. A save that succeeds clears the queue, clears undo, and reloads the grid.
 
 Each statement is held to the number of rows it was written for. On a table with no primary key, two identical rows cannot be told apart, so a statement meant for one of them matches both; the save stops there and reports what happened instead of rewriting the other row.
+
+Such a statement is held to the other end too. Finding fewer rows than it was written for means the row it meant to write is no longer there, so the save rolls back and keeps the edits rather than reporting a success that wrote nothing. Engines whose drivers report no real count, ClickHouse among them, are not held to it.
 
 There is no discard button. Undo the edits, or take the **Discard Unsaved Changes?** prompt that appears when you refresh, sort, filter, change page, or close the tab with edits pending.
 

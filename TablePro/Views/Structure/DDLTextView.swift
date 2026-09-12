@@ -32,7 +32,7 @@ struct DDLTextView: View {
 
     var body: some View {
         if ddl.isEmpty {
-            ThemeEngine.shared.palette.color(.editorBackground)
+            Color(nsColor: .textBackgroundColor)
         } else {
             SourceEditor(
                 $text,
@@ -45,9 +45,6 @@ struct DDLTextView: View {
                 text = newDDL
             }
             .onChange(of: colorScheme) {
-                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-            }
-            .onReceive(AppEvents.shared.themeChanged) { _ in
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }
             .onChange(of: fontSize) { _, newSize in

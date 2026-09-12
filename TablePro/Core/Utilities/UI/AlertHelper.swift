@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 @MainActor
 final class AlertHelper {
@@ -74,7 +75,7 @@ final class AlertHelper {
         alert.beginSheetModal(for: parent, completionHandler: completion)
     }
 
-    private static func run(_ alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
+    static func response(to alert: NSAlert, in window: NSWindow?) async -> NSApplication.ModalResponse {
         await withCheckedContinuation { continuation in
             present(alert, in: window) { continuation.resume(returning: $0) }
         }
@@ -97,7 +98,7 @@ final class AlertHelper {
         alert.alertStyle = .informational
         alert.addButton(withTitle: confirmButton)
         Self.addCancelButton(to: alert, title: cancelButton)
-        return await run(alert, in: window) == .alertFirstButtonReturn
+        return await response(to: alert, in: window) == .alertFirstButtonReturn
     }
 
     // MARK: - Destructive Confirmations
@@ -114,7 +115,7 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .warning
         Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
-        return await run(alert, in: window) == .alertFirstButtonReturn
+        return await response(to: alert, in: window) == .alertFirstButtonReturn
     }
 
     // MARK: - Critical Confirmations
@@ -131,7 +132,7 @@ final class AlertHelper {
         alert.informativeText = message
         alert.alertStyle = .critical
         Self.addConfirmAndCancel(to: alert, confirmButton: confirmButton, cancelButton: cancelButton)
-        return await run(alert, in: window) == .alertFirstButtonReturn
+        return await response(to: alert, in: window) == .alertFirstButtonReturn
     }
 
     // MARK: - Cross-Process Approval
@@ -155,37 +156,108 @@ final class AlertHelper {
     }
 
     /// Pairing is a security decision, so the attached case uses a critical sheet: it must not
-    /// queue behind whatever sheet the window is already showing. The detached case runs the modal
-    /// loop directly rather than inside a continuation-installing closure, which would block the
-    /// main actor while the continuation is still being installed.
+    /// queue behind whatever sheet the window is already showing.
     static func runPairingApproval(request: PairingRequest) async throws -> PairingApproval {
         let codeExpiresAt = Date.now.addingTimeInterval(PairingExchangeStore.exchangeWindow)
-        let gate = PairingApprovalGate()
-        let host = NSHostingController(
+        let gate = ModalDecisionGate<PairingApproval>.pairing()
+        return try await runHostedDecision(
+            title: String(localized: "Approve Integration"),
+            fittingWidth: 520,
+            gate: gate,
+            window: nil,
             rootView: PairingApprovalSheet(
                 request: request,
                 codeExpiresAt: codeExpiresAt,
                 onComplete: { result in gate.deliver(result) }
             )
         )
+    }
+
+    /// A statement the user has to read before approving it. The alert vocabulary cannot carry one:
+    /// `informativeText` is a proportional label with no scrolling and no selection, so a statement
+    /// long enough to be worth reviewing is exactly the one it cannot show.
+    ///
+    /// The windowless path is the ordinary case rather than a fallback. A request arriving over MCP
+    /// reaches a Mac whose TablePro may have no window open at all, and that is precisely when this
+    /// dialog is the only place the statement is visible.
+    static func runStatementConfirmation(
+        title: String,
+        subtitle: String,
+        warning: String?,
+        statements: [String],
+        databaseType: DatabaseType,
+        confirmTitle: String,
+        isDestructive: Bool,
+        window: NSWindow?
+    ) async -> Bool {
+        let gate = ModalDecisionGate<Bool>.confirmation()
+        let presented = Binding<Bool>(
+            get: { true },
+            set: { isPresented in
+                guard !isPresented else { return }
+                gate.deliver(.success(false))
+            }
+        )
+        let sheet = SQLReviewSheet(
+            isPresented: presented,
+            statements: statements,
+            databaseType: databaseType,
+            title: title,
+            subtitle: subtitle,
+            showsStatementsVerbatim: true,
+            warning: warning,
+            primaryAction: SQLReviewSheet.PrimaryAction(
+                title: confirmTitle,
+                isDestructive: isDestructive,
+                takesDefaultAction: false,
+                work: .immediate { gate.deliver(.success(true)) }
+            )
+        )
+        let confirmed = try? await runHostedDecision(
+            title: title,
+            fittingWidth: 560,
+            gate: gate,
+            window: window,
+            rootView: sheet
+        )
+        return confirmed ?? false
+    }
+
+    /// The one presentation path for a SwiftUI decision the user must answer: a critical sheet on
+    /// the window they were working in, and an application-modal window when none qualifies. The
+    /// modal loop runs directly rather than inside a continuation-installing closure, which would
+    /// block the main actor while the continuation is still being installed.
+    private static func runHostedDecision<Value: Sendable>(
+        title: String,
+        fittingWidth: CGFloat,
+        gate: ModalDecisionGate<Value>,
+        window: NSWindow?,
+        rootView: some View
+    ) async throws -> Value {
+        let host = NSHostingController(rootView: rootView)
         host.sizingOptions = []
-        let fitted = host.sizeThatFits(in: NSSize(width: 520, height: CGFloat.greatestFiniteMagnitude))
+        let fitted = host.sizeThatFits(in: NSSize(width: fittingWidth, height: CGFloat.greatestFiniteMagnitude))
         host.view.frame = NSRect(origin: .zero, size: fitted)
 
-        let sheetWindow = NSWindow.titled(String(localized: "Approve Integration"), contentViewController: host)
+        host.title = title
+        let sheetWindow = ModalDecisionWindow(contentViewController: host)
         sheetWindow.styleMask = [.titled, .closable]
         sheetWindow.isReleasedWhenClosed = false
+        /// The HIG gives Escape to Cancel on every alert and sheet, and a confirmation that came
+        /// forward over the user's own work is exactly the one that has to stay dismissable.
+        sheetWindow.onCancel = { [weak gate] in gate?.cancel() }
 
-        guard let parent = resolveWindow(nil) else {
-            let delegate = PairingApprovalWindowDelegate(gate: gate)
-            sheetWindow.delegate = delegate
+        let delegate = ModalDecisionWindowDelegate { [weak gate] in gate?.cancel() }
+        gate.windowDelegate = delegate
+        sheetWindow.delegate = delegate
+
+        guard let parent = resolveWindow(window) else {
             gate.onResolve = { [weak sheetWindow] in
                 NSApp.stopModal()
                 sheetWindow?.close()
             }
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             sheetWindow.center()
-            defer { withExtendedLifetime(delegate) {} }
             NSApp.runModal(for: sheetWindow)
             AppActivationPolicyController.shared.reevaluate(excluding: sheetWindow)
             return try gate.result()
@@ -194,6 +266,7 @@ final class AlertHelper {
         gate.onResolve = { [weak sheetWindow] in
             guard let sheetWindow else { return }
             parent.endSheet(sheetWindow)
+            sheetWindow.close()
         }
         parent.beginCriticalSheet(sheetWindow, completionHandler: nil)
         return try await gate.value()
@@ -222,7 +295,7 @@ final class AlertHelper {
         dontSaveButton.keyEquivalent = "d"
         dontSaveButton.keyEquivalentModifierMask = .command
 
-        switch await run(alert, in: window) {
+        switch await response(to: alert, in: window) {
         case .alertFirstButtonReturn: return .save
         case .alertThirdButtonReturn: return .dontSave
         default: return .cancel
@@ -247,7 +320,7 @@ final class AlertHelper {
         alert.addButton(withTitle: second)
         alert.addButton(withTitle: third)
 
-        switch await run(alert, in: window) {
+        switch await response(to: alert, in: window) {
         case .alertFirstButtonReturn: return 0
         case .alertSecondButtonReturn: return 1
         case .alertThirdButtonReturn: return 2

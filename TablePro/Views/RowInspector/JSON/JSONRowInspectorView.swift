@@ -66,7 +66,7 @@ struct JSONRowInspectorView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(ThemeEngine.shared.palette.color(.statusError).opacity(0.6))
+                .strokeBorder(Color.red.opacity(0.6))
                 .opacity(viewModel.isFilterInvalid ? 1 : 0)
         )
         .help(viewModel.isFilterInvalid
@@ -127,7 +127,7 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(ThemeEngine.shared.palette.color(.editorBackground))
+            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }

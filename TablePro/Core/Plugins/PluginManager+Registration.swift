@@ -596,6 +596,10 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchExcludedTypePrefixes ?? []
     }
 
+    func rowMatchTextTypePrefixes(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
+    }
+
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsPrincipalConnectionLimit ?? true

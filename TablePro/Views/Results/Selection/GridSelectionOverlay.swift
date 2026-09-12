@@ -36,7 +36,7 @@ final class GridSelectionOverlay: NSView {
         guard let tableView, let coordinator else { return }
         let editingCell = activeOverlayCell(in: coordinator)
 
-        ThemeEngine.shared.palette[.gridSelection].withAlphaComponent(Self.borderAlpha).setStroke()
+        NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.borderAlpha).setStroke()
         for rect in selection.rectangles {
             guard let frame = frame(for: rect, in: tableView, coordinator: coordinator) else { continue }
             guard frame.intersects(dirtyRect) else { continue }

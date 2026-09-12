@@ -121,7 +121,7 @@ extension MainContentCoordinator {
                     schemaName: newTab.tableContext.schemaName,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchExcludedColumns: newRows.rowMatchExcludedColumns
+                    rowMatchPolicy: newRows.rowMatchPolicy
                 )
             } else {
                 changeManager.configureForTable(
@@ -131,7 +131,7 @@ extension MainContentCoordinator {
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchExcludedColumns: newRows.rowMatchExcludedColumns,
+                    rowMatchPolicy: newRows.rowMatchPolicy,
                     triggerReload: false
                 )
             }

@@ -87,17 +87,20 @@ struct DataWriteExecutorTests {
         expectedRowCount: Int?,
         statementCount: Int = 1,
         prologue: [String] = [],
-        epilogue: [String] = []
+        epilogue: [String] = [],
+        matchesRowsWithoutKey: Bool = false,
+        databaseType: DatabaseType = .sqlite
     ) -> DataWritePlan {
         DataWritePlan(
             scope: DatabaseScope(connectionId: UUID(), database: "shop", schema: nil),
-            databaseType: .sqlite,
+            databaseType: databaseType,
             steps: (0 ..< statementCount).map { index in
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: ParameterizedStatement(sql: "UPDATE \"t\" SET \"b\" = \(index)", parameters: []),
                     expectedRowCount: expectedRowCount,
-                    tableName: "t"
+                    tableName: "t",
+                    matchesRowsWithoutKey: matchesRowsWithoutKey
                 )
             },
             prologue: prologue,
@@ -147,6 +150,43 @@ struct DataWriteExecutorTests {
         #expect(results.first?.rowsAffected == 0)
         #expect(counting.didCommit)
         #expect(counting.didRollBack == false)
+    }
+
+    @Test("A keyless write that found no row is rolled back rather than reported as a save")
+    func keylessWriteThatMatchedNothingFails() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 1, actual: 0)) {
+            try await DataWriteExecutor.run(
+                plan(expectedRowCount: 1, matchesRowsWithoutKey: true),
+                on: driver(counting)
+            )
+        }
+        #expect(counting.didRollBack)
+        #expect(counting.didCommit == false)
+    }
+
+    @Test("A keyless delete that found only some of its rows fails on the ones it missed")
+    func keylessDeleteThatMatchedSomeFails() async throws {
+        let counting = CountingDriver(affectedRows: 2)
+        await #expect(throws: DataWriteError.rowsNoLongerMatch(table: "t", expected: 3, actual: 2)) {
+            try await DataWriteExecutor.run(
+                plan(expectedRowCount: 3, matchesRowsWithoutKey: true),
+                on: driver(counting)
+            )
+        }
+        #expect(counting.didRollBack)
+    }
+
+    @Test("An engine whose driver reports no real count is not held to one")
+    func keylessWriteOnAnEngineWithoutCountsSucceeds() async throws {
+        let counting = CountingDriver(affectedRows: 0)
+        let results = try await DataWriteExecutor.run(
+            plan(expectedRowCount: 1, matchesRowsWithoutKey: true, databaseType: .clickhouse),
+            on: driver(counting)
+        ).results
+
+        #expect(results.first?.rowsAffected == 0)
+        #expect(counting.didCommit)
     }
 
     @Test("The foreign-key disable runs before the transaction, and the re-enable after it")

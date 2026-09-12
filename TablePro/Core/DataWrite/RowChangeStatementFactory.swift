@@ -20,7 +20,7 @@ struct RowChangeStatementFactory {
     let columns: [String]
     let primaryKeyColumns: [String]
     let generatedColumns: Set<String>
-    let rowMatchExcludedColumns: Set<String>
+    let rowMatchPolicy: RowMatchPolicy
     let databaseType: DatabaseType
     let pluginDriver: (any PluginDatabaseDriver)?
 
@@ -30,7 +30,7 @@ struct RowChangeStatementFactory {
         columns: [String],
         primaryKeyColumns: [String],
         generatedColumns: Set<String> = [],
-        rowMatchExcludedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
         databaseType: DatabaseType,
         pluginDriver: (any PluginDatabaseDriver)?
     ) {
@@ -39,7 +39,7 @@ struct RowChangeStatementFactory {
         self.columns = columns
         self.primaryKeyColumns = primaryKeyColumns
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
     }
@@ -205,7 +205,7 @@ struct RowChangeStatementFactory {
             primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             generatedColumns: generatedColumns,
-            rowMatchExcludedColumns: rowMatchExcludedColumns,
+            rowMatchPolicy: rowMatchPolicy,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
         )

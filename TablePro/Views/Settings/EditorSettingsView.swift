@@ -7,12 +7,9 @@ import SwiftUI
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
-    @Binding var typography: TypographySettings
 
     var body: some View {
         Form {
-            TypographySection(domain: .editor, settings: $typography)
-
             Section("SQL Editor") {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
@@ -20,8 +17,6 @@ struct EditorSettingsView: View {
                 Toggle("Word wrap", isOn: $settings.wordWrap)
                 Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
                 Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
-                    .disabled(!settings.showLineNumbers)
-                    .help(Text("The run button sits in the gutter, which needs line numbers."))
                 Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
@@ -40,6 +35,6 @@ struct EditorSettingsView: View {
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
+    EditorSettingsView(settings: .constant(.default))
         .frame(width: 450, height: 500)
 }

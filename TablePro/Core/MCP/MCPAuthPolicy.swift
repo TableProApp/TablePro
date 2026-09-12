@@ -282,19 +282,16 @@ public actor MCPAuthPolicy {
         sql: String,
         connectionId: UUID,
         databaseType: DatabaseType,
-        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
+        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement],
+        operationLabel: String? = nil
     ) async throws {
-        var effective = capabilities
-        if !principal.has(.admin) || principal.isAnonymous {
-            effective.remove(.confirmationPreCleared)
-            effective.remove(.preCleared)
-        }
         try await runExecutionGate(
             sql: sql,
             connectionId: connectionId,
             databaseType: databaseType,
-            capabilities: effective,
-            callerLabel: principal.auditLabel
+            capabilities: Self.effectiveCapabilities(capabilities, for: principal),
+            callerLabel: principal.auditLabel,
+            operationLabel: operationLabel
         )
     }
 
@@ -309,7 +306,8 @@ public actor MCPAuthPolicy {
             connectionId: connectionId,
             databaseType: databaseType,
             capabilities: capabilities,
-            callerLabel: nil
+            callerLabel: nil,
+            operationLabel: nil
         )
     }
 
@@ -318,7 +316,8 @@ public actor MCPAuthPolicy {
         connectionId: UUID,
         databaseType: DatabaseType,
         capabilities: CallerCapabilities,
-        callerLabel: String?
+        callerLabel: String?,
+        operationLabel: String?
     ) async throws {
         let decision = await ExecutionGateProvider.shared.authorize(
             OperationRequest(
@@ -328,12 +327,37 @@ public actor MCPAuthPolicy {
                 kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
                 caller: .mcpClient(label: callerLabel),
                 capabilities: capabilities,
-                operationDescription: String(localized: "MCP query execution")
+                operationDescription: Self.operationDescription(for: operationLabel)
             )
         )
         if case .denied(let reason) = decision {
             throw DatabaseAccessError.forbidden(reason)
         }
+    }
+
+    /// `confirmationPreCleared` says a human already confirmed, and over MCP nobody did: the client
+    /// answered its own prompt. Only an admin-scoped token may substitute that for TablePro's
+    /// dialog, which is what separates Full Access from Read & Write in enforcement rather than only
+    /// in the settings UI. Reaching the gate without a principal skips this, so
+    /// `MCPStatementGateGuardTests` checks that the MCP path never does.
+    static func effectiveCapabilities(
+        _ capabilities: CallerCapabilities,
+        for principal: MCPPrincipal
+    ) -> CallerCapabilities {
+        guard !principal.has(.admin) || principal.isAnonymous else { return capabilities }
+        var effective = capabilities
+        effective.remove(.confirmationPreCleared)
+        effective.remove(.preCleared)
+        return effective
+    }
+
+    /// The same words the client's own elicitation prompt uses, so a user who sees both reads one
+    /// vocabulary. The connection is named by the dialog's own subtitle rather than twice here.
+    static func operationDescription(for operationLabel: String?) -> String {
+        guard let operationLabel, !operationLabel.isEmpty else {
+            return String(localized: "MCP query execution")
+        }
+        return String(format: String(localized: "Allow %@?"), operationLabel)
     }
 
     func logQuery(

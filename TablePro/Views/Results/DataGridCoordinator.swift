@@ -617,8 +617,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .sink { [weak self] _ in
                 if let tableView = self?.tableView {
                     DataGridBodyChrome.applyBackground(to: tableView)
-                    tableView.headerView?.needsDisplay = true
-                    tableView.cornerView?.needsDisplay = true
                 }
                 self?.reloadVisibleRowsAndStates()
                 /// The row-number font is a theme value and it decides the column's width, which
@@ -626,7 +624,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 /// the width was already going stale here.
                 self?.resizeRowNumberColumnForCurrentRange()
                 self?.repaintRowGutter()
-                self?.selectionController.overlay?.needsDisplay = true
             }
     }
 

@@ -147,7 +147,6 @@ struct SQLEditorView: View {
         }
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration()
-            coordinator.reapplyThemeColors()
         }
         .onAppear {
             initializeEditor()
@@ -249,17 +248,17 @@ struct SQLEditorView: View {
             appearance: .init(
                 theme: TableProEditorTheme.make(),
                 font: ThemeEngine.shared.editorFonts.font,
-                wrapLines: AppSettingsManager.shared.editor.wordWrap,
-                tabWidth: AppSettingsManager.shared.editor.clampedTabWidth
+                wrapLines: ThemeEngine.shared.wordWrap,
+                tabWidth: ThemeEngine.shared.tabWidth
             ),
             behavior: .init(
-                indentOption: .spaces(count: AppSettingsManager.shared.editor.clampedTabWidth)
+                indentOption: .spaces(count: ThemeEngine.shared.tabWidth)
             ),
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
             ),
             peripherals: EditorPeripherals.editor(
-                lineNumbers: AppSettingsManager.shared.editor.showLineNumbers,
+                lineNumbers: ThemeEngine.shared.showLineNumbers,
                 folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
                 statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls,
                 invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters

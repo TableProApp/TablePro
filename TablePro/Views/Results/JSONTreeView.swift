@@ -30,7 +30,7 @@ private struct JSONTreeRowView: View {
             if let key = node.key {
                 Text(key)
                     .font(ThemeEngine.shared.valueFontEmphasizedSwiftUI)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.syntaxKeyword))
+                    .foregroundStyle(.blue)
                     .lineLimit(1)
                 Text(":")
                     .foregroundStyle(.secondary)
