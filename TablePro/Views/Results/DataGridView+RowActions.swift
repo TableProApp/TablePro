@@ -216,7 +216,8 @@ extension TableViewCoordinator {
         let converter = InClauseConverter(
             columnIndex: columnIndex,
             columnTypes: tableRows.columnTypes,
-            escapeStringLiteral: driver?.escapeStringLiteral
+            escapeStringLiteral: driver?.escapeStringLiteral,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
         )
         ClipboardService.shared.writeText(converter.generateInClause(rows: rows))
     }

@@ -197,6 +197,7 @@ extension TableViewCoordinator {
 
         let currentValue = cellValue(at: row, column: columnIndex) ?? ""
         let escape = resolveDriver()?.escapeStringLiteral ?? SQLEscaping.escapeStringLiteral
+        let literalPrefix = SQLStringLiteralPrefix.forDatabaseType(databaseType)
 
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
@@ -207,6 +208,7 @@ extension TableViewCoordinator {
             CustomValueContentView(
                 initialValue: currentValue,
                 escapeStringLiteral: escape,
+                stringLiteralPrefix: literalPrefix,
                 onCommit: { newValue in
                     guard let self else { return }
                     self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)

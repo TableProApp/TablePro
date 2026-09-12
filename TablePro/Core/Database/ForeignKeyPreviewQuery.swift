@@ -17,9 +17,11 @@ enum ForeignKeyPreviewQuery {
         quotedTable: String,
         quotedColumn: String,
         escapedValue: String,
+        stringLiteralPrefix: String,
         dialect: SQLDialectDescriptor?
     ) -> String {
-        "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = '\(escapedValue)' \(limitClause(dialect: dialect))"
+        let literal = "\(stringLiteralPrefix)'\(escapedValue)'"
+        return "SELECT * FROM \(quotedTable) WHERE \(quotedColumn) = \(literal) \(limitClause(dialect: dialect))"
     }
 
     /// OFFSET/FETCH is part of ORDER BY in T-SQL and Oracle, so the dialect's filler clause travels
