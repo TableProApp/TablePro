@@ -487,6 +487,22 @@ extension PluginManager {
             .schema.defaultSchemaName ?? "public"
     }
 
+    /// Whether a live statement on the open connection moves that connection alone to another
+    /// database. The pair `pin(_:to:)` already trusts before it calls `switchDatabase`, so a caller
+    /// reading this issues no statement the session driver does not issue for the same scope, plus
+    /// the isolation the pool assumes: on an engine whose pooled drivers share one session, the same
+    /// statement moves every other pooled scope with it.
+    func switchesDatabaseWithoutReconnecting(for databaseType: DatabaseType) -> Bool {
+        supportsDatabaseSwitching(for: databaseType)
+            && !requiresReconnectForDatabaseSwitch(for: databaseType)
+            && !pooledDriversShareOneSession(for: databaseType)
+    }
+
+    func pooledDriversShareOneSession(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.pooledDriversShareOneSession ?? false
+    }
+
     func requiresReconnectForDatabaseSwitch(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.requiresReconnectForDatabaseSwitch ?? false

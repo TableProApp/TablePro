@@ -132,11 +132,20 @@ struct TriggerDetailView: View {
         )
     }
 
+    /// Read through the tab's own scope rather than the session driver, which follows the sidebar:
+    /// an engine that qualifies its template with the connection's current database pre-fills a
+    /// statement that creates the trigger on a same-named table in whatever database that is.
     private func newTrigger() {
-        let driver = DatabaseManager.shared.driver(for: connection.id)
-        let template = driver?.createTriggerTemplate(table: tableName)
-            ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
-        editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        let scope = scope
+        let tableName = tableName
+        Task {
+            let generated = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                driver.createTriggerTemplate(table: tableName)
+            }
+            let template = (generated ?? nil)
+                ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
+            editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        }
     }
 
     private func editTrigger(_ trigger: TriggerInfo) {

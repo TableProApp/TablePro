@@ -68,7 +68,7 @@ struct JSONRowInspectorViewModelTests {
             columnTypes: [.integer(rawType: "INT"), .integer(rawType: "INT")],
             values: [.text("7"), artistId],
             foreignKeys: foreignKeys,
-            connectionId: connectionId,
+            scope: DatabaseScope(connectionId: connectionId, database: "main", schema: nil),
             databaseType: .sqlite
         )
     }

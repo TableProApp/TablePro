@@ -85,7 +85,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.tableName = tableName
         self.objectKind = objectKind
         self.coordinator = coordinator
-        self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
+        self.referenceMenus = ForeignKeyReferenceMenus(
+            connectionId: connection.id, databaseType: connection.type
+        )
     }
 
     // MARK: - Index Translation
@@ -115,6 +117,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         guard sourceRowIndex >= 0, sourceRowIndex < structureChangeManager.workingForeignKeys.count else {
             return nil
         }
+        referenceMenus.origin = coordinator?.selectedTabScope
         return referenceMenus.options(
             columnIndex: columnIndex,
             foreignKey: structureChangeManager.workingForeignKeys[sourceRowIndex],
@@ -151,6 +154,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
             StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
             if column == 2 {
+                referenceMenus.origin = coordinator?.selectedTabScope
                 referenceMenus.prefetchReferencedColumns(
                     of: fk.referencedTable, schema: fk.referencedSchema
                 )
