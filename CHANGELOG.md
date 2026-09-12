@@ -171,6 +171,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- SQL Server edits and deletes matching no row when the row is identified by a binary column.
+- SQL Server parameters sent to the wrong placeholders when a column name holds a question mark.
+- `[` in a SQL Server filter value read as a wildcard.
 
 ### Security
 
