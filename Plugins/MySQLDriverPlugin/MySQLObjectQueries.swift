@@ -2,25 +2,47 @@
 //  MySQLObjectQueries.swift
 //  MySQLDriverPlugin
 //
-//  Catalog SQL for routines and triggers. Pure, so it is testable without a server.
+//  Catalog SQL for routines and triggers, and the rule every catalog read shares for naming the
+//  database it means. Pure, so it is testable without a server.
 //
 
 import Foundation
 
 public enum MySQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        mysqlEscapeStringLiteral(value)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
         "`\(value.replacingOccurrences(of: "`", with: "``"))`"
     }
 
+    /// The database a catalog read means.
+    ///
+    /// These engines have no schema layer, so every `schema:` the driver protocol hands them is a
+    /// database name, and a caller that names none means the one the connection is already on. That
+    /// fallback is the whole rule: an unqualified name resolves against the session's current
+    /// database, so a read that drops the caller's schema silently answers about a same-named table
+    /// somewhere else.
+    public static func effectiveSchema(_ schema: String?, activeDatabase: String) -> String {
+        guard let schema, !schema.isEmpty else { return activeDatabase }
+        return schema
+    }
+
+    /// Quoting is the caller's, not this file's: Databend answers the same protocol through the same
+    /// driver and escapes a backtick-bearing name by switching to double quotes, so rendering one
+    /// here with the MySQL quoter would corrupt it.
+    public static func qualifiedIdentifier(
+        schema: String?,
+        name: String,
+        quote: (String) -> String
+    ) -> String {
+        guard let schema, !schema.isEmpty else { return quote(name) }
+        return "\(quote(schema)).\(quote(name))"
+    }
+
     public static func qualifiedIdentifier(schema: String?, name: String) -> String {
-        guard let schema, !schema.isEmpty else { return quoteIdentifier(name) }
-        return "\(quoteIdentifier(schema)).\(quoteIdentifier(name))"
+        qualifiedIdentifier(schema: schema, name: name, quote: quoteIdentifier)
     }
 
     /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's

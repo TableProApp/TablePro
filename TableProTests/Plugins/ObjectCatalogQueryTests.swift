@@ -181,6 +181,43 @@ struct MySQLObjectQueryTests {
     func identifiersAreQuoted() {
         #expect(MySQLObjectQueries.quoteIdentifier("we`ird") == "`we``ird`")
     }
+
+    /// A caller that names no database means the one the connection is on. Dropping the one it did
+    /// name is what made a read about another database answer about the session's.
+    @Test("A named schema wins over the active database, and only a missing one falls back")
+    func effectiveSchemaPrefersTheNamedDatabase() {
+        #expect(MySQLObjectQueries.effectiveSchema("crm", activeDatabase: "app") == "crm")
+        #expect(MySQLObjectQueries.effectiveSchema(nil, activeDatabase: "app") == "app")
+        #expect(MySQLObjectQueries.effectiveSchema("", activeDatabase: "app") == "app")
+    }
+
+    /// A connection with no database selected has nothing to qualify against, and MySQL takes no
+    /// empty qualifier, so the bare name is the only form left.
+    @Test("With no database selected the name stays unqualified")
+    func effectiveSchemaIsEmptyWithoutADatabase() {
+        let resolved = MySQLObjectQueries.effectiveSchema(nil, activeDatabase: "")
+        #expect(resolved.isEmpty)
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: resolved, name: "t") == "`t`")
+    }
+
+    /// Databend answers the same driver protocol and escapes a backtick-bearing name by switching to
+    /// double quotes, so a catalog statement must qualify with the caller's quoter, not this one's.
+    @Test("The qualifier is rendered with the quoter the caller passes")
+    func qualifiedIdentifierUsesTheCallersQuoter() {
+        let shouty: (String) -> String = { "<\($0)>" }
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: "crm", name: "t", quote: shouty) == "<crm>.<t>")
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: nil, name: "t", quote: shouty) == "<t>")
+        #expect(MySQLObjectQueries.qualifiedIdentifier(schema: "crm", name: "t") == "`crm`.`t`")
+    }
+
+    /// A backslash is an escape character to MySQL unless NO_BACKSLASH_ESCAPES is set, so a literal
+    /// that only doubles the quote leaves a database name ending in one able to escape its own
+    /// closing quote.
+    @Test("A literal escapes the backslash as well as the quote")
+    func literalsEscapeBackslashes() {
+        #expect(MySQLObjectQueries.escapeLiteral("a\\") == "a\\\\")
+        #expect(MySQLObjectQueries.escapeLiteral("it's") == "it''s")
+    }
 }
 
 @Suite("MSSQL Object Catalog Queries")

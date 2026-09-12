@@ -12,7 +12,7 @@ import TableProPluginKit
 final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var mariadbConnection: MariaDBPluginConnection?
-    private var _serverVersion: String?
+    internal var _serverVersion: String?
     private var _activeDatabase: String
 
     /// The database a metadata read is scoped to. MySQL has no schema level, so this is what a
@@ -70,7 +70,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { nil }
     var serverVersion: String? { _serverVersion }
 
-    private var catalogQuotesDefaults: Bool {
+    internal var catalogQuotesDefaults: Bool {
         MySQLServerVersion.quotesColumnDefault(banner: _serverVersion, flavor: flavor)
     }
     var supportsSchemas: Bool { false }
@@ -494,7 +494,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let query = """
         SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
         FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = DATABASE()
+        WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         """
         let result = try await execute(query: query)
 
@@ -509,195 +509,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        guard !flavor.isDatabend else { return try await databendColumns(table: table) }
-        let result = try await execute(query: "SHOW FULL COLUMNS FROM \(quoteIdentifier(table))")
-        let generationExpressions = try await fetchGenerationExpressions(table: table)
-
-        return result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText,
-                  let dataType = row[safe: 1]?.asText
-            else { return nil }
-
-            let collation = row[safe: 2]?.asText
-            let isNullable = (row[safe: 3]?.asText) == "YES"
-            let isPrimaryKey = (row[safe: 4]?.asText) == "PRI"
-            let rawDefault = row[safe: 5]?.asText
-            let extra = row[safe: 6]?.asText
-            let comment = row[safe: 8]?.asText
-
-            let charset: String? = {
-                guard let coll = collation, coll != "NULL" else { return nil }
-                return coll.components(separatedBy: "_").first
-            }()
-
-            let upperType = dataType.uppercased()
-            let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
-                ? dataType : upperType
-            let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
-            let defaultValue = mysqlDefaultValueFromCatalog(
-                rawDefault, extra: extra, dataType: normalizedType, quotesLiterals: catalogQuotesDefaults
-            )
-
-            return PluginColumnInfo(
-                name: name,
-                dataType: normalizedType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                extra: extra,
-                charset: charset,
-                collation: collation == "NULL" ? nil : collation,
-                comment: comment?.isEmpty == false ? comment : nil,
-                identityKind: mysqlIdentityKind(extra: extra),
-                isGenerated: mysqlColumnIsGenerated(extra: extra),
-                allowedValues: allowedValues,
-                generationExpression: generationExpressions[name],
-                generationKind: mysqlGenerationKind(extra: extra)
-            )
-        }
-    }
-
-    private func fetchGenerationExpressions(table: String) async throws -> [String: String] {
-        guard MySQLServerVersion.hasGenerationExpression(banner: _serverVersion, flavor: flavor) else {
-            return [:]
-        }
-        let query = """
-            SELECT COLUMN_NAME, GENERATION_EXPRESSION
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = \'\(mysqlEscapeStringLiteral(activeDatabaseName))\'
-                AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'
-                AND GENERATION_EXPRESSION <> \'\'
-            """
-        let result = try await execute(query: query)
-        var expressions: [String: String] = [:]
-        for row in result.rows {
-            guard let name = row[safe: 0]?.asText,
-                  let expression = row[safe: 1]?.asText?.nilIfEmpty else { continue }
-            expressions[name] = expression
-        }
-        return expressions
-    }
-
-    /// MySQL and MariaDB disagree on this catalog: MySQL 8 has no TABLE_NAME on CHECK_CONSTRAINTS
-    /// and must join TABLE_CONSTRAINTS to find the owning table, while MariaDB carries TABLE_NAME
-    /// directly. Neither exposes the columns a check touches, so `columns` stays empty rather than
-    /// being guessed from the expression.
-    func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let flavor = self.flavor
-        guard !flavor.isDatabend else { return try await databendCheckConstraints(table: table) }
-        guard MySQLServerVersion.hasCheckConstraints(banner: _serverVersion, flavor: flavor) else {
-            return []
-        }
-        guard !flavor.isTiDB else { return try await tidbCheckConstraints(table: table) }
-        let database = mysqlEscapeStringLiteral(activeDatabaseName)
-        let safeTable = mysqlEscapeStringLiteral(table)
-        let query: String
-        if flavor.isMariaDB {
-            query = """
-                SELECT CONSTRAINT_NAME, CHECK_CLAUSE
-                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS
-                WHERE CONSTRAINT_SCHEMA = \'\(database)\' AND TABLE_NAME = \'\(safeTable)\'
-                ORDER BY CONSTRAINT_NAME
-                """
-        } else {
-            query = """
-                SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
-                FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
-                JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-                    ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA
-                    AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
-                WHERE cc.CONSTRAINT_SCHEMA = \'\(database)\' AND tc.TABLE_NAME = \'\(safeTable)\'
-                ORDER BY cc.CONSTRAINT_NAME
-                """
-        }
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText,
-                  let clause = row[safe: 1]?.asText else { return nil }
-            return PluginCheckConstraintInfo(name: name, expression: clause)
-        }
-    }
-
-    var providesBulkColumnFetch: Bool { true }
-
-    /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller
-    /// that takes the bulk list has to receive what `fetchColumns` would have given it. Without the
-    /// column the two reads disagree on generated columns alone, and a schema comparison built on
-    /// the bulk read reports a changed generation expression as no difference at all.
-    func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        guard !flavor.isDatabend else { return try await databendAllColumns() }
-        let dbName = activeDatabaseName
-        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
-        let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
-            banner: _serverVersion, flavor: flavor
-        )
-        let generationProjection = hasGenerationExpression ? "GENERATION_EXPRESSION" : "NULL"
-        let query = """
-            SELECT
-                TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME,
-                IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT,
-                \(generationProjection)
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = '\(escapedDb)'
-            ORDER BY TABLE_NAME, ORDINAL_POSITION
-            """
-
-        let result = try await execute(query: query)
-
-        var allColumns: [String: [PluginColumnInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText,
-                  let dataType = row[safe: 2]?.asText
-            else { continue }
-
-            let collation = row[safe: 3]?.asText
-            let isNullable = (row[safe: 4]?.asText) == "YES"
-            let isPrimaryKey = (row[safe: 5]?.asText) == "PRI"
-            let rawDefault = row[safe: 6]?.asText
-            let extra = row[safe: 7]?.asText
-            let comment = row[safe: 8]?.asText
-
-            let charset: String? = {
-                guard let coll = collation, coll != "NULL" else { return nil }
-                return coll.components(separatedBy: "_").first
-            }()
-
-            let upperType = dataType.uppercased()
-            let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
-                ? dataType : upperType
-            let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
-            let defaultValue = mysqlDefaultValueFromCatalog(
-                rawDefault, extra: extra, dataType: normalizedType, quotesLiterals: catalogQuotesDefaults
-            )
-
-            let column = PluginColumnInfo(
-                name: name,
-                dataType: normalizedType,
-                isNullable: isNullable,
-                isPrimaryKey: isPrimaryKey,
-                defaultValue: defaultValue,
-                extra: extra,
-                charset: charset,
-                collation: collation == "NULL" ? nil : collation,
-                comment: comment?.isEmpty == false ? comment : nil,
-                identityKind: mysqlIdentityKind(extra: extra),
-                isGenerated: mysqlColumnIsGenerated(extra: extra),
-                allowedValues: allowedValues,
-                generationExpression: row[safe: 9]?.asText?.nilIfEmpty,
-                generationKind: mysqlGenerationKind(extra: extra)
-            )
-
-            allColumns[tableName, default: []].append(column)
-        }
-
-        return allColumns
-    }
-
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         guard !flavor.isDatabend else { return [] }
-        let result = try await execute(query: "SHOW INDEX FROM \(quoteIdentifier(table))")
+        let result = try await execute(query: "SHOW INDEX FROM \(qualifiedName(table, schema: schema))")
 
         let rows = result.rows.compactMap { row -> MySQLIndexRow? in
             guard let indexName = row[safe: 2]?.asText,
@@ -717,9 +531,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         guard !flavor.isDatabend else { return [] }
-        let dbName = activeDatabaseName
-        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let escapedDb = effectiveSchemaLiteral(schema)
+        let escapedTable = mysqlEscapeStringLiteral(table)
 
         let query = """
             SELECT
@@ -757,14 +570,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 onUpdate: (row[safe: 6]?.asText) ?? "NO ACTION"
             )
         }
-        Self.logger.info("[fk] mysql fetchForeignKeys db=\(dbName, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        Self.logger.info("[fk] mysql fetchForeignKeys db=\(self.effectiveSchema(schema), privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
         return foreignKeys
     }
 
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
         guard !flavor.isDatabend else { return [] }
-        let dbName = schema?.isEmpty == false ? (schema ?? activeDatabaseName) : activeDatabaseName
+        let dbName = effectiveSchema(schema)
         let triggers = try await triggerList(schema: dbName, table: table)
         Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
         return triggers
@@ -773,8 +586,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createTriggerTemplate(table: String, schema: String?) -> String? {
         guard !flavor.isDatabend else { return nil }
         return """
-        CREATE TRIGGER \(quoteIdentifier("trigger_name")) BEFORE INSERT
-        ON \(quoteIdentifier(table)) FOR EACH ROW
+        CREATE TRIGGER \(qualifiedName("trigger_name", schema: schema)) BEFORE INSERT
+        ON \(qualifiedName(table, schema: schema)) FOR EACH ROW
         BEGIN
             -- SET NEW.column = ...;
         END
@@ -782,7 +595,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER \(quoteIdentifier(name))"
+        "DROP TRIGGER \(qualifiedName(name, schema: schema))"
     }
 
     var providesBulkForeignKeyFetch: Bool { true }
@@ -791,8 +604,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         guard !flavor.isDatabend else { return [:] }
-        let dbName = activeDatabaseName
-        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
+        let escapedDb = effectiveSchemaLiteral(schema)
 
         let query = """
             SELECT
@@ -836,9 +648,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let dbName = activeDatabaseName
-        let escapedDb = dbName.replacingOccurrences(of: "'", with: "''")
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
+        let escapedDb = effectiveSchemaLiteral(schema)
+        let escapedTable = mysqlEscapeStringLiteral(table)
 
         let query = """
             SELECT TABLE_ROWS
@@ -857,7 +668,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let result = try await execute(query: "SHOW CREATE TABLE \(quoteIdentifier(table))")
+        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
 
         guard let firstRow = result.rows.first,
               let ddl = firstRow[safe: 1]?.asText
@@ -875,7 +686,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let result = try await execute(query: """
             SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
             FROM information_schema.EVENTS
-            WHERE EVENT_SCHEMA = DATABASE()
+            WHERE EVENT_SCHEMA = '\(effectiveSchemaLiteral(schema))'
             ORDER BY EVENT_NAME
             """)
         return result.rows.compactMap { row in
@@ -890,8 +701,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchEventDDL(_ event: PluginEventInfo) async throws -> String {
-        let safeName = event.name.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "SHOW CREATE EVENT `\(safeName)`")
+        let result = try await execute(query: "SHOW CREATE EVENT \(qualifiedName(event.name, schema: event.schema))")
         guard let row = result.rows.first, let ddl = row[safe: 3]?.asText else {
             throw PluginObjectSourceError.unsupported(event.name)
         }
@@ -899,9 +709,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        guard !flavor.isDatabend else { return try await databendViewDefinition(view: view) }
-        let safeView = view.replacingOccurrences(of: "`", with: "``")
-        let result = try await execute(query: "SHOW CREATE VIEW `\(safeView)`")
+        guard !flavor.isDatabend else { return try await databendViewDefinition(view: view, schema: schema) }
+        let result = try await execute(query: "SHOW CREATE VIEW \(qualifiedName(view, schema: schema))")
 
         guard let firstRow = result.rows.first,
               let ddl = firstRow[safe: 1]?.asText
@@ -913,9 +722,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        guard !flavor.isDatabend else { return try await databendTableMetadata(table: table) }
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let result = try await execute(query: "SHOW TABLE STATUS WHERE Name = '\(escapedTable)'")
+        guard !flavor.isDatabend else { return try await databendTableMetadata(table: table, schema: schema) }
+        let escapedTable = mysqlEscapeStringLiteral(table)
+        let result = try await execute(query: showTableStatus(matching: escapedTable, schema: schema))
 
         guard let row = result.rows.first else {
             return PluginTableMetadata(tableName: table)
@@ -956,7 +765,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = database.replacingOccurrences(of: "'", with: "''")
+        let escapedDb = mysqlEscapeStringLiteral(database)
 
         let query = """
             SELECT COUNT(*), COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0)
@@ -1266,7 +1075,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         FROM information_schema.TABLES
         LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA
             ON TABLE_COLLATION = CCSA.COLLATION_NAME
-        WHERE TABLE_SCHEMA = DATABASE()
+        WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         ORDER BY TABLE_NAME
         """
     }
