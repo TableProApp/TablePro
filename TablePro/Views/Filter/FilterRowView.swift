@@ -35,6 +35,9 @@ struct FilterRowView: View {
 
     private let rowButtonGlyphSize: CGFloat = 14
 
+    /// How much of a column name the row will spend width on before truncating it.
+    private static let columnPickerMaximumWidth: CGFloat = 160
+
     private var pickerEligibleOperators: Set<FilterOperator> {
         [.equal, .notEqual]
     }
@@ -183,7 +186,12 @@ struct FilterRowView: View {
             }
             .pickerStyle(.menu)
             .controlSize(.small)
-            .fixedSize()
+            /// Bounded rather than `.fixedSize()`. A pull-down takes the width of its widest menu
+            /// item, and the items here are the table's column names, so one long name made the
+            /// whole filter row wider than the pane: measured, a 62-character column name alone
+            /// needs 412pt, and the row reached 681pt inside a 420pt host and was clipped at both
+            /// edges. Capped, the name truncates and the row stays the width of its host.
+            .frame(maxWidth: Self.columnPickerMaximumWidth)
             .labelsHidden()
             .accessibilityLabel(String(localized: "Filter column"))
             .accessibilityValue(filter.isRawSQL ? rawFilterLabel : filter.columnName)

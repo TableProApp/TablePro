@@ -5,6 +5,8 @@ description: Sort, size, hide, highlight, chart and copy the rows a table or a q
 
 Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, highlight, filter and page buttons at the trailing edge.
 
+A narrow window trims that bar rather than cutting it off. The Columns and Filters buttons drop their titles first, and **First** and **Last** leave with them; the Query menu still carries all four page commands. Narrower still, the view switcher becomes a pull-down naming the current mode and rows-per-page moves into the page indicator's menu. Everything else keeps its place.
+
 <Frame caption="Data grid with query results">
   <img className="block dark:hidden" src="/images/data-grid.png" alt="Data grid" />
   <img className="hidden dark:block" src="/images/data-grid-dark.png" alt="Data grid" />
@@ -128,7 +130,7 @@ With no row selected and a table open, the inspector shows that table's size, ro
 
 ## Pages and row counts
 
-A table tab pages. The status bar offers 5, 10, 20, 100, 500 or 1,000 rows per page, **Custom…** up to 1,000,000, and **All rows…**, plus First, Previous, Next and Last; `Cmd+[` and `Cmd+]` step pages, and clicking the page indicator (`3 / 12`) jumps to a page number. The size a table opens with is a [data setting](/customization/data-settings).
+A table tab pages. The status bar offers 5, 10, 20, 100, 500 or 1,000 rows per page, **Custom…** up to 1,000,000, and **All rows…**, plus First, Previous, Next and Last; `Cmd+[` and `Cmd+]` step pages, and clicking the page indicator (`3 / 12`) jumps to a page number. In a narrow window that indicator is a menu carrying **Go to page…** and the row-count choices together. The size a table opens with is a [data setting](/customization/data-settings).
 
 A large table shows an estimated total prefixed with `~` instead of running a slow `COUNT(*)`. **Count Exactly** beside it runs the real count in the background, and `Cmd+.` cancels that. While a total is an estimate, **Last** and **All rows…** stay unavailable and **Next** works as long as the last page came back full.
 
