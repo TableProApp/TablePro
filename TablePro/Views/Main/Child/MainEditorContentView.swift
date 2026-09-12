@@ -733,6 +733,30 @@ struct MainEditorContentView: View {
                         description: Text(String(localized: "Execute a query to chart its loaded rows."))
                     )
                 }
+            case .map:
+                resultTabBarSection(tab: tab)
+                if let resultSet = tab.display.activeResultSet {
+                    ResultMapView(
+                        configuration: mapConfigurationBinding(for: tab),
+                        tableRows: resolvedTableRows(for: tab),
+                        displayIDs: coordinator.displayIDs(forTab: tab.id),
+                        selectedRowIndices: selectionState.indices,
+                        tabId: tab.id,
+                        resultSetId: resultSet.id,
+                        dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                        displayRevision: coordinator.gridDisplayRevision,
+                        onSelectRow: { displayIndex in
+                            selectionState.indices = displayIndex.map { [$0] } ?? []
+                        }
+                    )
+                    .id(tab.id)
+                } else {
+                    ContentUnavailableView(
+                        String(localized: "No Data"),
+                        systemImage: "map",
+                        description: Text(String(localized: "Execute a query to map its loaded rows."))
+                    )
+                }
             case .data:
                 resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
@@ -966,6 +990,18 @@ struct MainEditorContentView: View {
                 if let index = tabManager.selectedTabIndex {
                     tabManager.mutate(at: index) { $0.chartConfiguration = newValue }
                 }
+            }
+        )
+    }
+
+    /// The map's choices belong to the tab for the same reason the chart's do: a page turn, a sort
+    /// or a re-execute builds a new `ResultSet`, and the chosen column has to outlive it.
+    private func mapConfigurationBinding(for tab: QueryTab) -> Binding<ResultMapConfiguration> {
+        let tabId = tab.id
+        return Binding(
+            get: { tab.mapConfiguration },
+            set: { newValue in
+                tabManager.mutate(tabId: tabId) { $0.mapConfiguration = newValue }
             }
         )
     }

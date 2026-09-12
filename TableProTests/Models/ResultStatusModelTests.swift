@@ -432,6 +432,57 @@ struct ResultsModeAvailabilityTests {
         #expect(modes == [.data, .json, .chart])
     }
 
+    /// Map is the only mode gated on the result's contents rather than on the kind of tab, so a
+    /// result with no geometry column must not offer it at all.
+    @Test("Map is offered only when the result holds a spatial column")
+    func mapFollowsTheSpatialColumn() {
+        #expect(ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: true,
+            hasSpatialColumn: true
+        ) == [.data, .json, .chart, .map])
+
+        #expect(ResultsModeAvailability.modes(
+            tabType: .table,
+            hasTableName: true,
+            hasColumns: true,
+            hasSpatialColumn: true
+        ) == [.data, .structure, .json, .chart, .map])
+
+        #expect(!ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: true,
+            hasSpatialColumn: false
+        ).contains(.map))
+    }
+
+    /// A mode that leaves the available set takes its switcher segment and all of its View menu
+    /// items with it, and those items carry no key equivalent, so nothing would be left to press.
+    @Test("A mode outside the available set falls back to Data")
+    func strandedModeReconcilesToData() {
+        let afterNonSelect = ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: false
+        )
+        #expect(ResultsModeAvailability.reconcile(.map, availableModes: afterNonSelect) == .data)
+        #expect(ResultsModeAvailability.reconcile(.chart, availableModes: afterNonSelect) == .data)
+
+        let spatial = ResultsModeAvailability.modes(
+            tabType: .query,
+            hasTableName: false,
+            hasColumns: true,
+            hasSpatialColumn: true
+        )
+        #expect(ResultsModeAvailability.reconcile(.map, availableModes: spatial) == .map)
+
+        let plain = ResultsModeAvailability.modes(tabType: .query, hasTableName: false, hasColumns: true)
+        #expect(ResultsModeAvailability.reconcile(.map, availableModes: plain) == .data)
+        #expect(ResultsModeAvailability.reconcile(.json, availableModes: plain) == .json)
+    }
+
     @Test("A tab that has not produced columns offers nothing")
     func unexecutedQueryOffersNothing() {
         #expect(ResultsModeAvailability.modes(tabType: .query, hasTableName: false, hasColumns: false).isEmpty)
@@ -440,7 +491,7 @@ struct ResultsModeAvailabilityTests {
 
     @Test("Every mode has a name, and JSON keeps its own")
     func everyModeIsNamed() {
-        for mode in [ResultsViewMode.data, .structure, .json, .chart] {
+        for mode in ResultsViewMode.allCases {
             #expect(!mode.displayName.isEmpty)
         }
         #expect(ResultsViewMode.json.displayName == "JSON")

@@ -25,8 +25,33 @@ extension MainContentCoordinator {
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
         tabSessionRegistry.setTableRows(tableRows, for: tabId)
+        reconcileResultsViewMode(against: tableRows, for: tabId)
         resetSelectionForNewResult(tabId: tabId)
         notifyFullReplaceIfActive(tabId: tabId)
+    }
+
+    /// Keeps the tab on a mode it can still offer.
+    ///
+    /// A mode that leaves `availableModes` takes its own switcher segment and every View menu item
+    /// with it, and those items carry no key equivalent, so nothing is left to press: the tab is
+    /// stranded until another statement happens to restore the mode. A succeeding non-SELECT
+    /// installs an empty `TableRows` and does exactly that, which is why this belongs at the one
+    /// place rows are installed rather than at each execution path.
+    private func reconcileResultsViewMode(against tableRows: TableRows, for tabId: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        let tab = tabManager.tabs[index]
+        let available = ResultsModeAvailability.modes(
+            tabType: tab.tabType,
+            hasTableName: tab.tableContext.tableName != nil,
+            hasColumns: !tableRows.columns.isEmpty,
+            hasSpatialColumn: SpatialColumn.hasSpatialColumn(in: tableRows)
+        )
+        let reconciled = ResultsModeAvailability.reconcile(
+            tab.display.resultsViewMode,
+            availableModes: available
+        )
+        guard reconciled != tab.display.resultsViewMode else { return }
+        tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = reconciled }
     }
 
     /// Switching result sets replaces what the grid shows and what an edit would be written to, so

@@ -197,10 +197,16 @@ struct ColumnTypeClassifier {
 
         map["SET"] = { .set(rawType: $0, values: nil) }
 
+        /// GEOMCOLLECTION is MySQL 8.0.11's own spelling, which its catalog reports for a column
+        /// declared either way. GEO_POINT and GEO_SHAPE are Elasticsearch's, SDO_GEOMETRY Oracle's,
+        /// ST_GEOMETRY Teradata's, and RING ClickHouse's. Every one of them fell through to a
+        /// pattern arm before this: GEO_POINT reached `hasSuffix("INT")` and classified as an
+        /// integer, which drove its alignment, its sort comparator and its filter operators.
         for key in [
             "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
             "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",
-            "GEOGRAPHY", "GEOMETRYCOLLECTION"
+            "GEOGRAPHY", "GEOMETRYCOLLECTION", "GEOMCOLLECTION",
+            "GEO_POINT", "GEO_SHAPE", "SDO_GEOMETRY", "ST_GEOMETRY", "RING"
         ] {
             map[key] = { .spatial(rawType: $0) }
         }
