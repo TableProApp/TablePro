@@ -495,8 +495,9 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
-    /// A bounded read is one HTTP request. The unbounded `streamRows` path still pays a separate
-    /// `LIMIT 0` probe to learn its columns, so it is deliberately not reused here.
+    /// A bounded read is one HTTP request, and so is the unbounded `streamRows` path: the format
+    /// both ask for names its columns, so neither pays a `LIMIT 0` probe to learn them. That probe
+    /// appended to the statement, which a query already carrying a `LIMIT` rejects outright.
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let started = Date()
         let stream = PluginRowStream.make { continuation, abort in
@@ -526,87 +527,70 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return (session, _currentDatabase)
         }
 
-        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmedQuery.hasSuffix(";") {
-            trimmedQuery = String(trimmedQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        let request = try buildStreamRequest(
+            query: Self.withoutTrailingSemicolons(query),
+            database: database,
+            rowCap: rowCap
+        )
+        try await streamTabSeparatedRows(
+            request: request,
+            session: session,
+            batchSize: min(5_000, rowCap + 1),
+            continuation: continuation
+        )
+    }
 
-        let request = try buildStreamRequest(query: trimmedQuery, database: database, rowCap: rowCap)
-        let (bytes, response) = try await session.bytes(for: request)
-
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            var body = ""
-            for try await line in bytes.lines {
-                body += line
-            }
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        /// JSONCompactEachRowWithNamesAndTypes puts the names on line one and the types on line
-        /// two, both as positional arrays, so the columns arrive without a second round trip and
-        /// survive a zero-row result.
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
+    /// `TabSeparatedWithNamesAndTypes` carries the names on line one and the types on line two, so
+    /// the columns arrive with the rows and survive a result holding none. It is the format the
+    /// non-streaming read asks for too, which is what keeps an exported value and the same value in
+    /// the grid the same text, and unlike a JSON string it can carry a byte no encoding covers.
+    private func streamTabSeparatedRows(
+        request: URLRequest,
+        session: URLSession,
+        batchSize: Int,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        var decoder = ClickHouseTabSeparatedRowDecoder()
         var headerSent = false
-        let batchSize = min(5_000, rowCap + 1)
         var batch: [PluginRow] = []
         batch.reserveCapacity(batchSize)
 
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedLine.isEmpty { continue }
-            guard let lineData = trimmedLine.data(using: .utf8) else { continue }
-
-            if columns.isEmpty {
-                columns = (try? JSONSerialization.jsonObject(with: lineData) as? [String]) ?? []
-                continue
-            }
-            if columnTypeNames.isEmpty {
-                columnTypeNames = (try? JSONSerialization.jsonObject(with: lineData) as? [String]) ?? []
-                continuation.yield(.header(PluginStreamHeader(
-                    columns: columns,
-                    columnTypeNames: columnTypeNames,
-                    estimatedRowCount: nil
-                )))
-                headerSent = true
-                continue
-            }
-
-            guard let values = try? JSONSerialization.jsonObject(with: lineData) as? [Any] else { continue }
-            var row: [PluginCellValue] = []
-            row.reserveCapacity(columns.count)
-            for index in columns.indices {
-                let value: Any? = index < values.count ? values[index] : nil
-                row.append(Self.boundedCellValue(value))
-            }
-            batch.append(row)
-            if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
-                batch.removeAll(keepingCapacity: true)
-            }
-        }
-
-        if !headerSent {
+        func sendHeader(_ header: ClickHouseTabSeparatedRowDecoder.Header) {
+            guard !headerSent else { return }
+            headerSent = true
             continuation.yield(.header(PluginStreamHeader(
-                columns: columns,
-                columnTypeNames: columnTypeNames,
+                columns: header.columns,
+                columnTypeNames: header.columnTypeNames,
                 estimatedRowCount: nil
             )))
         }
+
+        try await ClickHouseHTTPChunks(session: session, request: request).forEachChunk { chunk in
+            try Task.checkCancellation()
+            let rows = decoder.consume(chunk)
+            if let header = decoder.header {
+                sendHeader(header)
+            }
+            batch.append(contentsOf: rows)
+            guard batch.count >= batchSize else { return }
+            continuation.yield(.rows(batch))
+            batch.removeAll(keepingCapacity: true)
+        }
+
+        batch.append(contentsOf: decoder.finish())
+        sendHeader(decoder.header ?? ClickHouseTabSeparatedRowDecoder.Header(columns: [], columnTypeNames: []))
         if !batch.isEmpty {
             continuation.yield(.rows(batch))
         }
         continuation.finish()
     }
 
-    private static func boundedCellValue(_ value: Any?) -> PluginCellValue {
-        guard let value, !(value is NSNull) else { return .null }
-        if let str = value as? String { return .text(str) }
-        if let num = value as? NSNumber { return .text(NumberText.text(for: num)) }
-        if let jsonStr = NumberText.json(from: value, sortedKeys: false) { return .text(jsonStr) }
-        return .text(String(describing: value))
+    private static func withoutTrailingSemicolons(_ query: String) -> String {
+        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmed.hasSuffix(";") {
+            trimmed = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -633,87 +617,13 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return (session, _currentDatabase)
         }
 
-        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmedQuery.hasSuffix(";") {
-            trimmedQuery = String(trimmedQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        let headerResult = try await executeRaw("\(trimmedQuery) LIMIT 0")
-        continuation.yield(.header(PluginStreamHeader(
-            columns: headerResult.columns,
-            columnTypeNames: headerResult.columnTypeNames,
-            estimatedRowCount: nil
-        )))
-
-        let columnOrder = headerResult.columns
-
-        guard !columnOrder.isEmpty else {
-            continuation.finish()
-            return
-        }
-
-        let streamRequest = try buildStreamRequest(
-            query: trimmedQuery, database: database
+        let request = try buildStreamRequest(query: Self.withoutTrailingSemicolons(query), database: database)
+        try await streamTabSeparatedRows(
+            request: request,
+            session: session,
+            batchSize: 5_000,
+            continuation: continuation
         )
-
-        let (bytes, response) = try await session.bytes(for: streamRequest)
-
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
-            var body = ""
-            for try await line in bytes.lines {
-                body += line
-            }
-            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
-        }
-
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
-
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedLine.isEmpty { continue }
-
-            guard let lineData = trimmedLine.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-                continue
-            }
-
-            var row: [PluginCellValue] = []
-            for colName in columnOrder {
-                if let value = json[colName] {
-                    if value is NSNull {
-                        row.append(.null)
-                    } else if let str = value as? String {
-                        row.append(.text(str))
-                    } else if let num = value as? NSNumber {
-                        row.append(.text(NumberText.text(for: num)))
-                    } else {
-                        if let jsonStr = NumberText.json(from: value, sortedKeys: false) {
-                            row.append(.text(jsonStr))
-                        } else {
-                            row.append(.text(String(describing: value)))
-                        }
-                    }
-                } else {
-                    row.append(.null)
-                }
-            }
-
-            batch.append(row)
-            if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
-                batch.removeAll(keepingCapacity: true)
-            }
-        }
-
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
-
-        continuation.finish()
     }
 
     private func buildStreamRequest(query: String, database: String, rowCap: Int? = nil) throws -> URLRequest {
@@ -729,15 +639,16 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !database.isEmpty {
             queryItems.append(URLQueryItem(name: "database", value: database))
         }
+        queryItems.append(URLQueryItem(
+            name: "default_format",
+            value: ClickHouseResponseClassifier.requestedFormat
+        ))
         if let rowCap {
             /// The bound rides as an HTTP setting so the SQL in the body stays exactly what the
             /// user wrote. One row past the cap, so a full page can be told from a truncated one.
-            queryItems.append(URLQueryItem(name: "default_format", value: "JSONCompactEachRowWithNamesAndTypes"))
             queryItems.append(URLQueryItem(name: "max_result_rows", value: String(rowCap + 1)))
             queryItems.append(URLQueryItem(name: "result_overflow_mode", value: "break"))
             queryItems.append(URLQueryItem(name: "cancel_http_readonly_queries_on_client_close", value: "1"))
-        } else {
-            queryItems.append(URLQueryItem(name: "default_format", value: "JSONEachRow"))
         }
         components.queryItems = queryItems
 

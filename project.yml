@@ -403,6 +403,7 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHouseCapabilities.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseCredentials.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseGeneratedColumnClassification.swift
+      - Plugins/ClickHouseDriverPlugin/ClickHouseHTTPChunks.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseParameterBinding.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePlugin.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Http.swift

@@ -86,7 +86,7 @@ The CA file may be PEM or DER. If **Verify CA** cannot read it, the connection f
 - No auto-increment, and the primary key and sorting key are fixed at creation. Structure editing covers adding, modifying, and dropping columns and data-skipping indexes; recreate the table for anything else.
 - A `SET` does not carry to the next statement. Every statement is its own HTTP request with no session id, and the setting is gone by the next one. Put it in a `SETTINGS` clause on the query itself.
 - A query with its own `FORMAT` clause, such as `SELECT 1 FORMAT JSON`, shows the server's raw output in one column instead of a parsed table. Drop the clause to get a grid.
-- A column with even one value that is not valid UTF-8 shows every row as hex, and its cells do not open for inline editing. `String` and `FixedString` hold raw bytes, so a hash or a stray byte is enough. Select `toValidUTF8(column)` to read it as text, with the bad bytes replaced.
+- A column with even one value that is not valid UTF-8 shows every row as hex in the grid, and its cells do not open for inline editing. `String` and `FixedString` hold raw bytes, so a hash or a stray byte is enough. An export, an object copy and a data compare judge each value on its own, so a row holding text stays text there. Select `toValidUTF8(column)` to read it as text, with the bad bytes replaced.
 
 ## Troubleshooting
 
