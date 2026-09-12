@@ -96,7 +96,7 @@ struct MainEditorContentView: View {
                 get: { !historyState.isVisible },
                 set: { historyState.isVisible = !$0 }
             ),
-            autosaveName: "HistoryDrawer-\(connectionId)",
+            autosaveName: SplitViewAutosaveName.historyDrawer(connectionId: connectionId),
             topMinimumThickness: Self.tabContentMinimumHeight,
             bottomMinimumThickness: 180,
             topContent: {
@@ -420,7 +420,7 @@ struct MainEditorContentView: View {
                     _ = coordinator.tabManager.mutate(tabId: tab.id) { $0.display.isResultsCollapsed = collapsed }
                 }
             ),
-            autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
+            autosaveName: SplitViewAutosaveName.querySplit(connectionId: connectionId),
             topContent: {
                 VStack(spacing: 0) {
                     if tab.content.externalModificationDetected,
