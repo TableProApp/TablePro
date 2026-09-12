@@ -41,7 +41,7 @@ public enum PostgreSQLObjectQueries {
     /// Aggregates (prokind 'a') and window functions ('w') are excluded because
     /// pg_get_functiondef raises on them, which would fail the whole listing over one object the
     /// viewer could not have shown anyway.
-    public static func routineList(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+    static func routineList(schema: String, capabilities: PostgreSQLCapabilities) -> String {
         let schemaLiteral = quoteLiteral(schema)
         let modern = capabilities.hasProcedureKind
         let kindColumn = modern
