@@ -171,6 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- CockroachDB DDL, view definition and index reads ignoring the schema of an object outside the current schema. (#2726)
 
 ### Security
 
