@@ -35,7 +35,7 @@ struct ResultMapCanvas: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
+        let mapView = ResultMapSurface()
         mapView.delegate = context.coordinator
         mapView.showsCompass = true
         mapView.showsZoomControls = true

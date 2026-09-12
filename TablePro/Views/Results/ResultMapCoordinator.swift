@@ -11,7 +11,7 @@ import TableProPluginKit
 
 /// Owns the map's overlays, its hit-testing and its selection highlight.
 @MainActor
-final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecognizerDelegate {
+final class ResultMapCoordinator: NSObject, MKMapViewDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ResultMap")
 
     /// How far off a line a click may land and still hit it, in points. A line is one pixel of
@@ -21,7 +21,6 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecogniz
 
     var onSelect: (RowID?) -> Void
 
-    private var clickRecognizer: NSClickGestureRecognizer?
     private var appliedProjection: ResultMapProjection?
     private var appliedToken: Int?
     private var polygonOverlay: MKMultiPolygon?
@@ -38,22 +37,22 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecogniz
         self.onSelect = onSelect
     }
 
-    /// `MKMapView` installs its own recognizers for panning and zooming, and a click recognizer
-    /// added beside them has to agree to share: without a delegate answering
-    /// `shouldRecognizeSimultaneouslyWith`, MapKit's recognizers win every arbitration and the
-    /// click action is never sent. `delaysPrimaryMouseButtonEvents` is left at its default for the
-    /// same reason; setting it to false hands the events to the map view before this recognizer has
-    /// decided anything.
+    /// Clicks arrive from the map view itself rather than from an `NSClickGestureRecognizer`.
+    ///
+    /// A recognizer added beside MapKit's own pan and zoom recognizers has to win an arbitration it
+    /// does not control, and a `shouldRecognizeSimultaneouslyWith` delegate did not make it fire.
+    /// `ResultMapView` (the `MKMapView` subclass below) overrides `mouseUp` instead, which is
+    /// `NSResponder`'s own path and needs no arbitration, and it calls `super` so panning and
+    /// zooming behave exactly as MapKit implements them.
     func attach(to mapView: MKMapView) {
-        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(handleClick(_:)))
-        recognizer.delegate = self
-        mapView.addGestureRecognizer(recognizer)
-        clickRecognizer = recognizer
+        (mapView as? ResultMapSurface)?.onClick = { [weak self, weak mapView] point in
+            guard let self, let mapView else { return }
+            self.handleClick(at: point, in: mapView)
+        }
     }
 
     func detach(from mapView: MKMapView) {
-        if let clickRecognizer { mapView.removeGestureRecognizer(clickRecognizer) }
-        clickRecognizer = nil
+        (mapView as? ResultMapSurface)?.onClick = nil
         mapView.delegate = nil
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations)
@@ -234,14 +233,10 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecogniz
     /// polygon or polyline hit, and it costs 0.116ms over 20,000 shapes. The geometry lives in a
     /// pure type so it can be tested without a map view, which is what the first version could not
     /// be and why it shipped not working.
-    @objc
-    private func handleClick(_ recognizer: NSClickGestureRecognizer) {
-        guard let mapView = recognizer.view as? MKMapView else { return }
-        let point = recognizer.location(in: mapView)
+    private func handleClick(at point: NSPoint, in mapView: MKMapView) {
         /// An annotation reports its own selection through the delegate, so a click that lands on
         /// one is left alone rather than being resolved twice.
-        if mapView.annotations(in: mapView.visibleMapRect).isEmpty == false,
-           let hit = mapView.hitTest(mapView.convert(point, to: mapView.superview)),
+        if let hit = mapView.hitTest(mapView.convert(point, to: mapView.superview)),
            hit is MKAnnotationView || hit.superview is MKAnnotationView
         {
             return
@@ -284,15 +279,6 @@ final class ResultMapCoordinator: NSObject, MKMapViewDelegate, NSGestureRecogniz
             return nil
         }
         return polylineRowIDs[index]
-    }
-
-    // MARK: - NSGestureRecognizerDelegate
-
-    nonisolated func gestureRecognizer(
-        _ gestureRecognizer: NSGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer
-    ) -> Bool {
-        true
     }
 
     // MARK: - Shape building

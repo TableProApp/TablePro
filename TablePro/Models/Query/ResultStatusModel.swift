@@ -68,12 +68,13 @@ struct ResultStatusModel: Equatable {
         statusMessage = controls.showsReadout ? snapshot.statusMessage : nil
     }
 
-    /// A mode with no grid has no selection to report.
+    /// A mode that cannot show the selection has none to report.
     ///
     /// Nothing clears the grid's selection when the mode changes, so a carried-over count would
-    /// replace the row range with a selection the user cannot see.
+    /// replace the row range with a selection the user cannot see. Map is included because it both
+    /// shows the selection and sets it.
     private static func reportedSelection(count: Int, viewMode: ResultsViewMode) -> Int {
-        viewMode.showsColumnControls ? count : 0
+        viewMode.reportsRowSelection ? count : 0
     }
 
     private static func resolveControls(

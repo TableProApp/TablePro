@@ -38,6 +38,17 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
     var showsFindBar: Bool {
         self == .data
     }
+
+    /// Whether a row selection means anything in this mode, and so whether the status bar should
+    /// report one.
+    ///
+    /// Deliberately its own question rather than a reuse of `showsColumnControls`, which is about
+    /// column chrome. Map both reads the selection, to highlight the chosen shape, and writes it,
+    /// when a shape is clicked, so a count the bar refuses to print is a count the reader cannot
+    /// see anywhere.
+    var reportsRowSelection: Bool {
+        self == .data || self == .json || self == .map
+    }
 }
 
 struct QueryTab: Identifiable, Equatable {
