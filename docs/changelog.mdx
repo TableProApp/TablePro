@@ -4,6 +4,78 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="v0.74.0" description="September 13, 2026">
+  ### New Features
+
+  - **Google Cloud Spanner driver**: A registry plugin over the REST API. Install it from Settings > Plugins ([#1226](https://github.com/TableProApp/TablePro/issues/1226), [#2480](https://github.com/TableProApp/TablePro/issues/2480))
+  - **Weaviate driver**: A registry REST plugin that browses collections as tables ([#1724](https://github.com/TableProApp/TablePro/issues/1724))
+  - **Cloudflare R2 SQL driver**: Read-only, for Iceberg tables in an R2 Data Catalog ([#2030](https://github.com/TableProApp/TablePro/issues/2030))
+  - **TiDB and Databend**: Both are connection types on the MySQL driver, with the server differences handled for you ([#1066](https://github.com/TableProApp/TablePro/issues/1066), [#2514](https://github.com/TableProApp/TablePro/issues/2514))
+  - **Map view**: A result holding a geometry column can be drawn on a map, with MapKit over Apple's own tiles ([#2532](https://github.com/TableProApp/TablePro/issues/2532))
+  - **Highlight rules**: Color data grid rows or cells by the value in them ([#2723](https://github.com/TableProApp/TablePro/issues/2723))
+  - **Invisible characters in the SQL editor**: Control characters, zero-width spaces, bidi controls and special spaces are shown, with warnings for full-width punctuation, curly quotes and non-ASCII spaces. **Remove Invisible Characters** is in the Query menu, and **Show invisible characters** in Settings > Editor ([#2717](https://github.com/TableProApp/TablePro/issues/2717))
+  - **Encoding for MySQL and MariaDB connections**: Including **UTF-8 via Latin 1**, for a database written through a Latin 1 client ([#2725](https://github.com/TableProApp/TablePro/issues/2725))
+  - **Refresh Materialized View…**: On PostgreSQL, with a concurrent refresh where the view qualifies ([#2726](https://github.com/TableProApp/TablePro/issues/2726))
+  - **Show DDL and Copy DDL**: For views and materialized views ([#2726](https://github.com/TableProApp/TablePro/issues/2726))
+  - **Edit Comment…**: For PostgreSQL tables, views, materialized views and foreign tables ([#2726](https://github.com/TableProApp/TablePro/issues/2726))
+  - **Check connections**: In Settings > General, with Only when I use the connection for a server you would rather not have pinged ([#2700](https://github.com/TableProApp/TablePro/issues/2700))
+  - **Max INSERT size for SQL export**: 1 MB by default, with the largest INSERT written reported in the summary ([#2533](https://github.com/TableProApp/TablePro/issues/2533))
+  - **More SQL import encodings**: UTF-16 LE, UTF-16 BE and Windows-1252
+  - **Pending edits at a glance**: A row queued for deletion is struck through, and a new row or an edited value is underlined
+  - **Recovery actions for a plugin that cannot load**: **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on the connection itself
+  - **Full changelog in the app**: From Help and from Software Update settings
+  - **Tips**: For preview tabs, Open Quickly and query history
+  - **Empty state in the inspector and the assistant**: For a connection that is not up
+
+  ### Improvements
+
+  - The query confirmation shows the statement syntax highlighted and scrollable, with **Copy All** and the name of whatever asked to run it ([#2759](https://github.com/TableProApp/TablePro/issues/2759))
+  - The app bundle is 5 MB smaller and the DMG download 7 MB smaller
+  - Connect progress reads as a labelled bar, and names a step only where the app is waiting on something outside itself
+  - BigQuery Google sign-in runs from a **Sign In** prompt, and keeps its refresh token in the keychain
+  - First launch opens on the welcome window, whose empty list offers the sample database and import from another app. The first-launch tour is now a one-page welcome sheet, available again from Help > Getting Started
+  - New Connection… and Import are on the welcome window, named as in the File menu, and Open Project Folder… is in File > Import
+  - The structure editor leaves out options the connected server does not support, and is read-only on a view, a materialized view, a foreign table or a system table outside PostgreSQL ([#2726](https://github.com/TableProApp/TablePro/issues/2726))
+  - MySQL sessions run on the server's default `utf8mb4` collation
+  - Beancount connections are held at Safe Mode Read-Only ([#2030](https://github.com/TableProApp/TablePro/issues/2030))
+
+  ### Removed
+
+  - Focus Border color in the theme editor
+
+  ### Bug Fixes
+
+  - Commands and metadata reads acting on the database the sidebar moved to rather than the one the tab names. This covered New Table, New Trigger, Drop Trigger, Show All Tables, sidebar Refresh, Ref Table and Ref Columns in the structure editor, imports, export row totals, foreign key jumps, and `describe_table` over MCP ([#2769](https://github.com/TableProApp/TablePro/issues/2769))
+  - Table lists, foreign keys, triggers, check constraints, types, grants, SQL dumps, Create Database, reindex, query plans, Server Dashboard, and backup and restore failing on PostgreSQL 9.1 through 13 ([#2734](https://github.com/TableProApp/TablePro/issues/2734))
+  - Garbled non-Latin text saved to MySQL and MariaDB servers that force a Latin 1 session, on the Mac, iPhone and iPad, and when restoring a SQL export through a Latin 1 client ([#2725](https://github.com/TableProApp/TablePro/issues/2725))
+  - Garbled non-ASCII text on PostgreSQL databases not encoded in UTF-8, on the Mac and on iOS, and when restoring a SQL export into one
+  - Garbled ClickHouse text whenever another value in the same result held binary data, and edits and deletes matching no row on a table with a binary value in it
+  - Timestamps losing their UTC offset, running an hour late and losing their time in a daylight-saving gap, missing sub-second precision in the column filter, and still reading in the old time zone after the Mac's changed ([#2702](https://github.com/TableProApp/TablePro/issues/2702))
+  - Idle metadata connections held open for the life of the app, up to six per connection, and a health check quietly reconnecting over startup commands, the query timeout and the selected database ([#2700](https://github.com/TableProApp/TablePro/issues/2700))
+  - `bytea` written as a bit string, a gzipped export emptying the file it was overwriting, parts left on disk unnamed after a failure, `SET IDENTITY_INSERT` missing after the first part of a split SQL Server dump, and minutes spent rendering hex literals ([#2533](https://github.com/TableProApp/TablePro/issues/2533))
+  - The start of every line hidden in the SQL editor after a long line was removed, the editor jumping sideways on each keystroke in a long line, and the cursor left off screen after pasting one ([#2709](https://github.com/TableProApp/TablePro/issues/2709))
+  - BigQuery statements broken by an apostrophe or a backslash, grid inserts writing `__DEFAULT__` into columns, edits matching more rows than the edited one, and six filter operators ignored
+  - Connections imported from TablePlus and Beekeeper Studio arriving unusable: five engines typed so they never connect, DuckDB files dropped, certificate paths read the wrong way round, **Prompt for password** lost, and wrong default ports on Redshift and CockroachDB
+  - A silently lost edit on a table with no primary key holding a `FLOAT`, `DOUBLE` or `JSON` column, and a save on such a table reporting success when it matched no row
+  - SQL Server and Oracle reporting zero rows affected for every `INSERT`, `UPDATE` and `DELETE`
+  - Row numbers painted over the find bar, the filter panel and the result tab bar, showing the scrolled columns through them in dark mode, and taking no clicks below the last row
+  - The wrong row deleted or updated after an edit took a row out of a column value filter
+  - The data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors
+  - A statement holding a NUL character running only up to it on SQLite and PostgreSQL, dropping its `WHERE` clause ([#2717](https://github.com/TableProApp/TablePro/issues/2717))
+  - A blank welcome window list when a search matched nothing, a tag filter stuck on a tag no connection carries any more, and collapsed groups undone at the next launch
+  - The data grid and its bottom bar cut off at both edges in a narrow window, with rows and pagination buttons out of reach
+  - A PostgreSQL statement silently replayed on a new connection after a drop, a lost `COMMIT` reported as saved included
+  - The object browser reading "No Tables" for a database with procedures but no tables, and procedures, functions and triggers missing on Oracle, Snowflake, BigQuery and Dameng
+
+  ### Security
+
+  - TablePlus connections set to VERIFY-IDENTITY or VERIFY-FULL imported with TLS turned off
+  - BigQuery Google sign-in accepting an authorization response without PKCE or a state check
+  - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal
+  - PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of ([#2726](https://github.com/TableProApp/TablePro/issues/2726))
+  - An MCP token without Full Access approving its own write and skipping TablePro's confirmation dialog
+</Update>
+
 <Update label="v0.73.0" description="September 9, 2026">
   ### New Features
 

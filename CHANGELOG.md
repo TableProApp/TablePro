@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-09-13
+
 ### Added
 
 - Strikethrough on a row queued for deletion, and an underline on a new row or an edited value.
@@ -17,13 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Check connections** in Settings > General, including Only when I use the connection. (#2700)
 - Cloudflare R2 SQL driver, read-only, for Iceberg tables in R2 Data Catalog. (#2030)
 - Tips for preview tabs, Open Quickly, and query history.
+- Full changelog from Help and Software Update settings.
 - **Enable Plugin**, **Open Plugin Settings** and **Edit Connection…** on a connection whose driver cannot load.
 - Invisible characters shown in the SQL editor: control characters, zero-width spaces, bidi controls and special spaces. (#2717)
 - **Remove Invisible Characters** in the Query menu. (#2717)
 - **Show invisible characters** in Settings > Editor. (#2717)
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
-- **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
+- **Encoding** option for MySQL and MariaDB, with **UTF-8 via Latin 1** for Latin 1-written databases. (#2725)
 - **Refresh Materialized View…** on PostgreSQL, with a concurrent refresh where the view qualifies. (#2726)
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
@@ -34,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Query confirmation shows the statement syntax highlighted and scrollable, with **Copy All** and the name of whatever asked to run it. (#2759)
+- Syntax-highlighted, scrollable statement in the query confirmation, with **Copy All** and the caller's name. (#2759)
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
@@ -45,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
-- Structure editor options the connected PostgreSQL server does not support left out: generated columns before 12, BRIN before 9.5, and the MySQL-only FULLTEXT and SPATIAL index types.
+- Structure editor options the connected server does not support left out, FULLTEXT and SPATIAL among them.
 - Structure tab read-only on a view, a materialized view, a foreign table or a system table outside PostgreSQL. (#2726)
 
 ### Removed
@@ -70,7 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-row INSERT statements Oracle cannot parse when importing a CSV, JSON or XLSX file. (#2533)
 - Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
 - Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
-- ClickHouse **Drop Partition** and **Detach Partition** acting on the sidebar's database instead of the table on screen, and running without the connection's destructive-statement confirmation.
+- ClickHouse **Drop Partition** and **Detach Partition** hitting the sidebar's database, unconfirmed.
 - Import listing one database's tables and mapping their columns while the rows went to another.
 - **New Table** created in the database the sidebar moved to rather than the one its own tab names.
 - **Show All Tables** listing whichever database a cross-database tab last left the connection on.
@@ -89,12 +92,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
 - TablePlus import reading the CA certificate and client key paths the wrong way round.
-- MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
+- MySQL and MariaDB reads of an object in another database answering about the current database's. (#2769)
 - Nested foreign key chevrons in the row inspector pointing into the database the sidebar is on rather than the referenced one.
-- Ref Columns in the structure editor offering only **Custom…** for the rest of the tab after one failed read, with no error and no retry.
+- Ref Columns in the structure editor stuck on **Custom…** after one failed read, with no error and no retry.
 - Ref Columns reading the sidebar's database instead of the tab's.
 - Empty **Ref Table** menu in the structure editor on MySQL, MariaDB, TiDB, PostgreSQL, CockroachDB, Redshift, SQL Server and DuckDB.
-- **New Trigger** pre-filling a template naming the sidebar's database, and **Drop Trigger** naming it in the statement it ran elsewhere.
+- **New Trigger** and **Drop Trigger** naming the sidebar's database rather than the table's.
 - `describe_table` over MCP answering with one database's columns beside another's indexes, foreign keys, row count and DDL.
 - Foreign key arrow replacing the tab you were reading. (#1421)
 - Applied filter left in the panel after cancelling the unsaved-changes alert on a foreign key jump.
@@ -148,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
 - Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.
 - Users & Roles failing, Stop not ending queries and sequences listed as tables on TiDB servers opened as MySQL.
-- Update release notes show all changes for the offered version, with new features before fixes and properly formatted Markdown. The full changelog is also available from Help and Software Update settings.
+- Truncated, unformatted release notes in the update dialog, with fixes listed before new features.
 - Blank welcome window list when a search matched nothing and a favorite existed.
 - Welcome window reading No Connections while a tag filter hid every connection.
 - Favorited connection inside a group listed twice on the welcome window.
@@ -204,9 +207,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column lines showing through the row numbers below the last row.
 - Empty rows below the last row striped brighter than the rows in dark mode.
 - Row numbers keeping their old stripes after turning alternate rows off or changing the row height.
-- SQL Server, CockroachDB, Cloudflare D1, libSQL and Elasticsearch connections imported from TablePlus with a database type that could never connect.
+- TablePlus imports of SQL Server, CockroachDB, Cloudflare D1, libSQL and Elasticsearch typed so they never connect.
 - DuckDB file connections imported from TablePlus without their file.
-- Connections to an engine TablePro does not support imported silently and checked by default, or dropped from a Beekeeper Studio import.
+- Unsupported engines imported silently and checked by default, or dropped from a Beekeeper Studio import.
 - Import preview calling an unrecognized database type "not installed".
 - Imported connections unable to connect when the source app spelled the engine name in a different case.
 - Wrong default port on Redshift and CockroachDB connections imported without one.
@@ -231,7 +234,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Line and paragraph separators (U+2028, U+2029) shown as line breaks the database does not see. (#2717)
 - Stop on Cloudflare D1, libSQL and Trino cancelling a sidebar read instead of the running query.
 - Numeric-looking filter values sent unquoted to text columns when a table first opens or after a foreign key jump.
-- Missing column comments on PostgreSQL views, partitioned tables and foreign tables, and missing identity and generated flags on partitioned and foreign tables.
+- Missing column comments, identity flags and generated flags on PostgreSQL views, partitioned and foreign tables.
 - Wrong primary key columns when another table reuses the key's constraint name on PostgreSQL and Redshift.
 - Restore reported as failed after a complete restore into a PostgreSQL server older than `pg_restore`.
 - Garbled non-Latin text saved to MySQL and MariaDB servers that force a Latin 1 session. (#2725)
@@ -280,7 +283,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Maintenance running against a same-named object in another schema. (#2726)
 - Maintenance SQL preview showing a statement the app never runs. (#2726)
 - `[` in a SQL Server filter value read as a wildcard.
-- Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, Preview Referenced Row, compare scripts and column defaults on SQL Server.
+- Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, compare scripts and column defaults on SQL Server.
 - Structure tab offering column, index and constraint edits that views and materialized views refuse. (#2726)
 
 ### Security
@@ -4253,7 +4256,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.73.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.74.0...HEAD
+[0.74.0]: https://github.com/TableProApp/TablePro/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/TableProApp/TablePro/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/TableProApp/TablePro/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/TableProApp/TablePro/compare/v0.70.0...v0.71.0
