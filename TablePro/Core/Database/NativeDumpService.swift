@@ -41,6 +41,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case alreadyRunning
     case sourceUnreadable
     case engineStatementUnavailable
+    case incompatibleTool(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -60,6 +61,8 @@ enum NativeDumpError: LocalizedError, Equatable {
             return String(localized: "The selected backup file is not readable.")
         case .engineStatementUnavailable:
             return String(localized: "TablePro could not read the database's own name from the connection.")
+        case .incompatibleTool(let message):
+            return message
         }
     }
 }
@@ -271,17 +274,11 @@ final class NativeDumpService {
 
         switch descriptor.mechanism {
         case .commandLineTool(let tool):
-            let candidates = tool.binaries(for: kind)
-            guard let resolved = candidates.lazy.compactMap({ name -> (String, String)? in
-                guard let path = CLIExecutableFinder.findExecutable(name) else { return nil }
-                return (name, path)
-            }).first else {
-                throw NativeDumpError.binaryNotFound(
-                    name: candidates.formatted(.list(type: .or)),
-                    installHint: tool.installHint
-                )
-            }
-            let (binaryName, resolvedPath) = resolved
+            let (binaryName, resolvedPath) = try await Self.resolveExecutable(
+                tool: tool,
+                kind: kind,
+                serverVersion: session?.driver?.serverVersion
+            )
             toolName = binaryName
             let command = try Self.buildCommand(
                 kind: kind,
@@ -350,6 +347,62 @@ final class NativeDumpService {
     }
 
     // MARK: - Resolution
+
+    private static func resolveExecutable(
+        tool: NativeDumpDescriptor.CommandLineTool,
+        kind: NativeDumpKind,
+        serverVersion: String?
+    ) async throws -> (name: String, path: String) {
+        let candidates = tool.binaries(for: kind)
+        let selector = tool.toolForServer
+        let resolved = await Task.detached {
+            resolve(candidates: candidates, serverVersion: serverVersion, selector: selector)
+        }.value
+        switch resolved {
+        case .found(let name, let path):
+            return (name, path)
+        case .incompatible(let message):
+            throw NativeDumpError.incompatibleTool(message: message)
+        case .missing:
+            throw NativeDumpError.binaryNotFound(
+                name: candidates.formatted(.list(type: .or)),
+                installHint: tool.installHint
+            )
+        }
+    }
+
+    private enum ExecutableResolution: Sendable {
+        case found(name: String, path: String)
+        case incompatible(String)
+        case missing
+    }
+
+    nonisolated private static func resolve(
+        candidates: [String],
+        serverVersion: String?,
+        selector: (@Sendable (String, String?) -> NativeDumpToolSelection)?
+    ) -> ExecutableResolution {
+        guard let selector else {
+            for name in candidates {
+                guard let path = CLIExecutableFinder.findExecutable(name) else { continue }
+                return .found(name: name, path: path)
+            }
+            return .missing
+        }
+
+        var refusal: String?
+        for name in candidates {
+            switch selector(name, serverVersion) {
+            case .found(let path):
+                return .found(name: name, path: path)
+            case .incompatible(let message):
+                refusal = refusal ?? message
+            case .missing:
+                continue
+            }
+        }
+        return refusal.map { .incompatible($0) } ?? .missing
+    }
 
     /// The path a file-backed driver actually opens, read from wherever that driver keeps it.
     /// SQLite uses `database`; DuckDB and libSQL use a plugin-declared additional field.
@@ -466,18 +519,29 @@ final class NativeDumpService {
         return "\"\(escaped)\""
     }
 
+    /// The locale variables a spawned tool reads, named rather than spelled at each use site. The
+    /// preference-key guard scans this target's sources for a quoted string passed to a `forKey:`
+    /// label and reports anything outside the `com.TablePro` namespace, so a locale variable
+    /// written that way reads as a stray `UserDefaults` key. Comments are scanned too.
+    nonisolated internal enum LocaleEnvironmentKey {
+        static let everyCategory = "LC_ALL"
+        static let characterHandling = "LC_CTYPE"
+        static let messages = "LC_MESSAGES"
+    }
+
     nonisolated private static let inheritedEnvironmentKeys: [String] = [
-        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL"
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", LocaleEnvironmentKey.everyCategory
     ]
 
     nonisolated internal static let untranslatedMessagesLocale = "C"
 
     nonisolated internal static func untranslatedMessagesEnvironment(_ environment: [String: String]) -> [String: String] {
         var result = environment
-        if let everyCategory = result.removeValue(forKey: "LC_ALL"), result["LC_CTYPE"] == nil {
-            result["LC_CTYPE"] = everyCategory
+        let everyCategory = result.removeValue(forKey: LocaleEnvironmentKey.everyCategory)
+        if let everyCategory, result[LocaleEnvironmentKey.characterHandling] == nil {
+            result[LocaleEnvironmentKey.characterHandling] = everyCategory
         }
-        result["LC_MESSAGES"] = untranslatedMessagesLocale
+        result[LocaleEnvironmentKey.messages] = untranslatedMessagesLocale
         return result
     }
 

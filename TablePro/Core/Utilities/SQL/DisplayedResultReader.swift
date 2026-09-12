@@ -24,13 +24,13 @@ internal enum DisplayedResultReader {
 
     /// - Parameter selectedDisplayIndices: display positions to narrow to. Empty means every
     ///   displayed row, which is what an untouched result set shows.
-    /// - Parameter deletedDisplayIndices: display positions marked for deletion but not yet saved.
+    /// - Parameter deletedRowIDs: rows marked for deletion but not yet saved.
     ///   Empty, the default, reads every row.
     internal static func read(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedDisplayIndices: Set<Int>,
-        deletedDisplayIndices: Set<Int> = [],
+        deletedRowIDs: Set<RowID> = [],
         columns projection: VisibleColumnProjection
     ) -> Output {
         let positions: [Int]
@@ -45,7 +45,7 @@ internal enum DisplayedResultReader {
             guard let row = DisplayRowMapping.row(
                 forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
             ) else { return nil }
-            guard !deletedDisplayIndices.contains(displayIndex) else {
+            guard !deletedRowIDs.contains(row.id) else {
                 skippedDeleted += 1
                 return nil
             }

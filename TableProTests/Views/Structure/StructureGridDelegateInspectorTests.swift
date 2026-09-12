@@ -54,6 +54,7 @@ struct StructureGridDelegateInspectorTests {
             tab: .columns,
             databaseType: .mysql,
             additionalFields: [.primaryKey],
+            serverSupport: .unrestricted,
             filterText: filterText
         )
         delegate.currentProvider = provider
@@ -144,7 +145,8 @@ struct StructureGridDelegateInspectorTests {
             changeManager: manager,
             tab: .columns,
             databaseType: .mysql,
-            additionalFields: [.primaryKey]
+            additionalFields: [.primaryKey],
+            serverSupport: .unrestricted
         )
         delegate.orderedFields = provider.orderedColumnFields
 

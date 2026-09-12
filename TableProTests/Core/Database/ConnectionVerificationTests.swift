@@ -47,6 +47,19 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
+    @Test("a driver that reported a lost connection is checked even though it answered recently")
+    func lostDriverIgnoresTheFreshStamp() async {
+        let driver = MockDatabaseDriver()
+        driver.hasLostConnection = true
+        let connection = makeSession(driver: driver)
+        DatabaseManager.shared.markSessionVerified(connection.id)
+
+        await DatabaseManager.shared.verifyBeforeUse(connection.id)
+
+        #expect(driver.pingCallCount == 1)
+        await cleanUp(connection.id)
+    }
+
     @Test("a connection that has been silent too long is checked once")
     func staleConnectionIsPingedOnce() async {
         let driver = MockDatabaseDriver()

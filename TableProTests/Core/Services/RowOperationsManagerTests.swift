@@ -65,7 +65,7 @@ struct RowOperationsManagerTests {
         #expect(tableRows.count == originalCount + 1)
     }
 
-    @Test("addNewRow returns correct row index and inserted delta")
+    @Test("addNewRow appends the row it names and reports an inserted delta")
     func addNewRowReturnsCorrectIndex() {
         let (manager, _) = makeManager()
         var tableRows = makeTableRows(rowCount: 5)
@@ -73,7 +73,7 @@ struct RowOperationsManagerTests {
         let result = manager.addNewRow(tableRows: &tableRows)
 
         #expect(result != nil)
-        #expect(result?.rowIndex == 5)
+        #expect(result.flatMap { tableRows.index(of: $0.rowID) } == 5)
         if case .rowsInserted(let indices) = result?.delta {
             #expect(indices == IndexSet(integer: 5))
         } else {
@@ -88,9 +88,8 @@ struct RowOperationsManagerTests {
 
         let result = manager.addNewRow(tableRows: &tableRows)
 
-        #expect(result != nil)
-        let newIndex = result!.rowIndex
-        #expect(tableRows.rows[newIndex].id.isInserted)
+        #expect(result?.rowID.isInserted == true)
+        #expect(tableRows.rows.last?.id == result?.rowID)
     }
 
     @Test("addNewRow uses DEFAULT marker for columns with defaults")
@@ -166,7 +165,7 @@ struct RowOperationsManagerTests {
 
         #expect(result != nil)
         #expect(changeManager.hasChanges)
-        #expect(changeManager.isRowInserted(result!.rowIndex))
+        #expect(result.map { changeManager.isRowInserted($0.rowID) } == true)
     }
 
     @Test("addNewRow increments change manager reload version")
@@ -199,9 +198,9 @@ struct RowOperationsManagerTests {
         let r3 = manager.addNewRow(tableRows: &tableRows)
 
         #expect(tableRows.count == 5)
-        #expect(r1?.rowIndex == 2)
-        #expect(r2?.rowIndex == 3)
-        #expect(r3?.rowIndex == 4)
+        #expect(r1.flatMap { tableRows.index(of: $0.rowID) } == 2)
+        #expect(r2.flatMap { tableRows.index(of: $0.rowID) } == 3)
+        #expect(r3.flatMap { tableRows.index(of: $0.rowID) } == 4)
     }
 
     @Test("duplicateRow copies source row values")
@@ -277,8 +276,8 @@ struct RowOperationsManagerTests {
         )
 
         #expect(changeManager.hasChanges)
-        #expect(changeManager.isRowDeleted(1))
-        #expect(changeManager.isRowDeleted(3))
+        #expect(changeManager.isRowDeleted(.existing(1)))
+        #expect(changeManager.isRowDeleted(.existing(3)))
     }
 
     @Test("deleteSelectedRows removes inserted rows from tableRows and reports delta")
@@ -286,17 +285,17 @@ struct RowOperationsManagerTests {
         let (manager, _) = makeManager()
         var tableRows = makeTableRows(rowCount: 3)
 
-        let addResult = manager.addNewRow(tableRows: &tableRows)
+        _ = manager.addNewRow(tableRows: &tableRows)
         #expect(tableRows.count == 4)
 
         let result = manager.deleteSelectedRows(
-            selectedIndices: [addResult!.rowIndex],
+            selectedIndices: [3],
             tableRows: &tableRows
         )
 
         #expect(tableRows.count == 3)
         if case .rowsRemoved(let indices) = result.delta {
-            #expect(indices == IndexSet(integer: addResult!.rowIndex))
+            #expect(indices == IndexSet(integer: 3))
         } else {
             Issue.record("Expected .rowsRemoved delta")
         }
@@ -317,6 +316,33 @@ struct RowOperationsManagerTests {
 
         #expect(result.nextRowToSelect >= 0)
         #expect(result.nextRowToSelect < tableRows.count)
+    }
+
+    @Test("deleteSelectedRows selects the row after the block, or the one before it at the end")
+    func deleteSelectedRowsNextSelection() {
+        let (manager, _) = makeManager()
+
+        var fourRows = makeTableRows(rowCount: 4)
+        #expect(manager.deleteSelectedRows(selectedIndices: [1], tableRows: &fourRows).nextRowToSelect == 2)
+
+        var fromTheEnd = makeTableRows(rowCount: 4)
+        #expect(manager.deleteSelectedRows(selectedIndices: [3], tableRows: &fromTheEnd).nextRowToSelect == 2)
+
+        var block = makeTableRows(rowCount: 6)
+        #expect(manager.deleteSelectedRows(selectedIndices: [1, 2, 3], tableRows: &block).nextRowToSelect == 4)
+    }
+
+    @Test("deleteSelectedRows counts the rows the removal took out before choosing the next one")
+    func deleteSelectedRowsNextSelectionAfterRemovals() {
+        let (manager, _) = makeManager()
+        var tableRows = makeTableRows(rowCount: 2)
+        _ = manager.addNewRow(tableRows: &tableRows)
+        _ = manager.addNewRow(tableRows: &tableRows)
+
+        let result = manager.deleteSelectedRows(selectedIndices: [2, 3], tableRows: &tableRows)
+
+        #expect(tableRows.count == 2)
+        #expect(result.nextRowToSelect == 1)
     }
 
     @Test("deleteSelectedRows returns empty result for empty selection")
@@ -379,47 +405,75 @@ struct RowOperationsManagerTests {
         #expect(tableRows.count == 3)
     }
 
-    @Test("deleteRows marks an existing row deleted at its display index with the given values")
-    func deleteRowsMarksExistingByDisplayIndex() {
+    @Test("Under a value filter, a selected position deletes the row shown there")
+    func deleteSelectedRowsUnderFilterMarksTheShownRow() {
         let (manager, changeManager) = makeManager()
         var tableRows = makeTableRows(rowCount: 4)
-        let resolvedRow: [PluginCellValue] = [.text("42"), .text("Zoe"), .text("zoe@test.com")]
+        let displayIDs: [RowID] = [.existing(3), .existing(1)]
+        let shownRow = Array(tableRows.rows[1].values)
 
-        _ = manager.deleteRows(
-            existingRows: [(displayIndex: 1, originalRow: resolvedRow)],
-            insertedStorageIndices: [],
-            tableRows: &tableRows
-        )
+        _ = manager.deleteSelectedRows(selectedIndices: [1], displayIDs: displayIDs, tableRows: &tableRows)
 
-        #expect(changeManager.isRowDeleted(1))
+        #expect(changeManager.isRowDeleted(.existing(1)))
+        #expect(!changeManager.isRowDeleted(.existing(3)))
         #expect(tableRows.count == 4)
-        let deleteChange = changeManager.rowChanges.first { $0.type == .delete && $0.rowIndex == 1 }
-        #expect(deleteChange?.originalRow == resolvedRow)
+        let deleteChange = changeManager.rowChanges.first { $0.type == .delete }
+        #expect(deleteChange?.rowID == .existing(1))
+        #expect(deleteChange?.originalRow == shownRow)
     }
 
-    @Test("deleteRows physically removes inserted rows by storage index")
-    func deleteRowsRemovesInsertedByStorageIndex() {
-        let (manager, _) = makeManager()
+    @Test("Under a value filter, a selected inserted row is removed from its storage position")
+    func deleteSelectedRowsUnderFilterRemovesInsertedRow() {
+        let (manager, changeManager) = makeManager()
         var tableRows = makeTableRows(rowCount: 3)
         guard let addResult = manager.addNewRow(tableRows: &tableRows) else {
             Issue.record("addNewRow returned nil")
             return
         }
-        #expect(tableRows.count == 4)
+        let displayIDs: [RowID] = [.existing(2), addResult.rowID]
 
-        let result = manager.deleteRows(
-            existingRows: [],
-            insertedStorageIndices: [addResult.rowIndex],
-            tableRows: &tableRows
-        )
+        let result = manager.deleteSelectedRows(selectedIndices: [1], displayIDs: displayIDs, tableRows: &tableRows)
 
         #expect(tableRows.count == 3)
-        #expect(result.physicallyRemovedIndices == [addResult.rowIndex])
+        #expect(tableRows.index(of: addResult.rowID) == nil)
+        #expect(!changeManager.isRowInserted(addResult.rowID))
+        #expect(result.physicallyRemovedIndices == [3])
         if case .rowsRemoved(let indices) = result.delta {
-            #expect(indices == IndexSet(integer: addResult.rowIndex))
+            #expect(indices == IndexSet(integer: 3))
         } else {
             Issue.record("Expected .rowsRemoved delta")
         }
+    }
+
+    @Test("Undoing the removal of inserted rows puts them back where they were, with their identity")
+    func undoRemovedInsertedRowsRestoresThem() {
+        let (manager, changeManager) = makeManager()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        changeManager.undoManagerProvider = { undoManager }
+        var captured: UndoResult?
+        changeManager.onUndoApplied = { captured = $0 }
+        var tableRows = makeTableRows(rowCount: 2)
+        guard let first = manager.addNewRow(tableRows: &tableRows),
+              let second = manager.addNewRow(tableRows: &tableRows) else {
+            Issue.record("addNewRow returned nil")
+            return
+        }
+
+        _ = manager.deleteSelectedRows(selectedIndices: [2, 3], tableRows: &tableRows)
+        #expect(tableRows.count == 2)
+
+        undoManager.undo()
+        guard let captured else {
+            Issue.record("No undo result")
+            return
+        }
+        _ = manager.applyUndoResult(captured, tableRows: &tableRows)
+
+        #expect(tableRows.index(of: first.rowID) == 2)
+        #expect(tableRows.index(of: second.rowID) == 3)
+        #expect(changeManager.isRowInserted(first.rowID))
+        #expect(changeManager.isRowInserted(second.rowID))
     }
 
     @Test("addNewRow then edit cell preserves insertion state")
@@ -427,12 +481,13 @@ struct RowOperationsManagerTests {
         let (manager, changeManager) = makeManager()
         var tableRows = makeTableRows(rowCount: 2)
 
-        let result = manager.addNewRow(tableRows: &tableRows)
-        #expect(result != nil)
-        let newIndex = result!.rowIndex
+        guard let result = manager.addNewRow(tableRows: &tableRows) else {
+            Issue.record("addNewRow returned nil")
+            return
+        }
 
         changeManager.recordCellChange(
-            rowIndex: newIndex,
+            rowID: result.rowID,
             columnIndex: 1,
             columnName: "name",
             oldValue: nil,
@@ -440,8 +495,8 @@ struct RowOperationsManagerTests {
         )
 
         #expect(changeManager.hasChanges)
-        #expect(changeManager.isRowInserted(newIndex))
+        #expect(changeManager.isRowInserted(result.rowID))
         #expect(tableRows.count == 3)
-        #expect(tableRows.rows[newIndex].id.isInserted)
+        #expect(tableRows.row(withID: result.rowID) != nil)
     }
 }

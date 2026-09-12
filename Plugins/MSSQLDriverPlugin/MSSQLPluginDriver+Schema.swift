@@ -13,11 +13,11 @@ extension MSSQLPluginDriver {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let resolved = effectiveSchema(schema)
-        let esc = MSSQLSchemaQueries.escape(resolved)
+        let schemaLiteral = MSSQLStringLiteral.quoted(resolved)
         let sql = """
             SELECT t.TABLE_NAME, t.TABLE_TYPE
             FROM INFORMATION_SCHEMA.TABLES t
-            WHERE t.TABLE_SCHEMA = '\(esc)'
+            WHERE t.TABLE_SCHEMA = \(schemaLiteral)
               AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
             ORDER BY t.TABLE_NAME
             """
@@ -31,8 +31,8 @@ extension MSSQLPluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
+        let tableLiteral = MSSQLStringLiteral.quoted(table)
+        let schemaLiteral = effectiveSchemaQuoted(schema)
         let sql = """
             SELECT
                 c.COLUMN_NAME,
@@ -53,11 +53,11 @@ extension MSSQLPluginDriver {
                     ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
                     AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
                 WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(esc)'
-                    AND tc.TABLE_NAME = '\(escapedTable)'
+                    AND tc.TABLE_SCHEMA = \(schemaLiteral)
+                    AND tc.TABLE_NAME = \(tableLiteral)
             ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_NAME = '\(escapedTable)'
-              AND c.TABLE_SCHEMA = '\(esc)'
+            WHERE c.TABLE_NAME = \(tableLiteral)
+              AND c.TABLE_SCHEMA = \(schemaLiteral)
             ORDER BY c.ORDINAL_POSITION
             """
         let result = try await execute(query: sql)
@@ -153,7 +153,7 @@ extension MSSQLPluginDriver {
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         /// Bracket-escaped for the identifier and literal-escaped for the string it sits in:
         /// SQL Server allows both `]` and `'` in an identifier.
-        let bracketedFull = MSSQLSchemaQueries.escape(
+        let objectLiteral = MSSQLStringLiteral.quoted(
             MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
             SELECT i.name, i.is_unique, i.is_primary_key, c.name AS column_name, i.type_desc
@@ -162,7 +162,7 @@ extension MSSQLPluginDriver {
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID('\(bracketedFull)')
+            WHERE i.object_id = OBJECT_ID(\(objectLiteral))
               AND i.name IS NOT NULL
             ORDER BY i.index_id, ic.key_ordinal
             """
@@ -208,7 +208,7 @@ extension MSSQLPluginDriver {
         /// The bracketed name is spliced into a string literal, so a name carrying a quote needs
         /// the literal escape as well as the bracket one. SQL Server allows both characters in an
         /// identifier.
-        let objectRef = MSSQLSchemaQueries.escape(
+        let objectLiteral = MSSQLStringLiteral.quoted(
             MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
             SELECT i.name, i.type_desc, i.is_unique, i.filter_definition,
@@ -218,7 +218,7 @@ extension MSSQLPluginDriver {
                 ON i.object_id = ic.object_id AND i.index_id = ic.index_id
             JOIN sys.columns c
                 ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-            WHERE i.object_id = OBJECT_ID('\(objectRef)')
+            WHERE i.object_id = OBJECT_ID(\(objectLiteral))
               AND i.name IS NOT NULL
               AND i.is_primary_key = 0
               AND i.type IN (1, 2)
@@ -270,7 +270,8 @@ extension MSSQLPluginDriver {
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
         let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
         let bracketedName = name.replacingOccurrences(of: "]", with: "]]")
-        let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID('[\(esc)].[\(bracketedName)]'))"
+        let objectLiteral = MSSQLStringLiteral.quoted("[\(esc)].[\(bracketedName)]")
+        let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID(\(objectLiteral)))"
         let result = try await execute(query: sql)
         guard let definition = result.rows.first?[safe: 0]?.asText, !definition.isEmpty else { return nil }
         guard let range = definition.range(of: "CREATE TRIGGER", options: .caseInsensitive) else {
@@ -285,7 +286,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let esc = effectiveSchemaEscaped(schema)
+        let schemaLiteral = effectiveSchemaQuoted(schema)
         let sql = """
             SELECT
                 c.TABLE_NAME,
@@ -307,9 +308,9 @@ extension MSSQLPluginDriver {
                     ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
                     AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
                 WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                    AND tc.TABLE_SCHEMA = '\(esc)'
+                    AND tc.TABLE_SCHEMA = \(schemaLiteral)
             ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
-            WHERE c.TABLE_SCHEMA = '\(esc)'
+            WHERE c.TABLE_SCHEMA = \(schemaLiteral)
             ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
             """
         let result = try await execute(query: sql)
@@ -377,7 +378,7 @@ extension MSSQLPluginDriver {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let esc = effectiveSchemaEscaped(schema)
+        let schemaLiteral = effectiveSchemaQuoted(schema)
         let sql = """
             SELECT
                 tp.name AS table_name,
@@ -396,7 +397,7 @@ extension MSSQLPluginDriver {
             JOIN sys.schemas sr ON tr.schema_id = sr.schema_id
             JOIN sys.columns cr
                 ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
-            WHERE s.name = '\(esc)'
+            WHERE s.name = \(schemaLiteral)
             ORDER BY tp.name, fk.name
             """
         let result = try await execute(query: sql)
@@ -472,13 +473,12 @@ extension MSSQLPluginDriver {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
+        let qualified = MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table)
         let cols = try await fetchColumns(table: table, schema: schema)
         let indexes = try await fetchIndexes(table: table, schema: schema)
         let fks = try await fetchForeignKeys(table: table, schema: schema)
 
-        var ddl = "CREATE TABLE [\(esc)].[\(escapedTable)] (\n"
+        var ddl = "CREATE TABLE \(qualified) (\n"
         let colDefs = cols.map { col -> String in
             var def = "    [\(col.name)] \(col.dataType.uppercased())"
             if col.extra == "IDENTITY" { def += " IDENTITY(1,1)" }
@@ -506,16 +506,15 @@ extension MSSQLPluginDriver {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let esc = effectiveSchemaEscaped(schema)
-        let escapedView = "\(esc).\(view.replacingOccurrences(of: "'", with: "''"))"
-        let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('\(escapedView)')"
+        let viewLiteral = MSSQLStringLiteral.quoted("\(effectiveSchema(schema)).\(view)")
+        let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID(\(viewLiteral))"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.asText ?? ""
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let esc = effectiveSchemaEscaped(schema)
+        let tableLiteral = MSSQLStringLiteral.quoted(table)
+        let schemaLiteral = effectiveSchemaQuoted(schema)
         let sql = """
             SELECT
                 SUM(p.rows) AS row_count,
@@ -528,7 +527,7 @@ extension MSSQLPluginDriver {
             JOIN sys.allocation_units a ON p.partition_id = a.container_id
             LEFT JOIN sys.extended_properties ep
                 ON ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = 'MS_Description'
-            WHERE t.name = '\(escapedTable)' AND s.name = '\(esc)'
+            WHERE t.name = \(tableLiteral) AND s.name = \(schemaLiteral)
             GROUP BY ep.value
             """
         let result = try await execute(query: sql)

@@ -281,6 +281,32 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
 
     // MARK: - Value kinds
 
+    func testAJSONColumnCopiedToAPostgresServerWithoutJSONArrivesAsTextWithANote() {
+        let source = snapshot(columns: [column("payload", "JSON")])
+        let result = CrossEngineStructureTranslator.translate(
+            source, from: .mysql, to: .postgresql, targetServerVersion: "9.1.24"
+        )
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["TEXT"])
+        XCTAssertTrue(result.notes.contains { $0.subject == "payload" })
+    }
+
+    func testAJSONColumnCopiedToAPostgresServerWithoutJSONBArrivesAsJSON() {
+        let source = snapshot(columns: [column("payload", "JSON")])
+        let result = CrossEngineStructureTranslator.translate(
+            source, from: .mysql, to: .postgresql, targetServerVersion: "9.3.25"
+        )
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["JSON"])
+        XCTAssertTrue(result.notes.isEmpty)
+    }
+
+    func testAJSONColumnCopiedIntoRedshiftKeepsJSONBWhateverVersionItReports() {
+        let source = snapshot(columns: [column("payload", "JSON")])
+        let result = CrossEngineStructureTranslator.translate(
+            source, from: .mysql, to: .redshift, targetServerVersion: "8.0.2"
+        )
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["JSONB"])
+    }
+
     func testTheTargetKindsDescribeEveryColumn() {
         let source = snapshot(columns: [column("flag", "TINYINT(1)"), column("made", "DATETIME")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)

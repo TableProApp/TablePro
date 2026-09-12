@@ -44,7 +44,6 @@ struct MainEditorContentView: View {
     let onCellEdit: (Int, Int, String?) -> Void
     let onSortStateChanged: (SortState) -> Void
     let onAddRow: () -> Void
-    let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
@@ -205,7 +204,6 @@ struct MainEditorContentView: View {
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSortStateChanged = onSortStateChanged
-        dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
     }
 
@@ -706,7 +704,7 @@ struct MainEditorContentView: View {
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices,
                     displayIDs: coordinator.displayIDs(forTab: tab.id),
-                    deletedRowIndices: changeManager.deletedRowIndices,
+                    deletedRowIDs: changeManager.deletedRowIDs,
                     valueFilter: tab.valueFilter,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                     displayRevision: coordinator.gridDisplayRevision,
@@ -892,10 +890,7 @@ struct MainEditorContentView: View {
                 coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
             },
             tableRowsMutator: { [coordinator] mutate in
-                coordinator.mutateActiveTableRows(for: tabId) { rows in
-                    mutate(&rows)
-                    return .none
-                }
+                coordinator.mutateActiveTableRows(for: tabId) { rows in mutate(&rows) }
             },
             paginationOffsetProvider: { [coordinator] in
                 coordinator.tabManager.tabs.first(where: { $0.id == tabId })?.pagination.currentOffset ?? 0
@@ -925,6 +920,9 @@ struct MainEditorContentView: View {
             sortState: sortStateBinding(for: tab),
             columnLayout: columnLayoutBinding(for: tab),
             valueFilter: valueFilterBinding(for: tab),
+            displayOrderProvider: { [coordinator] in
+                coordinator.displayIDs(forTab: tabId)
+            },
             displayState: coordinator.displayState(for: tab),
             restoredRowSelection: tab.selectedRowIndices,
             restoredCellSelection: tab.cellSelection,

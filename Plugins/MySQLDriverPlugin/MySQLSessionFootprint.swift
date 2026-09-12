@@ -17,10 +17,11 @@ import TableProPluginKit
 /// statement, every `GET_LOCK` advisory lock and `LAST_INSERT_ID`, and rolls an open transaction
 /// back reporting success.
 ///
-/// This is tracked from the statement text rather than asked of the server, which is the opposite
-/// of what the DuckDB driver does, because MySQL will not answer the question. Measured on MySQL
-/// 8.4.11, a user granted only its own database is refused on every table that would report this:
-/// error 1142 on `performance_schema.user_variables_by_thread`, `prepared_statements_instances`,
+/// The open transaction is the server's own answer, from the status flags it puts in every reply
+/// (`observeServerTransaction`). The rest is read from the statement text, because MySQL will not
+/// answer those. Measured on MySQL 8.4.11, a user granted only its own database is refused on
+/// every table that would report them: error 1142 on
+/// `performance_schema.user_variables_by_thread`, `prepared_statements_instances`,
 /// `metadata_locks` and `events_transactions_current`, and error 1227 on
 /// `information_schema.INNODB_TRX` and `INNODB_TEMP_TABLE_INFO`. Asking would therefore work only
 /// for a privileged user, and `GET_LOCK` has no enumeration for anybody. Reading the statements
@@ -36,6 +37,7 @@ struct MySQLSessionFootprint: Equatable {
     private(set) var hasPreparedStatements = false
     private(set) var hasAdvisoryLocks = false
     private(set) var hasLockedTables = false
+    private(set) var hasOpenHandlers = false
     private(set) var hasSessionSettings = false
 
     /// A `USE` the user ran themselves. The driver's own database switch does not come through
@@ -66,6 +68,9 @@ struct MySQLSessionFootprint: Equatable {
         if hasAdvisoryLocks {
             return String(localized: "This connection holds advisory locks, which reconnecting would release.")
         }
+        if hasOpenHandlers {
+            return String(localized: "This connection has open HANDLER cursors, which reconnecting would close.")
+        }
         if hasPreparedStatements {
             return String(localized: "This connection has prepared statements, which reconnecting would discard.")
         }
@@ -85,15 +90,28 @@ struct MySQLSessionFootprint: Equatable {
     }
 
     mutating func observe(_ sql: String) {
-        switch SQLTransactionTracking.effect(of: sql) {
+        for statement in SQLStatementSplitting.statements(in: sql) {
+            let body = Self.executableBody(of: statement)
+            observeTransaction(body)
+            observeStatement(body)
+        }
+    }
+
+    /// The server's own answer, taken from the status flags in its last reply, which is exact
+    /// where reading the statements is a guess. Measured on MySQL 8.4.11: `SET autocommit = 0`
+    /// followed by a plain `SELECT` reports a transaction that appears nowhere in the text, and so
+    /// do `/*!40101 BEGIN */` and `XA START 'x'`. It is applied after the statement has run, so
+    /// the text-derived guess is what stands until the reply arrives.
+    mutating func observeServerTransaction(isOpen: Bool) {
+        hasOpenTransaction = isOpen
+    }
+
+    private mutating func observeTransaction(_ statement: String) {
+        switch SQLTransactionTracking.effect(of: statement) {
         case .opens: hasOpenTransaction = true
         case .closes: hasOpenTransaction = false
         case .unchanged: break
         @unknown default: hasOpenTransaction = true
-        }
-
-        for statement in SQLStatementSplitting.statements(in: sql) {
-            observeStatement(statement)
         }
     }
 
@@ -104,33 +122,46 @@ struct MySQLSessionFootprint: Equatable {
     }
 
     private mutating func observeStatement(_ statement: String) {
-        let normalized = Self.executableBody(of: statement).uppercased()
-        guard !normalized.isEmpty else { return }
+        let normalized = statement.uppercased()
+        let head = Self.collapsedHead(of: normalized)
+        guard !head.isEmpty else { return }
 
-        if normalized.hasPrefix("CREATE TEMPORARY ") || normalized.hasPrefix("CREATE OR REPLACE TEMPORARY ") {
+        if head.hasPrefix("CREATE TEMPORARY ") || head.hasPrefix("CREATE OR REPLACE TEMPORARY ") {
             hasTemporaryTables = true
         }
         /// Set, not cleared: a drop names one table and says nothing about the others, and a
         /// session with a temporary table left is still one a reconnect would damage.
-        if normalized.hasPrefix("DROP TEMPORARY ") {
+        if head.hasPrefix("DROP TEMPORARY ") {
             hasTemporaryTables = true
         }
-        if normalized.hasPrefix("PREPARE ") {
+        if head.hasPrefix("PREPARE ") {
             hasPreparedStatements = true
         }
-        if normalized.hasPrefix("DEALLOCATE ") {
+        if head.hasPrefix("DEALLOCATE ") {
             hasPreparedStatements = true
         }
-        if normalized.hasPrefix("LOCK TABLE") {
+        if head.hasPrefix("LOCK TABLE") {
             hasLockedTables = true
         }
-        if normalized.hasPrefix("UNLOCK TABLES") {
+        /// `FLUSH TABLES WITH READ LOCK` takes a global read lock that is the session's and
+        /// nothing else's, and the sessions that hold one are idle by design while a backup
+        /// copies files. Measured on MySQL 8.4.11: a writer got error 1205 while it was held, and
+        /// the same write went through the moment the holding connection was killed.
+        if head.hasPrefix("FLUSH "), Self.isFlushHoldingALock(normalized) {
+            hasLockedTables = true
+        }
+        if head.hasPrefix("UNLOCK TABLES") {
             hasLockedTables = false
         }
-        if normalized.hasPrefix("CALL ") {
+        /// Set, not cleared, for the same reason a dropped temporary table is: a `HANDLER ... CLOSE`
+        /// names one cursor.
+        if head.hasPrefix("HANDLER ") {
+            hasOpenHandlers = true
+        }
+        if head.hasPrefix("CALL ") {
             ranOpaqueRoutine = true
         }
-        if normalized.hasPrefix("USE ") {
+        if head.hasPrefix("USE ") {
             hasChangedDatabase = true
         }
         if normalized.contains("GET_LOCK(") {
@@ -139,8 +170,8 @@ struct MySQLSessionFootprint: Equatable {
         if normalized.contains("RELEASE_ALL_LOCKS(") {
             hasAdvisoryLocks = false
         }
-        if normalized.hasPrefix("SET ") {
-            observeSet(normalized)
+        if head.hasPrefix("SET ") {
+            observeSet(head)
         }
         /// `SELECT ... INTO @x` and `EXECUTE ... INTO @x` write a user variable without a leading
         /// `SET`, and `SELECT @x := 1` writes one without either. Both spellings lose the variable
@@ -150,24 +181,53 @@ struct MySQLSessionFootprint: Equatable {
         }
     }
 
-    /// What MySQL runs when the statement is one of its version-gated comments, and the statement
-    /// itself otherwise.
+    /// What MySQL runs when the statement opens with one of its version-gated comments, and the
+    /// statement itself otherwise.
     ///
     /// `/*!40101 SET NAMES utf8mb4 */` is executed by any server from 4.1.1, and MariaDB spells
     /// its own `/*M!100301 ... */`. mysqldump writes its whole preamble this way, so a restore run
-    /// from the editor sets `character_set_client`, the time zone and half a dozen `@OLD_`
-    /// variables inside them. `SQLStatementSplitting` leaves them whole rather than reading them
-    /// as comments, because only the engine that executes the body can say what it is.
+    /// from the editor sets the character set, the time zone and eight `@OLD_` variables inside
+    /// them. `SQLStatementSplitting` leaves them whole rather than reading them as comments,
+    /// because only the engine that executes the body can say what it is.
+    ///
+    /// Whatever follows the comment is kept, so a line that carries a note after it, or a second
+    /// version-gated block, is still classified by the first thing the server would run. The
+    /// version number itself is not checked against the server: counting a statement the server
+    /// is too old to run holds a connection that is in fact clean, which is the safe direction.
     private static func executableBody(of statement: String) -> String {
         guard statement.hasPrefix("/*!") || statement.hasPrefix("/*M!") else { return statement }
-        guard let close = statement.range(of: "*/"),
-              statement[close.upperBound...].allSatisfy({ $0.isWhitespace }) else { return statement }
+        guard let close = statement.range(of: "*/") else { return statement }
         let marked = statement[statement.index(statement.startIndex, offsetBy: 2)..<close.lowerBound]
-        return marked
+        let body = marked
             .drop(while: { $0 == "M" })
             .dropFirst()
             .drop(while: { $0.isNumber })
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remainder = statement[close.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty else { return body }
+        return body.isEmpty ? remainder : "\(body) \(remainder)"
+    }
+
+    /// The statement's opening words with each run of whitespace collapsed, which is what the
+    /// prefix checks match against: `CREATE TEMPORARY\nTABLE` is the same statement as
+    /// `CREATE TEMPORARY TABLE`, and reading the first one as neither left a session holding a
+    /// temporary table that the idle release then dropped. Only the head is normalised, because
+    /// `observe` runs on every statement and a dump's `INSERT` can be megabytes long.
+    private static func collapsedHead(of normalized: String) -> String {
+        normalized
+            .prefix(headLength)
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
+    private static let headLength = 64
+
+    /// A `FLUSH` names its tables before the clause that matters, and a list of them runs past
+    /// the head, so this one reads the whole statement. No `FLUSH` is long enough for that to
+    /// cost anything.
+    private static func isFlushHoldingALock(_ normalized: String) -> Bool {
+        let collapsed = normalized.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return collapsed.contains(" WITH READ LOCK") || collapsed.contains(" FOR EXPORT")
     }
 
     /// `SET` covers three different things: a user variable (`SET @x = 1`), a session setting
@@ -177,7 +237,10 @@ struct MySQLSessionFootprint: Equatable {
     private mutating func observeSet(_ normalized: String) {
         let body = normalized.dropFirst("SET ".count).trimmingCharacters(in: .whitespaces)
         guard !body.hasPrefix("@@GLOBAL."), !body.hasPrefix("GLOBAL ") else { return }
-        if body.hasPrefix("@") {
+        /// `@@` is a system variable under another spelling, not a user variable: reporting
+        /// `SET @@SESSION.sql_mode` as "session variables set" blocks the release for the right
+        /// reason and tells the user the wrong one.
+        if body.hasPrefix("@"), !body.hasPrefix("@@") {
             hasUserVariables = true
         } else {
             hasSessionSettings = true

@@ -15,6 +15,7 @@ import Testing
 final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sendable {
     let connection: DatabaseConnection
     var status: ConnectionStatus = .connected
+    var hasLostConnection = false
     var serverVersion: String? { nil }
 
     var currentSchema: String?

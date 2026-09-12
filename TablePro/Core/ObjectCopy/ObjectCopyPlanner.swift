@@ -298,6 +298,7 @@ internal struct ObjectCopyPlanner {
         /// different tie-break on every launch: the approved script, the progress order and the
         /// outcome list were all shuffled differently for the same copy.
         var drafts: [ObjectCopyTableDraft] = []
+        let targetServerVersion = manager.driver(for: request.target.connectionId)?.serverVersion
         for selection in Self.orderedByDependency(
             scope.objects.filter { reads[$0] != nil }, reads: reads, effectiveSchema: sourceNamespace
         ) {
@@ -325,6 +326,7 @@ internal struct ObjectCopyPlanner {
                 existsInTarget: existsInTarget,
                 sourceSchema: sourceEndpoint.schema ?? read.table.schema,
                 targetSchema: targetEndpoint.schema,
+                targetServerVersion: targetServerVersion,
                 request: request
             ))
         }

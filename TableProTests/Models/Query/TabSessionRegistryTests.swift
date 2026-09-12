@@ -119,10 +119,94 @@ struct TabSessionRegistryTests {
         let before = session.dataRevision
 
         registry.updateTableRows(for: session.id) { rows in
-            rows.rows.append(Row(id: .existing(1), values: [.text("b")]))
+            rows.appendPage([[.text("b")]], startingAt: 1)
         }
 
         #expect(session.dataRevision > before)
+    }
+
+    // MARK: - rowSetRevision
+
+    @Test("A cell edit moves dataRevision and leaves rowSetRevision alone")
+    func cellEditKeepsRowSetRevision() {
+        let registry = TabSessionRegistry()
+        let session = TabSession()
+        registry.register(session)
+        registry.setTableRows(makeRows(["a", "b"]), for: session.id)
+        let dataBefore = session.dataRevision
+        let rowSetBefore = session.rowSetRevision
+
+        let delta = registry.updateTableRows(for: session.id) { rows in
+            rows.edit(row: 1, column: 0, value: .text("z"))
+        }
+
+        #expect(delta == .cellChanged(row: 1, column: 0))
+        #expect(session.dataRevision > dataBefore)
+        #expect(session.rowSetRevision == rowSetBefore)
+    }
+
+    @Test("Inserting, removing or replacing rows moves rowSetRevision")
+    func structuralMutationsMoveRowSetRevision() {
+        let registry = TabSessionRegistry()
+        let session = TabSession()
+        registry.register(session)
+        registry.setTableRows(makeRows(["a", "b"]), for: session.id)
+
+        let beforeInsert = session.rowSetRevision
+        registry.updateTableRows(for: session.id) { rows in
+            rows.appendInsertedRow(values: [.text("c")])
+        }
+        #expect(session.rowSetRevision > beforeInsert)
+
+        let beforeRemove = session.rowSetRevision
+        registry.updateTableRows(for: session.id) { rows in
+            rows.remove(at: IndexSet(integer: 0))
+        }
+        #expect(session.rowSetRevision > beforeRemove)
+
+        let beforeReplace = session.rowSetRevision
+        registry.updateTableRows(for: session.id) { rows in
+            rows.replace(rows: [[.text("x")]])
+        }
+        #expect(session.rowSetRevision > beforeReplace)
+    }
+
+    @Test("Metadata that keeps every row, and a mutation that changes nothing, leave rowSetRevision alone")
+    func nonStructuralMutationsKeepRowSetRevision() {
+        let registry = TabSessionRegistry()
+        let session = TabSession()
+        registry.register(session)
+        registry.setTableRows(makeRows(["a"]), for: session.id)
+        let before = session.rowSetRevision
+
+        registry.updateTableRows(for: session.id) { rows in
+            rows.updateDisplayMetadata(columnComments: ["name": "the name"])
+        }
+        registry.updateTableRows(for: session.id) { rows in
+            rows.remove(at: IndexSet(integer: 9))
+        }
+
+        #expect(session.rowSetRevision == before)
+    }
+
+    @Test("Replacing, removing and evicting the buffer each move rowSetRevision")
+    func bufferReplacementMovesRowSetRevision() {
+        let registry = TabSessionRegistry()
+        let session = TabSession()
+        registry.register(session)
+
+        registry.setTableRows(makeRows(["a"]), for: session.id)
+        let afterSet = session.rowSetRevision
+        registry.evict(for: session.id)
+        let afterEvict = session.rowSetRevision
+        registry.setTableRows(makeRows(["b"]), for: session.id)
+        let afterSecondSet = session.rowSetRevision
+        registry.removeTableRows(for: session.id)
+
+        #expect(afterSet > 0)
+        #expect(afterEvict > afterSet)
+        #expect(afterSecondSet > afterEvict)
+        #expect(session.rowSetRevision > afterSecondSet)
     }
 
     @Test("removeTableRows bumps dataRevision")

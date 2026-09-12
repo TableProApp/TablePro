@@ -177,6 +177,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
+    var hasLostConnection: Bool { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
@@ -315,6 +316,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
@@ -336,6 +341,23 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// make: on Oracle it is a user, and on SQL Server it needs its own batch. Callers leave those
     /// namespaces out and say so rather than emitting DDL the server will reject.
     func createSchemaStatement(name: String) -> String?
+
+    /// Sets or clears the comment on a table-like object. `objectType` is the object's type as the
+    /// table listing reported it, because engines that key the statement on the kind refuse the
+    /// wrong keyword: PostgreSQL answers `COMMENT ON TABLE` on a view with "is not a table". A nil
+    /// or empty comment removes it. Return nil for a kind the engine cannot comment on.
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
+
+    /// The statement that recomputes a materialized view's stored rows. Return nil where the engine
+    /// has no materialized views or keeps them current on its own.
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String?
+
+    /// Whether this view can be refreshed without blocking its readers. Return nil where the engine
+    /// has no such refresh, so the option is not offered at all.
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability?
 
     // Maintenance operations (optional — return nil if not supported)
     func supportedMaintenanceOperations() -> [String]?
@@ -541,6 +563,8 @@ public extension PluginDatabaseDriver {
     }
 
     var serverVersion: String? { nil }
+
+    var hasLostConnection: Bool { false }
 
     var parameterStyle: ParameterStyle { .questionMark }
 
@@ -765,6 +789,10 @@ public extension PluginDatabaseDriver {
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
+
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
@@ -776,6 +804,19 @@ public extension PluginDatabaseDriver {
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
     func createSchemaStatement(name: String) -> String? { nil }
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        nil
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? { nil }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }

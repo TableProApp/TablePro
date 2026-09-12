@@ -117,13 +117,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _cachedServerVersion: String?
     private var _cachedServerVersionNumber: Int32 = 0
     private var _isConnectCancelled: Bool = false
-    private var _postgisOidMap: [UInt32: String] = [:]
+    private var _postgisOidMap: [UInt32: PostGISType] = [:]
     private var _catalogTypeNames: [UInt32: String] = [:]
+    private var _lastTransactionState: LibPQTransactionState = .idle
+    private var _hasLostConnection = false
+    private var serverMessages: Unmanaged<LibPQServerMessageSink>?
+    private var _standardConformingStrings = true
 
     var isConnected: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _isConnected
+    }
+
+    var standardConformingStrings: Bool {
+        stateLock.withLock { _standardConformingStrings }
     }
 
     private var isShuttingDown: Bool {
@@ -161,11 +169,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     deinit {
         let handle = conn
+        let sink = serverMessages
         let cleanupQueue = queue
         conn = nil
+        serverMessages = nil
         if let handle = handle {
             cleanupQueue.async {
                 PQfinish(handle)
+                sink?.release()
             }
         }
     }
@@ -215,9 +226,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         try pollUntilConnected(connection, reportingStage: report)
         configureEstablishedConnection(connection)
+        let sink = LibPQServerMessageSink.install(on: connection)
 
         stateLock.lock()
         conn = connection
+        serverMessages = sink
+        _lastTransactionState = .idle
+        _hasLostConnection = false
         _isConnected = true
         stateLock.unlock()
         adopted = true
@@ -300,6 +315,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func configureEstablishedConnection(_ connection: OpaquePointer) {
         logUnexpectedClientEncoding(of: connection)
+        runSessionSetupStatement(LibPQStringConformance.enableStatement, on: connection)
+        storeStandardConformingStrings(
+            reportedStandardConformingStrings(on: connection)
+                ?? queriedStandardConformingStrings(on: connection)
+                ?? true
+        )
 
         let version = PQserverVersion(connection)
         guard version > 0 else { return }
@@ -324,6 +345,48 @@ final class LibPQPluginConnection: @unchecked Sendable {
         )
     }
 
+    private func runSessionSetupStatement(_ statement: String, on connection: OpaquePointer) {
+        let result = statement.withCString { PQexec(connection, $0) }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) != PGRES_COMMAND_OK else { return }
+        let message = result.flatMap { PQresultErrorMessage($0) }.map { String(cString: $0) } ?? ""
+        logger.warning(
+            "Session setup statement failed: \(statement, privacy: .public) \(message, privacy: .public)"
+        )
+    }
+
+    private func reportedStandardConformingStrings(on connection: OpaquePointer) -> Bool? {
+        guard let value = PQparameterStatus(connection, LibPQStringConformance.parameterName) else {
+            return nil
+        }
+        return LibPQStringConformance.isOn(String(cString: value))
+    }
+
+    private func queriedStandardConformingStrings(on connection: OpaquePointer) -> Bool? {
+        let result = LibPQStringConformance.showQuery.withCString { PQexec(connection, $0) }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) == PGRES_TUPLES_OK,
+              PQntuples(result) > 0,
+              let value = PQgetvalue(result, 0, 0) else {
+            return nil
+        }
+        return LibPQStringConformance.isOn(String(cString: value))
+    }
+
+    private func refreshStandardConformingStrings(from connection: OpaquePointer) {
+        guard let reported = reportedStandardConformingStrings(on: connection) else { return }
+        storeStandardConformingStrings(reported)
+    }
+
+    private func storeStandardConformingStrings(_ value: Bool) {
+        let changed = stateLock.withLock {
+            defer { _standardConformingStrings = value }
+            return _standardConformingStrings != value
+        }
+        guard changed, !value else { return }
+        logger.warning("standard_conforming_strings is off; string literals escape backslashes")
+    }
+
     private var connectionString: String {
         LibPQConnectionString.build(
             host: host,
@@ -343,7 +406,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _isConnected = false
         _isConnectCancelled = true
         let handle = conn
+        let sink = serverMessages
         conn = nil
+        serverMessages = nil
         stateLock.unlock()
 
         _cachedServerVersion = nil
@@ -352,19 +417,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
         if let handle {
             queue.async {
                 PQfinish(handle)
+                sink?.release()
             }
         }
     }
 
     // MARK: - PostGIS OID Map
 
-    func setPostgisOidMap(_ map: [UInt32: String]) {
+    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
         stateLock.lock()
         _postgisOidMap = map
         stateLock.unlock()
     }
 
-    private var postgisOidMap: [UInt32: String] {
+    private var postgisOidMap: [UInt32: PostGISType] {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _postgisOidMap
@@ -514,6 +580,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _cachedServerVersionNumber
     }
 
+    /// Whether the session is inside a transaction block, including one a failed statement has
+    /// aborted. A statement sent now joins that block rather than running on its own.
+    ///
+    /// Read on the connection's own queue, like every other libpq call here: one `PGconn` may not
+    /// be used from two threads at once, and the lock alone guards the pointer rather than the call.
+    var isInsideTransactionBlock: Bool {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return false }
+        return queue.sync {
+            let status = PQtransactionStatus(conn)
+            return status == PQTRANS_INTRANS || status == PQTRANS_INERROR
+        }
+    }
+
     func currentDatabase() -> String {
         database
     }
@@ -531,6 +613,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
+
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
@@ -538,8 +624,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
 
         guard let result = result else {
-            throw getError(from: conn)
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
         }
+        recordTransactionState(of: conn)
 
         let status = PQresultStatus(result)
 
@@ -564,10 +651,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
             return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
+            if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+            }
             let error = getResultError(from: result)
             PQclear(result)
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
-            throw error
+            throw lostConnection(error, on: conn, sent: true)
         }
     }
 
@@ -589,27 +680,31 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
 
         /// Started before the drain, so a result the previous statement abandoned is charged to the
         /// time before the first row rather than appearing as this query's row transfer.
         let sentAt = Date()
-        while let stale = PQgetResult(conn) { PQclear(stale) }
 
         /// Cancelling a statement inside a transaction block puts the transaction into the aborted
         /// state, and every later command fails until ROLLBACK. Reading the tail of one result costs
         /// less than throwing away the transaction the user opened, so the cancel is withheld here
         /// and the connection is drained instead.
-        let insideTransaction = PQtransactionStatus(conn) == PQTRANS_INTRANS
-        let suppressCancel = suppressServerSideCancel || insideTransaction
+        let cancelsOutput = cancelsAbandonedOutput(conn)
+        let suppressCancel = !cancelsOutput
+        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
 
         let localQuery = String(query)
         let sendOk = localQuery.withCString { queryPtr in
             PQsendQuery(conn, queryPtr)
         }
-        guard sendOk != 0 else { throw getError(from: conn) }
+        guard sendOk != 0 else {
+            throw lostConnection(getError(from: conn), on: conn, sent: false)
+        }
 
         guard PQsetSingleRowMode(conn) != 0 else {
-            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
             throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
         }
 
@@ -621,6 +716,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         var truncated = false
         var pendingError: Error?
         var firstRowTime: TimeInterval?
+        var failedStatement: LibPQPluginError?
 
         while let result = PQgetResult(conn) {
             let status = PQresultStatus(result)
@@ -644,7 +740,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 rows.append(row)
 
                 if cancellationGate.isCancelled(generation) {
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     throw CancellationError()
                 }
                 if rows.count > rowCap {
@@ -667,22 +763,32 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 continue
             }
 
-            pendingError = getResultError(from: result)
+            if let copy = LibPQCopyState.copy(of: result) {
+                pendingError = Self.unsupportedCopyError(copy)
+                PQclear(result)
+                break
+            }
+
+            failedStatement = getResultError(from: result)
             PQclear(result)
             break
         }
 
-        if truncated {
-            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
-        } else {
-            while let trailing = PQgetResult(conn) { PQclear(trailing) }
-        }
+        let outcome = truncated
+            ? cancelAndDrain(conn, suppressCancel: suppressCancel)
+            : finishPendingResults(conn, cancellingOutput: cancelsOutput)
+        recordTransactionState(of: conn)
 
+        if let failedStatement {
+            if cancellationGate.isCancelled(generation) { throw CancellationError() }
+            throw lostConnection(failedStatement, on: conn, sent: true)
+        }
         if let pendingError {
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
             throw pendingError
         }
         if cancellationGate.isCancelled(generation) { throw CancellationError() }
+        if let abandoned = abandonedCopyError(outcome, generation: generation) { throw abandoned }
 
         if truncated { rows.removeLast() }
 
@@ -712,7 +818,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
 
+        let cancelsOutput = cancelsAbandonedOutput(conn)
         var paramValues: [UnsafePointer<CChar>?] = []
         var paramLengths: [Int32] = []
         var paramFormats: [Int32] = []
@@ -757,6 +865,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
 
+        if let ended = sessionEndedBeforeSending(conn) { throw ended }
+
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
             paramLengths.withUnsafeBufferPointer { lengthsBuf in
@@ -776,8 +886,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
 
         guard let result = result else {
-            throw getError(from: conn)
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
         }
+        recordTransactionState(of: conn)
 
         let status = PQresultStatus(result)
 
@@ -802,16 +913,64 @@ final class LibPQPluginConnection: @unchecked Sendable {
             return try fetchResults(from: result, conn: conn, generation: generation)
 
         default:
+            if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+            }
             let error = getResultError(from: result)
             PQclear(result)
             if cancellationGate.isCancelled(generation) { throw CancellationError() }
-            throw error
+            throw lostConnection(error, on: conn, sent: true)
         }
+    }
+
+    // MARK: - Pending Results
+
+    /// A statement the user did not get to see is worse than a slow one, so a COPY ended by any
+    /// drain is reported rather than swallowed: `INSERT INTO t VALUES (1); COPY t FROM STDIN` used
+    /// to come back as "INSERT 0 1" with the COPY discarded.
+    private func abandonedCopyError(_ outcome: LibPQDrainOutcome, generation: Int) -> Error? {
+        guard let copy = outcome.abandonedCopy else { return nil }
+        if cancellationGate.isCancelled(generation) { return CancellationError() }
+        return Self.unsupportedCopyError(copy)
+    }
+
+    private func abandonedCopyError(
+        _ copy: LibPQCopy,
+        conn: OpaquePointer,
+        cancellingOutput: Bool,
+        generation: Int
+    ) -> Error {
+        _ = finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        if cancellationGate.isCancelled(generation) { return CancellationError() }
+        return Self.unsupportedCopyError(copy)
+    }
+
+    private static func unsupportedCopyError(_ copy: LibPQCopy) -> LibPQPluginError {
+        LibPQPluginError(message: copy.direction.unsupportedMessage, sqlState: nil, detail: nil)
+    }
+
+    /// Reading `COPY TO STDOUT` to its end defeats the row cap the bounded read exists for, so the
+    /// statement is cancelled first wherever a cancel is safe. Inside a transaction block it is not,
+    /// because a cancel aborts the transaction the user opened.
+    private func cancelsAbandonedOutput(_ conn: OpaquePointer) -> Bool {
+        !suppressServerSideCancel && PQtransactionStatus(conn) != PQTRANS_INTRANS
+    }
+
+    private func finishPendingResults(_ conn: OpaquePointer, cancellingOutput: Bool) -> LibPQDrainOutcome {
+        let outcome = LibPQCopyState.finishPendingResults(conn, cancellingOutput: cancellingOutput)
+        guard let stuck = outcome.stuckInCopy else { return outcome }
+        logger.fault(
+            "libpq stayed in \(String(describing: stuck.direction), privacy: .public); dropping the connection"
+        )
+        stateLock.withLock { _hasLostConnection = true }
+        disconnect()
+        return outcome
     }
 
     // MARK: - Streaming Query
 
-    private static func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) {
+    private func cancelAndDrain(_ conn: OpaquePointer, suppressCancel: Bool) -> LibPQDrainOutcome {
         if !suppressCancel {
             let cancelObj = PQgetCancel(conn)
             if let cancelObj {
@@ -820,7 +979,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 PQfreeCancel(cancelObj)
             }
         }
-        while let res = PQgetResult(conn) { PQclear(res) }
+        return finishPendingResults(conn, cancellingOutput: false)
     }
 
     /// The abort is polled by the producer rather than acted on from `onTermination`, because both
@@ -842,6 +1001,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 let generation = cancellationGate.beginQuery()
                 defer { cancellationGate.endQuery(generation) }
+                defer { refreshStandardConformingStrings(from: conn) }
 
                 /// The consumer can go away before this block is scheduled, in which case the
                 /// query is never sent at all.
@@ -850,24 +1010,27 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     return
                 }
 
-                while let res = PQgetResult(conn) { PQclear(res) }
-
                 /// Read before the query goes out: once it is in flight the status is
                 /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
-                let suppressCancel = suppressServerSideCancel
-                    || PQtransactionStatus(conn) == PQTRANS_INTRANS
+                let cancelsOutput = cancelsAbandonedOutput(conn)
+                let suppressCancel = !cancelsOutput
+                _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+                if let ended = sessionEndedBeforeSending(conn) {
+                    continuation.finish(throwing: ended)
+                    return
+                }
 
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
                 }
 
                 if sendOk == 0 {
-                    continuation.finish(throwing: getError(from: conn))
+                    continuation.finish(throwing: lostConnection(getError(from: conn), on: conn, sent: false))
                     return
                 }
 
                 if PQsetSingleRowMode(conn) == 0 {
-                    Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                     continuation.finish(throwing: LibPQPluginError(
                         message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
                     return
@@ -935,7 +1098,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
                             if !batch.isEmpty {
                                 continuation.yield(.rows(batch))
                             }
-                            Self.cancelAndDrain(conn, suppressCancel: suppressCancel)
+                            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
                             continuation.finish(throwing: CancellationError())
                             return
                         }
@@ -946,15 +1109,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         lastCommandTag = getCommandTag(from: result)
                         PQclear(result)
                         break
+                    } else if let copy = LibPQCopyState.copy(of: result) {
+                        PQclear(result)
+                        continuation.finish(throwing: abandonedCopyError(
+                            copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation))
+                        return
                     } else {
                         let error = getResultError(from: result)
                         PQclear(result)
-                        while let res = PQgetResult(conn) { PQclear(res) }
+                        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+                        recordTransactionState(of: conn)
                         if cancellationGate.isCancelled(generation) {
                             continuation.finish(throwing: CancellationError())
                             return
                         }
-                        continuation.finish(throwing: error)
+                        continuation.finish(throwing: lostConnection(error, on: conn, sent: true))
                         return
                     }
                 }
@@ -963,7 +1132,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     continuation.yield(.rows(batch))
                 }
 
-                while let res = PQgetResult(conn) { PQclear(res) }
+                let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+                recordTransactionState(of: conn)
                 /// The header went out with the first row, so this stream keeps what it said;
                 /// the lookup is for the results that follow.
                 let missing = unresolvedOids(in: columnOids)
@@ -971,6 +1141,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     learnTypeNames(for: missing, conn: conn)
                 }
                 noteCommandTag(lastCommandTag, conn: conn)
+                if let abandoned = abandonedCopyError(outcome, generation: generation) {
+                    continuation.finish(throwing: abandoned)
+                    return
+                }
                 continuation.finish()
             }
         }
@@ -999,9 +1173,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let oidMap = postgisOidMap
         guard !oidMap.isEmpty else { return result }
 
-        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, typeName: String)? in
-            guard let typeName = oidMap[oid] else { return nil }
-            return (index, typeName)
+        let spatialColumns = result.columnOids.enumerated().compactMap { index, oid -> (index: Int, type: PostGISType)? in
+            guard let type = oidMap[oid] else { return nil }
+            return (index, type)
         }
         guard !spatialColumns.isEmpty else { return result }
 
@@ -1038,34 +1212,41 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func renderSpatialColumns(
         _ result: LibPQPluginQueryResult,
-        spatialColumns: [(index: Int, typeName: String)]
+        spatialColumns: [(index: Int, type: PostGISType)]
     ) -> LibPQPluginQueryResult {
         var rows = result.rows
         var columnTypeNames = result.columnTypeNames
 
+        var pending: [(index: Int, query: String, hexValues: [String?])] = []
         for column in spatialColumns {
             if column.index < columnTypeNames.count {
-                columnTypeNames[column.index] = column.typeName
+                columnTypeNames[column.index] = column.type.name
             }
 
-            guard let query = PostGISSpatialRewrite.conversionQuery(forTypeName: column.typeName) else { continue }
+            guard let query = PostGISSpatialRewrite.conversionQuery(for: column.type) else { continue }
 
             let hexValues: [String?] = rows.map { row in
                 guard column.index < row.count, case let .text(hex) = row[column.index] else { return nil }
                 return hex
             }
             guard hexValues.contains(where: { $0 != nil }) else { continue }
+            pending.append((index: column.index, query: query, hexValues: hexValues))
+        }
 
-            guard let converted = convertSpatialValues(hexValues, query: query),
-                  converted.count == hexValues.count else {
-                logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
-                continue
-            }
+        if !pending.isEmpty, let scope = SpatialRenderScope(connection: self) {
+            for column in pending {
+                guard let converted = scope.convert(column.hexValues, query: column.query),
+                      converted.count == column.hexValues.count else {
+                    logger.warning("PostGIS value conversion failed for column \(column.index); keeping raw hex")
+                    continue
+                }
 
-            for (rowIndex, value) in converted.enumerated()
-                where hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
-                rows[rowIndex][column.index] = value
+                for (rowIndex, value) in converted.enumerated()
+                    where column.hexValues[rowIndex] != nil && column.index < rows[rowIndex].count {
+                    rows[rowIndex][column.index] = value
+                }
             }
+            scope.finish()
         }
 
         return LibPQPluginQueryResult(
@@ -1080,27 +1261,62 @@ final class LibPQPluginConnection: @unchecked Sendable {
         )
     }
 
-    private func convertSpatialValues(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
-        stateLock.lock()
-        let conn = self.conn
-        stateLock.unlock()
-        guard let conn else { return nil }
+    /// One savepoint for a whole rendering pass rather than one per column: the conversion is a
+    /// side query on the user's own session, and an open transaction must survive a PostGIS error
+    /// (an older server has no ST_AsEWKT at all) without costing three round trips per column.
+    private final class SpatialRenderScope {
+        private let conn: OpaquePointer
+        private let isInsideTransaction: Bool
 
-        let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
-        guard let paramCStr = strdup(arrayLiteral) else { return nil }
-        defer { free(paramCStr) }
-
-        let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
-        let result: OpaquePointer? = query.withCString { queryPtr in
-            PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+        init?(connection: LibPQPluginConnection) {
+            connection.stateLock.lock()
+            let handle = connection.conn
+            connection.stateLock.unlock()
+            guard let handle else { return nil }
+            self.conn = handle
+            switch PQtransactionStatus(handle) {
+            case PQTRANS_IDLE:
+                isInsideTransaction = false
+            case PQTRANS_INTRANS:
+                guard LibPQPluginConnection.runCommand(PostGISSpatialRewrite.savepoint, on: handle) else {
+                    return nil
+                }
+                isInsideTransaction = true
+            default:
+                return nil
+            }
         }
 
-        guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
-            if let result { PQclear(result) }
-            return nil
-        }
-        defer { PQclear(result) }
+        func convert(_ hexValues: [String?], query: String) -> [PluginCellValue]? {
+            let arrayLiteral = PostGISSpatialRewrite.arrayLiteral(from: hexValues)
+            guard let paramCStr = strdup(arrayLiteral) else { return nil }
+            defer { free(paramCStr) }
 
+            let paramValues: [UnsafePointer<CChar>?] = [UnsafePointer(paramCStr)]
+            let result = query.withCString { queryPtr in
+                PQexecParams(conn, queryPtr, 1, nil, paramValues, nil, nil, 0)
+            }
+            guard let result, PQresultStatus(result) == PGRES_TUPLES_OK else {
+                if let result { PQclear(result) }
+                rollback()
+                return nil
+            }
+            defer { PQclear(result) }
+            return LibPQPluginConnection.textColumn(from: result)
+        }
+
+        func finish() {
+            guard isInsideTransaction else { return }
+            _ = LibPQPluginConnection.runCommand(PostGISSpatialRewrite.releaseSavepoint, on: conn)
+        }
+
+        private func rollback() {
+            guard isInsideTransaction else { return }
+            _ = LibPQPluginConnection.runCommand(PostGISSpatialRewrite.rollbackToSavepoint, on: conn)
+        }
+    }
+
+    private static func textColumn(from result: OpaquePointer) -> [PluginCellValue] {
         let rowCount = Int(PQntuples(result))
         var converted: [PluginCellValue] = []
         converted.reserveCapacity(rowCount)
@@ -1116,6 +1332,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
         }
         return converted
+    }
+
+    private static func runCommand(_ command: String, on conn: OpaquePointer) -> Bool {
+        guard let result = command.withCString({ PQexec(conn, $0) }) else { return false }
+        defer { PQclear(result) }
+        return PQresultStatus(result) == PGRES_COMMAND_OK
     }
 
     private static func decodeCell(
@@ -1185,6 +1407,70 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     // MARK: - Private Helpers
+
+    var hasLostConnection: Bool {
+        stateLock.withLock { _hasLostConnection }
+    }
+
+    private var lastTransactionState: LibPQTransactionState {
+        stateLock.withLock { _lastTransactionState }
+    }
+
+    private var sessionEndingMessage: LibPQPluginError? {
+        stateLock.withLock { serverMessages }?.takeUnretainedValue().sessionEndingMessage
+    }
+
+    private func recordTransactionState(of conn: OpaquePointer) {
+        guard PQstatus(conn) == CONNECTION_OK else { return }
+        let state = Self.transactionState(PQtransactionStatus(conn))
+        stateLock.withLock { _lastTransactionState = state }
+    }
+
+    private func sessionEndedBeforeSending(_ conn: OpaquePointer) -> LibPQConnectionLostError? {
+        recordTransactionState(of: conn)
+        /// All three calls earn their place, measured against a terminated backend on 9.1.24 and
+        /// 17.11. One `PQconsumeInput` leaves the status `CONNECTION_OK`, so a single read never
+        /// sees the loss; the second one turns it `CONNECTION_BAD`. `PQisBusy` never moves the
+        /// status, but it is what parses the buffered message: without it every closed-session
+        /// case loses the server's FATAL and its SQLSTATE and reports libpq's own "server closed
+        /// the connection unexpectedly" instead.
+        if PQstatus(conn) == CONNECTION_OK {
+            _ = PQconsumeInput(conn)
+            _ = PQisBusy(conn)
+            _ = PQconsumeInput(conn)
+        }
+        guard PQstatus(conn) == CONNECTION_BAD else {
+            stateLock.withLock { serverMessages }?.takeUnretainedValue().clearIfHealthy()
+            return nil
+        }
+        let serverMessage = sessionEndingMessage
+        let loss = LibPQConnectionLoss(sent: false, recordedState: lastTransactionState)
+        stateLock.withLock { _hasLostConnection = true }
+        logger.info("Server closed the session before a statement was sent")
+        return LibPQConnectionLostError(loss: loss, underlying: serverMessage ?? getError(from: conn))
+    }
+
+    private func lostConnection(_ error: LibPQPluginError, on conn: OpaquePointer, sent: Bool) -> Error {
+        guard PQstatus(conn) == CONNECTION_BAD else { return error }
+        let loss = LibPQConnectionLoss(sent: sent, recordedState: lastTransactionState)
+        stateLock.withLock {
+            if sent { _lastTransactionState = .unknown }
+            _hasLostConnection = true
+        }
+        let phase = sent ? "while a statement was running" : "while sending a statement"
+        logger.warning("Connection lost \(phase, privacy: .public)")
+        return LibPQConnectionLostError(loss: loss, underlying: sessionEndingMessage ?? error)
+    }
+
+    private static func transactionState(_ status: PGTransactionStatusType) -> LibPQTransactionState {
+        switch status {
+        case PQTRANS_IDLE: return .idle
+        case PQTRANS_ACTIVE: return .active
+        case PQTRANS_INTRANS: return .inTransaction
+        case PQTRANS_INERROR: return .inError
+        default: return .unknown
+        }
+    }
 
     private func getError(from conn: OpaquePointer) -> LibPQPluginError {
         var message = "Unknown error"

@@ -25,7 +25,8 @@ struct StructureGeneratedColumnFieldTests {
     func canonicalOrderCoversEveryField() {
         let ordered = StructureRowProvider.orderedFields(
             for: .mysql,
-            additionalFields: Set(StructureColumnField.allCases)
+            additionalFields: Set(StructureColumnField.allCases),
+            serverSupport: .unrestricted
         )
         let missing = StructureColumnField.allCases.filter { !ordered.contains($0) }
         #expect(missing.isEmpty, "Fields absent from canonicalFieldOrder are discarded: \(missing)")

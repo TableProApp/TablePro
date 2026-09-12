@@ -120,7 +120,7 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     let schema: String?
     let comment: String?
 
-    enum TableType: String, Sendable {
+    enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
         case view = "VIEW"
         case materializedView = "MATERIALIZED VIEW"

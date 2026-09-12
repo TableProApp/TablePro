@@ -205,6 +205,8 @@ struct MainContentView: View {
             )
         case .copyObjects(let launch):
             CopyObjectsSheet(launch: launch, connection: connection)
+        case .editObjectComment(let target):
+            ObjectCommentSheet(target: target, connection: connection)
         case .exportDialog, .exportQueryResults, .importDialog, .rowImport,
              .transferTables, .backupDatabase, .restoreDatabase, .serverSideExport:
             transferSheetContent(for: sheet, dismiss: dismissBinding)
@@ -404,9 +406,6 @@ struct MainContentView: View {
             },
             onAddRow: {
                 coordinator.addNewRow()
-            },
-            onUndoInsert: { rowIndex in
-                coordinator.undoInsertRow(at: rowIndex)
             },
             onSelectionChange: { newIndices in
                 /// Any grid selection counts, not just a table tab's. The setting is called

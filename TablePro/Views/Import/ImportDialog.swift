@@ -279,7 +279,7 @@ struct ImportDialog: View {
 
                     Picker(String(localized: "Encoding"), selection: $selectedEncoding) {
                         ForEach(ImportEncoding.allCases) { enc in
-                            Text(enc.rawValue).tag(enc)
+                            Text(enc.label).tag(enc)
                         }
                     }
                     .pickerStyle(.menu)
@@ -421,11 +421,12 @@ struct ImportDialog: View {
             let maxPreviewSize = 5 * 1_024 * 1_024
             let previewData = handle.readData(ofLength: maxPreviewSize)
 
-            if let preview = String(data: previewData, encoding: selectedEncoding.encoding) {
+            var decoder = SQLChunkDecoder(encoding: selectedEncoding.encoding)
+            if let preview = decoder.decode(previewData) {
                 filePreview = preview
                 hasPreviewError = false
             } else {
-                filePreview = String(format: String(localized: "Failed to load preview using encoding: %@. Try selecting a different text encoding."), selectedEncoding.rawValue)
+                filePreview = String(format: String(localized: "Failed to load preview using encoding: %@. Try selecting a different text encoding."), selectedEncoding.label)
                 hasPreviewError = true
             }
         } catch {

@@ -46,7 +46,8 @@ internal enum CrossEngineStructureTranslator {
     internal static func translate(
         _ snapshot: TableStructureSnapshot,
         from source: DatabaseType,
-        to target: DatabaseType
+        to target: DatabaseType,
+        targetServerVersion: String? = nil
     ) -> Result {
         let targetFamily = SQLTypeFamily.of(target)
         guard SQLTypeFamily.needsTranslation(from: source, to: target) else {
@@ -61,6 +62,9 @@ internal enum CrossEngineStructureTranslator {
         }
 
         let sourceFamily = SQLTypeFamily.of(source)
+        let jsonColumnType = PostgreSQLServerVersion.jsonColumnType(
+            for: target, serverVersion: targetServerVersion
+        )
         var notes: [CrossEngineConversionNote] = []
         var sourceKindsByColumn: [String: CanonicalTypeKind] = [:]
         var kindsByColumn: [String: CanonicalTypeKind] = [:]
@@ -76,6 +80,7 @@ internal enum CrossEngineStructureTranslator {
                 table: snapshot.name,
                 from: sourceFamily,
                 to: targetFamily,
+                jsonColumnType: jsonColumnType,
                 isKeyColumn: keyColumns.contains(column.name.lowercased())
             )
             columns.append(outcome.column)
@@ -145,10 +150,11 @@ internal enum CrossEngineStructureTranslator {
         table: String,
         from sourceFamily: SQLTypeFamily,
         to targetFamily: SQLTypeFamily,
+        jsonColumnType: PostgreSQLJSONColumnType,
         isKeyColumn: Bool
     ) -> ColumnOutcome {
         let canonical = SQLTypeParser.parse(column.dataType, family: sourceFamily)
-        var rendered = SQLTypeRenderer.render(canonical, family: targetFamily)
+        var rendered = SQLTypeRenderer.render(canonical, family: targetFamily, jsonColumnType: jsonColumnType)
         var notes: [CrossEngineConversionNote] = []
 
         if isKeyColumn, let bounded = boundedKeyType(rendered, kind: canonical.kind, family: targetFamily) {

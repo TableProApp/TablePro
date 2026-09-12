@@ -44,6 +44,7 @@ struct StructureRowProviderTests {
             tab: .columns,
             databaseType: .mysql,
             additionalFields: [.name, .type],
+            serverSupport: .unrestricted,
             filterText: filterText,
             sortDescriptor: sortDescriptor
         )
@@ -148,6 +149,7 @@ struct StructureRowProviderChangeStateTests {
             tab: tab,
             databaseType: .mysql,
             additionalFields: [.primaryKey],
+            serverSupport: .unrestricted,
             filterText: filterText
         )
     }

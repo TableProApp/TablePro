@@ -70,21 +70,7 @@ extension TableStructureView {
             case .ddl:
                 let table = tableName
                 ddlStatement = try await structureLoader.perform { driver in
-                    let sequences = try await driver.fetchDependentSequences(forTable: table)
-                    let enumTypes = try await driver.fetchDependentTypes(forTable: table)
-                    let baseDDL = try await driver.fetchTableDDL(table: table)
-                    let indexDDL = (try? await driver.fetchIndexDDL(table: table)) ?? []
-                    var preamble = ""
-                    for seq in sequences {
-                        preamble += seq.ddl + "\n\n"
-                    }
-                    for enumType in enumTypes {
-                        let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                        let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
-                        preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
-                    }
-                    return TableDDLComposer.compose(
-                        tableDDL: baseDDL, indexDDL: indexDDL, preamble: preamble)
+                    try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: true)
                 }
             case .triggers:
                 do {
@@ -104,6 +90,7 @@ extension TableStructureView {
     }
 
     func loadSchemaForEditing() {
+        session.serverSupport = StructureServerSupport.forConnection(connection.id)
         let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
         let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
         let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes

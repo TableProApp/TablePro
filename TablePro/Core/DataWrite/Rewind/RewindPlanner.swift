@@ -205,7 +205,7 @@ struct RewindPlanner {
             }
             guard !cellChanges.isEmpty else { return [] }
             return try factory.statements(
-                for: [RowChange(rowIndex: 0, type: .update, cellChanges: cellChanges, originalRow: postImage)]
+                for: [RowChange(rowID: .existing(0), type: .update, cellChanges: cellChanges, originalRow: postImage)]
             )
         case .delete:
             guard let preImage = operation.preImage else { return [] }
@@ -213,8 +213,8 @@ struct RewindPlanner {
         case .insert:
             guard let postImage = operation.postImage else { return [] }
             return try factory.statements(
-                for: [RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: postImage)],
-                deletedRowIndices: [0]
+                for: [RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: postImage)],
+                deletedRowIDs: [.existing(0)]
             )
         }
     }

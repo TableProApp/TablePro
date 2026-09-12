@@ -42,7 +42,7 @@ extension TableViewCoordinator {
         for (gridRow, rowValues) in grid.enumerated() {
             let targetRow = anchorRow + gridRow
             guard targetRow < maxRow else { break }
-            guard !changeManager.isRowDeleted(targetRow) else { continue }
+            guard !isRowDeleted(displayRow: targetRow) else { continue }
 
             for (gridCol, cellValue) in rowValues.enumerated() {
                 let targetPosition = anchorPosition + gridCol

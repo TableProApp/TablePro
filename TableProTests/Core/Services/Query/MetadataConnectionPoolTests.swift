@@ -162,7 +162,7 @@ struct MetadataConnectionPoolIdleEvictionTests {
     func sweepClosesIdleEntries() {
         let connectionId = UUID()
         let driver = MockDatabaseDriver()
-        let pool = MetadataConnectionPool.shared
+        let pool = MetadataConnectionPool.isolatedForTesting()
         defer { pool.closeAll(connectionId: connectionId) }
 
         pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
@@ -176,7 +176,7 @@ struct MetadataConnectionPoolIdleEvictionTests {
     func sweepSparesRecentEntries() {
         let connectionId = UUID()
         let driver = MockDatabaseDriver()
-        let pool = MetadataConnectionPool.shared
+        let pool = MetadataConnectionPool.isolatedForTesting()
         defer { pool.closeAll(connectionId: connectionId) }
 
         pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
@@ -190,7 +190,7 @@ struct MetadataConnectionPoolIdleEvictionTests {
     func sweepSparesEntriesWithWorkInFlight() {
         let connectionId = UUID()
         let driver = MockDatabaseDriver()
-        let pool = MetadataConnectionPool.shared
+        let pool = MetadataConnectionPool.isolatedForTesting()
         defer { pool.closeAll(connectionId: connectionId) }
 
         pool.injectEntry(driver, scope: scope(connectionId, database: "shop"))
@@ -206,7 +206,7 @@ struct MetadataConnectionPoolIdleEvictionTests {
         let connectionId = UUID()
         let stale = MockDatabaseDriver()
         let fresh = MockDatabaseDriver()
-        let pool = MetadataConnectionPool.shared
+        let pool = MetadataConnectionPool.isolatedForTesting()
         defer { pool.closeAll(connectionId: connectionId) }
 
         let now = Date()
@@ -227,12 +227,16 @@ struct MetadataConnectionPoolIdleEvictionTests {
     @Test("a sweep that empties the pool stops the sweeper")
     func sweepStopsWhenThePoolEmpties() {
         let connectionId = UUID()
-        let pool = MetadataConnectionPool.shared
+        let pool = MetadataConnectionPool.isolatedForTesting()
         defer { pool.closeAll(connectionId: connectionId) }
 
         pool.injectEntry(MockDatabaseDriver(), scope: scope(connectionId, database: "shop"))
+        pool.startSweeperForTesting()
+        #expect(pool.hasSweeper)
+
         pool.sweepIdleEntries(now: Date().addingTimeInterval(MetadataConnectionPool.idleTimeout + 1))
 
+        #expect(pool.pooledDriverCount(for: connectionId) == 0)
         #expect(!pool.hasSweeper)
     }
 

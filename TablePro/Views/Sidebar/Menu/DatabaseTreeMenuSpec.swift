@@ -91,10 +91,19 @@ internal enum DatabaseTreeMenuSpec {
             .command(String(localized: "Open in New Tab"), .openInNewTab(ref)),
             .command(String(localized: "Show Structure"), .showStructure(ref))
         ]
+        if let objectRef = sourceObjectRef(for: ref) {
+            items.append(.command(String(localized: "Show DDL"), .showObjectSource(objectRef)))
+        }
         if SidebarContextMenuLogic.isView(clickedTable: ref.table), !context.isReadOnly {
             items.append(.command(String(localized: "Edit View Definition"), .editViewDefinition(ref)))
         }
         return items
+    }
+
+    /// A view's source opens in the read-only DDL viewer, addressed by the row's own database and
+    /// schema so it reads the view the user clicked rather than a same-named one where the browser is.
+    private static func sourceObjectRef(for ref: DatabaseTreeTableRef) -> DatabaseObjectRef? {
+        DatabaseObjectRef(relation: ref.table, database: ref.database ?? "", schema: ref.qualifyingSchema)
     }
 
     private static func noteItems(
@@ -103,15 +112,17 @@ internal enum DatabaseTreeMenuSpec {
         context: DatabaseTreeMenuContext
     ) -> [DatabaseTreeMenuItem] {
         let names = targets.map(\.table.name).sorted()
-        return [
-            .command(copyNamesTitle(count: names.count), .copyTableNames(names)),
-            .command(
-                context.isFavorite
-                    ? String(localized: "Remove from Favorites")
-                    : String(localized: "Add to Favorites"),
-                .toggleFavorite(ref)
-            )
-        ]
+        var items: [DatabaseTreeMenuItem] = [.command(copyNamesTitle(count: names.count), .copyTableNames(names))]
+        if DatabaseObjectToolEligibility.canShowDDL(ref.table.type) {
+            items.append(.command(String(localized: "Copy DDL"), .copyDDL(ref)))
+        }
+        items.append(.command(
+            context.isFavorite
+                ? String(localized: "Remove from Favorites")
+                : String(localized: "Add to Favorites"),
+            .toggleFavorite(ref)
+        ))
+        return items
     }
 
     /// Everything that moves the object's data somewhere else, in the order the work usually runs:
@@ -140,6 +151,14 @@ internal enum DatabaseTreeMenuSpec {
                 .copyObjectsTo(objects: copySelections(for: sameScope), ref: ref)
             ))
         }
+        /// Beside Maintenance, the other command that runs a server operation on the object's data.
+        if DatabaseObjectToolEligibility.canRefresh(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Refresh Materialized View…"), .refreshMaterializedView(ref)))
+        }
         if SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: context.isReadOnly,
             hasSelection: true,
@@ -165,6 +184,13 @@ internal enum DatabaseTreeMenuSpec {
     ) -> [DatabaseTreeMenuItem] {
         guard !context.isReadOnly else { return [] }
         var items: [DatabaseTreeMenuItem] = []
+        if DatabaseObjectToolEligibility.canEditComment(
+            ref.table.type,
+            support: context.objectToolSupport,
+            isReadOnly: context.isReadOnly
+        ) {
+            items.append(.command(String(localized: "Edit Comment…"), .editComment(ref)))
+        }
         if ObjectRenameEligibility.canRename(table: ref.table, context: context.renameEligibility) {
             items.append(.command(String(localized: "Rename"), .beginRenameTable(ref: ref, isRecentRow: isRecentRow)))
         }

@@ -33,7 +33,7 @@ struct TabCloseProtectionTests {
             databaseType: .mysql,
             generatedColumns: []
         )
-        coordinator.changeManager.recordRowDeletion(rowIndex: 0, originalRow: Self.originalRow)
+        coordinator.changeManager.recordRowDeletion(rowID: .existing(0), originalRow: Self.originalRow)
     }
 
     // MARK: - The reported bug

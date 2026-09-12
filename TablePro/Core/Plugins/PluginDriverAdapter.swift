@@ -23,6 +23,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.status }
     }
 
+    var hasLostConnection: Bool {
+        pluginDriver.hasLostConnection
+    }
+
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
@@ -388,6 +392,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var triggerEditUsesReplace: Bool { pluginDriver.triggerEditUsesReplace }
 
     var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { pluginDriver.unsupportedStructureColumnFields }
+
+    var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
@@ -764,6 +772,23 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? {
         pluginDriver.maintenanceStatements(operation: operation, table: table, schema: pluginDriver.currentSchema, options: options)
+    }
+
+    // MARK: - Object Comments and Materialized Views
+
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        pluginDriver.objectCommentStatement(name: name, objectType: objectType, schema: schema, comment: comment)
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? {
+        pluginDriver.refreshMaterializedViewStatement(name: name, schema: schema, concurrently: concurrently)
+    }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
     }
 
     // MARK: - All Tables Metadata SQL

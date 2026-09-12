@@ -25,8 +25,59 @@ extension MainContentCommandActions {
     }
 
     func editViewDefinition() {
-        guard let object = selectedObject, object.type == .view else { return }
-        coordinator?.editViewDefinition(object.name)
+        guard let ref = selectedObjectRef, ref.table.type == .view else { return }
+        coordinator?.editViewDefinition(ref)
+    }
+
+    var canShowObjectDDL: Bool {
+        DatabaseObjectToolEligibility.canShowDDL(selectedObject?.type)
+    }
+
+    func showObjectDDL() {
+        guard let ref = selectedObjectRef,
+              let objectRef = DatabaseObjectRef(
+                  relation: ref.table,
+                  database: ref.database ?? "",
+                  schema: ref.qualifyingSchema
+              )
+        else { return }
+        coordinator?.showObjectSource(objectRef)
+    }
+
+    func copyObjectDDL() {
+        guard let ref = selectedObjectRef, canShowObjectDDL else { return }
+        coordinator?.copyDDL(of: ref)
+    }
+
+    var canRefreshMaterializedView: Bool {
+        DatabaseObjectToolEligibility.canRefresh(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func refreshMaterializedView() {
+        guard let ref = selectedObjectRef, canRefreshMaterializedView else { return }
+        coordinator?.refreshMaterializedView(ref)
+    }
+
+    var canEditObjectComment: Bool {
+        DatabaseObjectToolEligibility.canEditComment(
+            selectedObject?.type,
+            support: objectToolSupport,
+            isReadOnly: isReadOnly
+        )
+    }
+
+    func editObjectComment() {
+        guard let ref = selectedObjectRef, canEditObjectComment else { return }
+        coordinator?.editComment(of: ref)
+    }
+
+    private var objectToolSupport: DatabaseObjectToolEligibility.Support {
+        guard let connectionId = coordinator?.connectionId else { return .none }
+        return .of(DatabaseManager.shared.driver(for: connectionId))
     }
 
     var maintenanceOperations: [String] {

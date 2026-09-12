@@ -28,7 +28,7 @@ struct SQLStatementGeneratorRowMatchTests {
     @Test("An update matches on every column the engine can compare, and none it cannot")
     func updateLeavesExcludedColumnsOut() throws {
         let change = RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .update,
             cellChanges: [CellChange(columnIndex: 1, columnName: "name", oldValue: "a", newValue: "b")],
             originalRow: originalRow
@@ -40,9 +40,9 @@ struct SQLStatementGeneratorRowMatchTests {
 
     @Test("A delete matches the same way")
     func deleteLeavesExcludedColumnsOut() throws {
-        let change = RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: originalRow)
+        let change = RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: originalRow)
         let statements = try generator(excluding: ["payload", "tags"]).generateStatements(
-            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+            from: [change], insertedRowData: [:], deletedRowIDs: [.existing(0)], insertedRowIDs: []
         )
         #expect(statements.map(\.sql) == ["DELETE FROM `t` WHERE (`id` = ? AND `name` = ?)"])
     }
@@ -51,11 +51,11 @@ struct SQLStatementGeneratorRowMatchTests {
     func keylessDeletesAreNotBatched() throws {
         let other: [PluginCellValue] = ["2", "b", "{}", "[]"]
         let changes = [
-            RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: originalRow),
-            RowChange(rowIndex: 1, type: .delete, cellChanges: [], originalRow: other)
+            RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: originalRow),
+            RowChange(rowID: .existing(1), type: .delete, cellChanges: [], originalRow: other)
         ]
         let statements = try generator(excluding: ["payload", "tags"]).generateAttributedStatements(
-            from: changes, insertedRowData: [:], deletedRowIndices: [0, 1], insertedRowIndices: []
+            from: changes, insertedRowData: [:], deletedRowIDs: [.existing(0), .existing(1)], insertedRowIDs: []
         )
         #expect(statements.count == 2)
         #expect(statements.allSatisfy { $0.rowCount == 1 && !$0.statement.sql.contains(" OR ") })
@@ -63,21 +63,21 @@ struct SQLStatementGeneratorRowMatchTests {
 
     @Test("A Databend row left entirely on defaults names one column with DEFAULT")
     func databendAllDefaultsInsert() throws {
-        let change = RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+        let change = RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         let statements = try generator(excluding: []).generateStatements(
             from: [change],
-            insertedRowData: [0: [.text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__")]],
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            insertedRowData: [.existing(0): [.text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__"), .text("__DEFAULT__")]],
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
         #expect(statements.map(\.sql) == ["INSERT INTO `t` (`id`) VALUES (DEFAULT)"])
     }
 
     @Test("With nothing excluded, every column still identifies the row")
     func noExclusionsKeepsEveryColumn() throws {
-        let change = RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: originalRow)
+        let change = RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: originalRow)
         let statements = try generator(excluding: []).generateStatements(
-            from: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+            from: [change], insertedRowData: [:], deletedRowIDs: [.existing(0)], insertedRowIDs: []
         )
         #expect(statements.first?.sql.contains("`payload` = ?") == true)
         #expect(statements.first?.sql.contains("`tags` = ?") == true)
@@ -94,9 +94,9 @@ struct SQLStatementGeneratorRowMatchTests {
             databaseType: .mysql,
             pluginDriver: nil
         )
-        let change = RowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: ["{}", "[]"])
+        let change = RowChange(rowID: .existing(0), type: .delete, cellChanges: [], originalRow: ["{}", "[]"])
         #expect(throws: DataWriteError.self) {
-            _ = try factory.statements(for: [change], deletedRowIndices: [0])
+            _ = try factory.statements(for: [change], deletedRowIDs: [.existing(0)])
         }
     }
 

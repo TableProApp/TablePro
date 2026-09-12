@@ -14,6 +14,10 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
+    /// Raised to 26 for `objectCommentStatement`, `refreshMaterializedViewStatement` and
+    /// `concurrentRefreshAvailability` on `PluginDatabaseDriver`, plus the
+    /// `PluginConcurrentRefreshAvailability` the last one answers with.
+    ///
     /// Raised to 23 for `releasableResourceCommandTitle` and `releaseIdleResource` on
     /// `PluginDatabaseDriver`, plus the `PluginResourceRelease` they answer with. Together they let
     /// a driver hand back a resource its session is holding without ending the session. DuckDB is
@@ -37,7 +41,7 @@ final class PluginManager {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 25
+    nonisolated static let currentPluginKitVersion = 27
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

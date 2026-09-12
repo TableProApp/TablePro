@@ -29,20 +29,20 @@ internal enum ResultJsonSerializer {
 
     /// - Parameter selectedDisplayIndices: display positions to narrow to. Empty means every
     ///   displayed row, which is what an untouched result set shows.
-    /// - Parameter deletedDisplayIndices: display positions marked for deletion but not yet saved.
+    /// - Parameter deletedRowIDs: rows marked for deletion but not yet saved.
     ///   Empty, the default, serialises every row.
     internal static func serialize(
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedDisplayIndices: Set<Int>,
-        deletedDisplayIndices: Set<Int> = [],
+        deletedRowIDs: Set<RowID> = [],
         columns projection: VisibleColumnProjection
     ) -> Output {
         let read = DisplayedResultReader.read(
             tableRows: tableRows,
             displayIDs: displayIDs,
             selectedDisplayIndices: selectedDisplayIndices,
-            deletedDisplayIndices: deletedDisplayIndices,
+            deletedRowIDs: deletedRowIDs,
             columns: projection
         )
 

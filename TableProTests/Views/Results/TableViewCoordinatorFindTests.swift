@@ -32,7 +32,7 @@ struct TableViewCoordinatorFindTests {
             columnTypes: [.blob(rawType: "VARBINARY(255)")]
         )
         coordinator.tableRowsProvider = { captured }
-        coordinator.tableRowsMutator = { (mutation: (inout TableRows) -> Void) in mutation(&captured) }
+        coordinator.tableRowsMutator = { (mutation: (inout TableRows) -> Delta) in mutation(&captured) }
         coordinator.updateCache()
         coordinator.updateDisplayFormats([format])
         return coordinator

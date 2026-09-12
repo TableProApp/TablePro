@@ -13,7 +13,7 @@ extension PostgreSQLPluginDriver {
         options.append(contentsOf: attributeKeywords(definition.attributes))
 
         if let password = definition.password, !password.isEmpty {
-            options.append("PASSWORD '\(escapeStringLiteral(password))'")
+            options.append("PASSWORD \(PostgreSQLObjectQueries.quoteLiteral(password))")
         }
         if let limit = definition.connectionLimit {
             options.append("CONNECTION LIMIT \(limit)")
@@ -24,7 +24,7 @@ extension PostgreSQLPluginDriver {
             "GRANT \(quoteIdentifier($0)) TO \(role)"
         })
         if let comment = definition.comment, !comment.isEmpty {
-            statements.append("COMMENT ON ROLE \(role) IS '\(escapeStringLiteral(comment))'")
+            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLRelationSQL.commentValue(comment))")
         }
         return statements
     }
@@ -51,9 +51,7 @@ extension PostgreSQLPluginDriver {
         statements.append(contentsOf: membershipStatements(old: old, new: new, role: role))
 
         if old.comment != new.comment {
-            let comment = new.comment ?? ""
-            let value = comment.isEmpty ? "NULL" : "'\(escapeStringLiteral(comment))'"
-            statements.append("COMMENT ON ROLE \(role) IS \(value)")
+            statements.append("COMMENT ON ROLE \(role) IS \(PostgreSQLRelationSQL.commentValue(new.comment))")
         }
         if old.ref.name != new.ref.name {
             statements.append("ALTER ROLE \(role) RENAME TO \(quoteIdentifier(new.ref.name))")
@@ -63,7 +61,7 @@ extension PostgreSQLPluginDriver {
 
     func generateSetPasswordSQL(principal: PluginPrincipalRef, password: String) -> [String]? {
         let role = quoteIdentifier(principal.name)
-        return ["ALTER ROLE \(role) WITH PASSWORD '\(escapeStringLiteral(password))'"]
+        return ["ALTER ROLE \(role) WITH PASSWORD \(PostgreSQLObjectQueries.quoteLiteral(password))"]
     }
 
     func generateDropPrincipalSQL(
@@ -119,9 +117,16 @@ extension PostgreSQLPluginDriver {
         }
     }
 
+    private var supportedRoleAttributes: Set<PostgreSQLRoleAttribute> {
+        PostgreSQLVersionedStatements.roleAttributes(capabilities: versionedCapabilities)
+    }
+
     private func attributeKeywords(_ attributes: [PluginPrincipalAttribute]) -> [String] {
-        attributes.compactMap { attribute in
-            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key) else { return nil }
+        let supported = supportedRoleAttributes
+        return attributes.compactMap { attribute in
+            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key), supported.contains(known) else {
+                return nil
+            }
             return known.keyword(isEnabled: attribute.isEnabled)
         }
     }
@@ -131,8 +136,11 @@ extension PostgreSQLPluginDriver {
         new: [PluginPrincipalAttribute]
     ) -> [String] {
         let oldByKey = Dictionary(uniqueKeysWithValues: old.map { ($0.key, $0.isEnabled) })
+        let supported = supportedRoleAttributes
         return new.compactMap { attribute in
-            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key) else { return nil }
+            guard let known = PostgreSQLRoleAttribute(rawValue: attribute.key), supported.contains(known) else {
+                return nil
+            }
             guard oldByKey[attribute.key] != attribute.isEnabled else { return nil }
             return known.keyword(isEnabled: attribute.isEnabled)
         }

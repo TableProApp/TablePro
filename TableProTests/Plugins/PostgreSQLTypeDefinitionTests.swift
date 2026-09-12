@@ -193,7 +193,7 @@ struct PostgreSQLTypeDefinitionTests {
         #expect(ddl.hasPrefix("CREATE TYPE \"my schema\".\"Weird \"\"Name\"\"\" AS ENUM ("))
     }
 
-    @Test("A catalog row parses by projection position, JSON columns included")
+    @Test("A catalog row parses by projection position, array columns included")
     func rowParsing() throws {
         var row = [PluginCellValue](repeating: .null, count: PostgreSQLTypeDefinition.Column.allCases.count)
         row[PostgreSQLTypeDefinition.Column.identity.rawValue] = .text("16397")
@@ -206,8 +206,9 @@ struct PostgreSQLTypeDefinitionTests {
         row[PostgreSQLTypeDefinition.Column.collation.rawValue] = .text("pg_catalog.\"C\"")
         row[PostgreSQLTypeDefinition.Column.isNotNull.rawValue] = .text("true")
         row[PostgreSQLTypeDefinition.Column.defaultValue.rawValue] = .text("'x'::text")
-        row[PostgreSQLTypeDefinition.Column.constraints.rawValue] = .text(
-            #"[{"name" : "email_check", "definition" : "CHECK ((VALUE ~ '@'::text))"}]"#
+        row[PostgreSQLTypeDefinition.Column.constraintNames.rawValue] = .text("{email_check}")
+        row[PostgreSQLTypeDefinition.Column.constraintDefinitions.rawValue] = .text(
+            #"{"CHECK ((VALUE ~ '@'::text))"}"#
         )
 
         let parsed = try #require(PostgreSQLTypeDefinition.record(from: row))
@@ -222,23 +223,23 @@ struct PostgreSQLTypeDefinitionTests {
         #expect(parsed.comment == "Mail")
     }
 
-    @Test("Enum labels and composite fields parse from their JSON aggregates in order")
-    func jsonAggregatesParse() throws {
+    @Test("Enum labels and composite fields parse from their array aggregates in order")
+    func arrayAggregatesParse() throws {
         var enumRow = [PluginCellValue](repeating: .null, count: PostgreSQLTypeDefinition.Column.allCases.count)
         enumRow[PostgreSQLTypeDefinition.Column.identity.rawValue] = .text("1")
         enumRow[PostgreSQLTypeDefinition.Column.name.rawValue] = .text("mood")
         enumRow[PostgreSQLTypeDefinition.Column.schema.rawValue] = .text("app")
         enumRow[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("e")
-        enumRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .text(#"["sad", "ok", "it's"]"#)
+        enumRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .text("{sad,ok,it's}")
         let parsedEnum = try #require(PostgreSQLTypeDefinition.record(from: enumRow))
         #expect(parsedEnum.enumLabels == ["sad", "ok", "it's"])
 
         var compositeRow = enumRow
         compositeRow[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("c")
         compositeRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .null
-        compositeRow[PostgreSQLTypeDefinition.Column.fields.rawValue] = .text(
-            #"[{"name" : "x", "type" : "text", "collation" : "pg_catalog.\"C\""}, {"name" : "y", "type" : "integer", "collation" : null}]"#
-        )
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldNames.rawValue] = .text("{x,y}")
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldTypes.rawValue] = .text("{text,integer}")
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldCollations.rawValue] = .text(#"{"pg_catalog.\"C\"",NULL}"#)
         compositeRow[PostgreSQLTypeDefinition.Column.spelling.rawValue] = .text("app.\"Mood\"")
         let parsedComposite = try #require(PostgreSQLTypeDefinition.record(from: compositeRow))
         #expect(parsedComposite.fields == [
@@ -247,6 +248,60 @@ struct PostgreSQLTypeDefinitionTests {
         ])
         #expect(parsedComposite.spelling == "app.\"Mood\"")
         #expect(PostgreSQLTypeDefinition.info(from: parsedComposite).columnTypeSpelling == "app.\"Mood\"")
+    }
+
+    @Test("Labels, field names and constraint names survive the characters an array literal quotes")
+    func hostileNamesSurviveArrayDecoding() throws {
+        var enumRow = [PluginCellValue](repeating: .null, count: PostgreSQLTypeDefinition.Column.allCases.count)
+        enumRow[PostgreSQLTypeDefinition.Column.identity.rawValue] = .text("1")
+        enumRow[PostgreSQLTypeDefinition.Column.name.rawValue] = .text("lbl")
+        enumRow[PostgreSQLTypeDefinition.Column.schema.rawValue] = .text("public")
+        enumRow[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("e")
+        enumRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .text(
+            #"{"very happy","sad,ish","NULL","q\"t","back\\\\slash",""}"#
+        )
+        let parsedEnum = try #require(PostgreSQLTypeDefinition.record(from: enumRow))
+        #expect(parsedEnum.enumLabels == ["very happy", "sad,ish", "NULL", "q\"t", "back\\\\slash", ""])
+
+        var compositeRow = enumRow
+        compositeRow[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("c")
+        compositeRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .null
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldNames.rawValue] = .text(#"{"first name","q\"t","NULL"}"#)
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldTypes.rawValue] = .text("{text,integer,text}")
+        compositeRow[PostgreSQLTypeDefinition.Column.fieldCollations.rawValue] = .text(#"{"pg_catalog.\"C\"",NULL,NULL}"#)
+        let parsedComposite = try #require(PostgreSQLTypeDefinition.record(from: compositeRow))
+        #expect(parsedComposite.fields == [
+            PluginUserDefinedTypeField(name: "first name", type: "text", collation: "pg_catalog.\"C\""),
+            PluginUserDefinedTypeField(name: "q\"t", type: "integer"),
+            PluginUserDefinedTypeField(name: "NULL", type: "text")
+        ])
+
+        var domainRow = enumRow
+        domainRow[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("d")
+        domainRow[PostgreSQLTypeDefinition.Column.enumLabels.rawValue] = .null
+        domainRow[PostgreSQLTypeDefinition.Column.baseType.rawValue] = .text("text")
+        domainRow[PostgreSQLTypeDefinition.Column.constraintNames.rawValue] = .text(#"{b_len,"has,comma"}"#)
+        domainRow[PostgreSQLTypeDefinition.Column.constraintDefinitions.rawValue] = .text(
+            #"{"CHECK ((length(VALUE) < 10))","CHECK ((VALUE <> ''::text))"}"#
+        )
+        let parsedDomain = try #require(PostgreSQLTypeDefinition.record(from: domainRow))
+        #expect(parsedDomain.constraints == [
+            PostgreSQLDomainConstraint(name: "b_len", definition: "CHECK ((length(VALUE) < 10))"),
+            PostgreSQLDomainConstraint(name: "has,comma", definition: "CHECK ((VALUE <> ''::text))")
+        ])
+    }
+
+    @Test("A type with no fields, labels or constraints reads NULL aggregates as empty")
+    func nullAggregatesAreEmpty() throws {
+        var row = [PluginCellValue](repeating: .null, count: PostgreSQLTypeDefinition.Column.allCases.count)
+        row[PostgreSQLTypeDefinition.Column.identity.rawValue] = .text("1")
+        row[PostgreSQLTypeDefinition.Column.name.rawValue] = .text("empty")
+        row[PostgreSQLTypeDefinition.Column.schema.rawValue] = .text("public")
+        row[PostgreSQLTypeDefinition.Column.kind.rawValue] = .text("c")
+        let parsed = try #require(PostgreSQLTypeDefinition.record(from: row))
+        #expect(parsed.fields.isEmpty)
+        #expect(parsed.enumLabels.isEmpty)
+        #expect(parsed.constraints.isEmpty)
     }
 
     @Test("A row of an unknown kind is skipped rather than mislabelled")

@@ -20,10 +20,14 @@
 import Foundation
 
 internal enum SQLTypeRenderer {
-    internal static func render(_ type: CanonicalColumnType, family: SQLTypeFamily) -> RenderedColumnType {
+    internal static func render(
+        _ type: CanonicalColumnType,
+        family: SQLTypeFamily,
+        jsonColumnType: PostgreSQLJSONColumnType = .jsonb
+    ) -> RenderedColumnType {
         switch family {
         case .mysql: return mysql(type)
-        case .postgres: return postgres(type)
+        case .postgres: return postgres(type, jsonColumnType: jsonColumnType)
         case .sqlite: return sqlite(type)
         case .mssql: return mssql(type)
         case .oracle: return oracle(type)

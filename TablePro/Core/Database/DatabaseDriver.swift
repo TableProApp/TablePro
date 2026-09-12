@@ -19,6 +19,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Current connection status
     var status: ConnectionStatus { get }
 
+    var hasLostConnection: Bool { get }
+
     /// Server version string (e.g., "8.0.35" for MySQL)
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
@@ -127,6 +129,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     func generateDropTriggerSQL(name: String, table: String) -> String?
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
 
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
@@ -242,6 +247,19 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     /// Generates SQL statements for a maintenance operation.
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]?
+
+    // MARK: - Object Comments and Materialized Views
+
+    /// Nil for an object kind the engine cannot comment on. Takes the object's own schema, never
+    /// the connection's current one, because the object named may live anywhere in the tree.
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String?
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability?
 
     // MARK: - Query Cancellation
 
@@ -376,6 +394,9 @@ extension DatabaseDriver {
     func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
@@ -552,6 +573,19 @@ extension DatabaseDriver {
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }
 
+    func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
+        nil
+    }
+
+    func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String? { nil }
+
+    func concurrentRefreshAvailability(
+        materializedView: String,
+        schema: String?
+    ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
+
     /// Default: no schema support (MySQL/SQLite don't use schemas in the same way)
     func fetchSchemas() async throws -> [String] { [] }
 
@@ -594,6 +628,8 @@ extension DatabaseDriver {
     }
 
     var supportsTransactions: Bool { true }
+
+    var hasLostConnection: Bool { false }
 
     func cancelQuery() throws {
     }

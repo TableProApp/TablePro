@@ -39,11 +39,14 @@ extension TableViewCoordinator {
         return result
     }
 
-    /// Recomputes what the grid shows, through the same resolver the tab's owner uses.
-    ///
-    /// Both sides run one pure function over the same rows, filter, formats and database type, so
-    /// the grid and the readers that run without it cannot disagree about the display order.
+    /// Recomputes what the grid shows. A grid with an owner takes the owner's order, so the grid and
+    /// the readers that run without it cannot disagree about which row sits at a display position,
+    /// including after an edit has taken a row out of the filter's match.
     func recomputeValueFilteredIDs() {
+        if let displayOrderProvider {
+            valueFilteredIDs = displayOrderProvider()
+            return
+        }
         let tableRows = tableRowsProvider()
         valueFilteredIDs = GridDisplayOrderResolver.resolve(
             tableRows: tableRows,
@@ -67,9 +70,6 @@ extension TableViewCoordinator {
         valueFilterState = state
     }
 
-    /// Confirmed before the state moves, not after: the alert's whole purpose is to let the reader
-    /// keep edits that this change would re-point, so the filter must not be written until they
-    /// have said yes.
     func applyValueFilter(
         _ filter: ColumnValueFilter?,
         columnName: String,
@@ -121,7 +121,7 @@ extension TableViewCoordinator {
     func reloadAfterValueFilterChange() {
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         selectionController.clear()
         tableView?.reloadData()
         updateValueFilterHeaderIndicators()

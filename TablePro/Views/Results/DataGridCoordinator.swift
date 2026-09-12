@@ -33,7 +33,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                                   NSMenuDelegate
 {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
-    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Delta) -> Delta = { _ in .none }
     var paginationOffsetProvider: @MainActor () -> Int = { 0 }
     var changeManager: AnyChangeManager
     var isEditable: Bool
@@ -49,6 +49,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// the filter lives here alone and dies with this coordinator, which is all a structure or
     /// create-table grid needs.
     var valueFilterBinding: Binding<GridValueFilterState>?
+    var displayOrderProvider: (@MainActor () -> [RowID]?)?
     private var storedValueFilterState = GridValueFilterState()
     /// Reads never go back through the binding, because a SwiftUI `Binding` built from a captured
     /// value type returns the pre-write value until the next body pass. The mirror is authoritative
@@ -709,6 +710,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         // Local only: this runs while the window is being torn down, and the filter's owner is
         // either about to go away with it or is deliberately keeping the filter for the next mount.
         valueFilterBinding = nil
+        displayOrderProvider = nil
         adoptValueFilter(GridValueFilterState())
         lastUpdateSnapshot = nil
         columnPool.detachFromTableView()
@@ -751,7 +753,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
         repaintVisibleRowDecorations()
@@ -769,7 +771,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
         repaintVisibleRowDecorations()
@@ -808,7 +810,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -930,7 +932,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAll()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
     }
 
     @discardableResult
@@ -1070,7 +1072,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
+            updateVisualIndex(forDisplayRow: row)
             redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
             invalidateRowDecoration(displayRow: row)
         case .cellsChanged(let positions):
@@ -1088,7 +1090,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             for row in rowSet {
-                visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
+                updateVisualIndex(forDisplayRow: row)
             }
             redrawCells(rows: rowSet, tableColumnIndexes: colSet)
             for row in rowSet {
@@ -1418,7 +1420,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if let delegateState = delegate?.dataGridVisualState(forRow: row) {
             return delegateState
         }
-        return visualIndex.visualState(for: row).highlighted(highlight(forDisplayRow: row))
+        guard !visualIndex.isEmpty || !highlightRuleSet.isEmpty,
+              let displayed = displayRow(at: row) else { return .empty }
+        return visualState(of: displayed, atDisplayRow: row)
     }
 
     // MARK: - NSTableViewDataSource

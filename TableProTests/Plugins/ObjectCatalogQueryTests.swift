@@ -16,7 +16,7 @@ struct PostgreSQLObjectQueryTests {
     /// name once per overload, which is what produced duplicate rows and an arbitrary definition.
     @Test("Routine listing reads pg_proc, never information_schema")
     func routineListReadsPgProc() {
-        let sql = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 160_000)
+        let sql = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(sql.contains("pg_catalog.pg_proc"))
         #expect(!sql.contains("information_schema"))
         #expect(sql.contains("p.oid::text"))
@@ -27,19 +27,19 @@ struct PostgreSQLObjectQueryTests {
     /// `proisagg`, which PostgreSQL 11 dropped, and failed the listing on every current server.
     @Test("An unknown server version reads as modern, not ancient")
     func unknownVersionIsModern() {
-        #expect(PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 0))
-        #expect(PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 170_000))
-        #expect(!PostgreSQLObjectQueries.usesProkind(serverVersionNumber: 100_000))
-        #expect(!PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 0)
+        #expect(PostgreSQLCapabilities.assumingModernWhenUnknown(0).hasProcedureKind)
+        #expect(PostgreSQLCapabilities(serverVersion: 170_000).hasProcedureKind)
+        #expect(!PostgreSQLCapabilities(serverVersion: 100_000).hasProcedureKind)
+        #expect(!PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(0))
             .contains("proisagg"))
     }
 
     @Test("Aggregates and window functions are excluded because pg_get_functiondef raises on them")
     func aggregatesExcluded() {
-        let modern = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 160_000)
+        let modern = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(modern.contains("p.prokind IN ('f', 'p')"))
 
-        let legacy = PostgreSQLObjectQueries.routineList(schema: "public", serverVersionNumber: 100_000)
+        let legacy = PostgreSQLObjectQueries.routineList(schema: "public", capabilities: .assumingModernWhenUnknown(100_000))
         #expect(legacy.contains("NOT p.proisagg AND NOT p.proiswindow"))
         #expect(!legacy.contains("prokind IN"))
     }
@@ -70,9 +70,17 @@ struct PostgreSQLObjectQueryTests {
         #expect(one.contains("pg_catalog.pg_get_triggerdef"))
     }
 
+    @Test("Trigger events are joined with concat_ws, which 9.1 has and array_remove does not")
+    func triggerEventsUseConcatWs() {
+        let sql = PostgreSQLObjectQueries.triggerList(schema: "public", table: nil)
+        #expect(sql.contains("concat_ws(' OR ',"))
+        #expect(!sql.contains("array_remove"))
+        #expect(!sql.contains("array_to_string"))
+    }
+
     @Test("A quote in a name or schema is escaped in every query")
     func literalsAreEscaped() {
-        let list = PostgreSQLObjectQueries.routineList(schema: "it's", serverVersionNumber: 160_000)
+        let list = PostgreSQLObjectQueries.routineList(schema: "it's", capabilities: .assumingModernWhenUnknown(160_000))
         #expect(list.contains("'it''s'"))
 
         let byName = PostgreSQLObjectQueries.routineDefinitionByName(
@@ -82,6 +90,28 @@ struct PostgreSQLObjectQueryTests {
 
         let triggers = PostgreSQLObjectQueries.triggerList(schema: "public", table: "o'brien")
         #expect(triggers.contains("'o''brien'"))
+    }
+
+    @Test("A backslash before a quote in a name becomes an E'' literal in every query")
+    func backslashNamesUseEscapeStringLiterals() {
+        let hostile = "a\\'; DROP TABLE victim; --"
+        let expected = "E'a\\\\''; DROP TABLE victim; --'"
+
+        let list = PostgreSQLObjectQueries.routineList(
+            schema: hostile, capabilities: .assumingModernWhenUnknown(160_000)
+        )
+        #expect(list.contains("n.nspname = \(expected)"))
+
+        let byName = PostgreSQLObjectQueries.routineDefinitionByName(
+            name: hostile, schema: hostile, arguments: hostile
+        )
+        #expect(byName.contains("p.proname = \(expected)"))
+        #expect(byName.contains("n.nspname = \(expected)"))
+        #expect(byName.contains("')' = \(expected)"))
+
+        let triggers = PostgreSQLObjectQueries.triggerList(schema: hostile, table: hostile)
+        #expect(triggers.contains("c.relname = \(expected)"))
+        #expect(triggers.contains("n.nspname = \(expected)"))
     }
 }
 
@@ -172,7 +202,7 @@ struct MSSQLObjectQueryTests {
         let all = MSSQLObjectQueries.triggerList(schema: "dbo", table: nil)
         let one = MSSQLObjectQueries.triggerList(schema: "dbo", table: "Orders")
         #expect(!all.contains("parent.name ="))
-        #expect(one.contains("parent.name = 'Orders'"))
+        #expect(one.contains("parent.name = N'Orders'"))
         #expect(all.contains("sys.trigger_events"))
     }
 
@@ -186,8 +216,23 @@ struct MSSQLObjectQueryTests {
 
     @Test("A quote in a schema or table is escaped")
     func literalsAreEscaped() {
-        #expect(MSSQLObjectQueries.routineList(schema: "it's").contains("'it''s'"))
-        #expect(MSSQLObjectQueries.triggerList(schema: "dbo", table: "o'brien").contains("'o''brien'"))
+        #expect(MSSQLObjectQueries.routineList(schema: "it's").contains("N'it''s'"))
+        #expect(MSSQLObjectQueries.triggerList(schema: "dbo", table: "o'brien").contains("N'o''brien'"))
+    }
+
+    @Test("A non-ASCII schema, routine or table name is an nvarchar literal")
+    func catalogNamesAreNationalLiterals() {
+        #expect(MSSQLObjectQueries.routineList(schema: "販売").contains("s.name = N'販売'"))
+        let definition = MSSQLObjectQueries.routineDefinition(schema: "販売", name: "集計")
+        #expect(definition.contains("s.name = N'販売' AND o.name = N'集計'"))
+        let triggers = MSSQLObjectQueries.triggerList(schema: "販売", table: "注文")
+        #expect(triggers.contains("s.name = N'販売'"))
+        #expect(triggers.contains("parent.name = N'注文'"))
+    }
+
+    @Test("Fixed catalog type codes stay plain literals")
+    func catalogTypeCodesStayPlain() {
+        #expect(MSSQLObjectQueries.routineList(schema: "dbo").contains("o.type IN ('P', 'FN', 'IF', 'TF')"))
     }
 }
 

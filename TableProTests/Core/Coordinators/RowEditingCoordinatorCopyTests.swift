@@ -130,7 +130,7 @@ struct RowEditingCoordinatorCopyTests {
     }
 
     /// Fetch All extends the same result rather than replacing it, so the filter stays and the
-    /// order is re-resolved over the rows that arrived. The memo keys on the registry's data
+    /// order is re-resolved over the rows that arrived. The memo keys on the registry's row-set
     /// revision, so this holds with no grid mounted to recompute it.
     @Test("loading more rows into the same result keeps the value filter and re-resolves the order")
     func loadingMoreRowsKeepsTheValueFilter() {

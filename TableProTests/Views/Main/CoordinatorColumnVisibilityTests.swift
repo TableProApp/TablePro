@@ -52,7 +52,7 @@ struct CoordinatorColumnVisibilityTests {
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",

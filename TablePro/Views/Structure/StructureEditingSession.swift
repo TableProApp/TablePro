@@ -73,6 +73,7 @@ internal final class StructureEditingSession {
     internal var sortState = SortState()
     internal var sortDescriptor: StructureSortDescriptor?
     internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
+    internal var serverSupport = StructureServerSupport.unrestricted
 
     /// What the bottom bar offers while this tab is showing its structure.
     ///

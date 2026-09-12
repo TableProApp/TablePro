@@ -33,7 +33,8 @@ struct ForeignKeyLookupQueryTests {
         key: ForeignKeyLookupColumn? = nil,
         label: ForeignKeyLookupColumn?,
         term: String,
-        dialect: SQLDialectDescriptor? = nil
+        dialect: SQLDialectDescriptor? = nil,
+        stringLiteralPrefix: String = ""
     ) -> String? {
         ForeignKeyLookupQuery.rows(
             quotedTable: "\"Artist\"",
@@ -41,6 +42,7 @@ struct ForeignKeyLookupQueryTests {
             label: label,
             searchTerm: term,
             dialect: dialect ?? self.dialect(),
+            stringLiteralPrefix: stringLiteralPrefix,
             quoteIdentifier: quote
         )
     }

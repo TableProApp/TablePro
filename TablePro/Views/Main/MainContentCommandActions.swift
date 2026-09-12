@@ -501,12 +501,20 @@ final class MainContentCommandActions {
         TableOperationEligibility.canTruncate(selectedTables.wrappedValue)
     }
 
+    /// The one selected object with the database and schema it lives in, or nil when the selection
+    /// is empty or spans several. A command that acts on the object takes this rather than the bare
+    /// `TableInfo`, which names no database, so it reaches the object the user selected even while
+    /// the browser points at another database or schema.
+    var selectedObjectRef: DatabaseTreeTableRef? {
+        let selection = selectedTables.wrappedValue
+        guard selection.count == 1 else { return nil }
+        return selection.first
+    }
+
     /// The one selected object, or nil when the selection is empty or spans several.
     /// Commands that open a single object need this rather than `hasTableSelection`.
     var selectedObject: TableInfo? {
-        let selection = selectedTables.wrappedValue
-        guard selection.count == 1 else { return nil }
-        return selection.first?.table
+        selectedObjectRef?.table
     }
 
     var hasQueryText: Bool {
@@ -1463,6 +1471,19 @@ final class MainContentCommandActions {
                 if request.reachesBrowsedDatabase(coordinator.browseDatabaseName) {
                     Task { await coordinator.refreshTables() }
                 }
+            }
+            .store(in: &eventCancellables)
+
+        AppCommands.shared.objectChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, change.connectionId == self.connection.id,
+                      let coordinator = self.coordinator else { return }
+                coordinator.applyObjectChange(
+                    change,
+                    hasPendingTableOps: self.hasPendingTableOps,
+                    onDiscard: { [weak self] in self?.clearPendingTableOps() }
+                )
             }
             .store(in: &eventCancellables)
     }
