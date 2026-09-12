@@ -395,6 +395,10 @@ extension MainContentCoordinator {
         return false
     }
 
+    /// Whether browsing the object list may take the selected tab over.
+    ///
+    /// Only browsing asks. Following a foreign key never takes a tab over, because a reference can
+    /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab else { return false }
         if selectedTabHoldsProtectedContent { return false }

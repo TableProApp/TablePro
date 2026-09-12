@@ -36,9 +36,9 @@ struct FKNavigationTests {
         #expect(payload.initialFilterState?.isVisible == true)
     }
 
-    @Test("Plain click navigates the referenced table into the current tab")
+    @Test("Plain click opens the reference in its own tab and leaves the table tab it came from")
     @MainActor
-    func plainClickReplacesCurrentTab() throws {
+    func plainClickKeepsTheTableTabItCameFrom() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
@@ -55,12 +55,21 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
         #expect(tabManager.tabs.count == 1)
+        let sourceTabId = tabManager.selectedTab?.id
+
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.id == sourceTabId)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+        #expect(opened.count == 1)
+        #expect(opened.first?.tableName == "users")
+        #expect(opened.first?.forcesNewTab == true)
+        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "42")
     }
 
     @Test("Plain click on the already-open referenced table does not open a second tab")
@@ -85,7 +94,7 @@ struct FKNavigationTests {
         #expect(tabManager.tabs.count == 1)
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.id == tabId)
@@ -95,9 +104,9 @@ struct FKNavigationTests {
     /// The target table has no rows yet, so the only thing that can type the value is its schema.
     /// Built from the empty buffer instead, `0123` went to a text key as the number `0123`, which
     /// MySQL compares numerically and PostgreSQL rejects outright.
-    @Test("An in-place hop types the reference value from the target table's columns")
+    @Test("A hop within the same table types the reference value from that table's columns")
     @MainActor
-    func inPlaceHopTypesTheValueFromTheTargetSchema() throws {
+    func sameTableHopTypesTheValueFromTheSchema() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
@@ -119,14 +128,15 @@ struct FKNavigationTests {
                 primaryKeys: ["id"],
                 columnTypes: ["id": .integer(rawType: "INT"), "code": .text(rawType: "VARCHAR(20)")]
             ),
-            for: coordinator.schemaColumnsKey("users", scope: coordinator.selectedTabScope)
+            for: coordinator.schemaColumnsKey("orders", scope: coordinator.selectedTabScope)
         )
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "code")
-        coordinator.navigateToFKReference(value: "0123", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "code")
+        coordinator.navigateToFKReference(value: "0123", fkInfo: fkInfo, intent: .follow)
 
         let query = try #require(tabManager.selectedTab?.content.query)
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.tabs.count == 1)
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
         #expect(query.contains("'0123'"))
         #expect(!query.contains("= 0123"))
     }
@@ -155,11 +165,14 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
-        #expect(tabManager.selectedTab?.tableContext.schemaName == "sales")
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        #expect(opened.first?.tableName == "users")
+        #expect(opened.first?.schemaName == "sales")
     }
 
     @Test("Plain click from an executed query tab opens a new tab and leaves the query tab intact")
@@ -183,7 +196,7 @@ struct FKNavigationTests {
         coordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.id == originalTabId)
@@ -215,7 +228,7 @@ struct FKNavigationTests {
         coordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.id == originalTabId)
@@ -248,7 +261,7 @@ struct FKNavigationTests {
         coordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(tabManager.tabs.count == 1)
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
@@ -277,6 +290,13 @@ struct FKNavigationTests {
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
+        originCoordinator.hostedTabRouting = HostedTabRouting(
+            coordinators: { _ in [targetCoordinator] },
+            reveal: { coordinator, tabId in
+                coordinator.tabManager.selectedTabId = tabId
+                return true
+            }
+        )
 
         defer {
             originCoordinator.teardown()
@@ -295,8 +315,10 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
-            $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
+            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [applied]
             $0.filterState.commit = .all
+            $0.filterState.executedFilters = [applied]
         }
         let existingTargetTabId = targetTabManager.selectedTab?.id
 
@@ -304,12 +326,77 @@ struct FKNavigationTests {
         originCoordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(opened.isEmpty)
         #expect(originTabManager.tabs.count == 1)
         #expect(targetTabManager.tabs.count == 1)
         #expect(targetTabManager.selectedTab?.id == existingTargetTabId)
+    }
+
+    /// Revealing a tab elsewhere leaves the source behind the same way opening a new one does, so
+    /// it has to be kept for the same reason: a preview tab the reader navigated away from would
+    /// otherwise be retargeted by their next sidebar click.
+    @Test("Revealing an open tab keeps the preview tab the reference was followed from")
+    @MainActor
+    func revealingAnOpenTabPromotesTheSourcePreviewTab() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+
+        let originTabManager = QueryTabManager()
+        let originCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: originTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        originCoordinator.registerEagerly()
+
+        let targetTabManager = QueryTabManager()
+        let targetCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: targetTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        targetCoordinator.registerEagerly()
+        originCoordinator.hostedTabRouting = HostedTabRouting(
+            coordinators: { _ in [targetCoordinator] },
+            reveal: { coordinator, tabId in
+                coordinator.tabManager.selectedTabId = tabId
+                return true
+            }
+        )
+
+        defer {
+            originCoordinator.teardown()
+            targetCoordinator.teardown()
+        }
+
+        try originTabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: originCoordinator.browseDatabaseName,
+            isPreview: true
+        )
+        #expect(originTabManager.selectedTab?.isPreview == true)
+
+        try targetTabManager.addTableTab(
+            tableName: "users",
+            databaseType: connection.type,
+            databaseName: targetCoordinator.browseDatabaseName
+        )
+        targetTabManager.mutate(at: 0) {
+            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [applied]
+            $0.filterState.commit = .all
+            $0.filterState.executedFilters = [applied]
+        }
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        #expect(originTabManager.tabs.count == 1)
+        #expect(originTabManager.tabs[0].isPreview == false)
     }
 
     @Test("A reference to a different row does not re-filter a tab opened for another row")
@@ -334,6 +421,13 @@ struct FKNavigationTests {
             toolbarState: ConnectionToolbarState()
         )
         targetCoordinator.registerEagerly()
+        originCoordinator.hostedTabRouting = HostedTabRouting(
+            coordinators: { _ in [targetCoordinator] },
+            reveal: { coordinator, tabId in
+                coordinator.tabManager.selectedTabId = tabId
+                return true
+            }
+        )
 
         defer {
             originCoordinator.teardown()
@@ -352,6 +446,77 @@ struct FKNavigationTests {
             databaseName: targetCoordinator.browseDatabaseName
         )
         targetTabManager.mutate(at: 0) {
+            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [applied]
+            $0.filterState.commit = .all
+            $0.filterState.executedFilters = [applied]
+        }
+
+        var opened: [EditorTabPayload] = []
+        originCoordinator.openTabInNewWindow = { opened.append($0) }
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        originCoordinator.navigateToFKReference(value: "99", fkInfo: fkInfo, intent: .follow)
+
+        #expect(opened.count == 1)
+        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "99")
+        #expect(targetTabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+    }
+
+    /// `appliedFilters` resolves from the panel's editable draft, so a filter row edited and not
+    /// applied made a tab claim a reference it was not showing. Revealing it runs no query, so the
+    /// reader landed on the rows the tab really held while the app reported it had found the row.
+    @Test("A tab whose filter edit was never applied is not treated as showing the reference")
+    @MainActor
+    func anUnappliedFilterEditDoesNotCountAsShowingTheReference() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+
+        let originTabManager = QueryTabManager()
+        let originCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: originTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        originCoordinator.registerEagerly()
+
+        let targetTabManager = QueryTabManager()
+        let targetCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: targetTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        targetCoordinator.registerEagerly()
+        originCoordinator.hostedTabRouting = HostedTabRouting(
+            coordinators: { _ in [targetCoordinator] },
+            reveal: { coordinator, tabId in
+                coordinator.tabManager.selectedTabId = tabId
+                return true
+            }
+        )
+
+        defer {
+            originCoordinator.teardown()
+            targetCoordinator.teardown()
+        }
+
+        try originTabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: originCoordinator.browseDatabaseName
+        )
+
+        try targetTabManager.addTableTab(
+            tableName: "users",
+            databaseType: connection.type,
+            databaseName: targetCoordinator.browseDatabaseName
+        )
+        /// Fetched for 7, then edited to 42 in the panel without pressing Apply.
+        targetTabManager.mutate(at: 0) {
+            $0.filterState.executedFilters = [
+                TableFilter(columnName: "id", filterOperator: .equal, value: "7"),
+            ]
             $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
             $0.filterState.commit = .all
         }
@@ -360,11 +525,72 @@ struct FKNavigationTests {
         originCoordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        originCoordinator.navigateToFKReference(value: "99", fkInfo: fkInfo, openInNewTab: false)
+        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
         #expect(opened.count == 1)
-        #expect(opened.first?.initialFilterState?.appliedFilters.first?.value == "99")
-        #expect(targetTabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
+        #expect(opened.first?.tableName == "users")
+        #expect(targetTabManager.tabs.count == 1)
+    }
+
+    /// A window hosts several connections, so a reveal that cannot put the tab in front of the
+    /// reader has to open the reference rather than leave the click doing nothing.
+    @Test("A reveal that cannot be shown falls back to opening the reference")
+    @MainActor
+    func anUnreachableRevealOpensTheReferenceInstead() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+
+        let originTabManager = QueryTabManager()
+        let originCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: originTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        originCoordinator.registerEagerly()
+
+        let targetTabManager = QueryTabManager()
+        let targetCoordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: targetTabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        targetCoordinator.registerEagerly()
+        originCoordinator.hostedTabRouting = HostedTabRouting(
+            coordinators: { _ in [targetCoordinator] },
+            reveal: { _, _ in false }
+        )
+
+        defer {
+            originCoordinator.teardown()
+            targetCoordinator.teardown()
+        }
+
+        try originTabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: originCoordinator.browseDatabaseName
+        )
+
+        try targetTabManager.addTableTab(
+            tableName: "users",
+            databaseType: connection.type,
+            databaseName: targetCoordinator.browseDatabaseName
+        )
+        targetTabManager.mutate(at: 0) {
+            $0.filterState.executedFilters = [
+                TableFilter(columnName: "id", filterOperator: .equal, value: "42"),
+            ]
+        }
+
+        var opened: [EditorTabPayload] = []
+        originCoordinator.openTabInNewWindow = { opened.append($0) }
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
+        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        #expect(opened.count == 1)
+        #expect(opened.first?.tableName == "users")
     }
 
     @Test("Cmd-click opens a new tab even when the same reference is already open")
@@ -388,8 +614,10 @@ struct FKNavigationTests {
             databaseName: originCoordinator.browseDatabaseName
         )
         originTabManager.mutate(at: 0) {
-            $0.filterState.filters = [TableFilter(columnName: "id", filterOperator: .equal, value: "42")]
+            let applied = TableFilter(columnName: "id", filterOperator: .equal, value: "42")
+            $0.filterState.filters = [applied]
             $0.filterState.commit = .all
+            $0.filterState.executedFilters = [applied]
         }
         try originTabManager.addTableTab(
             tableName: "orders",
@@ -401,78 +629,18 @@ struct FKNavigationTests {
         originCoordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: true)
+        originCoordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .newTab)
 
         #expect(opened.count == 1)
         #expect(originTabManager.selectedTab?.tableContext.tableName == "orders")
     }
 
-    @Test("An in-place hop saves the outgoing table's filters and restores the target's hidden columns")
+    /// The hop that still records history is the one that stays in the tab: a reference into the
+    /// table the tab is already showing. A jump that opens its own tab records nothing, because
+    /// the tab it came from is still there to go back to.
+    @Test("A hop within the same table records the source view, and Back restores it")
     @MainActor
-    func inPlaceHopKeepsPerTableSettings() throws {
-        let connection = TestFixtures.makeConnection(database: "db_a")
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
-        defer { coordinator.teardown() }
-
-        let ordersKey = ColumnLayoutTableKey(
-            connectionId: connection.id,
-            databaseName: coordinator.browseDatabaseName,
-            schemaName: nil,
-            tableName: "orders"
-        )
-        let usersKey = ColumnLayoutTableKey(
-            connectionId: connection.id,
-            databaseName: coordinator.browseDatabaseName,
-            schemaName: nil,
-            tableName: "users"
-        )
-        defer {
-            FileColumnLayoutPersister.shared.clear(for: ordersKey)
-            FileColumnLayoutPersister.shared.clear(for: usersKey)
-            FilterSettingsStorage.shared.clearLastFilters(
-                for: "orders",
-                connectionId: connection.id,
-                databaseName: coordinator.browseDatabaseName,
-                schemaName: nil
-            )
-        }
-        FileColumnLayoutPersister.shared.saveHiddenColumns(["ssn"], for: usersKey)
-
-        try tabManager.addTableTab(
-            tableName: "orders",
-            databaseType: connection.type,
-            databaseName: coordinator.browseDatabaseName
-        )
-        let outgoingFilter = TableFilter(columnName: "status", filterOperator: .equal, value: "open")
-        tabManager.mutate(at: 0) {
-            $0.filterState.filters = [outgoingFilter]
-            $0.filterState.commit = .all
-        }
-
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
-
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
-        #expect(tabManager.selectedTab?.columnLayout.hiddenColumns == ["ssn"])
-
-        let savedForOrders = FilterSettingsStorage.shared.loadLastFilters(
-            for: "orders",
-            connectionId: connection.id,
-            databaseName: coordinator.browseDatabaseName,
-            schemaName: nil
-        )
-        #expect(savedForOrders.contains { $0.columnName == "status" && $0.value == "open" })
-    }
-
-    @Test("An in-place hop records the source view, and Back restores it")
-    @MainActor
-    func inPlaceHopRecordsHistoryAndBackRestoresIt() throws {
+    func sameTableHopRecordsHistoryAndBackRestoresIt() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
@@ -497,10 +665,10 @@ struct FKNavigationTests {
         }
         #expect(coordinator.canNavigateBack == false)
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
 
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
         #expect(coordinator.canNavigateBack)
         #expect(coordinator.canNavigateForward == false)
 
@@ -534,14 +702,14 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         coordinator.navigateBack()
-        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
+        #expect(tabManager.selectedTab?.filterState.appliedFilters.isEmpty == true)
 
         coordinator.navigateForward()
 
-        #expect(tabManager.selectedTab?.tableContext.tableName == "users")
+        #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
         #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "42")
         #expect(coordinator.canNavigateForward == false)
         #expect(coordinator.canNavigateBack)
@@ -566,15 +734,14 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
 
-        let users = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: users, openInNewTab: false)
+        let byId = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: byId, intent: .follow)
         coordinator.navigateBack()
         #expect(coordinator.canNavigateForward)
 
-        let regions = TestFixtures.makeForeignKeyInfo(referencedTable: "regions", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "7", fkInfo: regions, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "7", fkInfo: byId, intent: .follow)
 
-        #expect(tabManager.selectedTab?.tableContext.tableName == "regions")
+        #expect(tabManager.selectedTab?.filterState.appliedFilters.first?.value == "7")
         #expect(coordinator.canNavigateForward == false)
         #expect(coordinator.canNavigateBack)
     }
@@ -601,7 +768,7 @@ struct FKNavigationTests {
         coordinator.openTabInNewWindow = { opened.append($0) }
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: true)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .newTab)
 
         #expect(opened.count == 1)
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
@@ -628,10 +795,10 @@ struct FKNavigationTests {
         )
 
         let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         #expect(coordinator.canNavigateBack)
 
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         coordinator.navigateBack()
 
         #expect(coordinator.canNavigateBack == false)
@@ -663,8 +830,8 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         #expect(coordinator.canNavigateBack)
 
         coordinator.changeManager.hasChanges = true
@@ -694,8 +861,8 @@ struct FKNavigationTests {
             databaseName: coordinator.browseDatabaseName
         )
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         #expect(coordinator.canNavigateBack)
 
         let tabId = try #require(tabManager.selectedTabId)
@@ -727,8 +894,8 @@ struct FKNavigationTests {
             databaseType: connection.type,
             databaseName: coordinator.browseDatabaseName
         )
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         let tabId = try #require(tabManager.selectedTab?.id)
         #expect(coordinator.navigationHistories[tabId]?.canGoBack == true)
 
@@ -791,8 +958,8 @@ struct FKNavigationTests {
             $0.pagination.currentPage = 1
         }
 
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "orders", referencedColumn: "id")
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
         coordinator.navigateBack()
 
         #expect(tabManager.selectedTab?.tableContext.tableName == "orders")
@@ -819,70 +986,6 @@ struct FKNavigationTests {
         #expect(coordinator.pendingRowAnchors[other] == nil)
         #expect(coordinator.pendingRowAnchors.removeValue(forKey: owning) == ["id": "4021"])
         #expect(coordinator.pendingRowAnchors[owning] == nil)
-    }
-
-    @Test("Retargeting a tab drops a row anchor its navigation never used")
-    @MainActor
-    func retargetDropsAStaleRowAnchor() throws {
-        let connection = TestFixtures.makeConnection(database: "db_a")
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
-        defer { coordinator.teardown() }
-
-        try tabManager.addTableTab(
-            tableName: "orders",
-            databaseType: connection.type,
-            databaseName: coordinator.browseDatabaseName
-        )
-        let tabId = try #require(tabManager.selectedTab?.id)
-        coordinator.pendingRowAnchors[tabId] = ["id": "4021"]
-
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
-
-        #expect(coordinator.pendingRowAnchors[tabId] == nil)
-    }
-
-    @Test("An in-place hop cancels the outgoing tab's in-flight load")
-    @MainActor
-    func inPlaceHopCancelsInFlightLoad() throws {
-        let connection = TestFixtures.makeConnection(database: "db_a")
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
-        )
-        defer { coordinator.teardown() }
-
-        try tabManager.addTableTab(
-            tableName: "orders",
-            databaseType: connection.type,
-            databaseName: coordinator.browseDatabaseName
-        )
-        guard let tabId = tabManager.selectedTab?.id else {
-            Issue.record("expected a selected tab")
-            return
-        }
-
-        let inFlight = Task<Void, Never> {
-            while !Task.isCancelled {
-                await Task.yield()
-            }
-        }
-        coordinator.tableLoadTasks[tabId] = (token: UUID(), task: inFlight)
-
-        let fkInfo = TestFixtures.makeForeignKeyInfo(referencedTable: "users", referencedColumn: "id")
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
-
-        #expect(inFlight.isCancelled)
-        #expect(coordinator.tableLoadTasks[tabId] == nil)
     }
 
     @Test("Metadata is not cached until foreign keys were fetched")
@@ -949,9 +1052,12 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(
             referencedTable: "users", referencedColumn: "id", referencedSchema: "db_a"
         )
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
-        let context = try #require(tabManager.selectedTab?.tableContext)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        let context = try #require(opened.first)
         #expect(context.tableName == "users")
         #expect(context.schemaName == nil)
         #expect(context.databaseName == "db_a")
@@ -979,9 +1085,12 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(
             referencedTable: "tenants", referencedColumn: "id", referencedSchema: "billing"
         )
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
-        let context = try #require(tabManager.selectedTab?.tableContext)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        let context = try #require(opened.first)
         #expect(context.tableName == "tenants")
         #expect(context.databaseName == "billing")
         #expect(context.schemaName == nil)
@@ -1010,9 +1119,12 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(
             referencedTable: "users", referencedColumn: "id", referencedSchema: "audit"
         )
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
-        let context = try #require(tabManager.selectedTab?.tableContext)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        let context = try #require(opened.first)
         #expect(context.tableName == "users")
         #expect(context.schemaName == "audit")
         #expect(context.databaseName == "db_a")
@@ -1044,9 +1156,12 @@ struct FKNavigationTests {
         let fkInfo = TestFixtures.makeForeignKeyInfo(
             referencedTable: "tenants", referencedColumn: "id", referencedSchema: "billing"
         )
-        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+        var opened: [EditorTabPayload] = []
+        coordinator.openTabInNewWindow = { opened.append($0) }
 
-        let context = try #require(tabManager.selectedTab?.tableContext)
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, intent: .follow)
+
+        let context = try #require(opened.first)
         #expect(context.tableName == "tenants")
         #expect(context.databaseName == "billing")
         #expect(context.schemaName == nil)

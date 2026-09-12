@@ -261,6 +261,15 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var keyPattern: String
     var keyTypeScope: String?
 
+    /// The filters the rows on screen were actually fetched with.
+    ///
+    /// `filters` is the panel's editable draft, and `appliedFilters` resolves from it, so both
+    /// describe a query that has not run the moment a reader types into a filter row without
+    /// pressing Apply. Anything asking what a tab is *showing*, rather than what its panel says,
+    /// has to read this. It is written wherever a query is built from the filters and is
+    /// deliberately not persisted: a restored tab rebuilds its query on first load, which fills it.
+    var executedFilters: [TableFilter] = []
+
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil

@@ -298,6 +298,8 @@ final class MainContentCoordinator {
         ConnectionStorage.shared.loadConnections().contains { $0.id == id }
     }
 
+    @ObservationIgnored var hostedTabRouting = HostedTabRouting.live
+
     /// Routing failures report through here so a test can observe the message instead of raising a
     /// real alert. `AlertHelper.present` runs application-modal when no window qualifies, and a
     /// unit test host has no window, so calling it directly parks the main thread in a modal loop

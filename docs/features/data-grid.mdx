@@ -76,7 +76,9 @@ Widths, order, and hidden columns are remembered per table, scoped to the connec
 
 ## Foreign keys
 
-A foreign key cell carries an arrow on its right edge. Click it to open the referenced table filtered to the matching row, or right-click for **Preview Referenced Row**, which shows that row in a popover. `Cmd`-click always opens a new tab; otherwise the reference takes over the current tab unless that tab holds a query or unsaved edits.
+A foreign key cell carries an arrow on its right edge. Click it to open the referenced table filtered to the matching row, or right-click for **Preview Referenced Row**, which shows that row in a popover. The reference arrives in a tab of its own, so the rows you were reading stay open behind it. A tab already showing that same reference comes forward instead of a second one opening, and `Cmd`-click opens a new tab even then.
+
+Clicking an arrow that points back into the table the tab already shows re-filters that tab rather than opening another. `Ctrl+Cmd+[` returns to the rows it left.
 
 Double-click a foreign key cell, press `Return` on it, or open its right-click menu to pick the key rather than type it. The picker lists rows from the referenced table, each key with a label beside it, and narrows as you type. `Return` in the search field commits the text as typed, which covers a key the search has not turned up. **Set NULL** appears on a nullable column.
 
