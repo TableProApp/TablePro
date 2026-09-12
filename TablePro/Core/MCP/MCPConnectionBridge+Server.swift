@@ -213,27 +213,86 @@ extension MCPConnectionBridge {
         return sql
     }
 
+    /// Each operation carries the object kinds it applies to, its scope and its options, because a
+    /// client that only knows the name cannot tell that `VACUUM` on a view is skipped by the server or
+    /// that `VACUUM` reads a `full` option at all.
     func maintenanceOperations(connectionId: UUID) async throws -> JsonValue {
         try await ensureConnected(connectionId)
         let operations = await MainActor.run {
-            DatabaseManager.shared.driver(for: connectionId)?.supportedMaintenanceOperations()
+            DatabaseManager.shared.driver(for: connectionId)?.maintenanceOperations()
         }
+        let sorted = (operations ?? []).sorted { $0.name < $1.name }
         return .object([
-            "operations": .array((operations ?? []).sorted().map { .string($0) }),
+            "operations": .array(sorted.map(Self.encode(maintenance:))),
             "is_supported": .bool(operations != nil)
         ])
     }
 
+    static func encode(maintenance operation: PluginMaintenanceOperation) -> JsonValue {
+        .object([
+            "name": .string(operation.name),
+            "applies_to": .array(operation.appliesTo.map(\.rawValue).sorted().map { .string($0) }),
+            "scope": .string(operation.scope.rawValue),
+            "options": .array(operation.options.map(Self.encode(maintenanceOption:)))
+        ])
+    }
+
+    /// `choices` is left out rather than sent as null for a true/false flag, so the payload stays valid
+    /// against the declared output schema.
+    static func encode(maintenanceOption option: PluginMaintenanceOption) -> JsonValue {
+        var payload: [String: JsonValue] = [
+            "key": .string(option.key),
+            "label": .string(option.label),
+            "default": .string(option.defaultValue)
+        ]
+        if let choices = option.choices {
+            payload["choices"] = .array(choices.map { .string($0) })
+        }
+        return .object(payload)
+    }
+
+    /// Refuses an operation the object's kind rules out, rather than handing back a statement the
+    /// server will skip with a warning and a success tag. The kind comes from the same table listing
+    /// `list_tables` reads.
     func maintenanceStatements(
-        connectionId: UUID,
+        scope: DatabaseScope,
         operation: String,
         table: String?,
         options: [String: String]
     ) async throws -> [String] {
-        try await ensureConnected(connectionId)
+        try await ensureConnected(scope.connectionId)
+        let descriptor = try await resolveMaintenanceOperation(
+            connectionId: scope.connectionId,
+            operation: operation
+        )
+        if let table {
+            guard descriptor.scope.admitsObject else {
+                throw DatabaseAccessError.invalidArgument(
+                    String(
+                        format: String(localized: "%@ acts on the whole database. Omit 'table'."),
+                        descriptor.name
+                    )
+                )
+            }
+            try await requireMaintenanceKind(descriptor: descriptor, scope: scope, table: table)
+        } else {
+            guard descriptor.scope.admitsDatabase else {
+                throw DatabaseAccessError.invalidArgument(
+                    String(
+                        format: String(localized: "%@ needs a table. Pass 'table'."),
+                        descriptor.name
+                    )
+                )
+            }
+        }
+
         let statements = await MainActor.run {
-            DatabaseManager.shared.driver(for: connectionId)?
-                .maintenanceStatements(operation: operation, table: table, options: options)
+            DatabaseManager.shared.driver(for: scope.connectionId)?.maintenanceStatements(
+                operation: operation,
+                table: table,
+                schema: scope.schema,
+                options: options
+            )
         }
         guard let statements, !statements.isEmpty else {
             throw DatabaseAccessError.invalidArgument(
@@ -241,6 +300,46 @@ extension MCPConnectionBridge {
             )
         }
         return statements
+    }
+
+    private func resolveMaintenanceOperation(
+        connectionId: UUID,
+        operation: String
+    ) async throws -> PluginMaintenanceOperation {
+        let operations = await MainActor.run {
+            DatabaseManager.shared.driver(for: connectionId)?.maintenanceOperations()
+        }
+        guard let match = operations?.first(where: { $0.name == operation }) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "That maintenance operation is not available on this connection.")
+            )
+        }
+        return match
+    }
+
+    private func requireMaintenanceKind(
+        descriptor: PluginMaintenanceOperation,
+        scope: DatabaseScope,
+        table: String
+    ) async throws {
+        let tables = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            try await driver.fetchTables(schema: scope.schema)
+        }
+        guard let found = tables.first(where: { $0.name == table }) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(format: String(localized: "No object named %@ in this schema."), table)
+            )
+        }
+        let kind = TableOperationEligibility.pluginKind(found.type)
+        guard descriptor.applies(to: kind) else {
+            throw DatabaseAccessError.invalidArgument(
+                String(
+                    format: String(localized: "%1$@ does not apply to a %2$@."),
+                    descriptor.name,
+                    found.type.rawValue
+                )
+            )
+        }
     }
 
     func sessionContexts(connectionId: UUID) async throws -> JsonValue {

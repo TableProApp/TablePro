@@ -1078,21 +1078,21 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
+        flavor.maintenanceOperations.map(\.name)
+    }
+
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
         flavor.maintenanceOperations
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
-        guard let table, flavor.maintenanceOperations.contains(operation) else { return nil }
-        let quoted = quoteIdentifier(table)
-        switch operation {
-        case "OPTIMIZE TABLE": return ["OPTIMIZE TABLE \(quoted)"]
-        case "ANALYZE TABLE": return ["ANALYZE TABLE \(quoted)"]
-        case "CHECK TABLE":
-            let mode = options["mode"] ?? "MEDIUM"
-            return ["CHECK TABLE \(quoted) \(mode)"]
-        case "REPAIR TABLE": return ["REPAIR TABLE \(quoted)"]
-        default: return nil
-        }
+        MySQLMaintenance.statements(
+            operation: operation,
+            table: table,
+            schema: schema,
+            options: options,
+            flavor: flavor
+        )
     }
 
     // MARK: - Create Table DDL

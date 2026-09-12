@@ -68,7 +68,9 @@ No other engine has a rename, so the item never appears on Cassandra, DynamoDB, 
 
 ## Maintenance
 
-Right-click a table, choose **Maintenance**, and pick an operation. A sheet shows the operation's options and the exact SQL before it runs.
+Right-click a table, choose **Maintenance**, and pick an operation. The sheet shows the operation's options and the statement the driver will run, rebuilt as each option changes, so what is previewed is what executes.
+
+Each operation lists the object kinds it applies to, so a view offers only the operations its server accepts. On PostgreSQL that means VACUUM and REINDEX are absent on a view, which the server skips or refuses, and CLUSTER is absent on a partitioned table, which can never be clustered. An operation that acts on the whole database, such as SQLite's VACUUM and its integrity check, names the database rather than a table.
 
 | Database | Operations |
 |----------|-----------|
@@ -76,7 +78,7 @@ Right-click a table, choose **Maintenance**, and pick an operation. A sheet show
 | MySQL / MariaDB | OPTIMIZE TABLE, ANALYZE TABLE, CHECK TABLE, REPAIR TABLE |
 | SQLite | VACUUM, ANALYZE, REINDEX, Integrity Check |
 
-PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, and VERBOSE toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM (the default), EXTENDED, and CHANGED. No other engine reports maintenance operations, so the submenu is hidden there, and in read-only safe mode.
+PostgreSQL VACUUM carries FULL (rewrites the table and blocks access), ANALYZE, and VERBOSE toggles. MySQL CHECK TABLE offers QUICK, FAST, MEDIUM (the default), EXTENDED, and CHANGED. The options come from the driver, so an engine that adds one shows it without an app change. No other engine reports maintenance operations, so the submenu is hidden there, and in read-only safe mode.
 
 ## Views
 

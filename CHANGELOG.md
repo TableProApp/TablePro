@@ -230,6 +230,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-engine copy and JSON import creating `jsonb` columns on PostgreSQL 9.3 and earlier.
 - SQL Server edits and deletes matching no row when the row is identified by a binary column.
 - SQL Server parameters sent to the wrong placeholders when a column name holds a question mark.
+- Maintenance offered on views and sequences, where the server skips or refuses it. (#2726)
+- Maintenance running against a same-named object in another schema. (#2726)
+- Maintenance SQL preview showing a statement the app never runs. (#2726)
 - `[` in a SQL Server filter value read as a wildcard.
 - Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, Preview Referenced Row, compare scripts and column defaults on SQL Server.
 

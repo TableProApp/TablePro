@@ -132,32 +132,22 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
-        ["VACUUM", "ANALYZE", "REINDEX", "CLUSTER"]
+        PostgreSQLMaintenance.operations.map(\.name)
+    }
+
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
+        PostgreSQLMaintenance.operations
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
-        let target = table.map { quoteIdentifier($0) }
-        switch operation {
-        case "VACUUM":
-            var opts: [String] = []
-            if options["full"] == "true" { opts.append("FULL") }
-            if options["analyze"] == "true" { opts.append("ANALYZE") }
-            if options["verbose"] == "true" { opts.append("VERBOSE") }
-            let optClause = opts.isEmpty ? "" : "(\(opts.joined(separator: ", "))) "
-            return [target.map { "VACUUM \(optClause)\($0)" } ?? "VACUUM"]
-        case "ANALYZE":
-            return [target.map { "ANALYZE \($0)" } ?? "ANALYZE"]
-        case "REINDEX":
-            if let target { return ["REINDEX TABLE \(target)"] }
-            return PostgreSQLVersionedStatements.reindexDatabase(
-                currentDatabase: connectedDatabase,
-                capabilities: versionedCapabilities
-            ).map { [$0] }
-        case "CLUSTER":
-            return target.map { ["CLUSTER \($0)"] }
-        default:
-            return nil
-        }
+        PostgreSQLMaintenance.statements(
+            operation: operation,
+            table: table,
+            schema: schema,
+            options: options,
+            connectedDatabase: connectedDatabase,
+            capabilities: versionedCapabilities
+        )
     }
 
     // MARK: - View Templates

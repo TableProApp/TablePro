@@ -2,44 +2,58 @@
 //  MaintenanceSheet.swift
 //  TablePro
 //
-//  Confirmation sheet for database maintenance operations
-//  (VACUUM, ANALYZE, OPTIMIZE, REINDEX, etc.)
-//
 
 import SwiftUI
+import TableProPluginKit
 
+/// Confirms a maintenance operation and shows the statements that will run.
+///
+/// The preview is the driver's own SQL, handed in as a closure, and the Execute button sends the same
+/// option values back through the same builder. It used to write its own copy of the statement and
+/// disagree with it: `REINDEX orders`, which is not valid SQL, where `REINDEX TABLE "orders"` ran.
+/// The option controls come from the operation for the same reason, rather than from a switch gated
+/// on two engine names.
 struct MaintenanceSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let operation: String
-    let tableName: String
-    let databaseType: DatabaseType
-    let onExecute: (String, String, [String: String]) -> Void
+    let operation: PluginMaintenanceOperation
+    let tableName: String?
+    let databaseName: String?
+    /// Statements for the given option values. Synchronous and pure, so calling it for every toggle
+    /// while `body` runs costs an array of strings.
+    let preview: ([String: String]) -> [String]
+    let onExecute: ([String: String]) -> Void
 
-    @State private var fullVacuum = false
-    @State private var analyzeAfterVacuum = false
-    @State private var verbose = false
-    @State private var checkMode = "MEDIUM"
+    @State private var values: [String: String]
+
+    init(
+        operation: PluginMaintenanceOperation,
+        tableName: String?,
+        databaseName: String?,
+        preview: @escaping ([String: String]) -> [String],
+        onExecute: @escaping ([String: String]) -> Void
+    ) {
+        self.operation = operation
+        self.tableName = tableName
+        self.databaseName = databaseName
+        self.preview = preview
+        self.onExecute = onExecute
+        _values = State(initialValue: operation.defaultOptionValues)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(.title2)
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(operation)
-                        .font(.headline)
-                    Text(tableName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
+            header
 
             Divider()
 
-            operationOptions
+            if !operation.options.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(operation.options, id: \.key) { option in
+                        optionControl(option)
+                    }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(String(localized: "SQL Preview"))
@@ -47,6 +61,7 @@ struct MaintenanceSheet: View {
                     .foregroundStyle(.secondary)
                 Text(sqlPreview)
                     .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
@@ -60,66 +75,72 @@ struct MaintenanceSheet: View {
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Execute")) {
-                    onExecute(operation, tableName, buildOptions())
+                    onExecute(values)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .disabled(sqlPreview.isEmpty)
             }
         }
         .padding(20)
         .frame(width: 420)
     }
 
-    // MARK: - Options
+    private var header: some View {
+        HStack {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(operation.name)
+                    .font(.headline)
+                if let subject {
+                    Text(subject)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    /// What the statement acts on. An operation that names no object reads as the database it runs
+    /// against, rather than as the table the row it was reached from happened to be.
+    private var subject: String? {
+        operation.target(tableName)?.nilIfEmpty ?? databaseName?.nilIfEmpty
+    }
 
     @ViewBuilder
-    private var operationOptions: some View {
-        switch operation {
-        case "VACUUM" where databaseType == .postgresql || databaseType == .redshift:
-            Toggle(String(localized: "FULL (rewrites entire table, blocks access)"), isOn: $fullVacuum)
-            Toggle(String(localized: "ANALYZE (update statistics after vacuum)"), isOn: $analyzeAfterVacuum)
-            Toggle(String(localized: "VERBOSE (print progress)"), isOn: $verbose)
-        case "CHECK TABLE":
-            Picker(String(localized: "Check mode:"), selection: $checkMode) {
-                Text("QUICK").tag("QUICK")
-                Text("FAST").tag("FAST")
-                Text("MEDIUM").tag("MEDIUM")
-                Text("EXTENDED").tag("EXTENDED")
-                Text("CHANGED").tag("CHANGED")
+    private func optionControl(_ option: PluginMaintenanceOption) -> some View {
+        if let choices = option.choices {
+            Picker(option.label, selection: binding(for: option)) {
+                ForEach(choices, id: \.self) { choice in
+                    Text(choice).tag(choice)
+                }
             }
             .pickerStyle(.menu)
             .frame(width: 200)
-        default:
-            EmptyView()
+        } else {
+            Toggle(option.label, isOn: toggleBinding(for: option))
         }
     }
 
-    // MARK: - SQL Preview
+    private func binding(for option: PluginMaintenanceOption) -> Binding<String> {
+        Binding(
+            get: { values[option.key] ?? option.defaultValue },
+            set: { values[option.key] = $0 }
+        )
+    }
+
+    private func toggleBinding(for option: PluginMaintenanceOption) -> Binding<Bool> {
+        Binding(
+            get: { (values[option.key] ?? option.defaultValue) == "true" },
+            set: { values[option.key] = $0 ? "true" : "false" }
+        )
+    }
 
     private var sqlPreview: String {
-        let options = buildOptions()
-        switch operation {
-        case "VACUUM" where databaseType == .postgresql || databaseType == .redshift:
-            var opts: [String] = []
-            if options["full"] == "true" { opts.append("FULL") }
-            if options["analyze"] == "true" { opts.append("ANALYZE") }
-            if options["verbose"] == "true" { opts.append("VERBOSE") }
-            let optClause = opts.isEmpty ? "" : "(\(opts.joined(separator: ", "))) "
-            return "VACUUM \(optClause)\(tableName)"
-        case "CHECK TABLE":
-            return "CHECK TABLE \(tableName) \(checkMode)"
-        default:
-            return "\(operation) \(tableName)"
-        }
-    }
-
-    private func buildOptions() -> [String: String] {
-        var options: [String: String] = [:]
-        if fullVacuum { options["full"] = "true" }
-        if analyzeAfterVacuum { options["analyze"] = "true" }
-        if verbose { options["verbose"] = "true" }
-        if operation == "CHECK TABLE" { options["mode"] = checkMode }
-        return options
+        preview(values).joined(separator: ";\n")
     }
 }

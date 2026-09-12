@@ -4,8 +4,9 @@
 //
 
 import AppKit
+import TableProPluginKit
 
-/// Which maintenance operations exist depends on the driver and on what is selected,
+/// Which maintenance operations exist depends on the driver and on the kind of the selected object,
 /// so the submenu is filled when it opens rather than at build time. `menuNeedsUpdate`
 /// is AppKit's hook for exactly that, and the responder chain resolves the window the
 /// same way it will resolve the item the user picks.
@@ -24,7 +25,7 @@ final class MaintenanceMenuDelegate: NSObject, NSMenuDelegate {
             return
         }
         for operation in operations {
-            let item = NSMenuItem(title: operation, action: Self.action, keyEquivalent: "")
+            let item = NSMenuItem(title: operation.name, action: Self.action, keyEquivalent: "")
             item.target = nil
             item.representedObject = operation
             menu.addItem(item)

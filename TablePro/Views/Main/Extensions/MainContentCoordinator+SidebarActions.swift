@@ -247,13 +247,13 @@ extension MainContentCoordinator {
 
     // MARK: - Maintenance
 
-    func supportedMaintenanceOperations() -> [String] {
+    func maintenanceOperations() -> [PluginMaintenanceOperation] {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return [] }
-        return driver.supportedMaintenanceOperations() ?? []
+        return driver.maintenanceOperations() ?? []
     }
 
     func showMaintenanceSheet(
-        operation: String,
+        operation: PluginMaintenanceOperation,
         tableName: String,
         database: String? = nil,
         schema: String? = nil
@@ -261,6 +261,26 @@ extension MainContentCoordinator {
         activeSheet = .maintenance(
             operation: operation, tableName: tableName, database: database, schema: schema
         )
+    }
+
+    /// The statements the confirmation sheet shows, built by the driver that will run them.
+    ///
+    /// Synchronous and pure, so the sheet can call it from `body` on every toggle. It used to write
+    /// its own SQL instead, which disagreed with what ran: `REINDEX orders`, not valid SQL, where
+    /// `REINDEX TABLE "orders"` runs.
+    func maintenancePreview(
+        operation: PluginMaintenanceOperation,
+        tableName: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String] {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return [] }
+        return driver.maintenanceStatements(
+            operation: operation.name,
+            table: operation.target(tableName),
+            schema: schema,
+            options: options
+        ) ?? []
     }
 
     /// Runs against the database the object it names lives in, on a scoped lease.
@@ -273,16 +293,16 @@ extension MainContentCoordinator {
     /// Every other statement the user owns takes a scoped lease; this one now does too, which also
     /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
     func executeMaintenance(
-        operation: String,
+        operation: PluginMaintenanceOperation,
         tableName: String,
         options: [String: String],
         database: String? = nil,
         schema: String? = nil
     ) {
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        guard let statements = driver.maintenanceStatements(
-            operation: operation, table: tableName, options: options
-        ) else { return }
+        let statements = maintenancePreview(
+            operation: operation, tableName: tableName, schema: schema, options: options
+        )
+        guard !statements.isEmpty else { return }
         /// The object the user picked names its own database, and only a command that names none
         /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
         /// schema is never carried across a database boundary.
@@ -290,6 +310,9 @@ extension MainContentCoordinator {
             database: database, schema: schema, for: connectionId
         ) ?? browseScope else { return }
 
+        /// What the statement acts on, which is the database itself for an operation that names no
+        /// object. Reporting the table there claimed work the statement never asked for.
+        let subject = operation.target(tableName) ?? scope.database
         Task { [weak self] in
             guard let self else { return }
             let decision = await ExecutionGateProvider.shared.authorize(
@@ -300,13 +323,13 @@ extension MainContentCoordinator {
                     kind: .maintenance,
                     caller: .userInterface,
                     capabilities: .interactiveUser,
-                    operationDescription: operation
+                    operationDescription: operation.name
                 )
             )
             guard case .authorized = decision else {
                 if let reason = decision.deniedReason {
                     await AlertHelper.showErrorSheet(
-                        title: String(format: String(localized: "%@ failed"), operation),
+                        title: String(format: String(localized: "%@ failed"), operation.name),
                         message: reason,
                         window: self.contentWindow
                     )
@@ -329,14 +352,18 @@ extension MainContentCoordinator {
                     }
                 }
                 await AlertHelper.showInfoSheet(
-                    title: String(format: String(localized: "%@ completed"), operation),
+                    title: String(format: String(localized: "%@ completed"), operation.name),
                     message: lastResult?.statusMessage
-                        ?? String(format: String(localized: "%@ on %@ completed successfully."), operation, tableName),
+                        ?? String(
+                            format: String(localized: "%@ on %@ completed successfully."),
+                            operation.name,
+                            subject
+                        ),
                     window: self.contentWindow
                 )
             } catch {
                 await AlertHelper.showErrorSheet(
-                    title: String(format: String(localized: "%@ failed"), operation),
+                    title: String(format: String(localized: "%@ failed"), operation.name),
                     message: error.localizedDescription,
                     window: self.contentWindow
                 )

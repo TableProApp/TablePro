@@ -23,8 +23,41 @@ public struct ListMaintenanceOperationsTool: MCPToolImplementation {
     public static let outputSchema: JsonValue? = MCPToolSchema.object(
         properties: [
             "operations": MCPToolSchema.array(
-                String(localized: "Operation names, sorted"),
-                of: MCPToolSchema.stringItem
+                String(localized: "Operations, sorted by name"),
+                of: MCPToolSchema.object(
+                    properties: [
+                        "name": MCPToolSchema.string(String(localized: "Operation name to pass to run_maintenance")),
+                        "applies_to": MCPToolSchema.array(
+                            String(
+                                localized: """
+                                Object kinds this operation may name, as list_tables reports them. \
+                                Empty when it acts on the whole database only.
+                                """
+                            ),
+                            of: MCPToolSchema.stringItem
+                        ),
+                        "scope": MCPToolSchema.string(
+                            String(localized: "Whether the statement names an object, the database, or either"),
+                            enumValues: ["object", "database", "objectOrDatabase"]
+                        ),
+                        "options": MCPToolSchema.array(
+                            String(localized: "Options this operation reads, by key"),
+                            of: MCPToolSchema.object(
+                                properties: [
+                                    "key": MCPToolSchema.string(String(localized: "Key to send in 'options'")),
+                                    "label": MCPToolSchema.string(String(localized: "What the option does")),
+                                    "default": MCPToolSchema.string(String(localized: "Value used when omitted")),
+                                    "choices": MCPToolSchema.array(
+                                        String(localized: "Accepted values, or null for a true/false flag"),
+                                        of: MCPToolSchema.stringItem
+                                    )
+                                ],
+                                required: ["key", "label", "default"]
+                            )
+                        )
+                    ],
+                    required: ["name", "applies_to", "scope", "options"]
+                )
             ),
             "is_supported": MCPToolSchema.boolean(String(localized: "Whether this engine has maintenance at all"))
         ],
@@ -121,10 +154,17 @@ public struct RunMaintenanceTool: MCPToolImplementation {
         }
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        /// Resolved before the statements, because the schema it carries is what qualifies the target
+        /// and its kind is what says whether the operation applies at all.
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
+            connectionId: connectionId,
+            services: services
+        )
         let statements: [String]
         do {
             statements = try await services.connectionBridge.maintenanceStatements(
-                connectionId: connectionId,
+                scope: scope,
                 operation: operation,
                 table: table,
                 options: options
@@ -135,11 +175,6 @@ public struct RunMaintenanceTool: MCPToolImplementation {
 
         let settings = await services.settingsProvider()
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
-        let scope = try await MCPScopeArguments.resolve(
-            arguments,
-            connectionId: connectionId,
-            services: services
-        )
 
         var results: [JsonValue] = []
         for statement in statements {

@@ -376,6 +376,15 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func supportedMaintenanceOperations() -> [String]?
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]?
 
+    /// The maintenance operations this driver offers, each carrying the object kinds it may name, the
+    /// scope its statement has and the options it reads. Return nil where the engine has no
+    /// maintenance at all.
+    ///
+    /// `supportedMaintenanceOperations()` answers bare names, which cannot say any of that, so the
+    /// app offered every operation on every object and hand-wrote its own preview of the SQL. A
+    /// driver that answers this one is the single source of both.
+    func maintenanceOperations() -> [PluginMaintenanceOperation]?
+
     // EXPLAIN query building (optional)
     func buildExplainQuery(_ sql: String) -> String?
 
@@ -838,6 +847,13 @@ public extension PluginDatabaseDriver {
 
     func supportedMaintenanceOperations() -> [String]? { nil }
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? { nil }
+
+    /// Lifts a driver that answers only the older name list into descriptors, so an already-built
+    /// plugin keeps exactly the behaviour it had. `PluginMaintenanceOperation.lifting` says what that
+    /// is, and is where the rule is asserted.
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
+        supportedMaintenanceOperations().map(PluginMaintenanceOperation.lifting)
+    }
 
     func buildExplainQuery(_ sql: String) -> String? { nil }
 

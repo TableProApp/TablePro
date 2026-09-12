@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Commands that act on the object selected in the sidebar. The sidebar's own
 /// context menu reaches the same coordinator methods, so the menu bar is a second
@@ -80,15 +81,20 @@ extension MainContentCommandActions {
         return .of(DatabaseManager.shared.driver(for: connectionId))
     }
 
-    var maintenanceOperations: [String] {
-        guard selectedObject != nil else { return [] }
-        return coordinator?.supportedMaintenanceOperations() ?? []
+    /// Narrowed to the selected object's kind, the same rule the sidebar's submenu follows. Asking
+    /// only whether something was selected is how the menu bar offered `REINDEX` on a view.
+    var maintenanceOperations: [PluginMaintenanceOperation] {
+        guard let object = selectedObject else { return [] }
+        return TableOperationEligibility.maintenanceOperations(
+            coordinator?.maintenanceOperations() ?? [],
+            for: object.type
+        )
     }
 
     /// The menu acts on the object browser's selection, and `TableInfo` carries a schema but no
     /// database, so this names only the schema and the command falls back to the database being
     /// browsed. The sidebar's own contextual menu carries the clicked row's database and does not.
-    func runMaintenanceOperation(_ operation: String) {
+    func runMaintenanceOperation(_ operation: PluginMaintenanceOperation) {
         guard let object = selectedObject else { return }
         coordinator?.showMaintenanceSheet(
             operation: operation, tableName: object.name, schema: object.schema

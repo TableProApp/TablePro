@@ -491,6 +491,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLSessionFootprint.swift
       - Plugins/MySQLDriverPlugin/MySQLGeneratedColumnClassification.swift
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
+      - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
@@ -504,6 +505,7 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
@@ -530,6 +532,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCommentStatements.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift

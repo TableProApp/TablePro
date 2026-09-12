@@ -14,7 +14,13 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
-    /// Raised to 28 for `fetchCommentDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
+    /// Raised to 29 for `maintenanceOperations` on `PluginDatabaseDriver`, plus the
+    /// `PluginMaintenanceOperation`, `PluginMaintenanceOption`, `PluginMaintenanceScope` and
+    /// `PluginObjectKind` it answers with. Together they say which object kinds a maintenance
+    /// operation may name, whether its statement names an object at all, and which options it reads,
+    /// none of which the older list of bare names could.
+    ///
+    /// Raised to 28 before that for `fetchCommentDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
     /// which is what lets a dump reattach a relation's own comment and its column comments instead
     /// of leaving whether they appear at all to each driver's `fetchTableDDL`.
     ///
@@ -49,7 +55,7 @@ final class PluginManager {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 28
+    nonisolated static let currentPluginKitVersion = 29
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

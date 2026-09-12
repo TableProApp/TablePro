@@ -571,8 +571,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "``")
-        return "`\(escaped)`"
+        sqliteQuoteIdentifier(name)
     }
 
     init(config: DriverConnectionConfig) {
@@ -656,17 +655,15 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Maintenance
 
     func supportedMaintenanceOperations() -> [String]? {
-        ["VACUUM", "ANALYZE", "REINDEX", "Integrity Check"]
+        SQLiteMaintenance.operations.map(\.name)
+    }
+
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
+        SQLiteMaintenance.operations
     }
 
     func maintenanceStatements(operation: String, table: String?, schema: String?, options: [String: String]) -> [String]? {
-        switch operation {
-        case "VACUUM": return ["VACUUM"]
-        case "ANALYZE": return table.map { ["ANALYZE \(quoteIdentifier($0))"] } ?? ["ANALYZE"]
-        case "REINDEX": return table.map { ["REINDEX \(quoteIdentifier($0))"] } ?? ["REINDEX"]
-        case "Integrity Check": return ["PRAGMA integrity_check"]
-        default: return nil
-        }
+        SQLiteMaintenance.statements(operation: operation, table: table)
     }
 
     // MARK: - View Templates

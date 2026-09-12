@@ -36,7 +36,9 @@ internal enum SidebarMenuCommand: Equatable {
     case exportTables(names: Set<String>, ref: DatabaseTreeTableRef)
     case transferTables(names: Set<String>, ref: DatabaseTreeTableRef)
     case importTables(formatId: String, ref: DatabaseTreeTableRef)
-    case maintenance(operation: String, tableName: String, ref: DatabaseTreeTableRef)
+    /// Carries the whole descriptor rather than the operation's name, because the sheet it opens needs
+    /// the scope and the options to build the statement it shows and the one it runs.
+    case maintenance(operation: PluginMaintenanceOperation, tableName: String, ref: DatabaseTreeTableRef)
     /// Queued rather than run, so these carry every target in full: a queue keyed by name is
     /// resolved against whatever the tab in front points at by the time Save runs.
     case truncateTables(targets: [DatabaseTreeTableRef], ref: DatabaseTreeTableRef)

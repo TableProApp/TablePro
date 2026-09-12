@@ -31,6 +31,7 @@ struct PluginKitABIResilienceTests {
         #expect(driver.foreignKeyDisableStatements() == nil)
         #expect(driver.foreignKeyEnableStatements() == nil)
         #expect(driver.supportedMaintenanceOperations() == nil)
+        #expect(driver.maintenanceOperations() == nil)
         #expect(driver.buildExplainQuery("SELECT 1") == nil)
         #expect(driver.injectRowLimit("SELECT 1", limit: 100) == nil)
         #expect(driver.defaultExportQuery(table: "users") == nil)
@@ -39,6 +40,17 @@ struct PluginKitABIResilienceTests {
         #expect(driver.unsupportedStructureColumnFields.isEmpty)
         #expect(driver.unsupportedIndexTypes.isEmpty)
         #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
+    }
+
+    @Test("A driver that answers only the older name list has it lifted into table-like descriptors")
+    func legacyMaintenanceNamesAreLifted() {
+        let lifted = PluginMaintenanceOperation.lifting(["VACUUM", "ANALYZE"])
+
+        #expect(lifted.map(\.name) == ["VACUUM", "ANALYZE"])
+        #expect(lifted.allSatisfy { $0.appliesTo == PluginObjectKind.allTableLike })
+        #expect(lifted.allSatisfy { $0.scope == .objectOrDatabase })
+        #expect(lifted.allSatisfy { $0.options.isEmpty })
+        #expect(lifted.allSatisfy { $0.applies(to: .view) })
     }
 
     @Test("A driver that omits defaulted requirements falls back to the documented asynchronous defaults")

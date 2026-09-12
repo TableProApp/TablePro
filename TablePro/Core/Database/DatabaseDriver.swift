@@ -245,12 +245,26 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     // MARK: - Maintenance
 
-    /// Returns the list of supported maintenance operations (e.g. "VACUUM", "ANALYZE").
-    /// Returns nil if maintenance is not supported.
-    func supportedMaintenanceOperations() -> [String]?
+    /// The maintenance operations this connection offers, each with the object kinds it may name, its
+    /// scope and its options. Returns nil if maintenance is not supported.
+    ///
+    /// Descriptors rather than names, because the menu has to decide whether an operation applies to
+    /// the object the user clicked: PostgreSQL skips a `VACUUM` on a view with a WARNING and the
+    /// success command tag `VACUUM`, and refuses a `REINDEX` on one outright.
+    func maintenanceOperations() -> [PluginMaintenanceOperation]?
 
-    /// Generates SQL statements for a maintenance operation.
-    func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]?
+    /// Generates SQL statements for a maintenance operation. The single source of the statement, so
+    /// the confirmation sheet previews this rather than writing its own copy of the SQL.
+    ///
+    /// A nil `schema` means the caller genuinely has none to offer. Everything in the app does, and
+    /// passes it: PostgreSQL resolves a bare name against `pg_temp` first, so a temp table of the
+    /// same name is what got maintained.
+    func maintenanceStatements(
+        operation: String,
+        table: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String]?
 
     // MARK: - Object Comments and Materialized Views
 
@@ -576,8 +590,13 @@ extension DatabaseDriver {
         try await fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
     }
 
-    func supportedMaintenanceOperations() -> [String]? { nil }
-    func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? { nil }
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? { nil }
+    func maintenanceStatements(
+        operation: String,
+        table: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String]? { nil }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         nil

@@ -68,7 +68,12 @@ enum ActiveSheet: Identifiable {
     /// its table and nothing else, so acting on wherever the object browser happens to point
     /// maintains the same-named table in another database whenever the two have drifted apart.
     /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
-    case maintenance(operation: String, tableName: String, database: String?, schema: String?)
+    case maintenance(
+        operation: PluginMaintenanceOperation,
+        tableName: String,
+        database: String?,
+        schema: String?
+    )
     case createDatabase
     /// The object's own database and schema travel in the target, for the reason `.maintenance`
     /// carries them: the comment is written to the object the user right-clicked, not to a
@@ -94,7 +99,7 @@ enum ActiveSheet: Identifiable {
         case .restoreDatabase(let fileURL): "restoreDatabase-\(fileURL.path)"
         case .serverSideExport(let table): "serverSideExport-\(table ?? "")"
         case .maintenance(let operation, let tableName, let database, let schema):
-            "maintenance-\(operation)-\(database ?? "")-\(schema ?? "")-\(tableName)"
+            "maintenance-\(operation.name)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
         case .editObjectComment(let target):
             "editObjectComment-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"

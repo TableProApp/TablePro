@@ -76,7 +76,7 @@ extension DatabaseTreeOutlineCoordinator {
                     operation: operation,
                     tableName: tableName,
                     database: ref.database,
-                    schema: ref.schema
+                    schema: ref.qualifyingSchema
                 )
             }
         case .truncateTables(let targets, let ref):

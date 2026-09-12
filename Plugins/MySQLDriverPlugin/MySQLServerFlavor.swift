@@ -88,12 +88,12 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         }
     }
 
-    var maintenanceOperations: [String] {
+    var maintenanceOperations: [PluginMaintenanceOperation] {
         switch self {
         case .mysql, .mariadb:
-            return ["OPTIMIZE TABLE", "ANALYZE TABLE", "CHECK TABLE", "REPAIR TABLE"]
+            return MySQLMaintenance.operations
         case .tidb, .databend:
-            return ["ANALYZE TABLE"]
+            return [MySQLMaintenance.analyzeOperation]
         }
     }
 

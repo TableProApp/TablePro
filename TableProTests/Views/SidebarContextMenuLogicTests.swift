@@ -124,12 +124,16 @@ struct SidebarContextMenuLogicTests {
 
     // MARK: - Maintenance group disabled rule
 
-    @Test("Maintenance group enabled with selection, writable, and supported ops")
+    private func operation(_ name: String) -> PluginMaintenanceOperation {
+        PluginMaintenanceOperation(name: name, appliesTo: [.table], scope: .object)
+    }
+
+    @Test("Maintenance group enabled with selection, writable, and applicable ops")
     func maintenanceEnabledAllConditions() {
         #expect(SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: false,
             hasSelection: true,
-            supportedOperations: ["ANALYZE", "OPTIMIZE"]
+            applicableOperations: [operation("ANALYZE"), operation("OPTIMIZE")]
         ))
     }
 
@@ -138,7 +142,7 @@ struct SidebarContextMenuLogicTests {
         #expect(!SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: true,
             hasSelection: true,
-            supportedOperations: ["ANALYZE"]
+            applicableOperations: [operation("ANALYZE")]
         ))
     }
 
@@ -147,16 +151,16 @@ struct SidebarContextMenuLogicTests {
         #expect(!SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: false,
             hasSelection: false,
-            supportedOperations: ["ANALYZE"]
+            applicableOperations: [operation("ANALYZE")]
         ))
     }
 
-    @Test("Maintenance group disabled when driver exposes no ops")
+    @Test("Maintenance group disabled when nothing the driver offers applies to the clicked object")
     func maintenanceDisabledNoOps() {
         #expect(!SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: false,
             hasSelection: true,
-            supportedOperations: []
+            applicableOperations: []
         ))
     }
 

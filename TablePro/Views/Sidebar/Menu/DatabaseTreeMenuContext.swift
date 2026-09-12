@@ -23,7 +23,8 @@ internal struct DatabaseTreeMenuContext {
     internal let isReadOnly: Bool
     internal let supportsImport: Bool
     internal let importFormats: [ImportFormatOption]
-    internal let maintenanceOperations: [String]
+    /// Everything the driver offers. The spec narrows it to the clicked row's own kind.
+    internal let maintenanceOperations: [PluginMaintenanceOperation]
     internal let dropEligibility: ContainerDropEligibility.Context
     internal let renameEligibility: ObjectRenameEligibility.Context
     internal let containerEntityName: String

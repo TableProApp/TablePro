@@ -45,7 +45,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false,
             supportsImport: PluginManager.shared.supportsImport(for: databaseType),
             importFormats: PluginManager.shared.importFormatOptions(for: databaseType),
-            maintenanceOperations: mainCoordinator?.supportedMaintenanceOperations() ?? [],
+            maintenanceOperations: mainCoordinator?.maintenanceOperations() ?? [],
             dropEligibility: ContainerDropEligibility.Context(
                 activeDatabase: activeDatabase,
                 activeSchema: activeSchema,

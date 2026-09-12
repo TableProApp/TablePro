@@ -214,8 +214,16 @@ struct MainContentView: View {
             MaintenanceSheet(
                 operation: operation,
                 tableName: tableName,
-                databaseType: connection.type,
-                onExecute: { operation, tableName, options in
+                databaseName: database ?? coordinator.browseDatabaseName,
+                preview: { options in
+                    coordinator.maintenancePreview(
+                        operation: operation,
+                        tableName: tableName,
+                        schema: schema,
+                        options: options
+                    )
+                },
+                onExecute: { options in
                     coordinator.executeMaintenance(
                         operation: operation,
                         tableName: tableName,

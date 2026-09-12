@@ -56,8 +56,8 @@ struct MySQLServerFlavorTests {
     @Test("TiDB and Databend offer only the maintenance they support")
     func maintenanceOperations() {
         #expect(MySQLServerFlavor.mysql.maintenanceOperations.count == 4)
-        #expect(MySQLServerFlavor.tidb(version: nil).maintenanceOperations == ["ANALYZE TABLE"])
-        #expect(MySQLServerFlavor.databend.maintenanceOperations == ["ANALYZE TABLE"])
+        #expect(MySQLServerFlavor.tidb(version: nil).maintenanceOperations.map(\.name) == ["ANALYZE TABLE"])
+        #expect(MySQLServerFlavor.databend.maintenanceOperations.map(\.name) == ["ANALYZE TABLE"])
     }
 
     @Test("TiDB sequences cannot be browsed, so they are not listed as tables")

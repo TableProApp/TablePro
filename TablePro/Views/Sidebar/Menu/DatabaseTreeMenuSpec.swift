@@ -159,15 +159,22 @@ internal enum DatabaseTreeMenuSpec {
         ) {
             items.append(.command(String(localized: "Refresh Materialized View…"), .refreshMaterializedView(ref)))
         }
+        let applicable = TableOperationEligibility.maintenanceOperations(
+            context.maintenanceOperations,
+            for: ref.table.type
+        )
         if SidebarContextMenuLogic.maintenanceGroupEnabled(
             isReadOnly: context.isReadOnly,
             hasSelection: true,
-            supportedOperations: context.maintenanceOperations
+            applicableOperations: applicable
         ) {
             items.append(.submenu(
                 title: String(localized: "Maintenance"),
-                items: context.maintenanceOperations.map { operation in
-                    .command(operation, .maintenance(operation: operation, tableName: ref.table.name, ref: ref))
+                items: applicable.map { operation in
+                    .command(
+                        operation.name,
+                        .maintenance(operation: operation, tableName: ref.table.name, ref: ref)
+                    )
                 }
             ))
         }

@@ -38,12 +38,15 @@ enum SidebarContextMenuLogic {
         }
     }
 
+    /// Asked with the operations that apply to the clicked object, not with everything the driver
+    /// offers: on a view PostgreSQL has four operations and none of them works, so the submenu is
+    /// omitted rather than filled with commands that skip or fail.
     static func maintenanceGroupEnabled(
         isReadOnly: Bool,
         hasSelection: Bool,
-        supportedOperations: [String]
+        applicableOperations: [PluginMaintenanceOperation]
     ) -> Bool {
         guard !isReadOnly, hasSelection else { return false }
-        return !supportedOperations.isEmpty
+        return !applicableOperations.isEmpty
     }
 }

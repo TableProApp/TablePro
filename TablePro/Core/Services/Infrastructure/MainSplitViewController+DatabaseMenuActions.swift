@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 extension MainSplitViewController {
     @objc func switchConnection(_ sender: Any?) {
@@ -105,7 +106,8 @@ extension MainSplitViewController {
     }
 
     @objc func runMaintenanceOperation(_ sender: Any?) {
-        guard let operation = (sender as? NSMenuItem)?.representedObject as? String else { return }
+        guard let operation = (sender as? NSMenuItem)?.representedObject as? PluginMaintenanceOperation
+        else { return }
         commandActions?.runMaintenanceOperation(operation)
     }
 

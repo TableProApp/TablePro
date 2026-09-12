@@ -770,12 +770,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Maintenance Operations
 
-    func supportedMaintenanceOperations() -> [String]? {
-        pluginDriver.supportedMaintenanceOperations()
+    func maintenanceOperations() -> [PluginMaintenanceOperation]? {
+        pluginDriver.maintenanceOperations()
     }
 
-    func maintenanceStatements(operation: String, table: String?, options: [String: String]) -> [String]? {
-        pluginDriver.maintenanceStatements(operation: operation, table: table, schema: pluginDriver.currentSchema, options: options)
+    /// The session's own schema stands in only when the caller has none, so a command that does carry
+    /// the object's schema qualifies with that one rather than with wherever the session points.
+    func maintenanceStatements(
+        operation: String,
+        table: String?,
+        schema: String?,
+        options: [String: String]
+    ) -> [String]? {
+        pluginDriver.maintenanceStatements(
+            operation: operation,
+            table: table,
+            schema: schema ?? pluginDriver.currentSchema,
+            options: options
+        )
     }
 
     // MARK: - Object Comments and Materialized Views
