@@ -8,6 +8,9 @@ struct KeyPatternSearchBar: View {
     @State private var pattern: String = ""
     @State private var typeScope: String?
 
+    /// How much of a type name the bar will spend width on before truncating it.
+    private static let typeScopeMaximumWidth: CGFloat = 160
+
     var body: some View {
         HStack(spacing: 8) {
             NativeSearchField(
@@ -27,7 +30,11 @@ struct KeyPatternSearchBar: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
+                /// Bounded rather than `.fixedSize()`, for the reason `FilterRowView`'s column
+                /// pull-down is: the items are driver-supplied type names, and a pull-down takes the
+                /// width of its widest one, so an unbounded one could make this bar wider than the
+                /// pane and clip the grid beside it.
+                .frame(maxWidth: Self.typeScopeMaximumWidth)
                 .onChange(of: typeScope) { _, _ in apply() }
             }
 

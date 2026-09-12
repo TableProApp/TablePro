@@ -20,6 +20,7 @@ struct ResultStatusReadoutView: View {
             .foregroundStyle(.secondary)
             .monospacedDigit()
             .lineLimit(1)
+            .truncationMode(.tail)
             .accessibilityIdentifier("result-status-readout")
     }
 

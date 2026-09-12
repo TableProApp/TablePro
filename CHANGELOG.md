@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Data grid and bottom bar cut off at both edges in a narrow window, with rows and pagination buttons out of reach.
+- Filter panel wider than the pane when a table has a long column name.
 - `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)
 - Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
 - Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
