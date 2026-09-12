@@ -22,6 +22,10 @@ internal struct CustomValueContentView: View {
     /// The connected driver's own escaping, so a value is escaped the way the engine reads it.
     /// MySQL doubles backslashes as well as quotes, which the shared helper does not.
     internal let escapeStringLiteral: (String) -> String
+    /// What the engine puts in front of a string literal, `N` on SQL Server and nothing anywhere
+    /// else. A default written without it is a `varchar` literal, so a non-Unicode collation turns
+    /// every character outside its code page into `?` as it parses the `ALTER TABLE`.
+    internal let stringLiteralPrefix: String
     internal let onCommit: (String) -> Void
     internal let onDismiss: () -> Void
 
@@ -32,15 +36,20 @@ internal struct CustomValueContentView: View {
     internal init(
         initialValue: String,
         escapeStringLiteral: @escaping (String) -> String,
+        stringLiteralPrefix: String = "",
         onCommit: @escaping (String) -> Void,
         onDismiss: @escaping () -> Void
     ) {
         self.initialValue = initialValue
         self.escapeStringLiteral = escapeStringLiteral
+        self.stringLiteralPrefix = stringLiteralPrefix
         self.onCommit = onCommit
         self.onDismiss = onDismiss
-        if let text = SQLStringLiteral.unquoted(initialValue),
-           initialValue == "'\(escapeStringLiteral(text))'" {
+        let quotedPart = stringLiteralPrefix.isEmpty || !initialValue.hasPrefix(stringLiteralPrefix)
+            ? initialValue
+            : String(initialValue.dropFirst(stringLiteralPrefix.count))
+        if let text = SQLStringLiteral.unquoted(quotedPart),
+           initialValue == "\(stringLiteralPrefix)'\(escapeStringLiteral(text))'" {
             _mode = State(initialValue: .text)
             _text = State(initialValue: text)
         } else {
@@ -97,7 +106,7 @@ internal struct CustomValueContentView: View {
 
     private var resolvedSQL: String {
         switch mode {
-        case .text: "'\(escapeStringLiteral(text))'"
+        case .text: "\(stringLiteralPrefix)'\(escapeStringLiteral(text))'"
         case .expression: text
         }
     }

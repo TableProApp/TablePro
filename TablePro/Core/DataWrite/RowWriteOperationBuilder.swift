@@ -22,9 +22,9 @@ enum RowWriteOperationBuilder {
 
     static func operations(
         from changes: [RowChange],
-        insertedRowData: [Int: [PluginCellValue]],
-        deletedRowIndices: Set<Int>,
-        insertedRowIndices: Set<Int>,
+        insertedRowData: [RowID: [PluginCellValue]],
+        deletedRowIDs: Set<RowID>,
+        insertedRowIDs: Set<RowID>,
         target: DataWriteTarget,
         columns: [String],
         primaryKeyColumns: [String],
@@ -40,16 +40,16 @@ enum RowWriteOperationBuilder {
                     containsTableOperation: containsTableOperation
                 )
             case .delete:
-                guard deletedRowIndices.contains(change.rowIndex) else { return nil }
+                guard deletedRowIDs.contains(change.rowID) else { return nil }
                 return delete(
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation
                 )
             case .insert:
-                guard insertedRowIndices.contains(change.rowIndex) else { return nil }
+                guard insertedRowIDs.contains(change.rowID) else { return nil }
                 return insert(
-                    change, values: insertedRowData[change.rowIndex],
+                    change, values: insertedRowData[change.rowID],
                     target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation

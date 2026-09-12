@@ -404,7 +404,7 @@ class DataGridRowView: NSTableRowView {
 
         let menu = NSMenu()
 
-        if coordinator.changeManager.isRowDeleted(rowIndex) {
+        if coordinator.isRowDeleted(displayRow: rowIndex) {
             menu.addItem(
                 withTitle: String(localized: "Undo Delete"), action: #selector(undoDeleteRow), keyEquivalent: ""
             ).target = self

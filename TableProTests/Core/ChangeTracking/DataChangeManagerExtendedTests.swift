@@ -37,33 +37,33 @@ struct DataChangeManagerExtendedTests {
     @Test("Record row insertion sets hasChanges to true")
     func recordRowInsertionSetsHasChanges() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         #expect(manager.hasChanges)
     }
 
     @Test("Record row insertion stores values in insertedRowData")
     func recordRowInsertionStoresInInsertedRowData() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         let state = manager.saveState()
-        #expect(state.insertedRowData[5] == ["a", "b", "c"])
+        #expect(state.insertedRowData[insertedID(5)] == ["a", "b", "c"])
     }
 
     @Test("Record row insertion adds insert-type change with empty cellChanges")
     func recordRowInsertionAddsInsertChange() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .insert)
         #expect(manager.changes[0].cellChanges.isEmpty)
     }
 
-    @Test("Record row insertion tracks index in insertedRowIndices")
+    @Test("Record row insertion tracks index in insertedRowIDs")
     func recordRowInsertionTracksInInsertedRowIndices() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
-        #expect(manager.isRowInserted(5))
-        #expect(!manager.isRowInserted(0))
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
+        #expect(manager.isRowInserted(insertedID(5)))
+        #expect(!manager.isRowInserted(.existing(0)))
     }
 
     @Test("Record row insertion increments reloadVersion by 1")
@@ -76,7 +76,7 @@ struct DataChangeManagerExtendedTests {
         let manager = makeManager()
         let before = manager.reloadVersion
 
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
 
         #expect(manager.reloadVersion == before)
 
@@ -88,7 +88,7 @@ struct DataChangeManagerExtendedTests {
     @Test("Record row insertion enables undo")
     func recordRowInsertionEnablesUndo() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         #expect(manager.canUndo)
     }
 
@@ -96,20 +96,20 @@ struct DataChangeManagerExtendedTests {
     func recordRowInsertionClearsRedoStack() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
         manager.undoManagerProvider?()?.undo()
         #expect(manager.canRedo)
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         #expect(!manager.canRedo)
     }
 
     @Test("Multiple row insertions tracked separately")
     func multipleRowInsertionsTrackedSeparately() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["a", "b", "c"])
-        manager.recordRowInsertion(rowIndex: 1, values: ["d", "e", "f"])
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(1), values: ["d", "e", "f"])
         #expect(manager.changes.count == 2)
         #expect(manager.changes[0].type == .insert)
         #expect(manager.changes[1].type == .insert)
@@ -120,75 +120,75 @@ struct DataChangeManagerExtendedTests {
     @Test("isRowDeleted returns true for deleted row, false for others")
     func isRowDeletedCorrectness() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
-        #expect(manager.isRowDeleted(2))
-        #expect(!manager.isRowDeleted(0))
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
+        #expect(manager.isRowDeleted(.existing(2)))
+        #expect(!manager.isRowDeleted(.existing(0)))
     }
 
     @Test("isRowInserted returns true for inserted row, false for others")
     func isRowInsertedCorrectness() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
-        #expect(manager.isRowInserted(5))
-        #expect(!manager.isRowInserted(0))
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
+        #expect(manager.isRowInserted(insertedID(5)))
+        #expect(!manager.isRowInserted(.existing(0)))
     }
 
     @Test("isCellModified returns true after edit, false for unmodified cells")
     func isCellModifiedTrueAfterEdit() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 0))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 0))
     }
 
     @Test("isCellModified returns false after reverting to original value")
     func isCellModifiedFalseAfterRevertToOriginal() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "B", newValue: "A"
         )
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("getModifiedColumnsForRow returns correct set of modified columns")
     func getModifiedColumnsCorrectSet() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
-        #expect(manager.getModifiedColumnsForRow(0) == [1, 2])
+        #expect(manager.getModifiedColumnsForRow(.existing(0)) == [1, 2])
     }
 
     @Test("getModifiedColumnsForRow returns empty set for unmodified row")
     func getModifiedColumnsEmptyForUnmodifiedRow() {
         let manager = makeManager()
-        #expect(manager.getModifiedColumnsForRow(99).isEmpty)
+        #expect(manager.getModifiedColumnsForRow(.existing(99)).isEmpty)
     }
 
     @Test("Cell modification cleared when row is deleted")
     func cellModificationClearedOnRowDeletion() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Bob", "a@test.com"])
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        #expect(manager.getModifiedColumnsForRow(0).isEmpty)
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Bob", "a@test.com"])
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(manager.getModifiedColumnsForRow(.existing(0)).isEmpty)
     }
 
     // MARK: - State Save/Restore
@@ -197,7 +197,7 @@ struct DataChangeManagerExtendedTests {
     func saveStateCapturesChanges() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let state = manager.saveState()
@@ -208,36 +208,36 @@ struct DataChangeManagerExtendedTests {
     @Test("saveState captures deleted row indices")
     func saveStateCapturesDeletedRowIndices() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         let state = manager.saveState()
-        #expect(state.deletedRowIndices.contains(2))
+        #expect(state.deletedRowIDs.contains(.existing(2)))
     }
 
     @Test("saveState captures inserted row indices")
     func saveStateCapturesInsertedRowIndices() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["a", "b", "c"])
         let state = manager.saveState()
-        #expect(state.insertedRowIndices.contains(0))
+        #expect(state.insertedRowIDs.contains(insertedID(0)))
     }
 
     @Test("saveState captures modified cells")
     func saveStateCapturesModifiedCells() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let state = manager.saveState()
-        #expect(state.modifiedCells[0]?.contains(1) == true)
+        #expect(state.modifiedCells[.existing(0)]?.contains(1) == true)
     }
 
     @Test("saveState captures inserted row data")
     func saveStateCapturesInsertedRowData() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["x", "y", "z"])
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["x", "y", "z"])
         let state = manager.saveState()
-        #expect(state.insertedRowData[0] == ["x", "y", "z"])
+        #expect(state.insertedRowData[insertedID(0)] == ["x", "y", "z"])
     }
 
     @Test("saveState captures columns and primary key")
@@ -252,7 +252,7 @@ struct DataChangeManagerExtendedTests {
     func roundTripPreservesHasChanges() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let state = manager.saveState()
@@ -265,38 +265,38 @@ struct DataChangeManagerExtendedTests {
     @Test("Round-trip save/restore preserves isRowDeleted")
     func roundTripPreservesIsRowDeleted() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         let state = manager.saveState()
         manager.clearChanges()
         manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(manager.isRowDeleted(2))
+        #expect(manager.isRowDeleted(.existing(2)))
     }
 
     @Test("Round-trip save/restore preserves isCellModified")
     func roundTripPreservesIsCellModified() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let state = manager.saveState()
         manager.clearChanges()
         manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("Round-trip save/restore allows continued editing")
     func roundTripCanContinueEditing() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let state = manager.saveState()
         manager.clearChanges()
         manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql, generatedColumns: [])
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
         #expect(manager.changes.count == 1)
@@ -318,7 +318,7 @@ struct DataChangeManagerExtendedTests {
     func discardChangesSetsHasChangesFalse() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.discardChanges()
@@ -329,16 +329,16 @@ struct DataChangeManagerExtendedTests {
     func discardChangesClearsAllTrackedChanges() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        manager.recordRowDeletion(rowIndex: 1, originalRow: ["2", "Charlie", "c@test.com"])
-        manager.recordRowInsertion(rowIndex: 5, values: ["x", "y", "z"])
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: ["2", "Charlie", "c@test.com"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["x", "y", "z"])
         manager.discardChanges()
         #expect(manager.changes.isEmpty)
-        #expect(!manager.isRowDeleted(1))
-        #expect(!manager.isRowInserted(5))
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(!manager.isRowDeleted(.existing(1)))
+        #expect(!manager.isRowInserted(insertedID(5)))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("only clearChangesAndUndoHistory drops the undo stack")
@@ -346,7 +346,7 @@ struct DataChangeManagerExtendedTests {
         // discardChanges preserves undo/redo
         let manager1 = makeManager()
         manager1.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager1.undoManagerProvider?()?.undo()
@@ -360,7 +360,7 @@ struct DataChangeManagerExtendedTests {
         /// `clearChanges` wiped undo, which would make the two indistinguishable.
         let manager2 = makeManager()
         manager2.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager2.undoManagerProvider?()?.undo()
@@ -377,7 +377,7 @@ struct DataChangeManagerExtendedTests {
     func discardChangesIncrementsReloadVersion() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         let before = manager.reloadVersion
@@ -389,16 +389,16 @@ struct DataChangeManagerExtendedTests {
     func discardChangesAllQueryMethodsReturnDefaults() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        manager.recordRowDeletion(rowIndex: 1, originalRow: ["2", "Charlie", "c@test.com"])
-        manager.recordRowInsertion(rowIndex: 5, values: ["x", "y", "z"])
+        manager.recordRowDeletion(rowID: .existing(1), originalRow: ["2", "Charlie", "c@test.com"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["x", "y", "z"])
         manager.discardChanges()
-        #expect(!manager.isRowDeleted(1))
-        #expect(!manager.isRowInserted(5))
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        #expect(manager.getModifiedColumnsForRow(0).isEmpty)
+        #expect(!manager.isRowDeleted(.existing(1)))
+        #expect(!manager.isRowInserted(insertedID(5)))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(manager.getModifiedColumnsForRow(.existing(0)).isEmpty)
         #expect(manager.getOriginalValues().isEmpty)
     }
 
@@ -408,11 +408,11 @@ struct DataChangeManagerExtendedTests {
     func multipleSequentialUndos() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.recordCellChange(
-            rowIndex: 1, columnIndex: 1, columnName: "name",
+            rowID: .existing(1), columnIndex: 1, columnName: "name",
             oldValue: "Charlie", newValue: "Dave"
         )
         manager.undoManagerProvider?()?.undo()
@@ -425,7 +425,7 @@ struct DataChangeManagerExtendedTests {
     func undoCellEditThenRedoRestoresChange() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
         manager.undoManagerProvider?()?.undo()
@@ -435,51 +435,51 @@ struct DataChangeManagerExtendedTests {
         #expect(manager.changes[0].cellChanges[0].newValue == "B")
     }
 
-    @Test("Undo row insertion removes from insertedRowIndices")
+    @Test("Undo row insertion removes from insertedRowIDs")
     func undoRowInsertionRemovesFromIndices() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isRowInserted(5))
+        #expect(!manager.isRowInserted(insertedID(5)))
     }
 
-    @Test("Undo row deletion removes from deletedRowIndices")
+    @Test("Undo row deletion removes from deletedRowIDs")
     func undoRowDeletionRemovesFromIndices() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isRowDeleted(2))
+        #expect(!manager.isRowDeleted(.existing(2)))
     }
 
     @Test("Undo row insertion then redo re-inserts the row")
     func undoRowInsertionThenRedoReInserts() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isRowInserted(5))
+        #expect(!manager.isRowInserted(insertedID(5)))
         manager.undoManagerProvider?()?.redo()
-        #expect(manager.isRowInserted(5))
+        #expect(manager.isRowInserted(insertedID(5)))
     }
 
     @Test("Undo row deletion then redo re-deletes the row")
     func undoRowDeletionThenRedoReDeletes() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isRowDeleted(2))
+        #expect(!manager.isRowDeleted(.existing(2)))
         manager.undoManagerProvider?()?.redo()
-        #expect(manager.isRowDeleted(2))
+        #expect(manager.isRowDeleted(.existing(2)))
     }
 
     @Test("Full undo/redo chain: edit A, edit B, undo B, undo A, redo A, redo B")
     func fullUndoRedoChainABUndoBUndoARedoARedoB() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "A2"
         )
         manager.recordCellChange(
-            rowIndex: 1, columnIndex: 1, columnName: "name",
+            rowID: .existing(1), columnIndex: 1, columnName: "name",
             oldValue: "Bob", newValue: "B2"
         )
         #expect(manager.changes.count == 2)
@@ -503,7 +503,7 @@ struct DataChangeManagerExtendedTests {
         var captured: UndoResult?
         manager.onUndoApplied = { captured = $0 }
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.undoManagerProvider?()?.undo()
@@ -517,7 +517,7 @@ struct DataChangeManagerExtendedTests {
         let manager = makeManager()
         var captured: UndoResult?
         manager.onUndoApplied = { captured = $0 }
-        manager.recordRowInsertion(rowIndex: 5, values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["a", "b", "c"])
         manager.undoManagerProvider?()?.undo()
         #expect(captured != nil)
         #expect(captured?.needsRowRemoval == true)
@@ -528,7 +528,7 @@ struct DataChangeManagerExtendedTests {
         let manager = makeManager()
         var captured: UndoResult?
         manager.onUndoApplied = { captured = $0 }
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Alice"])
         manager.undoManagerProvider?()?.undo()
         #expect(captured != nil)
         #expect(captured?.needsRowRestore == true)
@@ -563,56 +563,56 @@ struct DataChangeManagerExtendedTests {
     func editThenDeleteSameRow() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Bob", "a@test.com"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Bob", "a@test.com"])
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .delete)
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("Insert then edit updates insertedRowData")
     func insertThenEditUpdatesInsertedRowData() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["", "", ""])
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["", "", ""])
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: insertedID(0), columnIndex: 1, columnName: "name",
             oldValue: nil, newValue: "hello"
         )
         #expect(manager.changes.count == 1)
         #expect(manager.changes[0].type == .insert)
         let state = manager.saveState()
-        #expect(state.insertedRowData[0]?[1] == "hello")
+        #expect(state.insertedRowData[insertedID(0)]?[1] == "hello")
     }
 
     @Test("Insert then edit then undo reverts inserted row cell data")
     func insertThenEditThenUndoRevertsCell() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: [nil, nil, nil])
+        manager.recordRowInsertion(rowID: insertedID(0), values: [nil, nil, nil])
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: insertedID(0), columnIndex: 1, columnName: "name",
             oldValue: nil, newValue: "hello"
         )
         manager.undoManagerProvider?()?.undo()
         let state = manager.saveState()
         /// `.null`, not a Swift nil. An inserted row holds an explicit SQL NULL for a cell with no
         /// value, so undoing an edit restores `.null` rather than removing the entry.
-        #expect(state.insertedRowData[0]?[1] == .null)
+        #expect(state.insertedRowData[insertedID(0)]?[1] == .null)
     }
 
     @Test("Edit multiple cells in same row all tracked")
     func editMultipleCellsSameRowAllTracked() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
-        #expect(manager.getModifiedColumnsForRow(0) == [1, 2])
+        #expect(manager.getModifiedColumnsForRow(.existing(0)) == [1, 2])
         #expect(manager.changes[0].cellChanges.count == 2)
     }
 
@@ -620,79 +620,79 @@ struct DataChangeManagerExtendedTests {
     func editMultipleCellsRevertOneOnlyRevertedRemoved() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "C", newValue: "D"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "B", newValue: "A"
         )
-        #expect(manager.getModifiedColumnsForRow(0) == [2])
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.getModifiedColumnsForRow(.existing(0)) == [2])
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("Batch deletion clears prior edits for deleted rows")
     func batchDeletionClearsPriorEdits() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "A2"
         )
         manager.recordCellChange(
-            rowIndex: 1, columnIndex: 1, columnName: "name",
+            rowID: .existing(1), columnIndex: 1, columnName: "name",
             oldValue: "Bob", newValue: "B2"
         )
         manager.recordCellChange(
-            rowIndex: 2, columnIndex: 1, columnName: "name",
+            rowID: .existing(2), columnIndex: 1, columnName: "name",
             oldValue: "Charlie", newValue: "C2"
         )
         manager.recordBatchRowDeletion(rows: [
-            (rowIndex: 0, originalRow: ["1", "A2", "a@test.com"]),
-            (rowIndex: 1, originalRow: ["2", "B2", "b@test.com"])
+            (rowID: .existing(0), originalRow: ["1", "A2", "a@test.com"]),
+            (rowID: .existing(1), originalRow: ["2", "B2", "b@test.com"])
         ])
-        #expect(manager.isRowDeleted(0))
-        #expect(manager.isRowDeleted(1))
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        #expect(!manager.isCellModified(rowIndex: 1, columnIndex: 1))
-        #expect(manager.isCellModified(rowIndex: 2, columnIndex: 1))
+        #expect(manager.isRowDeleted(.existing(0)))
+        #expect(manager.isRowDeleted(.existing(1)))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(1), columnIndex: 1))
+        #expect(manager.isCellModified(rowID: .existing(2), columnIndex: 1))
     }
 
     @Test("Undo batch deletion restores all rows")
     func undoBatchDeletionRestoresAllRows() {
         let manager = makeManager()
         manager.recordBatchRowDeletion(rows: [
-            (rowIndex: 0, originalRow: ["1", "Alice", "a@test.com"]),
-            (rowIndex: 1, originalRow: ["2", "Bob", "b@test.com"]),
-            (rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+            (rowID: .existing(0), originalRow: ["1", "Alice", "a@test.com"]),
+            (rowID: .existing(1), originalRow: ["2", "Bob", "b@test.com"]),
+            (rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         ])
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isRowDeleted(0))
-        #expect(!manager.isRowDeleted(1))
-        #expect(!manager.isRowDeleted(2))
+        #expect(!manager.isRowDeleted(.existing(0)))
+        #expect(!manager.isRowDeleted(.existing(1)))
+        #expect(!manager.isRowDeleted(.existing(2)))
     }
 
     @Test("getOriginalValues returns correct data for edits")
     func getOriginalValuesReturnsCorrectData() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "A", newValue: "B"
         )
         manager.recordCellChange(
-            rowIndex: 1, columnIndex: 2, columnName: "email",
+            rowID: .existing(1), columnIndex: 2, columnName: "email",
             oldValue: "C", newValue: "D"
         )
-        manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: ["3", "Charlie", "c@test.com"])
         let originals = manager.getOriginalValues()
         #expect(originals.count == 2)
-        let first = originals.first { $0.rowIndex == 0 }
+        let first = originals.first { $0.rowID == .existing(0) }
         #expect(first?.columnIndex == 1)
         #expect(first?.value == "A")
-        let second = originals.first { $0.rowIndex == 1 }
+        let second = originals.first { $0.rowID == .existing(1) }
         #expect(second?.columnIndex == 2)
         #expect(second?.value == "C")
     }
@@ -702,8 +702,8 @@ struct DataChangeManagerExtendedTests {
     @Test("Recording deletion for already-deleted row is idempotent")
     func recordDeletionForAlreadyDeletedRow() {
         let manager = makeManager()
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice", "a@test.com"])
-        manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice", "a@test.com"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Alice", "a@test.com"])
+        manager.recordRowDeletion(rowID: .existing(0), originalRow: ["1", "Alice", "a@test.com"])
         #expect(manager.changes.count == 1)
     }
 
@@ -725,12 +725,12 @@ struct DataChangeManagerExtendedTests {
     @Test("Concurrent insertions at different indices all tracked")
     func concurrentInsertionsAtDifferentIndices() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["a", "b", "c"])
-        manager.recordRowInsertion(rowIndex: 5, values: ["d", "e", "f"])
-        manager.recordRowInsertion(rowIndex: 10, values: ["g", "h", "i"])
-        #expect(manager.isRowInserted(0))
-        #expect(manager.isRowInserted(5))
-        #expect(manager.isRowInserted(10))
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["a", "b", "c"])
+        manager.recordRowInsertion(rowID: insertedID(5), values: ["d", "e", "f"])
+        manager.recordRowInsertion(rowID: insertedID(10), values: ["g", "h", "i"])
+        #expect(manager.isRowInserted(insertedID(0)))
+        #expect(manager.isRowInserted(insertedID(5)))
+        #expect(manager.isRowInserted(insertedID(10)))
         #expect(manager.changes.count == 3)
     }
 
@@ -738,7 +738,7 @@ struct DataChangeManagerExtendedTests {
     func recordCellChangeNilToNilIsNoOp() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: nil, newValue: nil
         )
         #expect(!manager.hasChanges)
@@ -750,10 +750,10 @@ struct DataChangeManagerExtendedTests {
     func invariantModifiedCellsConsistentWithChangesAfterEdit() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
         #expect(manager.changes[0].cellChanges.contains { $0.columnIndex == 1 })
     }
 
@@ -761,24 +761,24 @@ struct DataChangeManagerExtendedTests {
     func invariantModifiedCellsClearedWhenAllReverted() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Bob", newValue: "Alice"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "b@test.com", newValue: "a@test.com"
         )
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 2))
-        #expect(manager.getModifiedColumnsForRow(0).isEmpty)
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 2))
+        #expect(manager.getModifiedColumnsForRow(.existing(0)).isEmpty)
         #expect(manager.changes.isEmpty)
     }
 
@@ -786,28 +786,28 @@ struct DataChangeManagerExtendedTests {
     func invariantAfterUndoModifiedCellsMatchChanges() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 2, columnName: "email",
+            rowID: .existing(0), columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
         )
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 2))
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 2))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
     }
 
     @Test("After redo, modifiedCells matches restored changes")
     func invariantAfterRedoModifiedCellsMatchChanges() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.undoManagerProvider?()?.undo()
         manager.undoManagerProvider?()?.redo()
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
         #expect(!manager.changes.isEmpty)
     }
 
@@ -815,15 +815,15 @@ struct DataChangeManagerExtendedTests {
     func editUndoRedoUndoCollapses() {
         let manager = makeManager()
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
             oldValue: "Alice", newValue: "Bob"
         )
         manager.undoManagerProvider?()?.undo()
         manager.undoManagerProvider?()?.redo()
-        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
 
         manager.undoManagerProvider?()?.undo()
-        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(0), columnIndex: 1))
         #expect(manager.changes.isEmpty)
         #expect(!manager.hasChanges)
     }
@@ -831,14 +831,18 @@ struct DataChangeManagerExtendedTests {
     @Test("Inserted row edit consistency between changes and insertedRowData")
     func invariantInsertedRowEditConsistency() {
         let manager = makeManager()
-        manager.recordRowInsertion(rowIndex: 0, values: ["", "", ""])
+        manager.recordRowInsertion(rowID: insertedID(0), values: ["", "", ""])
         manager.recordCellChange(
-            rowIndex: 0, columnIndex: 1, columnName: "name",
+            rowID: insertedID(0), columnIndex: 1, columnName: "name",
             oldValue: nil, newValue: "hello"
         )
         let cellChange = manager.changes[0].cellChanges.first { $0.columnIndex == 1 }
         #expect(cellChange?.newValue == "hello")
         let state = manager.saveState()
-        #expect(state.insertedRowData[0]?[1] == "hello")
+        #expect(state.insertedRowData[insertedID(0)]?[1] == "hello")
     }
+}
+
+private func insertedID(_ seed: Int) -> RowID {
+    .inserted(UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", seed)) ?? UUID())
 }

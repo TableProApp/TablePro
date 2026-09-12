@@ -203,15 +203,15 @@ internal enum ScriptingSnapshot {
         /// A row marked for deletion is still in the buffer and is deliberately not in the result the
         /// grid is showing, so it is not in what a script reads either.
         let deleted = isSelectedTab
-            ? coordinator.changeManager.deletedRowIndices
-            : tab.pendingChanges.deletedRowIndices
+            ? coordinator.changeManager.deletedRowIDs
+            : tab.pendingChanges.deletedRowIDs
 
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tabId)
         let read = DisplayedResultReader.read(
             tableRows: tableRows,
             displayIDs: coordinator.displayIDs(forTab: tabId),
             selectedDisplayIndices: selected,
-            deletedDisplayIndices: deleted,
+            deletedRowIDs: deleted,
             columns: .fromColumnLayout(tab.columnLayout, columns: tableRows.columns)
         )
         let metadata = tab.display.activeResultSet.map {

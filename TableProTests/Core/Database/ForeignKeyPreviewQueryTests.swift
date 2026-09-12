@@ -52,6 +52,7 @@ struct ForeignKeyPreviewQueryTests {
             quotedTable: "[dbo].[customers]",
             quotedColumn: "[id]",
             escapedValue: "42",
+            stringLiteralPrefix: "",
             dialect: dialect(paginationStyle: .offsetFetch)
         )
         #expect(
@@ -66,8 +67,24 @@ struct ForeignKeyPreviewQueryTests {
             quotedTable: "\"users\"",
             quotedColumn: "\"name\"",
             escapedValue: "O''Brien",
+            stringLiteralPrefix: "",
             dialect: dialect(paginationStyle: .limit)
         )
         #expect(sql == "SELECT * FROM \"users\" WHERE \"name\" = 'O''Brien' LIMIT 1")
+    }
+
+    /// A plain literal is a `varchar` on SQL Server, so a key holding non-Latin text matched the
+    /// row whose own text the server had already damaged, and the popover reported the real row as
+    /// missing.
+    @Test("The key literal carries the engine's prefix")
+    func keyLiteralCarriesThePrefix() {
+        let sql = ForeignKeyPreviewQuery.singleRow(
+            quotedTable: "[dbo].[customers]",
+            quotedColumn: "[name]",
+            escapedValue: "日本語",
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(.mssql),
+            dialect: dialect(paginationStyle: .offsetFetch)
+        )
+        #expect(sql.contains("[name] = N'日本語'"))
     }
 }

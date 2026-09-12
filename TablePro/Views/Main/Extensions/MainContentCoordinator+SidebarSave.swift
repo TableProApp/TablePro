@@ -47,7 +47,7 @@ extension MainContentCoordinator {
             ) else { return nil }
             let originalRow = Array(resolvedRow.values)
             return RowChange(
-                rowIndex: rowIndex,
+                rowID: resolvedRow.id,
                 type: .update,
                 cellChanges: editedFields.map { field in
                     let oldValue: PluginCellValue = field.columnIndex < originalRow.count

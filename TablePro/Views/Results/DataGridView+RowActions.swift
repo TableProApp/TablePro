@@ -14,24 +14,15 @@ private let rowActionsLogger = Logger(subsystem: "com.TablePro", category: "Data
 extension TableViewCoordinator {
     @MainActor
     func undoDeleteRow(at index: Int) {
-        changeManager.undoRowDeletion(rowIndex: index)
-        visualIndex.updateRow(index, from: changeManager, displayIDs: displayIDs)
+        guard let rowID = rowID(forDisplayRow: index) else { return }
+        changeManager.undoRowDeletion(rowID: rowID)
+        visualIndex.updateRow(rowID, from: changeManager)
         repaintRows(IndexSet(integer: index))
         refreshRowVisualState(at: index)
     }
 
     func addNewRow() {
         delegate?.dataGridAddRow()
-    }
-
-    @MainActor
-    func undoInsertRow(at index: Int) {
-        delegate?.dataGridUndoInsert(at: index)
-        changeManager.undoRowInsertion(rowIndex: index)
-        let delta = tableRowsMutator { rows in
-            rows.remove(at: IndexSet(integer: index))
-        }
-        applyDelta(delta)
     }
 
     func copyRows(at indices: Set<Int>) {
@@ -216,7 +207,8 @@ extension TableViewCoordinator {
         let converter = InClauseConverter(
             columnIndex: columnIndex,
             columnTypes: tableRows.columnTypes,
-            escapeStringLiteral: driver?.escapeStringLiteral
+            escapeStringLiteral: driver?.escapeStringLiteral,
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
         )
         ClipboardService.shared.writeText(converter.generateInClause(rows: rows))
     }

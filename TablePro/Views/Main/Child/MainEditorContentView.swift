@@ -44,7 +44,6 @@ struct MainEditorContentView: View {
     let onCellEdit: (Int, Int, String?) -> Void
     let onSortStateChanged: (SortState) -> Void
     let onAddRow: () -> Void
-    let onUndoInsert: (Int) -> Void
     let onSelectionChange: (Set<Int>) -> Void
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
@@ -205,7 +204,6 @@ struct MainEditorContentView: View {
         dataTabDelegate.selectionState = selectionState
         dataTabDelegate.onCellEdit = onCellEdit
         dataTabDelegate.onSortStateChanged = onSortStateChanged
-        dataTabDelegate.onUndoInsert = onUndoInsert
         dataTabDelegate.onFilterColumn = onFilterColumn
     }
 
@@ -706,7 +704,7 @@ struct MainEditorContentView: View {
                     tableRows: resolvedTableRows(for: tab),
                     selectedRowIndices: selectionState.indices,
                     displayIDs: coordinator.displayIDs(forTab: tab.id),
-                    deletedRowIndices: changeManager.deletedRowIndices,
+                    deletedRowIDs: changeManager.deletedRowIDs,
                     valueFilter: tab.valueFilter,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
                     displayRevision: coordinator.gridDisplayRevision,

@@ -9,6 +9,8 @@ import StagedUntilSave from "/snippets/staged-until-save.mdx";
 
 Modified cells stay highlighted, `Cmd+Shift+P` shows the statements the queue will produce, and `Cmd+S` runs them. The queue belongs to the tab, so switching tabs leaves it alone.
 
+A queued change also marks the value itself, so it stays legible once the row is selected and reads aloud to VoiceOver. An edited value and a new row are underlined, and a row queued for deletion is struck through.
+
 <Frame caption="Data grid with pending changes highlighted">
   <img className="block dark:hidden" src="/images/change-tracking.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
   <img className="hidden dark:block" src="/images/change-tracking-dark.png" alt="Pending edits, inserts, and deletions highlighted in the data grid" />
