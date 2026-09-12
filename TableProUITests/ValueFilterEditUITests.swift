@@ -43,8 +43,10 @@ final class ValueFilterEditUITests: UITestCase {
         XCTAssertTrue(clearFilter.waitToExist(timeout: 10), "A filtered column's menu must offer Clear Value Filter")
         clearFilter.click()
 
-        let discard = app.buttons["Discard"].firstMatch
-        XCTAssertTrue(discard.waitToExist(timeout: 10), "Clearing the filter over a pending edit must ask first")
+        guard let discard = discardButton(in: app, of: window) else {
+            XCTFail("Clearing the filter over a pending edit must ask first")
+            return
+        }
         discard.click()
 
         XCTAssertTrue(
@@ -97,6 +99,22 @@ final class ValueFilterEditUITests: UITestCase {
         XCTAssertTrue(waitUntilHittable(apply, timeout: 10), "The value filter must offer Apply")
         apply.click()
         XCTAssertTrue(popover.waitForNonExistence(timeout: 10), "Apply must close the value filter")
+    }
+
+    /// Asked of the sheet and then of the app's own windows, never of `app.buttons`: the runner
+    /// publishes the Touch Bar's copy of a button under the application element, and XCUITest
+    /// refuses to click that one.
+    private func discardButton(in app: XCUIApplication, of window: XCUIElement) -> XCUIElement? {
+        let queries = [
+            window.sheets.buttons["Discard"],
+            app.dialogs.buttons["Discard"],
+            app.windows.buttons["Discard"]
+        ]
+        for query in queries {
+            let button = query.firstMatch
+            if waitUntilHittable(button, timeout: 5) { return button }
+        }
+        return nil
     }
 
     private func editCell(row: Int, in grid: XCUIElement, app: XCUIApplication, to value: String) {
