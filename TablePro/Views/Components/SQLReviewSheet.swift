@@ -11,23 +11,68 @@ import TableProPluginKit
 
 struct SQLReviewSheet: View {
     struct PrimaryAction {
+        /// Answering a confirmation is instant and must not wait on a task being scheduled. The
+        /// windowless path holds the main actor inside `NSApp.runModal` until this button resolves
+        /// its gate, and the loop only unwinds once it does, so work deferred to a `Task` would be
+        /// waiting on the loop that is waiting on it. Applying a plan is the other shape: it takes
+        /// as long as the server does and wants the progress the task form gives it.
+        enum Work {
+            case immediate(@MainActor () -> Void)
+            case asynchronous(@MainActor () async -> Void)
+        }
+
         let title: String
         let isDestructive: Bool
-        let perform: () async -> Void
+        /// Return belongs to the confirming button only when the user asked for this dialog. A
+        /// confirmation something else raised steals focus to do it, so a Return already on its way
+        /// to the user's editor would answer it. `AlertHelper.addConfirmAndCancel` takes Return off
+        /// the confirming button for the same reason.
+        let takesDefaultAction: Bool
+        let work: Work
 
-        init(title: String, isDestructive: Bool, perform: @escaping () async -> Void) {
+        init(
+            title: String,
+            isDestructive: Bool,
+            takesDefaultAction: Bool = true,
+            perform: @escaping @MainActor () async -> Void
+        ) {
+            self.init(
+                title: title,
+                isDestructive: isDestructive,
+                takesDefaultAction: takesDefaultAction,
+                work: .asynchronous(perform)
+            )
+        }
+
+        init(
+            title: String,
+            isDestructive: Bool,
+            takesDefaultAction: Bool = true,
+            work: Work
+        ) {
             self.title = title
             self.isDestructive = isDestructive
-            self.perform = perform
+            self.takesDefaultAction = takesDefaultAction
+            self.work = work
         }
     }
 
+    /// The one way out. `@Environment(\.dismiss)` cannot serve alongside it, because it is inert
+    /// once the sheet is hosted in an `NSWindow` rather than presented by SwiftUI, which is how a
+    /// statement confirmation reaches a Mac with no window open.
     @Binding var isPresented: Bool
-    @Environment(\.dismiss) private var dismiss
 
     let statements: [String]
     let databaseType: DatabaseType
 
+    /// Replaces the default "<Language> Preview" heading. A confirmation names the operation.
+    var title: String?
+    /// The sentence under the heading: who is asking, and which connection.
+    var subtitle: String?
+    /// Show the statements exactly as they will be sent. A preview may make MQL easier to read by
+    /// rewriting `{"$oid": "…"}` as `ObjectId("…")` and by ending each statement with a semicolon;
+    /// a confirmation may not, because the user is agreeing to the text in front of them.
+    var showsStatementsVerbatim = false
     var warning: String?
     var failure: String?
     var primaryAction: PrimaryAction?
@@ -73,7 +118,7 @@ struct SQLReviewSheet: View {
         }
         .frame(width: 560, height: 460)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onExitCommand { dismiss() }
+        .onExitCommand { isPresented = false }
         .task { await prepare() }
     }
 
@@ -93,28 +138,41 @@ struct SQLReviewSheet: View {
 
     private func prepare() async {
         guard prepared == nil, !statements.isEmpty else { return }
-        let isJavaScript = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
-        let result = await Task.detached(priority: .userInitiated) { [statements, isJavaScript] in
-            Self.build(statements: statements, isJavaScript: isJavaScript)
+        let isJavaScript = !showsStatementsVerbatim
+            && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        let verbatim = showsStatementsVerbatim
+        let result = await Task.detached(priority: .userInitiated) { [statements, isJavaScript, verbatim] in
+            Self.build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
         }.value
         prepared = result
     }
 
-    static func build(statements: [String], databaseType: DatabaseType) -> Prepared {
-        let isJavaScript = PluginManager.shared.editorLanguage(for: databaseType) == .javascript
-        return build(statements: statements, isJavaScript: isJavaScript)
+    static func build(statements: [String], databaseType: DatabaseType, verbatim: Bool = false) -> Prepared {
+        let isJavaScript = !verbatim && PluginManager.shared.editorLanguage(for: databaseType) == .javascript
+        return build(statements: statements, isJavaScript: isJavaScript, verbatim: verbatim)
     }
 
-    nonisolated private static func build(statements: [String], isJavaScript: Bool) -> Prepared {
-        var full = statements
-            .map { $0.hasSuffix(";") ? $0 : $0 + ";" }
-            .joined(separator: "\n\n")
+    nonisolated private static func build(statements: [String], isJavaScript: Bool, verbatim: Bool) -> Prepared {
+        var full = verbatim
+            ? statements.joined(separator: "\n\n")
+            : statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
         if isJavaScript {
             full = convertExtendedJsonToShellSyntax(full)
         }
 
         let nsFull = full as NSString
         let fullCount = nsFull.length
+        /// A preview may stop early and leave the rest to Copy All. A confirmation may not: the
+        /// statement's `WHERE` clause can sit past any cut, and approving what you cannot see is
+        /// the whole of what this dialog exists to prevent. `execute_query` accepts 102,400 units,
+        /// which the text view below renders and a SwiftUI `Text` does not.
+        if verbatim {
+            return Prepared(
+                display: full,
+                full: full,
+                mode: fullCount <= treeSitterCutoff ? .rich : .plain
+            )
+        }
         if fullCount > maxDisplayChars {
             let head = nsFull.substring(to: maxDisplayChars)
             let remaining = fullCount - maxDisplayChars
@@ -148,29 +206,45 @@ struct SQLReviewSheet: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Text("\(PluginManager.shared.queryLanguageName(for: databaseType)) Preview")
-                .font(.body.weight(.semibold))
-            if !statements.isEmpty {
-                Text(
-                    "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if !statements.isEmpty {
-                Button(action: copyAll) {
-                    Label(
-                        copied ? String(localized: "Copied") : String(localized: "Copy All"),
-                        systemImage: copied ? "checkmark" : "doc.on.doc"
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(title ?? defaultTitle)
+                    .font(.body.weight(.semibold))
+                if !statements.isEmpty {
+                    Text(
+                        "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
                     )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(prepared == nil)
+                Spacer()
+                if !statements.isEmpty {
+                    Button(action: copyAll) {
+                        Label(
+                            copied ? String(localized: "Copied") : String(localized: "Copy All"),
+                            systemImage: copied ? "checkmark" : "doc.on.doc"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(prepared == nil)
+                }
+            }
+            if let subtitle {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var defaultTitle: String {
+        String(
+            format: String(localized: "%@ Preview"),
+            PluginManager.shared.queryLanguageName(for: databaseType)
+        )
     }
 
     private var emptyState: some View {
@@ -214,22 +288,17 @@ struct SQLReviewSheet: View {
         )
     }
 
+    /// A text view rather than a `Text` in a `ScrollView`: this path carries everything past the
+    /// tree-sitter cutoff, which for a confirmation is the whole statement however long it is, and
+    /// a single `Text` that size lays out for seconds. It wears the editor's own background, text
+    /// colour and syntax palette, which is what a hand-themed `Text` here was reaching for.
     private func plainTextEditor(_ text: String) -> some View {
-        ScrollView(.vertical) {
-            Text(text)
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
+        HighlightedSQLTextView(sql: text, databaseType: databaseType)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
     }
 
     @ViewBuilder
@@ -265,12 +334,12 @@ struct SQLReviewSheet: View {
                     ProgressView().controlSize(.small)
                 }
                 if let primaryAction {
-                    Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
+                    Button(String(localized: "Cancel"), role: .cancel) { isPresented = false }
                         .keyboardShortcut(.cancelAction)
                         .disabled(isExecuting)
                     executeButton(primaryAction)
                 } else {
-                    Button(String(localized: "Done")) { dismiss() }
+                    Button(String(localized: "Done")) { isPresented = false }
                         .keyboardShortcut(.cancelAction)
                 }
             }
@@ -280,16 +349,21 @@ struct SQLReviewSheet: View {
     @ViewBuilder
     private func executeButton(_ action: PrimaryAction) -> some View {
         let button = Button(action.title, role: action.isDestructive ? .destructive : nil) {
-            isExecuting = true
-            Task {
-                await action.perform()
-                isExecuting = false
+            switch action.work {
+            case .immediate(let perform):
+                perform()
+            case .asynchronous(let perform):
+                isExecuting = true
+                Task {
+                    await perform()
+                    isExecuting = false
+                }
             }
         }
-        .disabled(statements.isEmpty || isExecuting)
+        .disabled(statements.isEmpty || isExecuting || prepared == nil)
         .accessibilityIdentifier("sql-review-execute")
 
-        if action.isDestructive {
+        if action.isDestructive || !action.takesDefaultAction {
             button
         } else {
             button.keyboardShortcut(.defaultAction)
