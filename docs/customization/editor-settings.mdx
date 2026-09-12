@@ -20,16 +20,27 @@ The font here is set per Mac, not per theme, and is not synced.
 
 The picker lists the monospaced families installed on your Mac, at 10 to 24 pt. `Cmd+=` and `Cmd+-` change the size over the same range.
 
-## SQL editor
+## Display
 
 | Setting | Default | Notes |
 |---------|---------|-------|
 | Show line numbers | On | Turning this off also hides the per-statement run button |
 | Highlight current line | On | |
 | Highlight current statement | On | A faint band behind the statement the cursor is in. See [Statement markers](/features/sql-editor#statement-markers) |
+| Show invisible characters | Off | See [Invisible characters](/features/sql-editor#invisible-characters) |
 | Word wrap | Off | Off means long lines scroll horizontally |
+
+## Gutter
+
+| Setting | Default | Notes |
+|---------|---------|-------|
 | Code folding | On | Shows the fold ribbon in the gutter. See [Code Folding](/features/code-folding) |
 | Run button beside each statement | On | Gutter run buttons, revealed when the pointer is over the gutter. Needs line numbers on |
+
+## Editing
+
+| Setting | Default | Notes |
+|---------|---------|-------|
 | Tab width | 4 spaces | 2, 4, or 8 |
 | Auto-uppercase keywords | Off | Uppercases SQL keywords on word boundaries. Strings, comments, and quoted identifiers are untouched |
 | Query parameters (`:name` syntax) | On | Detects `:name` placeholders and shows the parameter panel. See [Query Parameters](/features/query-parameters) |
