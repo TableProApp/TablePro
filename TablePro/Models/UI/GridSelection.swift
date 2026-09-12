@@ -84,11 +84,25 @@ struct GridSelection: Equatable {
                   coord.displayColumn >= 0, coord.displayColumn < columnLimit else { return nil }
             return coord
         }
+        /// A marker only survives while its block still covers the column. The row count can have
+        /// grown as well as shrunk, and a result that gained rows leaves the old block short of the
+        /// end: keeping the marker then told the heading and the column commands they had a whole
+        /// column while the fill, the copy and the affected rows stopped short, and
+        /// `removeEntireColumn` could no longer match the stale block to take it back off.
+        ///
+        /// Checking the geometry here is not the inference this field replaced. It validates a
+        /// recorded intent against the result now in front of it, rather than inventing one.
+        let stillWholeColumns = columns.filteredIndexSet { position in
+            guard position >= 0, position < columnLimit else { return false }
+            return fitted.contains { rect in
+                rect.columns.contains(position) && rect.rows.lowerBound <= 0 && rect.rows.upperBound >= rowLimit - 1
+            }
+        }
         return GridSelection(
             rectangles: fitted,
             activeCell: fit(activeCell),
             anchor: fit(anchor),
-            columns: columns.filteredIndexSet { $0 >= 0 && $0 < columnLimit }
+            columns: stillWholeColumns
         )
     }
 

@@ -147,6 +147,43 @@ private final class OneRowTableSource: NSObject, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
 }
 
+@Suite("GridSelection column markers")
+struct GridSelectionColumnMarkerTests {
+    /// A marker whose block no longer reaches the last row is not a whole column any more. Keeping
+    /// it told the heading and the column commands otherwise, while the fill, the copy and the
+    /// affected rows stopped short, and nothing could take the stale block back off.
+    @Test("a marker is dropped when the result gained rows")
+    func markerDroppedWhenResultGrew() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        let restored = picked.clamped(rowLimit: 10, columnLimit: 6)
+
+        #expect(restored.columns.isEmpty)
+        #expect(restored.rectangles == [GridRect(rows: 0...3, columns: 1...1)])
+    }
+
+    @Test("a marker survives a result of the same height")
+    func markerSurvivesSameHeight() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        #expect(picked.clamped(rowLimit: 4, columnLimit: 6).columns == IndexSet(integer: 1))
+    }
+
+    @Test("a marker is dropped when its column no longer exists")
+    func markerDroppedWhenColumnGone() {
+        let picked = GridSelection.column(5, totalRows: 4)
+
+        #expect(picked.clamped(rowLimit: 4, columnLimit: 3).columns.isEmpty)
+    }
+
+    @Test("union merges the markers of both sides")
+    func unionMergesMarkers() {
+        let merged = GridSelection.column(0, totalRows: 4).union(.column(2, totalRows: 4))
+
+        #expect(merged.columns == IndexSet([0, 2]))
+    }
+}
+
 @Suite("GridSelectionController gestures")
 @MainActor
 struct GridSelectionControllerTests {
@@ -290,6 +327,35 @@ struct GridSelectionControllerTests {
         controller.addEntireColumn(2, totalRows: 4)
         #expect(controller.selectedFullColumns() == IndexSet(integer: 0))
         #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...0)])
+    }
+
+    /// An additive body gesture rebuilds the selection from the drag's base rectangles, and used to
+    /// rebuild it without the picked columns, so a Cmd+click in the body unpainted a heading the
+    /// user had picked and took its column out of the column commands.
+    @Test("a Cmd+click in the body keeps a picked heading")
+    func additiveCellGestureKeepsPickedColumns() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        let elsewhere = GridCoord(row: 2, displayColumn: 3)
+        _ = controller.beginDrag(at: elsewhere, modifiers: [.command])
+        controller.endDrag(dragged: false, originalCoord: elsewhere)
+
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+        #expect(controller.selection.contains(elsewhere))
+    }
+
+    @Test("a Cmd+drag in the body keeps a picked heading")
+    func additiveCellDragKeepsPickedColumns() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        let start = GridCoord(row: 1, displayColumn: 3)
+        _ = controller.beginDrag(at: start, modifiers: [.command])
+        controller.continueDrag(to: GridCoord(row: 3, displayColumn: 4))
+        controller.endDrag(dragged: true, originalCoord: start)
+
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
     }
 
     /// `union` concatenates, so re-adding one heading used to leave a second identical rectangle

@@ -478,11 +478,6 @@ final class KeyHandlingTableView: NSTableView {
         guard !rows.isEmpty else { return }
 
         controller.selectEntireRows(rows, totalColumns: totalColumns)
-        /// The selection now reaches both ends of every row it touches, so no single cell is the
-        /// current one. Leaving the cursor behind kept a cell ring inside a whole-row selection,
-        /// which is the one thing a whole-row selection is not allowed to share the grid with.
-        focusedRow = -1
-        focusedColumn = -1
         withProgrammaticRowSelection {
             selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
         }

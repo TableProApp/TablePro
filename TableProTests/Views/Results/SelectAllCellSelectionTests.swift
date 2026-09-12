@@ -204,23 +204,19 @@ struct SelectAllCellSelectionTests {
         #expect(grid.published.value == Set(0..<grid.rowCount))
     }
 
-    /// Shift+Space widens the selection to the whole of every row it touches, so after it no single
-    /// cell is the current one. The cursor used to survive, leaving a cell ring inside a selection
-    /// that owns whole rows.
-    @Test("Shift+Space leaves no cell cursor")
-    func rowWideningLeavesNoCellCursor() {
+    /// Shift+Space widens a cell selection to whole rows. It marks no heading as picked, which is
+    /// the half of it that shares the reported defect's cause.
+    @Test("Shift+Space marks no heading as picked")
+    func rowWideningPicksNoHeading() {
         let grid = SelectAllGrid()
         let seed = GridCoord(row: 2, displayColumn: 1)
         grid.coordinator.selectionController.update(.single(GridRect(cell: seed), anchor: seed, active: seed))
         grid.tableView.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
-        grid.tableView.focusedRow = 2
-        grid.tableView.focusedColumn = 2
 
         grid.tableView.selectRowsIntersectingSelection()
 
-        #expect(grid.tableView.focusedRow == -1)
-        #expect(grid.tableView.focusedColumn == -1)
         #expect(grid.coordinator.selectionController.selectedFullColumns().isEmpty)
+        #expect(grid.pickedHeadings.isEmpty)
     }
 
     @Test("an empty grid falls through to the table view's own select all")

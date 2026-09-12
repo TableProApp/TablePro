@@ -107,7 +107,17 @@ final class GridSelectionController {
         case .additive:
             var rectangles = dragBaseSelection.rectangles
             rectangles.append(GridRect.between(origin, coord))
-            update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: origin))
+            /// The picked columns come along. Rebuilding from the base rectangles alone dropped
+            /// them, so a Cmd+drag in the body unpainted a heading the user had picked and took its
+            /// column out of `selectedFullColumnDataIndices`, disabling the column commands.
+            update(
+                GridSelection(
+                    rectangles: rectangles,
+                    activeCell: coord,
+                    anchor: origin,
+                    columns: dragBaseSelection.columns
+                )
+            )
         }
     }
 
@@ -133,12 +143,26 @@ final class GridSelectionController {
             }
             let last = rectangles[rectangles.count - 1]
             let active = GridCoord(row: last.rows.lowerBound, displayColumn: last.columns.lowerBound)
-            update(GridSelection(rectangles: rectangles, activeCell: active, anchor: dragBaseSelection.anchor))
+            update(
+                GridSelection(
+                    rectangles: rectangles,
+                    activeCell: active,
+                    anchor: dragBaseSelection.anchor,
+                    columns: dragBaseSelection.columns
+                )
+            )
             return
         }
 
         rectangles.append(cellRect)
-        update(GridSelection(rectangles: rectangles, activeCell: coord, anchor: coord))
+        update(
+            GridSelection(
+                rectangles: rectangles,
+                activeCell: coord,
+                anchor: coord,
+                columns: dragBaseSelection.columns
+            )
+        )
     }
 
     func selectEntireColumn(_ displayColumn: Int, totalRows: Int) {
