@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
+- Nested foreign key chevrons in the row inspector pointing into the database the sidebar is on rather than the referenced one.
+- Ref Columns in the structure editor offering only **Custom…** for the rest of the tab after one failed read, with no error and no retry.
+- Ref Columns reading the sidebar's database instead of the tab's.
+- Empty **Ref Table** menu in the structure editor on MySQL, MariaDB, TiDB, PostgreSQL, CockroachDB, Redshift, SQL Server and DuckDB.
+- **New Trigger** pre-filling a template naming the sidebar's database, and **Drop Trigger** naming it in the statement it ran elsewhere.
+- `describe_table` over MCP answering with one database's columns beside another's indexes, foreign keys, row count and DDL.
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
 - Column header shown as selected after a cell drag reached the first and last row of the page.
 - No outline around a swept cell block whose rows reached both ends of the page.
