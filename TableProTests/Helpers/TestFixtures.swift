@@ -72,7 +72,7 @@ enum TestFixtures {
         originalRow: [String?]? = nil
     ) -> RowChange {
         return RowChange(
-            rowIndex: row,
+            rowID: .existing(row),
             type: type,
             cellChanges: cells,
             originalRow: originalRow.map { row in row.map(PluginCellValue.fromOptional) }

@@ -141,17 +141,17 @@ struct PersistedTab: Codable {
 
 struct TabChangeSnapshot: Equatable {
     var changes: [RowChange]
-    var deletedRowIndices: Set<Int>
-    var insertedRowIndices: Set<Int>
-    var modifiedCells: [Int: Set<Int>]
-    var insertedRowData: [Int: [PluginCellValue]]
+    var deletedRowIDs: Set<RowID>
+    var insertedRowIDs: Set<RowID>
+    var modifiedCells: [RowID: Set<Int>]
+    var insertedRowData: [RowID: [PluginCellValue]]
     var primaryKeyColumns: [String]
     var columns: [String]
 
     init() {
         self.changes = []
-        self.deletedRowIndices = []
-        self.insertedRowIndices = []
+        self.deletedRowIDs = []
+        self.insertedRowIDs = []
         self.modifiedCells = [:]
         self.insertedRowData = [:]
         self.primaryKeyColumns = []
@@ -159,7 +159,7 @@ struct TabChangeSnapshot: Equatable {
     }
 
     var hasChanges: Bool {
-        !changes.isEmpty || !insertedRowIndices.isEmpty || !deletedRowIndices.isEmpty
+        !changes.isEmpty || !insertedRowIDs.isEmpty || !deletedRowIDs.isEmpty
     }
 }
 

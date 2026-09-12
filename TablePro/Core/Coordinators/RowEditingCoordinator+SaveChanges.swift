@@ -78,7 +78,7 @@ extension RowEditingCoordinator {
         }
         let connId = parent.connection.id
         let kind: OperationKind = hasPendingTableOps ? .destructiveQuery : .writeQuery
-        let deleteConfirmation = BulkDeleteConfirmation(deletedRowCount: parent.changeManager.deletedRowIndices.count)
+        let deleteConfirmation = BulkDeleteConfirmation(deletedRowCount: parent.changeManager.deletedRowIDs.count)
         Task { [weak self, parent] in
             guard let self else { return }
 

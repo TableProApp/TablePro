@@ -21,6 +21,21 @@ final class CompareSQLLiteralTests: XCTestCase {
         }
     }
 
+    /// A compare script runs its own statements, so a plain literal on a SQL Server database with
+    /// a non-Unicode collation writes `?` into the target rather than the text it compared.
+    func testTextLiteralsCarryTheSQLServerPrefix() {
+        XCTAssertEqual(CompareSQLLiteral.prefixed("'日本語'", databaseType: .mssql), "N'日本語'")
+        XCTAssertEqual(CompareSQLLiteral.prefixed("'abc'", databaseType: .mysql), "'abc'")
+    }
+
+    /// `sqlLiteral(for:)` answers `NULL` for a null and passes a number through unquoted. `N` in
+    /// front of either is a syntax error.
+    func testOnlyQuotedLiteralsTakeThePrefix() {
+        XCTAssertEqual(CompareSQLLiteral.prefixed("NULL", databaseType: .mssql), "NULL")
+        XCTAssertEqual(CompareSQLLiteral.prefixed("42", databaseType: .mssql), "42")
+        XCTAssertEqual(CompareSQLLiteral.prefixed("0x89504E47", databaseType: .mssql), "0x89504E47")
+    }
+
     func testPostgresFamilyUsesAByteaCast() throws {
         for type in [DatabaseType.postgresql, .cockroachdb, .redshift, .pglite] {
             let literal = try XCTUnwrap(CompareSQLLiteral.binaryLiteral(for: png, databaseType: type))

@@ -48,8 +48,7 @@ extension MainContentCoordinator {
         case .navigation:
             return String(localized: "Moving through this tab's history replaces what it is showing and will discard all unsaved changes.")
         /// No mention of reloading, unlike sort and the WHERE filter: a value filter narrows the
-        /// rows already loaded and never re-queries. What it does change is which row each display
-        /// position names, which is what the edits are recorded against.
+        /// rows already loaded and never re-queries.
         case .displayOrder:
             return String(localized: "Changing which rows are shown will discard all unsaved changes.")
         /// Named for the reload, like sort and the WHERE filter, because that is what costs the

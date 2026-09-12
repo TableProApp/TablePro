@@ -29,7 +29,7 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     private func makeUpdateChange(
-        rowIndex: Int = 0,
+        rowID: RowID = .existing(0),
         columnIndex: Int,
         columnName: String,
         oldValue: String?,
@@ -37,7 +37,7 @@ struct SQLStatementGeneratorCompositePKTests {
         originalRow: [String?]
     ) -> RowChange {
         RowChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             type: .update,
             cellChanges: [CellChange(
                 columnIndex: columnIndex,
@@ -50,21 +50,21 @@ struct SQLStatementGeneratorCompositePKTests {
     }
 
     private func makeMultiCellUpdateChange(
-        rowIndex: Int = 0,
+        rowID: RowID = .existing(0),
         cellChanges: [CellChange],
         originalRow: [String?]
     ) -> RowChange {
         RowChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             type: .update,
             cellChanges: cellChanges,
             originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }
 
-    private func makeDeleteChange(rowIndex: Int = 0, originalRow: [String?]) -> RowChange {
+    private func makeDeleteChange(rowID: RowID = .existing(0), originalRow: [String?]) -> RowChange {
         RowChange(
-            rowIndex: rowIndex, type: .delete, cellChanges: [],
+            rowID: rowID, type: .delete, cellChanges: [],
             originalRow: originalRow.map(PluginCellValue.fromOptional)
         )
     }
@@ -72,14 +72,14 @@ struct SQLStatementGeneratorCompositePKTests {
     private func generate(
         _ changes: [RowChange],
         generator: SQLStatementGenerator,
-        deletedRowIndices: Set<Int> = [],
-        insertedRowIndices: Set<Int> = []
+        deletedRowIDs: Set<RowID> = [],
+        insertedRowIDs: Set<RowID> = []
     ) -> [ParameterizedStatement] {
         generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: deletedRowIndices,
-            insertedRowIndices: insertedRowIndices
+            deletedRowIDs: deletedRowIDs,
+            insertedRowIDs: insertedRowIDs
         )
     }
 
@@ -189,12 +189,12 @@ struct SQLStatementGeneratorCompositePKTests {
         let gen = try makeGenerator()
         let stmts = generate([
             makeUpdateChange(
-                rowIndex: 0, columnIndex: 2, columnName: "quantity",
+                rowID: .existing(0), columnIndex: 2, columnName: "quantity",
                 oldValue: "5", newValue: "10",
                 originalRow: ["1", "42", "5", "9.99"]
             ),
             makeUpdateChange(
-                rowIndex: 1, columnIndex: 2, columnName: "quantity",
+                rowID: .existing(1), columnIndex: 2, columnName: "quantity",
                 oldValue: "3", newValue: "7",
                 originalRow: ["1", "43", "3", "4.99"]
             ),
@@ -252,9 +252,9 @@ struct SQLStatementGeneratorCompositePKTests {
     func deleteSingleRowCompositePK() throws {
         let gen = try makeGenerator()
         let stmts = generate(
-            [makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"])],
+            [makeDeleteChange(rowID: .existing(0), originalRow: ["1", "42", "5", "9.99"])],
             generator: gen,
-            deletedRowIndices: [0]
+            deletedRowIDs: [.existing(0)]
         )
 
         #expect(stmts.count == 1)
@@ -273,12 +273,12 @@ struct SQLStatementGeneratorCompositePKTests {
         let gen = try makeGenerator()
         let stmts = generate(
             [
-                makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"]),
-                makeDeleteChange(rowIndex: 1, originalRow: ["1", "43", "3", "4.99"]),
-                makeDeleteChange(rowIndex: 2, originalRow: ["2", "42", "1", "7.50"]),
+                makeDeleteChange(rowID: .existing(0), originalRow: ["1", "42", "5", "9.99"]),
+                makeDeleteChange(rowID: .existing(1), originalRow: ["1", "43", "3", "4.99"]),
+                makeDeleteChange(rowID: .existing(2), originalRow: ["2", "42", "1", "7.50"]),
             ],
             generator: gen,
-            deletedRowIndices: [0, 1, 2]
+            deletedRowIDs: [.existing(0), .existing(1), .existing(2)]
         )
 
         #expect(stmts.count == 1)
@@ -294,11 +294,11 @@ struct SQLStatementGeneratorCompositePKTests {
         let gen = try makeGenerator(databaseType: .postgresql)
         let stmts = generate(
             [
-                makeDeleteChange(rowIndex: 0, originalRow: ["1", "42", "5", "9.99"]),
-                makeDeleteChange(rowIndex: 1, originalRow: ["1", "43", "3", "4.99"]),
+                makeDeleteChange(rowID: .existing(0), originalRow: ["1", "42", "5", "9.99"]),
+                makeDeleteChange(rowID: .existing(1), originalRow: ["1", "43", "3", "4.99"]),
             ],
             generator: gen,
-            deletedRowIndices: [0, 1]
+            deletedRowIDs: [.existing(0), .existing(1)]
         )
 
         #expect(stmts.count == 1)
@@ -341,11 +341,11 @@ struct SQLStatementGeneratorCompositePKTests {
         )
         let stmts = generate(
             [
-                makeDeleteChange(rowIndex: 0, originalRow: ["1", "John", "john@test.com"]),
-                makeDeleteChange(rowIndex: 1, originalRow: ["2", "Jane", "jane@test.com"]),
+                makeDeleteChange(rowID: .existing(0), originalRow: ["1", "John", "john@test.com"]),
+                makeDeleteChange(rowID: .existing(1), originalRow: ["2", "Jane", "jane@test.com"]),
             ],
             generator: gen,
-            deletedRowIndices: [0, 1]
+            deletedRowIDs: [.existing(0), .existing(1)]
         )
 
         #expect(stmts.count == 1)
@@ -389,11 +389,11 @@ struct SQLStatementGeneratorCompositePKTests {
         )
         let stmts = generate(
             [
-                makeDeleteChange(rowIndex: 0, originalRow: ["2024-01-01", "hello", "info"]),
-                makeDeleteChange(rowIndex: 1, originalRow: ["2024-01-02", "world", "warn"]),
+                makeDeleteChange(rowID: .existing(0), originalRow: ["2024-01-01", "hello", "info"]),
+                makeDeleteChange(rowID: .existing(1), originalRow: ["2024-01-02", "world", "warn"]),
             ],
             generator: gen,
-            deletedRowIndices: [0, 1]
+            deletedRowIDs: [.existing(0), .existing(1)]
         )
 
         #expect(stmts.count == 1)
@@ -448,11 +448,11 @@ struct SQLStatementGeneratorCompositePKTests {
         let gen = try makeGenerator()
         let stmts = generate(
             [
-                makeDeleteChange(rowIndex: 0, originalRow: ["1", nil, "5", "9.99"]),
-                makeDeleteChange(rowIndex: 1, originalRow: ["1", "43", "3", "4.99"]),
+                makeDeleteChange(rowID: .existing(0), originalRow: ["1", nil, "5", "9.99"]),
+                makeDeleteChange(rowID: .existing(1), originalRow: ["1", "43", "3", "4.99"]),
             ],
             generator: gen,
-            deletedRowIndices: [0, 1]
+            deletedRowIDs: [.existing(0), .existing(1)]
         )
 
         // Row 0 has NULL PK → skipped in batch, only row 1 survives
@@ -464,7 +464,7 @@ struct SQLStatementGeneratorCompositePKTests {
     func updateWithoutOriginalRowUsesCellChanges() throws {
         let gen = try makeGenerator()
         let change = RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .update,
             cellChanges: [
                 CellChange(columnIndex: 0, columnName: "order_id", oldValue: "1", newValue: "1"),
@@ -485,7 +485,7 @@ struct SQLStatementGeneratorCompositePKTests {
     func updateWithoutOriginalRowMissingPKSkipped() throws {
         let gen = try makeGenerator()
         let change = RowChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             type: .update,
             cellChanges: [
                 CellChange(columnIndex: 2, columnName: "quantity", oldValue: "5", newValue: "10"),
@@ -502,19 +502,19 @@ struct SQLStatementGeneratorCompositePKTests {
     func mixedOperationsCompositePK() throws {
         let gen = try makeGenerator()
 
-        let insertChange = RowChange(rowIndex: 3, type: .insert, cellChanges: [])
+        let insertChange = RowChange(rowID: .existing(3), type: .insert, cellChanges: [])
         let updateChange = makeUpdateChange(
-            rowIndex: 0, columnIndex: 2, columnName: "quantity",
+            rowID: .existing(0), columnIndex: 2, columnName: "quantity",
             oldValue: "5", newValue: "10",
             originalRow: ["1", "42", "5", "9.99"]
         )
-        let deleteChange = makeDeleteChange(rowIndex: 1, originalRow: ["1", "43", "3", "4.99"])
+        let deleteChange = makeDeleteChange(rowID: .existing(1), originalRow: ["1", "43", "3", "4.99"])
 
         let stmts = gen.generateStatements(
             from: [insertChange, updateChange, deleteChange],
-            insertedRowData: [3: ["2", "99", "1", "5.00"]],
-            deletedRowIndices: [1],
-            insertedRowIndices: [3]
+            insertedRowData: [.existing(3): ["2", "99", "1", "5.00"]],
+            deletedRowIDs: [.existing(1)],
+            insertedRowIDs: [.existing(3)]
         )
 
         // INSERT + UPDATE + DELETE = 3 statements

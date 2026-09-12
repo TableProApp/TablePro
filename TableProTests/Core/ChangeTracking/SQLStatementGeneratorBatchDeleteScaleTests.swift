@@ -31,7 +31,7 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
     private func deleteChanges(count: Int, columns: [String]) -> [RowChange] {
         (0..<count).map { index in
             RowChange(
-                rowIndex: index,
+                rowID: .existing(index),
                 type: .delete,
                 cellChanges: [],
                 originalRow: columns.indices.map { .text("\(index)-\($0)") }
@@ -49,8 +49,8 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: Set(0..<5_000),
-            insertedRowIndices: []
+            deletedRowIDs: Set((0..<5_000).map(RowID.existing)),
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -68,8 +68,8 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: Set(0..<(cap + 1)),
-            insertedRowIndices: []
+            deletedRowIDs: Set((0..<(cap + 1)).map(RowID.existing)),
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 2)
@@ -88,8 +88,8 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: Set(0..<cap),
-            insertedRowIndices: []
+            deletedRowIDs: Set((0..<cap).map(RowID.existing)),
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -106,8 +106,8 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: Set(0..<1_000),
-            insertedRowIndices: []
+            deletedRowIDs: Set((0..<1_000).map(RowID.existing)),
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -129,8 +129,8 @@ struct SQLStatementGeneratorBatchDeleteScaleTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: Set(0..<rowCount),
-            insertedRowIndices: []
+            deletedRowIDs: Set((0..<rowCount).map(RowID.existing)),
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 2)

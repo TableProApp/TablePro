@@ -28,19 +28,19 @@ struct SQLStatementGeneratorMSSQLTests {
         )
     }
 
-    private func makeInsertChange(rowIndex: Int = 0) -> RowChange {
-        RowChange(rowIndex: rowIndex, type: .insert, cellChanges: [], originalRow: nil)
+    private func makeInsertChange(rowID: RowID = .existing(0)) -> RowChange {
+        RowChange(rowID: rowID, type: .insert, cellChanges: [], originalRow: nil)
     }
 
     private func makeUpdateChange(
-        rowIndex: Int = 0,
+        rowID: RowID = .existing(0),
         columnName: String = "name",
         oldValue: String? = "old",
         newValue: String? = "new",
         originalRow: [String?]? = ["1", "old", "a@b.com"]
     ) -> RowChange {
         RowChange(
-            rowIndex: rowIndex,
+            rowID: rowID,
             type: .update,
             cellChanges: [
                 CellChange(
@@ -55,11 +55,11 @@ struct SQLStatementGeneratorMSSQLTests {
     }
 
     private func makeDeleteChange(
-        rowIndex: Int = 0,
+        rowID: RowID = .existing(0),
         originalRow: [String?]? = ["1", "John", "john@example.com"]
     ) -> RowChange {
         RowChange(
-            rowIndex: rowIndex, type: .delete, cellChanges: [],
+            rowID: rowID, type: .delete, cellChanges: [],
             originalRow: originalRow.map { row in row.map(PluginCellValue.fromOptional) }
         )
     }
@@ -69,12 +69,12 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT statement uses question mark placeholders")
     func insertUsesQuestionMarkPlaceholders() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -88,8 +88,8 @@ struct SQLStatementGeneratorMSSQLTests {
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -102,12 +102,12 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT uses bracket-quoted table and column names")
     func insertBracketQuoting() throws {
         let generator = try makeGenerator()
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -121,12 +121,12 @@ struct SQLStatementGeneratorMSSQLTests {
     @Test("INSERT with multiple columns produces correct number of placeholders")
     func insertMultipleColumnsPlaceholders() throws {
         let generator = try makeGenerator(columns: ["id", "name", "email"])
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let statements = generator.generateStatements(
             from: [makeInsertChange()],
             insertedRowData: insertedRowData,
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -144,8 +144,8 @@ struct SQLStatementGeneratorMSSQLTests {
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -159,8 +159,8 @@ struct SQLStatementGeneratorMSSQLTests {
         let statements = generator.generateStatements(
             from: [makeUpdateChange()],
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -176,8 +176,8 @@ struct SQLStatementGeneratorMSSQLTests {
         let statements = generator.generateStatements(
             from: [makeDeleteChange()],
             insertedRowData: [:],
-            deletedRowIndices: [0],
-            insertedRowIndices: []
+            deletedRowIDs: [.existing(0)],
+            insertedRowIDs: []
         )
 
         #expect(statements.count == 1)

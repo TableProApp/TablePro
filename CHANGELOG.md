@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Strikethrough on a row queued for deletion, and an underline on a new row or an edited value.
 - Google Cloud Spanner as a registry plugin over the REST API. (#1226, #2480)
 - TiDB and Databend connection types on the MySQL driver. (#1066, #2514)
 - Empty state in the inspector and the assistant for a connection that is not up.
@@ -46,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Discard restoring a different row than the one edited under a column value filter.
+- Add Row under a column value filter selecting and opening the wrong row for editing.
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
@@ -173,6 +176,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 - Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- Composite foreign keys listing mismatched column pairs on iOS, CockroachDB and Redshift.
+- Foreign keys missing on iOS for a PostgreSQL role that does not own the table.
+- Redshift foreign keys from other schemas shown on a table.
 - PostgreSQL view definitions without `security_barrier`, `security_invoker` or the check option. (#2726)
 - PostgreSQL view definitions that bind to another schema's tables when run elsewhere. (#2726)
 - `CREATE TABLE` in Structure > DDL for a PostgreSQL view or materialized view. (#2726)
@@ -186,10 +192,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- SQL Server edits and deletes matching no row when the row is identified by a binary column.
+- SQL Server parameters sent to the wrong placeholders when a column name holds a question mark.
+- `[` in a SQL Server filter value read as a wildcard.
+- Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, Preview Referenced Row, compare scripts and column defaults on SQL Server.
 
 ### Security
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
+- PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
 
 ## [0.73.0] - 2026-09-09

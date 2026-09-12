@@ -17,7 +17,7 @@ extension TableViewCoordinator {
         guard isEditable else { return .blocked }
         let tableRows = tableRowsProvider()
         guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
-        guard !changeManager.isRowDeleted(row) else { return .blocked }
+        guard !isRowDeleted(displayRow: row) else { return .blocked }
 
         guard isColumnWritable(tableRows.columns[columnIndex]) else { return .blocked }
 

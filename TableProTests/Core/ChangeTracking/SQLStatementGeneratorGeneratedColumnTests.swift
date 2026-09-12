@@ -30,14 +30,14 @@ struct SQLStatementGeneratorGeneratedColumnTests {
     func insertFromStoredDataOmitsGeneratedColumn() throws {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes,
-            insertedRowData: [0: ["1", "John", "John Doe"]],
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            insertedRowData: [.existing(0): ["1", "John", "John Doe"]],
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         let statement = try #require(statements.first)
@@ -51,7 +51,7 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .insert,
                 cellChanges: [
                     CellChange(columnIndex: 1, columnName: "name", oldValue: .null, newValue: "John"),
@@ -69,8 +69,8 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         let statement = try #require(statements.first)
@@ -83,7 +83,7 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
                     CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Johnny"),
@@ -101,8 +101,8 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         let statement = try #require(statements.first)
@@ -115,7 +115,7 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let generator = try makeGenerator()
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
                     CellChange(
@@ -132,8 +132,8 @@ struct SQLStatementGeneratorGeneratedColumnTests {
         let statements = generator.generateStatements(
             from: changes,
             insertedRowData: [:],
-            deletedRowIndices: [],
-            insertedRowIndices: []
+            deletedRowIDs: [],
+            insertedRowIDs: []
         )
 
         #expect(statements.isEmpty)
@@ -143,14 +143,14 @@ struct SQLStatementGeneratorGeneratedColumnTests {
     func tableWithoutGeneratedColumnsIsUnaffected() throws {
         let generator = try makeGenerator(generatedColumns: [])
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes,
-            insertedRowData: [0: ["1", "John", "John Doe"]],
-            deletedRowIndices: [],
-            insertedRowIndices: [0]
+            insertedRowData: [.existing(0): ["1", "John", "John Doe"]],
+            deletedRowIDs: [],
+            insertedRowIDs: [.existing(0)]
         )
 
         let statement = try #require(statements.first)

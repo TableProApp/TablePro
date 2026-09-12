@@ -119,11 +119,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _isConnectCancelled: Bool = false
     private var _postgisOidMap: [UInt32: PostGISType] = [:]
     private var _catalogTypeNames: [UInt32: String] = [:]
+    private var _standardConformingStrings = true
 
     var isConnected: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
         return _isConnected
+    }
+
+    var standardConformingStrings: Bool {
+        stateLock.withLock { _standardConformingStrings }
     }
 
     private var isShuttingDown: Bool {
@@ -300,6 +305,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     private func configureEstablishedConnection(_ connection: OpaquePointer) {
         logUnexpectedClientEncoding(of: connection)
+        runSessionSetupStatement(LibPQStringConformance.enableStatement, on: connection)
+        storeStandardConformingStrings(
+            reportedStandardConformingStrings(on: connection)
+                ?? queriedStandardConformingStrings(on: connection)
+                ?? true
+        )
 
         let version = PQserverVersion(connection)
         guard version > 0 else { return }
@@ -322,6 +333,48 @@ final class LibPQPluginConnection: @unchecked Sendable {
         logger.warning(
             "Server reports client_encoding \(reported ?? "none", privacy: .public) instead of UTF8"
         )
+    }
+
+    private func runSessionSetupStatement(_ statement: String, on connection: OpaquePointer) {
+        let result = statement.withCString { PQexec(connection, $0) }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) != PGRES_COMMAND_OK else { return }
+        let message = result.flatMap { PQresultErrorMessage($0) }.map { String(cString: $0) } ?? ""
+        logger.warning(
+            "Session setup statement failed: \(statement, privacy: .public) \(message, privacy: .public)"
+        )
+    }
+
+    private func reportedStandardConformingStrings(on connection: OpaquePointer) -> Bool? {
+        guard let value = PQparameterStatus(connection, LibPQStringConformance.parameterName) else {
+            return nil
+        }
+        return LibPQStringConformance.isOn(String(cString: value))
+    }
+
+    private func queriedStandardConformingStrings(on connection: OpaquePointer) -> Bool? {
+        let result = LibPQStringConformance.showQuery.withCString { PQexec(connection, $0) }
+        defer { PQclear(result) }
+        guard PQresultStatus(result) == PGRES_TUPLES_OK,
+              PQntuples(result) > 0,
+              let value = PQgetvalue(result, 0, 0) else {
+            return nil
+        }
+        return LibPQStringConformance.isOn(String(cString: value))
+    }
+
+    private func refreshStandardConformingStrings(from connection: OpaquePointer) {
+        guard let reported = reportedStandardConformingStrings(on: connection) else { return }
+        storeStandardConformingStrings(reported)
+    }
+
+    private func storeStandardConformingStrings(_ value: Bool) {
+        let changed = stateLock.withLock {
+            defer { _standardConformingStrings = value }
+            return _standardConformingStrings != value
+        }
+        guard changed, !value else { return }
+        logger.warning("standard_conforming_strings is off; string literals escape backslashes")
     }
 
     private var connectionString: String {
@@ -547,6 +600,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
         let localQuery = String(query)
@@ -610,6 +664,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
 
         /// Started before the drain, so a result the previous statement abandoned is charged to the
         /// time before the first row rather than appearing as this query's row transfer.
@@ -738,6 +793,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
+        defer { refreshStandardConformingStrings(from: conn) }
 
         let cancelsOutput = cancelsAbandonedOutput(conn)
         var paramValues: [UnsafePointer<CChar>?] = []
@@ -916,6 +972,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 let generation = cancellationGate.beginQuery()
                 defer { cancellationGate.endQuery(generation) }
+                defer { refreshStandardConformingStrings(from: conn) }
 
                 /// The consumer can go away before this block is scheduled, in which case the
                 /// query is never sent at all.

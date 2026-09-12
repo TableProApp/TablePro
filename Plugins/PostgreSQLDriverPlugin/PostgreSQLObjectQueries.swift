@@ -41,7 +41,7 @@ public enum PostgreSQLObjectQueries {
     /// Aggregates (prokind 'a') and window functions ('w') are excluded because
     /// pg_get_functiondef raises on them, which would fail the whole listing over one object the
     /// viewer could not have shown anyway.
-    static func routineList(schema: String, capabilities: PostgreSQLCapabilities) -> String {
+    public static func routineList(schema: String, capabilities: PostgreSQLCapabilities) -> String {
         let schemaLiteral = quoteLiteral(schema)
         let modern = capabilities.hasProcedureKind
         let kindColumn = modern
@@ -79,22 +79,22 @@ public enum PostgreSQLObjectQueries {
     /// instead of whichever row the planner happened to return first.
     public static func routineDefinition(identity: String) -> String {
         """
-        SELECT pg_catalog.pg_get_functiondef('\(escapeLiteral(identity))'::oid)
+        SELECT pg_catalog.pg_get_functiondef(\(quoteLiteral(identity))::oid)
         """
     }
 
     public static func routineDefinitionByName(name: String, schema: String, arguments: String?) -> String {
-        let nameLiteral = escapeLiteral(name)
-        let schemaLiteral = escapeLiteral(schema)
+        let nameLiteral = quoteLiteral(name)
+        let schemaLiteral = quoteLiteral(schema)
         let argumentsPredicate = arguments.map {
-            "AND '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' = '\(escapeLiteral($0))'"
+            "AND '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')' = \(quoteLiteral($0))"
         } ?? ""
         return """
             SELECT pg_catalog.pg_get_functiondef(p.oid)
             FROM pg_catalog.pg_proc p
             JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = \(schemaLiteral)
-                AND p.proname = '\(nameLiteral)'
+                AND p.proname = \(nameLiteral)
                 \(argumentsPredicate)
             ORDER BY p.oid
             LIMIT 1
