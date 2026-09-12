@@ -78,7 +78,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open transaction aborted when a PostGIS value could not be converted.
 - PostgreSQL all-tables metadata failing for a mixed-case table name.
 - Default PostgreSQL schema taken from the schema list rather than the search path.
->>>>>>> origin/main
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
