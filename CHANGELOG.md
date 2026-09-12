@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Query confirmation shows the statement syntax highlighted and scrollable, with **Copy All** and the name of whatever asked to run it. (#2759)
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
@@ -59,6 +60,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Query confirmation dialog cut to the first 200 characters of the statement. (#2759)
+- Statement folded onto one line and cut at 400 characters in an MCP client's approval prompt.
+- Blank line under "Are you sure you want to execute this query?" when confirming a rename.
 - Row numbers and their divider painted over the find bar, the filter panel and the result tab bar.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
@@ -248,6 +252,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
 - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
+- An MCP token without Full Access approving its own write and skipping TablePro's confirmation dialog.
 
 ## [0.73.0] - 2026-09-09
 

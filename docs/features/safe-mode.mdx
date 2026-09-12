@@ -18,7 +18,13 @@ Six levels, one per connection, set in the **Customization** pane of its edit fo
 
 New connections start at **Silent**, which is the right choice for a local database you own. Move a shared staging connection to **Alert** and anything with real customer data in it to **Safe Mode** or **Read-Only**.
 
-Four things the table cannot carry. The confirmation dialog previews the SQL it is about to run. Touch ID falls back to your macOS password on a Mac without it. **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
+Four things the table cannot carry. The confirmation dialog shows the whole statement, syntax highlighted and scrollable, with a **Copy All** button and a line naming the connection and whatever asked to run it. Touch ID falls back to your macOS password on a Mac without it.
+
+<Frame caption="The statement arrives whole, however long it is">
+  <img className="block dark:hidden" src="/images/safe-mode-confirmation.png" alt="Confirmation dialog over a query tab, showing a fourteen line UPDATE with Cancel and Execute" />
+  <img className="hidden dark:block" src="/images/safe-mode-confirmation-dark.png" alt="Confirmation dialog over a query tab, showing a fourteen line UPDATE with Cancel and Execute" />
+</Frame>
+ **Silent** is not a free pass: `DROP`, `TRUNCATE`, and a `DELETE` with no `WHERE` still raise the built-in dangerous query warning even there. And **Read-Only** goes past queries to the interface itself, disabling inline cell editing, adding, deleting and duplicating rows, table truncate and drop, and import.
 
 ## Connections that are always read-only
 
@@ -100,4 +106,6 @@ A write from an external client (Raycast, Cursor, Claude Desktop, any MCP client
 2. **Token scope** (per integration: `readOnly` / `readWrite` / `fullAccess`), issued by the [pairing flow](/external-api/pairing). The effective permission is `MIN(token.scope, connection.externalAccess)`.
 3. **Safe Mode**, per query. Everything on this page then applies, Touch ID prompts and confirmation dialogs included.
 
-`DROP` and `TRUNCATE` always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time: through the client's own elicitation prompt where it has one, otherwise through TablePro's dialog. No token scope skips it. See the [External API security model](/external-api/index#security-model).
+`DROP` and `TRUNCATE` always go through the `confirm_destructive_operation` tool, which needs a `fullAccess` token and the user's approval every time. No token scope skips it. See the [External API security model](/external-api/index#security-model).
+
+A client that answers its own approval prompt has only answered its own. Only a `fullAccess` token stands in for TablePro's dialog. On every other token the dialog still appears on the Mac, so a `readWrite` client asks twice.

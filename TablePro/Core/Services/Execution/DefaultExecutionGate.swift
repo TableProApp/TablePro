@@ -10,6 +10,7 @@ internal actor DefaultExecutionGate: ExecutionGate {
     private let authenticating: OperationAuthenticating
     private let safeModeLevelResolver: @Sendable (UUID) async -> SafeModeLevel
     private let forcesWriteResolver: @Sendable (DatabaseType) async -> Bool
+    private let connectionNameResolver: @Sendable (UUID) async -> String?
     private let auditLog: any ExecutionAuditLogging
 
     init(
@@ -17,12 +18,14 @@ internal actor DefaultExecutionGate: ExecutionGate {
         authenticating: OperationAuthenticating,
         safeModeLevelResolver: @escaping @Sendable (UUID) async -> SafeModeLevel,
         forcesWriteResolver: @escaping @Sendable (DatabaseType) async -> Bool,
+        connectionNameResolver: @escaping @Sendable (UUID) async -> String? = { _ in nil },
         auditLog: any ExecutionAuditLogging = ExecutionAuditLog.shared
     ) {
         self.confirming = confirming
         self.authenticating = authenticating
         self.safeModeLevelResolver = safeModeLevelResolver
         self.forcesWriteResolver = forcesWriteResolver
+        self.connectionNameResolver = connectionNameResolver
         self.auditLog = auditLog
     }
 
@@ -76,10 +79,15 @@ internal actor DefaultExecutionGate: ExecutionGate {
                 return .denied(reason: String(localized: "Confirmation is required for this operation"))
             }
             let confirmed = await confirming.confirm(
-                sql: request.sql ?? "",
-                operationDescription: request.operationDescription,
-                connectionId: request.connectionId,
-                isDestructive: isDestructive
+                OperationConfirmationRequest(
+                    sql: request.sql,
+                    operationDescription: request.operationDescription,
+                    connectionId: request.connectionId,
+                    connectionName: await connectionNameResolver(request.connectionId),
+                    databaseType: request.databaseType,
+                    caller: request.caller,
+                    isDestructive: isDestructive
+                )
             )
             guard confirmed else {
                 return .denied(reason: String(localized: "Operation cancelled by user"))

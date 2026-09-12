@@ -78,6 +78,79 @@ struct SQLReviewSheetTests {
         #expect(result.display.contains("501 more characters"))
     }
 
+    /// A preview may make MQL easier to read. A confirmation may not: the user is agreeing to the
+    /// text in front of them, so it has to be the text that runs.
+    @Test("Verbatim mode leaves MongoDB Extended JSON and the terminator alone")
+    func verbatimModeDoesNotRewrite() {
+        let statement = #"db.users.deleteOne({"_id": {"$oid": "507f1f77bcf86cd799439011"}})"#
+        let result = SQLReviewSheet.build(
+            statements: [statement],
+            databaseType: .mongodb,
+            verbatim: true
+        )
+        #expect(result.full == statement)
+        #expect(result.display == statement)
+        #expect(!result.full.contains("ObjectId("))
+        #expect(!result.full.hasSuffix(";"))
+    }
+
+    /// A preview may stop early and leave the rest to Copy All. A confirmation may not: a `WHERE`
+    /// clause past the cut is exactly the part the user needed to read.
+    @Test("A statement past the display cap is still shown whole when it is being confirmed")
+    func verbatimModeNeverTruncates() {
+        let padding = String(repeating: "a", count: SQLReviewSheet.maxDisplayChars + 5_000)
+        let statement = "UPDATE accounts SET note = '\(padding)' WHERE customer_id = 42"
+        let result = SQLReviewSheet.build(statements: [statement], databaseType: .mysql, verbatim: true)
+
+        #expect(result.display == result.full)
+        #expect(result.full == statement)
+        #expect(result.mode != .truncated)
+        #expect(result.display.hasSuffix("WHERE customer_id = 42"))
+    }
+
+    @Test("A preview past the display cap still truncates and says so")
+    func previewModeStillTruncates() {
+        let body = String(repeating: "a", count: SQLReviewSheet.maxDisplayChars + 500)
+        let result = SQLReviewSheet.build(statements: [body], databaseType: .mysql)
+        #expect(result.mode == .truncated)
+        #expect(result.display != result.full)
+    }
+
+    /// The windowless path holds the main actor inside `NSApp.runModal` until the button resolves
+    /// its gate, so a confirmation that deferred the answer to a task would deadlock.
+    @Test("A confirmation answers on the button, not on a task")
+    func confirmationWorkIsImmediate() {
+        var answered = false
+        let action = SQLReviewSheet.PrimaryAction(
+            title: "Execute",
+            isDestructive: false,
+            takesDefaultAction: false,
+            work: .immediate { answered = true }
+        )
+        guard case .immediate(let perform) = action.work else {
+            Issue.record("a confirmation must answer immediately")
+            return
+        }
+        perform()
+        #expect(answered)
+    }
+
+    @Test("Applying a plan keeps the asynchronous form")
+    func applyWorkStaysAsynchronous() {
+        let action = SQLReviewSheet.PrimaryAction(title: "Execute", isDestructive: false) {}
+        guard case .asynchronous = action.work else {
+            Issue.record("applying a plan runs for as long as the server takes")
+            return
+        }
+    }
+
+    @Test("A preview still rewrites Extended JSON and terminates the statement")
+    func previewModeStillRewrites() {
+        let statement = #"db.users.deleteOne({"_id": {"$oid": "507f1f77bcf86cd799439011"}})"#
+        let result = SQLReviewSheet.build(statements: [statement], databaseType: .mysql)
+        #expect(result.full.hasSuffix(";"))
+    }
+
     @Test("Empty statement list returns empty display")
     func emptyStatements() {
         let result = SQLReviewSheet.build(statements: [], databaseType: .mysql)

@@ -29,6 +29,18 @@ internal enum ExecutionGateProvider {
             await MainActor.run {
                 !PluginManager.shared.supportsReadOnlyMode(for: databaseType)
             }
+        },
+        connectionNameResolver: { connectionId in
+            await MainActor.run {
+                switch DatabaseManager.shared.connectionState(connectionId) {
+                case .live(_, let session):
+                    return session.connection.name
+                case .stored(let connection):
+                    return connection.name
+                case .unknown:
+                    return nil
+                }
+            }
         }
     )
 }
