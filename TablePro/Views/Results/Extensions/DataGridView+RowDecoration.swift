@@ -45,6 +45,10 @@ extension TableViewCoordinator {
         return resolved
     }
 
+    func pendingChangeDescription(row: Int, columnIndex: Int) -> String? {
+        DataGridCellTextMark.accessibilityDescription(state: visualState(for: row), columnIndex: columnIndex)
+    }
+
     func highlightDescription(row: Int, columnIndex: Int) -> String? {
         guard let rule = visualState(for: row).drawnHighlightRule(forColumn: columnIndex) else { return nil }
         return HighlightRuleDescription.condition(of: rule, valueLimit: HighlightRuleDescription.menuValueLimit)

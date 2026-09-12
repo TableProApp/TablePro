@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Strikethrough on a row queued for deletion, and an underline on a new row or an edited value.
 - Google Cloud Spanner as a registry plugin over the REST API. (#1226, #2480)
 - TiDB and Databend connection types on the MySQL driver. (#1066, #2514)
 - Empty state in the inspector and the assistant for a connection that is not up.
