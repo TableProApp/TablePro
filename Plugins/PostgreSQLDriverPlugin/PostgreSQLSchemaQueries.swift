@@ -23,7 +23,7 @@ enum PostgreSQLSchemaQueries {
     /// Like `current_schema()`, but resolves via `current_schemas(false)`,
     /// which omits search path entries that do not correspond to existing,
     /// searchable schemas.
-    static let firstSearchPathSchema = "SELECT current_schemas(false)[1]"
+    static let firstSearchPathSchema = "SELECT (current_schemas(false))[1]"
 
     /// Queries tried in order when `current_schema()` resolves to NULL, so a
     /// database without a `public` schema still gets a usable default schema
@@ -73,9 +73,10 @@ enum PostgreSQLSchemaQueries {
     /// implement; the caller passes `false` when those catalogs are absent so
     /// the whole query does not fail with `relation does not exist`.
     ///
-    /// `includeComments` projects each table's comment via `obj_description` /
-    /// `to_regclass`. Engines that lack those functions fail the whole listing,
-    /// so the caller passes `false` to fall back to a comment-free listing.
+    /// `includeComments` projects each table's comment via `obj_description`
+    /// over the relation's oid. Engines that lack that function fail the whole
+    /// listing, so the caller passes `false` to fall back to a comment-free
+    /// listing.
     ///
     /// `includePartitionAwareness` labels a declarative partition parent as
     /// `PARTITIONED TABLE` and drops its partition children, which
@@ -95,17 +96,18 @@ enum PostgreSQLSchemaQueries {
     /// ordinary table (`relkind = 'r'`), and they are independently useful
     /// tables rather than an implementation detail of one parent.
     static func fetchTables(
-        schemaLiteral: String,
+        schema: String,
         includeMaterializedViews: Bool,
         includeForeignTables: Bool,
         includeComments: Bool = true,
         includePartitionAwareness: Bool = true
     ) -> String {
-        func commentColumn(_ expression: String) -> String {
-            includeComments ? expression : "NULL::text"
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        func commentColumn(_ oidExpression: String) -> String {
+            includeComments ? "obj_description(\(oidExpression), 'pg_class')" : "NULL::text"
         }
 
-        let partitionJoin = includePartitionAwareness ? """
+        let classJoin = (includeComments || includePartitionAwareness) ? """
 
             LEFT JOIN pg_catalog.pg_namespace pn ON pn.nspname = t.table_schema
             LEFT JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.oid AND pc.relname = t.table_name
@@ -128,20 +130,25 @@ enum PostgreSQLSchemaQueries {
         var unions: [String] = [
             """
             SELECT t.table_name, \(tableTypeColumn) AS table_type,
-                   \(commentColumn("obj_description(to_regclass(quote_ident(t.table_schema) || '.' || quote_ident(t.table_name)), 'pg_class')")) AS table_comment
-            FROM information_schema.tables t\(partitionJoin)
-            WHERE t.table_schema = '\(schemaLiteral)'
+                   \(commentColumn("pc.oid")) AS table_comment
+            FROM information_schema.tables t\(classJoin)
+            WHERE t.table_schema = \(schemaLiteral)
               AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
             """
         ]
 
         if includeMaterializedViews {
+            let matviewJoin = includeComments ? """
+
+                LEFT JOIN pg_catalog.pg_namespace mn ON mn.nspname = m.schemaname
+                LEFT JOIN pg_catalog.pg_class mc ON mc.relnamespace = mn.oid AND mc.relname = m.matviewname
+                """ : ""
             unions.append(
                 """
                 SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-                       \(commentColumn("obj_description(to_regclass(quote_ident(m.schemaname) || '.' || quote_ident(m.matviewname)), 'pg_class')")) AS table_comment
-                FROM pg_matviews m
-                WHERE m.schemaname = '\(schemaLiteral)'
+                       \(commentColumn("mc.oid")) AS table_comment
+                FROM pg_matviews m\(matviewJoin)
+                WHERE m.schemaname = \(schemaLiteral)
                 """
             )
         }
@@ -150,11 +157,11 @@ enum PostgreSQLSchemaQueries {
             unions.append(
                 """
                 SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-                       \(commentColumn("obj_description(c.oid, 'pg_class')")) AS table_comment
+                       \(commentColumn("c.oid")) AS table_comment
                 FROM pg_foreign_table ft
                 JOIN pg_class c ON c.oid = ft.ftrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = '\(schemaLiteral)'
+                WHERE n.nspname = \(schemaLiteral)
                 """
             )
         }
@@ -188,6 +195,30 @@ enum PostgreSQLSchemaQueries {
         return "SET search_path TO \(quotedIdentifier)"
     }
 
+    static func collationList(capabilities: PostgreSQLCapabilities) -> String {
+        guard capabilities.hasCollationProvider else {
+            return "SELECT collname, 'c' FROM pg_catalog.pg_collation WHERE oid <> 100 ORDER BY collname"
+        }
+        return "SELECT collname, collprovider FROM pg_catalog.pg_collation WHERE collprovider IN ('b', 'c', 'i') ORDER BY collname"
+    }
+
+    static func allTablesMetadata(schema: String) -> String {
+        """
+        SELECT
+            schemaname as schema,
+            relname as name,
+            'TABLE' as kind,
+            n_live_tup as estimated_rows,
+            pg_size_pretty(pg_total_relation_size(relid)) as total_size,
+            pg_size_pretty(pg_relation_size(relid)) as data_size,
+            pg_size_pretty(pg_indexes_size(relid)) as index_size,
+            obj_description(relid, 'pg_class') as comment
+        FROM pg_stat_user_tables
+        WHERE schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+        ORDER BY relname
+        """
+    }
+
     static let enumTypeOidQuery = """
         SELECT t.oid::text, t.typarray::text, t.typname
         FROM pg_catalog.pg_type t
@@ -217,24 +248,25 @@ enum PostgreSQLSchemaQueries {
     /// `conkey` carries the attribute numbers the constraint touches, so the columns involved come
     /// from the catalog rather than from parsing the expression. `pg_get_constraintdef` is the only
     /// supported way to read the text: `consrc` was removed in PostgreSQL 12.
-    static func checkConstraintsQuery(schemaLiteral: String, tableLiteral: String) -> String {
-        """
+    static func checkConstraintsQuery(schema: String, table: String) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        return """
         SELECT
             con.conname,
             pg_get_constraintdef(con.oid),
             con.convalidated,
             COALESCE((
-                SELECT to_json(array_agg(att.attname ORDER BY att.attnum))::text
-                FROM unnest(con.conkey) AS k(attnum)
-                JOIN pg_catalog.pg_attribute att
-                    ON att.attrelid = con.conrelid AND att.attnum = k.attnum
-            ), \'[]\')
+                SELECT array_agg(att.attname ORDER BY att.attnum)::text
+                FROM pg_catalog.pg_attribute att
+                WHERE att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+            ), \'{}\')
         FROM pg_catalog.pg_constraint con
         JOIN pg_catalog.pg_class cls ON cls.oid = con.conrelid
         JOIN pg_catalog.pg_namespace ns ON ns.oid = cls.relnamespace
         WHERE con.contype = \'c\'
-            AND ns.nspname = \'\(schemaLiteral)\'
-            AND cls.relname = \'\(tableLiteral)\'
+            AND ns.nspname = \(schemaLiteral)
+            AND cls.relname = \(tableLiteral)
         ORDER BY con.conname
         """
     }

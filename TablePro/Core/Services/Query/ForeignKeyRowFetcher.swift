@@ -52,6 +52,7 @@ enum ForeignKeyRowFetcher {
             quotedTable: quotedTable,
             quotedColumn: driver.quoteIdentifier(reference.referencedColumn),
             escapedValue: driver.escapeStringLiteral(value),
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
             dialect: PluginManager.shared.sqlDialect(for: databaseType)
         )
 

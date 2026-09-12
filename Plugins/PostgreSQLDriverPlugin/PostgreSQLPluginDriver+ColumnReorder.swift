@@ -47,13 +47,12 @@ extension PostgreSQLPluginDriver {
         var statements: [String] = []
         statements.append("ALTER TABLE \(qualified) RENAME TO \(quoteIdentifier("\(table)_tablepro_reorder"))")
         statements.append("CREATE TABLE \(qualified) (\n  " + body.joined(separator: ",\n  ") + "\n)")
-        /// `OVERRIDING SYSTEM VALUE` unconditionally. A `GENERATED ALWAYS AS IDENTITY` column
-        /// refuses a written value without it and takes the whole rebuild down; measured, the
-        /// clause is accepted and does nothing on a `BY DEFAULT` identity and on a table that has
-        /// no identity column at all.
-        statements.append("""
-            INSERT INTO \(qualified) (\(copyList)) OVERRIDING SYSTEM VALUE SELECT \(copyList) FROM \(staging)
-            """)
+        statements.append(PostgreSQLVersionedStatements.copyRows(
+            into: qualified,
+            from: staging,
+            columnList: copyList,
+            capabilities: versionedCapabilities
+        ))
         statements.append(contentsOf: parts.identityResets(qualified: qualified, quote: quoteIdentifier))
         statements.append(contentsOf: parts.inboundForeignKeyDrops)
         /// A `serial` column's default still calls the sequence the staging table owns, so `DROP
@@ -192,9 +191,9 @@ extension PostgreSQLPluginDriver {
             guard let name = row[safe: 0]?.asText, let definition = row[safe: 1]?.asText else { continue }
             parts.columnNames.append(name)
             parts.columnDefinitions[name] = definition
-            if isTrue(row[safe: 2]?.asText) { parts.identityColumns.append(name) }
+            if PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText) { parts.identityColumns.append(name) }
             /// A generated column is computed, never written, so `INSERT` refuses it by name.
-            if !isTrue(row[safe: 3]?.asText) { parts.copyableColumns.append(name) }
+            if !PostgreSQLCatalogBoolean.isTrue(row[safe: 3]?.asText) { parts.copyableColumns.append(name) }
         }
 
         /// Named, and added after the staging table is gone. Declared inline instead, PostgreSQL
@@ -344,12 +343,5 @@ extension PostgreSQLPluginDriver {
 
     private func textRows(_ query: String) async throws -> [String] {
         try await execute(query: query).rows.compactMap { $0[safe: 0]?.asText }
-    }
-
-    /// libpq reports a boolean as `t` on the text protocol and the driver may hand it back either
-    /// way, so both spellings are accepted rather than one being assumed.
-    private func isTrue(_ value: String?) -> Bool {
-        guard let value else { return false }
-        return value == "t" || value.lowercased() == "true"
     }
 }

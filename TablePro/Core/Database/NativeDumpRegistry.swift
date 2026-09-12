@@ -34,8 +34,10 @@ enum NativeDumpRegistry {
         formatId: String? = nil
     ) -> NativeDumpDescriptor? {
         switch type {
-        case .postgresql, .redshift:
-            return postgres
+        case .postgresql:
+            return postgres(toolForServer: postgresToolForServer)
+        case .redshift:
+            return postgres(toolForServer: nil)
         case .mysql, .mariadb:
             return mysql
         case .mongodb:
@@ -70,7 +72,15 @@ enum NativeDumpRegistry {
 
     // MARK: - PostgreSQL
 
-    private static var postgres: NativeDumpDescriptor {
+    /// Redshift reports 8.0.2, which no `pg_dump` release claims to support, so only PostgreSQL
+    /// itself is matched to the server.
+    static let postgresToolForServer: @Sendable (String, String?) -> NativeDumpToolSelection = { binary, serverVersion in
+        PostgreSQLDumpToolLocator.select(binary: binary, serverVersion: serverVersion)
+    }
+
+    private static func postgres(
+        toolForServer: (@Sendable (String, String?) -> NativeDumpToolSelection)?
+    ) -> NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .commandLineTool(
                 NativeDumpDescriptor.CommandLineTool(
@@ -81,6 +91,7 @@ enum NativeDumpRegistry {
                     restoreDelivery: .toolWritesFile,
                     restoreExitPolicy: .toleratesUnrecognizedSessionSettings,
                     requiresUntranslatedMessages: true,
+                    toolForServer: toolForServer,
                     backupArguments: { request in
                         connectionFlags(request)
                             + ["-Fc", "-d", request.database]

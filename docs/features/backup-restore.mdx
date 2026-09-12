@@ -18,6 +18,8 @@ MariaDB 11.0 renamed its clients, so `mariadb-dump` and `mariadb` are accepted i
 
 The lookup takes the first match from `/usr/bin/which`, then `/opt/homebrew/bin`, `/usr/local/bin`, and Postgres.app's latest version. That path decides which client version does the work.
 
+On PostgreSQL that match is checked against the server first, for both directions. `pg_dump` and `pg_restore` refuse a server newer than themselves, 15 and later refuse servers older than 9.2, and TablePro names the database with `-d`, which arrived in 9.3. When the first match cannot reach the server, the newest one that can is taken from the Homebrew `postgresql@…` and `libpq` installs, every Postgres.app version, and `/Library/PostgreSQL`. When none can, the run stops before it starts and names the version to install: PostgreSQL 9.1 needs `pg_dump` 9.3 to 14, so `brew install postgresql@14`. A binary that does not answer `--version` is used anyway.
+
 DuckDB is the exception: its dump is a statement the engine already in front of TablePro runs, over the connection that is already open.
 
 **File > Backup Dump…** is dimmed on an engine that is not in the table, and on a libSQL connection pointed at a Turso URL rather than a local file, which `sqlite3` cannot reach. For those, use a SQL export from [Import & Export](/features/import-export).

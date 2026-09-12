@@ -123,6 +123,34 @@ struct PostgreSQLPlanParserTests {
         #expect(plan.rootNode.actualLoops == 1)
     }
 
+    @Test("PostgreSQL 9.3 and earlier report the run time as Total Runtime")
+    func readsTotalRuntimeFromOlderServers() throws {
+        let legacyPlan = """
+        [
+          {
+            "Plan": {
+              "Node Type": "Result",
+              "Startup Cost": 0.00,
+              "Total Cost": 0.01,
+              "Plan Rows": 1,
+              "Plan Width": 0,
+              "Actual Startup Time": 0.191,
+              "Actual Total Time": 0.193,
+              "Actual Rows": 1,
+              "Actual Loops": 1
+            },
+            "Triggers": [],
+            "Total Runtime": 1.464
+          }
+        ]
+        """
+
+        let plan = try #require(parser.parse(rawText: legacyPlan))
+
+        #expect(plan.executionTime == 1.464)
+        #expect(plan.planningTime == nil)
+    }
+
     @Test("Rejects malformed and non-plan input")
     func rejectsMalformedInput() {
         #expect(parser.parse(rawText: "") == nil)

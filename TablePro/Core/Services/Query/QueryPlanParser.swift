@@ -31,7 +31,7 @@ struct PostgreSQLPlanParser: QueryPlanParser {
         }
 
         let planningTime = planDict["Planning Time"] as? Double
-        let executionTime = planDict["Execution Time"] as? Double
+        let executionTime = (planDict["Execution Time"] ?? planDict["Total Runtime"]) as? Double
         let rootNode = parseNode(plan)
 
         var queryPlan = QueryPlan(

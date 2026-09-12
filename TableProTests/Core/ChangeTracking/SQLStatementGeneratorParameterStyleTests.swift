@@ -37,14 +37,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("PostgreSQL defaults to dollar style")
     func testPostgreSQLDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .postgresql)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -57,14 +57,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("Redshift defaults to dollar style")
     func testRedshiftDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .redshift)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -74,14 +74,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("DuckDB defaults to dollar style")
     func testDuckDBDefaultsDollar() throws {
         let generator = try makeGenerator(databaseType: .duckdb)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -91,14 +91,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("MySQL defaults to questionMark style")
     func testMySQLDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .mysql)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -109,14 +109,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("SQLite defaults to questionMark style")
     func testSQLiteDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .sqlite)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -127,14 +127,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("MSSQL defaults to questionMark style")
     func testMSSQLDefaultsQuestionMark() throws {
         let generator = try makeGenerator(databaseType: .mssql)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -147,14 +147,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("Dollar style generates $1, $2 placeholders for INSERT")
     func testDollarStyleInsert() throws {
         let generator = try makeGenerator(parameterStyle: .dollar)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -167,14 +167,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     @Test("QuestionMark style generates ? placeholders for INSERT")
     func testQuestionMarkStyleInsert() throws {
         let generator = try makeGenerator(parameterStyle: .questionMark)
-        let insertedRowData: [Int: [PluginCellValue]] = [0: ["1", "John", "john@example.com"]]
+        let insertedRowData: [RowID: [PluginCellValue]] = [.existing(0): ["1", "John", "john@example.com"]]
         let changes: [RowChange] = [
-            RowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
+            RowChange(rowID: .existing(0), type: .insert, cellChanges: [], originalRow: nil)
         ]
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: insertedRowData,
-            deletedRowIndices: [], insertedRowIndices: [0]
+            deletedRowIDs: [], insertedRowIDs: [.existing(0)]
         )
 
         #expect(statements.count == 1)
@@ -188,7 +188,7 @@ struct SQLStatementGeneratorParameterStyleTests {
         let generator = try makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .update,
                 cellChanges: [
                     CellChange(columnIndex: 1, columnName: "name", oldValue: "John", newValue: "Jane")
@@ -199,7 +199,7 @@ struct SQLStatementGeneratorParameterStyleTests {
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: [:],
-            deletedRowIndices: [], insertedRowIndices: []
+            deletedRowIDs: [], insertedRowIDs: []
         )
 
         #expect(statements.count == 1)
@@ -213,7 +213,7 @@ struct SQLStatementGeneratorParameterStyleTests {
         let generator = try makeGenerator(databaseType: .postgresql, parameterStyle: .dollar)
         let changes: [RowChange] = [
             RowChange(
-                rowIndex: 0,
+                rowID: .existing(0),
                 type: .delete,
                 cellChanges: [],
                 originalRow: ["1", "John", "john@example.com"]
@@ -222,7 +222,7 @@ struct SQLStatementGeneratorParameterStyleTests {
 
         let statements = generator.generateStatements(
             from: changes, insertedRowData: [:],
-            deletedRowIndices: [0], insertedRowIndices: []
+            deletedRowIDs: [.existing(0)], insertedRowIDs: []
         )
 
         #expect(statements.count == 1)

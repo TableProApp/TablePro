@@ -177,6 +177,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
     var serverVersion: String? { get }
+    var hasLostConnection: Bool { get }
     var parameterStyle: ParameterStyle { get }
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
@@ -314,6 +315,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// after is what turns that into a refusal instead of silent loss. Nil where the driver cannot
     /// answer, which stands the check down for an engine TablePro never runs a rebuild on anyway.
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String?
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String?
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
@@ -559,6 +564,8 @@ public extension PluginDatabaseDriver {
 
     var serverVersion: String? { nil }
 
+    var hasLostConnection: Bool { false }
+
     var parameterStyle: ParameterStyle { .questionMark }
 
     func resolveQueryCompletionProfile(
@@ -781,6 +788,10 @@ public extension PluginDatabaseDriver {
     ) async throws -> PluginColumnReorderPlan? { nil }
 
     func columnReorderSchemaFingerprint(table: String, schema: String?) async throws -> String? { nil }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? { nil }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 

@@ -117,7 +117,7 @@ internal struct SQLRowToStatementConverter {
         case .null:
             return "NULL"
         case .text(let s):
-            return "'\(escapeStringFn(s))'"
+            return "\(SQLStringLiteralPrefix.forDatabaseType(databaseType))'\(escapeStringFn(s))'"
         case .bytes(let data):
             return formatBinaryLiteral(data)
         }

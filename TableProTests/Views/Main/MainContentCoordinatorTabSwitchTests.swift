@@ -350,7 +350,7 @@ struct MainContentCoordinatorTabSwitchTests {
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -388,7 +388,7 @@ struct MainContentCoordinatorTabSwitchTests {
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",
@@ -572,7 +572,7 @@ struct MainContentCoordinatorTabSwitchTests {
             triggerReload: false
         )
         coordinator.changeManager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "total",
             oldValue: "10",
@@ -895,7 +895,7 @@ struct MainContentCoordinatorTabSwitchTests {
             triggerReload: false
         )
         manager.recordCellChange(
-            rowIndex: 0,
+            rowID: .existing(0),
             columnIndex: 1,
             columnName: "name",
             oldValue: "Alice",

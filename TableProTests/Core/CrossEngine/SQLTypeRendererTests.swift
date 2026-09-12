@@ -37,6 +37,38 @@ final class SQLTypeRendererTests: XCTestCase {
         XCTAssertEqual(spelling("DOUBLE", from: .mysql, to: .postgres), "DOUBLE PRECISION")
     }
 
+    func testJSONForAPostgresTargetFollowsTheServerVersion() {
+        let json = SQLTypeParser.parse("JSON", family: .mysql)
+        XCTAssertEqual(SQLTypeRenderer.render(json, family: .postgres).spelling, "JSONB")
+        XCTAssertEqual(SQLTypeRenderer.render(json, family: .postgres, jsonColumnType: .jsonb).spelling, "JSONB")
+        XCTAssertEqual(SQLTypeRenderer.render(json, family: .postgres, jsonColumnType: .json).spelling, "JSON")
+
+        let preJSON = SQLTypeRenderer.render(json, family: .postgres, jsonColumnType: .text)
+        XCTAssertEqual(preJSON.spelling, "TEXT")
+        XCTAssertEqual(preJSON.fidelity, .approximated)
+        XCTAssertNotNil(preJSON.reason)
+    }
+
+    func testAJSONArrayForAPostgresTargetFollowsTheServerVersion() {
+        let array = CanonicalColumnType(kind: .array(element: .json), isUnsigned: false, sourceSpelling: "jsonb[]")
+        XCTAssertEqual(SQLTypeRenderer.render(array, family: .postgres, jsonColumnType: .json).spelling, "JSON[]")
+        XCTAssertEqual(SQLTypeRenderer.render(array, family: .postgres).spelling, "JSONB[]")
+    }
+
+    /// Redshift reports 8.0.2 and CockroachDB reports 13.0.0. Reading either as a PostgreSQL
+    /// version turned a `JSONB` column into `TEXT` on a target that holds `JSONB` perfectly well.
+    func testOnlyPostgreSQLItselfReadsTheReportedVersion() {
+        XCTAssertEqual(
+            PostgreSQLServerVersion.jsonColumnType(for: .postgresql, serverVersion: "9.1.24"), .text
+        )
+        XCTAssertEqual(
+            PostgreSQLServerVersion.jsonColumnType(for: .redshift, serverVersion: "8.0.2"), .jsonb
+        )
+        XCTAssertEqual(
+            PostgreSQLServerVersion.jsonColumnType(for: .cockroachdb, serverVersion: "13.0.0"), .jsonb
+        )
+    }
+
     func testPostgresToMySQL() {
         XCTAssertEqual(spelling("boolean", from: .postgres, to: .mysql), "TINYINT(1)")
         XCTAssertEqual(spelling("int4", from: .postgres, to: .mysql), "INT")

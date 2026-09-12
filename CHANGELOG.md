@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Strikethrough on a row queued for deletion, and an underline on a new row or an edited value.
 - Google Cloud Spanner as a registry plugin over the REST API. (#1226, #2480)
 - TiDB and Databend connection types on the MySQL driver. (#1066, #2514)
 - Empty state in the inspector and the assistant for a connection that is not up.
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
+- Structure editor options the connected PostgreSQL server does not support left out: generated columns before 12, BRIN before 9.5, and the MySQL-only FULLTEXT and SPATIAL index types.
 
 ### Removed
 
@@ -47,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
+- Discard restoring a different row than the one edited under a column value filter.
+- Add Row under a column value filter selecting and opening the wrong row for editing.
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
@@ -56,6 +60,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crash opening a MySQL result whose column has no name on iPhone and iPad.
 - Wrong SQLSTATE code in PostgreSQL, Redshift, CockroachDB and PGlite error messages.
 - Read-only write explanation never shown on PostgreSQL servers.
+- Trigger editing and the New Trigger template failing on PostgreSQL 13 and earlier.
+- Reindexing a whole PostgreSQL database failing before PostgreSQL 16.
+- Schema copy, check constraint rename, column reorder and role editing failing on older PostgreSQL servers.
+- FULLTEXT and SPATIAL index types creating a plain B-tree index on PostgreSQL.
+- Table list, foreign keys, triggers, check constraints, types and grants failing on PostgreSQL 9.1 to 9.5. (#2734)
+- Wrong index column order on PostgreSQL 9.4 and earlier.
+- Sequences missing from SQL dumps of PostgreSQL 9.6 and earlier.
+- Create Database failing on PostgreSQL 9.6 and earlier.
+- PostgreSQL unique and primary key indexes shown as plain indexes.
+- PostgreSQL triggers shown as disabled.
+- PostgreSQL `NOT VALID` check constraints shown as validated.
+- Redshift `DISTKEY` missing from a table's indexes.
+- `CYCLE` dropped from PostgreSQL sequences in SQL dumps.
+- PostgreSQL index columns and enum labels containing a comma or a space split apart.
+- Foreign keys to a partitioned table listed once per partition on PostgreSQL 12 and later.
+- PostGIS values left as hex after switching schema.
+- Open transaction aborted when a PostGIS value could not be converted.
+- PostgreSQL all-tables metadata failing for a mixed-case table name.
+- Default PostgreSQL schema taken from the schema list rather than the search path.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
@@ -159,6 +182,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 - Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- Composite foreign keys listing mismatched column pairs on iOS, CockroachDB and Redshift.
+- Foreign keys missing on iOS for a PostgreSQL role that does not own the table.
+- Redshift foreign keys from other schemas shown on a table.
 - PostgreSQL view definitions without `security_barrier`, `security_invoker` or the check option. (#2726)
 - PostgreSQL view definitions that bind to another schema's tables when run elsewhere. (#2726)
 - `CREATE TABLE` in Structure > DDL for a PostgreSQL view or materialized view. (#2726)
@@ -172,10 +198,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Non-ASCII SQL Server filter values turned into `?` and matching the wrong rows on non-Unicode collations.
 - Empty structure, missing indexes and failed renames for non-ASCII SQL Server object names on non-Unicode collations.
 - Changing a defaulted SQL Server column failing when a name contains a quote or non-ASCII text.
+- Silent replay of a PostgreSQL statement on a new connection after a drop, a lost `COMMIT` reported as saved included.
+- Query timeout and startup commands missing after the PostgreSQL driver reconnected on its own.
+- Server Dashboard sessions, metrics and slow queries failing on PostgreSQL 9.6 and earlier.
+- One unanswered metric emptying the whole Server Dashboard metrics panel on PostgreSQL, Redshift and CockroachDB.
+- MCP `get_server_dashboard` reporting a panel the server could not read as an empty list.
+- Backup and restore failing on PostgreSQL 9.1 when the `pg_dump` or `pg_restore` found first is version 15 or later.
+- Missing execution time in query plans on PostgreSQL 9.3 and earlier.
+- Cross-engine copy and JSON import creating `jsonb` columns on PostgreSQL 9.3 and earlier.
+- SQL Server edits and deletes matching no row when the row is identified by a binary column.
+- SQL Server parameters sent to the wrong placeholders when a column name holds a question mark.
+- `[` in a SQL Server filter value read as a wildcard.
+- Non-ASCII text turned into `?` by Copy as INSERT, Copy as IN, Preview Referenced Row, compare scripts and column defaults on SQL Server.
 
 ### Security
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
+- PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
 
 ## [0.73.0] - 2026-09-09

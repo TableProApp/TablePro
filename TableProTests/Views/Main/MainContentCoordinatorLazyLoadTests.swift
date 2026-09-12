@@ -131,7 +131,7 @@ struct MainContentCoordinatorLazyLoadTests {
             Issue.record("expected tab to exist")
             return
         }
-        tabManager.tabs[idx].pendingChanges.deletedRowIndices = [0]
+        tabManager.tabs[idx].pendingChanges.deletedRowIDs = [.existing(0)]
 
         coordinator.lazyLoadCurrentTabIfNeeded()
         #expect(coordinator.pendingLoadTrigger == nil)

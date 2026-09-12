@@ -4,7 +4,7 @@
 //
 //  Value type holding all uncommitted edits to a result set.
 //  Owns the consistency invariants between `changes`, `changeIndex`,
-//  `deletedRowIndices`, `insertedRowIndices`, `modifiedCells`, and
+//  `deletedRowIDs`, `insertedRowIDs`, `modifiedCells`, and
 //  `insertedRowData`. Callers mutate through methods that maintain
 //  the cross-collection state.
 //
@@ -14,15 +14,15 @@ import TableProPluginKit
 
 struct PendingChanges: Equatable {
     private(set) var changes: [RowChange] = []
-    private(set) var deletedRowIndices: Set<Int> = []
+    private(set) var deletedRowIDs: Set<RowID> = []
 
     /// Stamped onto every change so statement generation can recover the order the user worked in.
     /// `changes` cannot carry that order itself: a cancelled change is removed by swapping the last
     /// element into its slot.
     private var nextSequence = 0
-    private(set) var insertedRowIndices: Set<Int> = []
-    private(set) var modifiedCells: [Int: Set<Int>] = [:]
-    private(set) var insertedRowData: [Int: [PluginCellValue]] = [:]
+    private(set) var insertedRowIDs: Set<RowID> = []
+    private(set) var modifiedCells: [RowID: Set<Int>] = [:]
+    private(set) var insertedRowData: [RowID: [PluginCellValue]] = [:]
 
     private var changeIndex: [RowChangeKey: Int] = [:]
 
@@ -31,24 +31,24 @@ struct PendingChanges: Equatable {
 
     // MARK: - Read
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool {
-        deletedRowIndices.contains(rowIndex)
+    func isRowDeleted(_ rowID: RowID) -> Bool {
+        deletedRowIDs.contains(rowID)
     }
 
-    func isRowInserted(_ rowIndex: Int) -> Bool {
-        insertedRowIndices.contains(rowIndex)
+    func isRowInserted(_ rowID: RowID) -> Bool {
+        insertedRowIDs.contains(rowID)
     }
 
-    func isCellModified(rowIndex: Int, columnIndex: Int) -> Bool {
-        modifiedCells[rowIndex]?.contains(columnIndex) == true
+    func isCellModified(rowID: RowID, columnIndex: Int) -> Bool {
+        modifiedCells[rowID]?.contains(columnIndex) == true
     }
 
-    func modifiedColumns(forRow rowIndex: Int) -> Set<Int> {
-        modifiedCells[rowIndex] ?? []
+    func modifiedColumns(forRow rowID: RowID) -> Set<Int> {
+        modifiedCells[rowID] ?? []
     }
 
-    func change(forRow rowIndex: Int, type: ChangeType) -> RowChange? {
-        guard let idx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: type)] else { return nil }
+    func change(forRow rowID: RowID, type: ChangeType) -> RowChange? {
+        guard let idx = changeIndex[RowChangeKey(rowID: rowID, type: type)] else { return nil }
         return changes[idx]
     }
 
@@ -58,7 +58,7 @@ struct PendingChanges: Equatable {
     /// Returns the result so the caller can decide whether to register undo.
     @discardableResult
     mutating func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -67,7 +67,7 @@ struct PendingChanges: Equatable {
     ) -> Bool {
         if oldValue == newValue {
             return rollbackCellIfMatchesOriginal(
-                rowIndex: rowIndex, columnIndex: columnIndex, restoredValue: newValue
+                rowID: rowID, columnIndex: columnIndex, restoredValue: newValue
             )
         }
 
@@ -78,102 +78,91 @@ struct PendingChanges: Equatable {
             newValue: newValue
         )
 
-        if let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
+        if let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
                                columnName: columnName, newValue: newValue)
             return true
         }
 
-        let updateKey = RowChangeKey(rowIndex: rowIndex, type: .update)
+        let updateKey = RowChangeKey(rowID: rowID, type: .update)
         if let updateIdx = changeIndex[updateKey] {
             mergeUpdateCell(at: updateIdx, cellChange: cellChange)
         } else {
             let row = RowChange(
-                rowIndex: rowIndex, type: .update,
+                rowID: rowID, type: .update,
                 cellChanges: [cellChange], originalRow: originalRow
             )
             changes.append(row)
             changeIndex[updateKey] = changes.count - 1
-            modifiedCells[rowIndex, default: []].insert(columnIndex)
+            modifiedCells[rowID, default: []].insert(columnIndex)
         }
         return true
     }
 
-    mutating func recordRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
-        guard !deletedRowIndices.contains(rowIndex) else { return }
-        removeChange(rowIndex: rowIndex, type: .update)
-        modifiedCells.removeValue(forKey: rowIndex)
-        appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
-        deletedRowIndices.insert(rowIndex)
+    mutating func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
+        guard !deletedRowIDs.contains(rowID) else { return }
+        removeChange(rowID: rowID, type: .update)
+        modifiedCells.removeValue(forKey: rowID)
+        appendChange(RowChange(rowID: rowID, type: .delete, originalRow: originalRow))
+        deletedRowIDs.insert(rowID)
     }
 
-    mutating func recordRowInsertion(rowIndex: Int, values: [PluginCellValue]) {
-        guard !insertedRowIndices.contains(rowIndex) else {
-            insertedRowData[rowIndex] = values
+    mutating func recordRowInsertion(rowID: RowID, values: [PluginCellValue]) {
+        guard !insertedRowIDs.contains(rowID) else {
+            insertedRowData[rowID] = values
             return
         }
-        insertedRowData[rowIndex] = values
-        appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: []))
-        insertedRowIndices.insert(rowIndex)
+        insertedRowData[rowID] = values
+        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: []))
+        insertedRowIDs.insert(rowID)
     }
 
     // MARK: - Mutate (cancelling pending edits)
 
-    mutating func undoRowDeletion(rowIndex: Int) -> Bool {
-        guard deletedRowIndices.contains(rowIndex) else { return false }
-        removeChange(rowIndex: rowIndex, type: .delete)
-        deletedRowIndices.remove(rowIndex)
+    mutating func undoRowDeletion(rowID: RowID) -> Bool {
+        guard deletedRowIDs.contains(rowID) else { return false }
+        removeChange(rowID: rowID, type: .delete)
+        deletedRowIDs.remove(rowID)
         return true
     }
 
-    mutating func undoRowInsertion(rowIndex: Int) -> Bool {
-        guard insertedRowIndices.contains(rowIndex) else { return false }
-
-        removeChange(rowIndex: rowIndex, type: .insert)
-        insertedRowIndices.remove(rowIndex)
-        insertedRowData.removeValue(forKey: rowIndex)
-
-        shiftRowIndicesDown(at: rowIndex)
+    mutating func undoRowInsertion(rowID: RowID) -> Bool {
+        guard insertedRowIDs.contains(rowID) else { return false }
+        removeChange(rowID: rowID, type: .insert)
+        insertedRowIDs.remove(rowID)
+        insertedRowData.removeValue(forKey: rowID)
         return true
     }
 
     /// Undo a batch of inserted rows. Returns the saved values for each row in the same order.
-    mutating func undoBatchRowInsertion(rowIndices: [Int], columnCount: Int) -> [[PluginCellValue]] {
-        let validRows = rowIndices.filter { insertedRowIndices.contains($0) }
+    mutating func undoBatchRowInsertion(rowIDs: [RowID], columnCount: Int) -> [[PluginCellValue]] {
+        let validRows = rowIDs.filter { insertedRowIDs.contains($0) }
 
         /// `insertedRowData` holds the whole row. `cellChanges` holds only the columns the user
         /// typed, so rebuilding from it drops the untouched ones and slides the rest left: a name
         /// typed into the third column comes back in the first.
-        let rowValues = validRows.map { rowIndex in
-            insertedRowData[rowIndex] ?? Array(repeating: PluginCellValue.null, count: columnCount)
+        let rowValues = validRows.map { rowID in
+            insertedRowData[rowID] ?? Array(repeating: PluginCellValue.null, count: columnCount)
         }
 
-        for rowIndex in validRows {
-            removeChange(rowIndex: rowIndex, type: .insert)
-            insertedRowIndices.remove(rowIndex)
-            insertedRowData.removeValue(forKey: rowIndex)
+        for rowID in validRows {
+            _ = undoRowInsertion(rowID: rowID)
         }
-
-        shiftRowIndicesDown(atSortedRows: validRows.sorted())
         return rowValues
     }
 
     // MARK: - Replay (driven by NSUndoManager invocation)
 
     /// Re-apply a deletion during undo replay (skips undo registration).
-    mutating func reapplyRowDeletion(rowIndex: Int, originalRow: [PluginCellValue]) {
-        guard !deletedRowIndices.contains(rowIndex) else { return }
-        removeChange(rowIndex: rowIndex, type: .update)
-        modifiedCells.removeValue(forKey: rowIndex)
-        appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
-        deletedRowIndices.insert(rowIndex)
+    mutating func reapplyRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
+        recordRowDeletion(rowID: rowID, originalRow: originalRow)
     }
 
     /// Re-apply a cell edit during undo replay (skips undo registration).
     /// `originalDBValue` is the cell's value in the unmodified database row.
     /// It must be preserved so that a later collapse compares correctly.
     mutating func reapplyCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         originalDBValue: PluginCellValue,
@@ -187,55 +176,52 @@ struct PendingChanges: Equatable {
             newValue: newValue
         )
 
-        if let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
+        if let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
                                columnName: columnName, newValue: newValue)
             return
         }
 
-        let updateKey = RowChangeKey(rowIndex: rowIndex, type: .update)
+        let updateKey = RowChangeKey(rowID: rowID, type: .update)
         if let updateIdx = changeIndex[updateKey] {
             mergeUpdateCell(at: updateIdx, cellChange: cellChange)
         } else {
             let row = RowChange(
-                rowIndex: rowIndex, type: .update,
+                rowID: rowID, type: .update,
                 cellChanges: [cellChange], originalRow: originalRow
             )
             changes.append(row)
             changeIndex[updateKey] = changes.count - 1
-            modifiedCells[rowIndex, default: []].insert(columnIndex)
+            modifiedCells[rowID, default: []].insert(columnIndex)
         }
     }
 
-    /// Replace an inserted row's cell value during undo replay (no shift, no undo).
+    /// Replace an inserted row's cell value during undo replay (no undo).
     mutating func updateInsertedCellDirectly(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         newValue: PluginCellValue
     ) {
-        guard let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] else { return }
+        guard let insertIdx = changeIndex[RowChangeKey(rowID: rowID, type: .insert)] else { return }
         updateInsertedCell(at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue)
     }
 
     /// Restore a cell's value during undo replay when an existing change matches.
     mutating func revertUpdateCell(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         previousValue: PluginCellValue
     ) {
-        guard let updateIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .update)],
+        guard let updateIdx = changeIndex[RowChangeKey(rowID: rowID, type: .update)],
               let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex })
         else { return }
 
         let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
         if previousValue == originalOldValue {
             changes[updateIdx].cellChanges.remove(at: cellIdx)
-            modifiedCells[rowIndex]?.remove(columnIndex)
-            if modifiedCells[rowIndex]?.isEmpty == true {
-                modifiedCells.removeValue(forKey: rowIndex)
-            }
+            removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
             if changes[updateIdx].cellChanges.isEmpty {
                 removeChangeAt(updateIdx)
             }
@@ -250,31 +236,25 @@ struct PendingChanges: Equatable {
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
-    mutating func reinsertRow(rowIndex: Int, columns: [String], savedValues: [PluginCellValue]?) {
-        shiftRowIndicesUp(from: rowIndex)
-        insertedRowIndices.insert(rowIndex)
+    mutating func reinsertRow(rowID: RowID, columns: [String], savedValues: [PluginCellValue]?) {
+        insertedRowIDs.insert(rowID)
         let cellChanges = columns.enumerated().map { index, columnName in
             CellChange(
                 columnIndex: index, columnName: columnName,
                 oldValue: nil, newValue: savedValues?[safe: index] ?? nil
             )
         }
-        appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
+        appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges))
         if let savedValues {
-            insertedRowData[rowIndex] = savedValues
+            insertedRowData[rowID] = savedValues
         }
     }
 
     /// Insert a batch of rows (for undo replay of a batch deletion's undo).
     mutating func reinsertBatch(
-        rowIndices: [Int], rowValues: [[PluginCellValue]], columns: [String]
+        rowIDs: [RowID], rowValues: [[PluginCellValue]], columns: [String]
     ) {
-        for rowIndex in rowIndices.sorted() {
-            shiftRowIndicesUp(from: rowIndex)
-        }
-        for (index, rowIndex) in rowIndices.enumerated().reversed() {
-            guard index < rowValues.count else { continue }
-            let values = rowValues[index]
+        for (rowID, values) in zip(rowIDs, rowValues) {
             let cellChanges = values.enumerated().map { colIndex, value in
                 CellChange(
                     columnIndex: colIndex,
@@ -282,21 +262,20 @@ struct PendingChanges: Equatable {
                     oldValue: nil, newValue: value
                 )
             }
-            appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
-            insertedRowIndices.insert(rowIndex)
-            insertedRowData[rowIndex] = values
+            appendChange(RowChange(rowID: rowID, type: .insert, cellChanges: cellChanges))
+            insertedRowIDs.insert(rowID)
+            insertedRowData[rowID] = values
         }
-        rebuildChangeIndex()
     }
 
     /// Save inserted-row values for a redo replay closure that may need them.
-    func savedInsertedValues(forRow rowIndex: Int) -> [PluginCellValue]? {
-        insertedRowData[rowIndex]
+    func savedInsertedValues(forRow rowID: RowID) -> [PluginCellValue]? {
+        insertedRowData[rowID]
     }
 
     /// Restore inserted-row values when undo restores a row.
-    mutating func restoreInsertedValues(forRow rowIndex: Int, values: [PluginCellValue]) {
-        insertedRowData[rowIndex] = values
+    mutating func restoreInsertedValues(forRow rowID: RowID, values: [PluginCellValue]) {
+        insertedRowData[rowID] = values
     }
 
     // MARK: - Reset / persistence
@@ -305,16 +284,16 @@ struct PendingChanges: Equatable {
         nextSequence = 0
         changes.removeAll()
         changeIndex.removeAll()
-        deletedRowIndices.removeAll()
-        insertedRowIndices.removeAll()
+        deletedRowIDs.removeAll()
+        insertedRowIDs.removeAll()
         modifiedCells.removeAll()
         insertedRowData.removeAll()
     }
 
     mutating func restore(from snapshot: TabChangeSnapshot) {
         changes = snapshot.changes
-        deletedRowIndices = snapshot.deletedRowIndices
-        insertedRowIndices = snapshot.insertedRowIndices
+        deletedRowIDs = snapshot.deletedRowIDs
+        insertedRowIDs = snapshot.insertedRowIDs
         modifiedCells = snapshot.modifiedCells
         insertedRowData = snapshot.insertedRowData
         nextSequence = (changes.map(\.sequence).max() ?? -1) + 1
@@ -324,8 +303,8 @@ struct PendingChanges: Equatable {
     func snapshot(primaryKeyColumns: [String], columns: [String]) -> TabChangeSnapshot {
         var snap = TabChangeSnapshot()
         snap.changes = changes
-        snap.deletedRowIndices = deletedRowIndices
-        snap.insertedRowIndices = insertedRowIndices
+        snap.deletedRowIDs = deletedRowIDs
+        snap.insertedRowIDs = insertedRowIDs
         snap.modifiedCells = modifiedCells
         snap.insertedRowData = insertedRowData
         snap.primaryKeyColumns = primaryKeyColumns
@@ -340,12 +319,12 @@ struct PendingChanges: Equatable {
         stamped.sequence = nextSequence
         nextSequence += 1
         changes.append(stamped)
-        changeIndex[RowChangeKey(rowIndex: stamped.rowIndex, type: stamped.type)] = changes.count - 1
+        changeIndex[RowChangeKey(rowID: stamped.rowID, type: stamped.type)] = changes.count - 1
     }
 
     @discardableResult
-    private mutating func removeChange(rowIndex: Int, type: ChangeType) -> Bool {
-        let key = RowChangeKey(rowIndex: rowIndex, type: type)
+    private mutating func removeChange(rowID: RowID, type: ChangeType) -> Bool {
+        let key = RowChangeKey(rowID: rowID, type: type)
         guard let arrayIndex = changeIndex[key] else { return false }
         removeChangeAt(arrayIndex)
         return true
@@ -353,13 +332,13 @@ struct PendingChanges: Equatable {
 
     private mutating func removeChangeAt(_ arrayIndex: Int) {
         let removed = changes[arrayIndex]
-        changeIndex.removeValue(forKey: RowChangeKey(rowIndex: removed.rowIndex, type: removed.type))
+        changeIndex.removeValue(forKey: RowChangeKey(rowID: removed.rowID, type: removed.type))
 
         let lastIndex = changes.count - 1
         if arrayIndex != lastIndex {
             let moved = changes[lastIndex]
             changes.swapAt(arrayIndex, lastIndex)
-            changeIndex[RowChangeKey(rowIndex: moved.rowIndex, type: moved.type)] = arrayIndex
+            changeIndex[RowChangeKey(rowID: moved.rowID, type: moved.type)] = arrayIndex
         }
         changes.removeLast()
     }
@@ -367,17 +346,24 @@ struct PendingChanges: Equatable {
     private mutating func rebuildChangeIndex() {
         changeIndex.removeAll(keepingCapacity: true)
         for (index, change) in changes.enumerated() {
-            changeIndex[RowChangeKey(rowIndex: change.rowIndex, type: change.type)] = index
+            changeIndex[RowChangeKey(rowID: change.rowID, type: change.type)] = index
+        }
+    }
+
+    private mutating func removeModifiedCell(rowID: RowID, columnIndex: Int) {
+        modifiedCells[rowID]?.remove(columnIndex)
+        if modifiedCells[rowID]?.isEmpty == true {
+            modifiedCells.removeValue(forKey: rowID)
         }
     }
 
     private mutating func updateInsertedCell(
         at insertIdx: Int, columnIndex: Int, columnName: String, newValue: PluginCellValue
     ) {
-        let rowIndex = changes[insertIdx].rowIndex
-        if var stored = insertedRowData[rowIndex], columnIndex < stored.count {
+        let rowID = changes[insertIdx].rowID
+        if var stored = insertedRowData[rowID], columnIndex < stored.count {
             stored[columnIndex] = newValue
-            insertedRowData[rowIndex] = stored
+            insertedRowData[rowID] = stored
         }
 
         let replacement = CellChange(
@@ -392,113 +378,46 @@ struct PendingChanges: Equatable {
     }
 
     private mutating func mergeUpdateCell(at updateIdx: Int, cellChange: CellChange) {
-        let rowIndex = changes[updateIdx].rowIndex
-        if let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: {
+        let rowID = changes[updateIdx].rowID
+        guard let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: {
             $0.columnIndex == cellChange.columnIndex
-        }) {
-            let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
-            let merged = CellChange(
-                columnIndex: cellChange.columnIndex,
-                columnName: cellChange.columnName,
-                oldValue: originalOldValue,
-                newValue: cellChange.newValue
-            )
-            changes[updateIdx].cellChanges[cellIdx] = merged
-
-            if originalOldValue == cellChange.newValue {
-                changes[updateIdx].cellChanges.remove(at: cellIdx)
-                modifiedCells[rowIndex]?.remove(cellChange.columnIndex)
-                if modifiedCells[rowIndex]?.isEmpty == true {
-                    modifiedCells.removeValue(forKey: rowIndex)
-                }
-                if changes[updateIdx].cellChanges.isEmpty {
-                    removeChangeAt(updateIdx)
-                }
-            }
-        } else {
+        }) else {
             changes[updateIdx].cellChanges.append(cellChange)
-            modifiedCells[rowIndex, default: []].insert(cellChange.columnIndex)
+            modifiedCells[rowID, default: []].insert(cellChange.columnIndex)
+            return
+        }
+
+        let originalOldValue = changes[updateIdx].cellChanges[cellIdx].oldValue
+        changes[updateIdx].cellChanges[cellIdx] = CellChange(
+            columnIndex: cellChange.columnIndex,
+            columnName: cellChange.columnName,
+            oldValue: originalOldValue,
+            newValue: cellChange.newValue
+        )
+
+        guard originalOldValue == cellChange.newValue else { return }
+        changes[updateIdx].cellChanges.remove(at: cellIdx)
+        removeModifiedCell(rowID: rowID, columnIndex: cellChange.columnIndex)
+        if changes[updateIdx].cellChanges.isEmpty {
+            removeChangeAt(updateIdx)
         }
     }
 
     @discardableResult
     private mutating func rollbackCellIfMatchesOriginal(
-        rowIndex: Int, columnIndex: Int, restoredValue: PluginCellValue
+        rowID: RowID, columnIndex: Int, restoredValue: PluginCellValue
     ) -> Bool {
-        let updateKey = RowChangeKey(rowIndex: rowIndex, type: .update)
+        let updateKey = RowChangeKey(rowID: rowID, type: .update)
         guard let updateIdx = changeIndex[updateKey],
               let cellIdx = changes[updateIdx].cellChanges.firstIndex(where: { $0.columnIndex == columnIndex }),
               changes[updateIdx].cellChanges[cellIdx].oldValue == restoredValue else {
             return false
         }
         changes[updateIdx].cellChanges.remove(at: cellIdx)
-        modifiedCells[rowIndex]?.remove(columnIndex)
-        if modifiedCells[rowIndex]?.isEmpty == true {
-            modifiedCells.removeValue(forKey: rowIndex)
-        }
+        removeModifiedCell(rowID: rowID, columnIndex: columnIndex)
         if changes[updateIdx].cellChanges.isEmpty {
             removeChangeAt(updateIdx)
         }
         return true
-    }
-
-    /// Renumbers every collection this type keys by row index, in one place.
-    ///
-    /// The state is six things that have to agree: `changes[].rowIndex`, `changeIndex`,
-    /// `insertedRowIndices`, `deletedRowIndices`, `insertedRowData` and `modifiedCells`. There used
-    /// to be three renumbering paths handling three different subsets of them, and the gaps were
-    /// invisible: undoing one row of a pasted batch left the surviving rows' values filed under
-    /// their old indices, so Save wrote one row with another row's values and dropped the rest
-    /// without reporting anything. A single primitive is what makes that class of omission
-    /// impossible rather than merely absent.
-    ///
-    /// A new row always lands at the end of the grid, so nothing pending is ever below an inserted
-    /// one and the delete and modified-cell arms do not fire today. They are here because the
-    /// alternative is three renumbering paths covering three different subsets again, which is
-    /// what this replaced.
-    private mutating func reindex(_ transform: (Int) -> Int) {
-        for i in 0 ..< changes.count {
-            changes[i].rowIndex = transform(changes[i].rowIndex)
-        }
-        insertedRowIndices = Set(insertedRowIndices.map(transform))
-        deletedRowIndices = Set(deletedRowIndices.map(transform))
-        insertedRowData = Dictionary(
-            uniqueKeysWithValues: insertedRowData.map { (transform($0.key), $0.value) }
-        )
-        modifiedCells = Dictionary(
-            uniqueKeysWithValues: modifiedCells.map { (transform($0.key), $0.value) }
-        )
-        rebuildChangeIndex()
-    }
-
-    private mutating func shiftRowIndicesUp(from insertionPoint: Int) {
-        reindex { $0 >= insertionPoint ? $0 + 1 : $0 }
-    }
-
-    private mutating func shiftRowIndicesDown(at removedRow: Int) {
-        modifiedCells.removeValue(forKey: removedRow)
-        reindex { $0 > removedRow ? $0 - 1 : $0 }
-    }
-
-    /// The same renumbering for a whole batch removed at once.
-    private mutating func shiftRowIndicesDown(atSortedRows removedRows: [Int]) {
-        for removedRow in removedRows {
-            modifiedCells.removeValue(forKey: removedRow)
-        }
-        reindex { $0 - Self.countLessThan($0, in: removedRows) }
-    }
-
-    /// Binary search: count of elements strictly less than `target` in a sorted array.
-    private static func countLessThan(_ target: Int, in sorted: [Int]) -> Int {
-        var lo = 0, hi = sorted.count
-        while lo < hi {
-            let mid = (lo + hi) / 2
-            if sorted[mid] < target {
-                lo = mid + 1
-            } else {
-                hi = mid
-            }
-        }
-        return lo
     }
 }

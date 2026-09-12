@@ -6,10 +6,17 @@
 import Foundation
 
 enum ServerDashboardQueryProviderFactory {
-    static func provider(for databaseType: DatabaseType) -> ServerDashboardQueryProvider? {
+    static func provider(for databaseType: DatabaseType, serverVersion: String? = nil) -> ServerDashboardQueryProvider? {
         switch databaseType {
-        case .postgresql, .redshift, .cockroachdb:
-            return PostgreSQLDashboardProvider()
+        case .postgresql:
+            return PostgreSQLDashboardProvider(
+                activityCatalog: PostgreSQLActivityCatalog(serverVersion: PostgreSQLServerVersion(serverVersion)),
+                metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
+            )
+        case .redshift, .cockroachdb:
+            return PostgreSQLDashboardProvider(
+                metricSet: PostgreSQLDashboardMetricSet(databaseType: databaseType)
+            )
         case .mysql, .mariadb:
             return MySQLDashboardProvider()
         case .mssql:

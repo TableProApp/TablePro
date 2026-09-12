@@ -23,6 +23,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.status }
     }
 
+    var hasLostConnection: Bool {
+        pluginDriver.hasLostConnection
+    }
+
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
@@ -388,6 +392,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var triggerEditUsesReplace: Bool { pluginDriver.triggerEditUsesReplace }
 
     var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { pluginDriver.unsupportedStructureColumnFields }
+
+    var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)

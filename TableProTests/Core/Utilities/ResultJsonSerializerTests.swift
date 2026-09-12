@@ -26,7 +26,7 @@ struct ResultJsonSerializerTests {
     private func serialize(
         displayIDs: [RowID]? = nil,
         selected: Set<Int> = [],
-        deleted: Set<Int>? = nil
+        deleted: Set<RowID>? = nil
     ) -> ResultJsonSerializer.Output {
         guard let deleted else {
             return ResultJsonSerializer.serialize(
@@ -40,7 +40,7 @@ struct ResultJsonSerializerTests {
             tableRows: makeTableRows(),
             displayIDs: displayIDs,
             selectedDisplayIndices: selected,
-            deletedDisplayIndices: deleted,
+            deletedRowIDs: deleted,
             columns: .identity
         )
     }
@@ -55,9 +55,9 @@ struct ResultJsonSerializerTests {
         #expect(withoutParameter.json.contains("\"b\""))
     }
 
-    @Test("a supplied deleted position is skipped")
-    func deletedPositionIsSkipped() {
-        let output = serialize(deleted: [1])
+    @Test("a supplied deleted row is skipped")
+    func deletedRowIsSkipped() {
+        let output = serialize(deleted: [.existing(1)])
 
         #expect(output.rowCount == 2)
         #expect(output.json.contains("\"a\""))
@@ -65,9 +65,9 @@ struct ResultJsonSerializerTests {
         #expect(output.json.contains("\"c\""))
     }
 
-    @Test("deleted positions are display positions, not storage indices")
-    func deletedPositionsAreDisplayPositions() {
-        let output = serialize(displayIDs: [.existing(2), .existing(1)], deleted: [0])
+    @Test("a deletion names a row, not the position a value filter gives it")
+    func deletionsNameRowsNotPositions() {
+        let output = serialize(displayIDs: [.existing(2), .existing(1)], deleted: [.existing(2)])
 
         #expect(output.rowCount == 1)
         #expect(output.json.contains("\"b\""))
@@ -76,7 +76,7 @@ struct ResultJsonSerializerTests {
 
     @Test("deleting every displayed row leaves an empty array")
     func deletingEverythingLeavesAnEmptyArray() {
-        let output = serialize(deleted: [0, 1, 2])
+        let output = serialize(deleted: [.existing(0), .existing(1), .existing(2)])
 
         #expect(output.rowCount == 0)
         #expect(output.json == "[]")

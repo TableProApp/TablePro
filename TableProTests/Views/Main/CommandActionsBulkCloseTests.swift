@@ -268,7 +268,7 @@ struct CommandActionsBulkCloseTests {
             tab.content.sourceFileURL = URL(fileURLWithPath: "/tmp/tablepro-mixed.sql")
             tab.content.savedFileContent = "SELECT 1"
             tab.content.query = "SELECT 2"
-            tab.pendingChanges.deletedRowIndices = [0]
+            tab.pendingChanges.deletedRowIDs = [.existing(0)]
         }
 
         let mixed = try #require(current.coordinator.tabManager.tabs.first)

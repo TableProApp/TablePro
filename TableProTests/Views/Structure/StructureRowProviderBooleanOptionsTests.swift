@@ -42,6 +42,7 @@ struct StructureRowProviderBooleanOptionsTests {
             tab: tab,
             databaseType: .postgresql,
             additionalFields: [.primaryKey, .onUpdate],
+            serverSupport: .unrestricted,
             filterText: nil,
             sortDescriptor: nil
         )

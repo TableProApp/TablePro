@@ -43,6 +43,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     // Ordered fields for column editing (updated when currentProvider is set)
     var orderedFields: [StructureColumnField] = []
+    var serverSupport = StructureServerSupport.unrestricted
 
     // Stored when DataGridView calls `dataGridAttach(tableViewCoordinator:)` on
     // every updateNSView. Lets us tell `NSTableView` which rows to reload after
@@ -285,7 +286,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
 
         let displayProvider = currentProvider ?? StructureRowProvider(
-            changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type
+            changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type,
+            serverSupport: serverSupport
         )
         var lines: [String] = []
         for row in indices.sorted() {
@@ -603,7 +605,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     private func handleCopyName(_ indices: Set<Int>) {
         let provider = StructureRowProvider(
-            changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type
+            changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type,
+            serverSupport: serverSupport
         )
         let names = indices.sorted().compactMap { provider.row(at: $0)?.first ?? nil }
         guard !names.isEmpty else { return }
@@ -655,7 +658,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
     private func handleCopyAsCSV(_ indices: Set<Int>) {
         let provider = StructureRowProvider(
             changeManager: structureChangeManager, tab: selectedTab,
-            databaseType: connection.type, additionalFields: [.primaryKey]
+            databaseType: connection.type, additionalFields: [.primaryKey],
+            serverSupport: serverSupport
         )
         let headers = provider.columns
         guard !headers.isEmpty else { return }
@@ -681,7 +685,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
     private func handleCopyAsJSON(_ indices: Set<Int>) {
         let provider = StructureRowProvider(
             changeManager: structureChangeManager, tab: selectedTab,
-            databaseType: connection.type, additionalFields: [.primaryKey]
+            databaseType: connection.type, additionalFields: [.primaryKey],
+            serverSupport: serverSupport
         )
         let headers = provider.columns
         guard !headers.isEmpty else { return }

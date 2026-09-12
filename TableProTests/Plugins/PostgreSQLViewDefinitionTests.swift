@@ -134,22 +134,23 @@ struct PostgreSQLViewDefinitionTests {
         }
     }
 
-    /// Read as JSON rather than by splitting the array text, because an option value may hold a
-    /// comma or a quote of its own.
-    @Test("Options are parsed from JSON, commas inside a value included")
-    func optionsParsedFromJSON() {
-        #expect(PostgreSQLViewDefinition.options(fromJSON: #"["security_barrier=true"]"#) == ["security_barrier=true"])
-        #expect(PostgreSQLViewDefinition.options(fromJSON: #"["toast.autovacuum_enabled=false","fillfactor=70"]"#)
-            == ["toast.autovacuum_enabled=false", "fillfactor=70"])
-        #expect(PostgreSQLViewDefinition.options(fromJSON: #"["note=a, b"]"#) == ["note=a, b"])
-        #expect(PostgreSQLViewDefinition.options(fromJSON: nil).isEmpty)
-        #expect(PostgreSQLViewDefinition.options(fromJSON: "").isEmpty)
+    /// `reloptions` is read as array text: `array_to_json` does not exist on PostgreSQL 9.1. The
+    /// array decoder honours quoting, so a value holding a comma or a quote stays one option.
+    @Test("Options are decoded from the array text, commas and quotes inside a value included")
+    func optionsDecodedFromArrayText() {
+        let options: (String?) -> [String]? = { text in
+            PostgreSQLViewDefinition.parse(row: ["v", "SELECT 1", text, nil, nil])?.options
+        }
+        #expect(options("{security_barrier=true}") == ["security_barrier=true"])
+        #expect(options("{fillfactor=70,autovacuum_enabled=false}") == ["fillfactor=70", "autovacuum_enabled=false"])
+        #expect(options(#"{"note=a, b","q=\"x\""}"#) == ["note=a, b", #"q="x""#])
+        #expect(options(nil)?.isEmpty == true)
     }
 
     @Test("A catalog row parses into the kind, query, options and storage")
     func parseRow() {
         let parsed = PostgreSQLViewDefinition.parse(row: [
-            "m", body, #"["fillfactor=70"]"#, "heap", "fast"
+            "m", body, "{fillfactor=70}", "heap", "fast"
         ])
 
         #expect(parsed?.kind == .materializedView)
@@ -166,17 +167,19 @@ struct PostgreSQLViewDefinitionTests {
         #expect(PostgreSQLViewDefinition.parse(row: ["v", body]) == nil)
     }
 
-    /// The body is read with `search_path` emptied, so every name in it is qualified and the text
+    /// The body is read with `search_path` narrowed to `pg_catalog`, so every name in it is qualified and the text
     /// binds to the same tables wherever it is run.
-    @Test("The catalog query empties the search path and addresses the view by schema and name")
+    @Test("The catalog query narrows the search path and addresses the view by schema and name")
     func catalogQueryIsQualifiedAndScoped() {
         let query = PostgreSQLViewDefinition.catalogQuery(name: "vw", schema: "sales")
 
-        #expect(PostgreSQLViewDefinition.qualifiedReadPrefix == "SET LOCAL search_path = ''; ")
+        #expect(PostgreSQLViewDefinition.qualifiedReadPrefix == "SET LOCAL search_path = pg_catalog; ")
         #expect(query.contains("pg_catalog.pg_get_viewdef(c.oid, true)"))
         #expect(query.contains("n.nspname = 'sales'"))
         #expect(query.contains("c.relname = 'vw'"))
         #expect(query.contains("c.relkind IN ('v', 'm')"))
+        #expect(query.contains("c.reloptions::text"))
+        #expect(!query.contains("json"))
     }
 
     @Test("A name that needs quoting is quoted, and a literal that needs escaping is escaped")

@@ -19,10 +19,18 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private static let undefinedFunctionSQLState = PostgreSQLTableListingLadder.undefinedFunctionSQLState
 
     private var catalogPresence: PostgreSQLCatalogPresence?
+    let sessionFacts = OSAllocatedUnfairLock(initialState: PostgreSQLSessionFacts.unknown)
 
-    var serverVersionNumber: Int32 { core.serverVersionNumber }
+    var serverVersionNumber: Int32 {
+        let reported = core.serverVersionNumber
+        return sessionFacts.withLock { $0.resolvedServerVersion(reported: reported) }
+    }
+
     var versionedCapabilities: PostgreSQLCapabilities {
-        PostgreSQLCapabilities(serverVersion: core.serverVersionNumber)
+        PostgreSQLCapabilities(serverVersion: serverVersionNumber)
+    }
+    var catalogCapabilities: PostgreSQLCapabilities {
+        .assumingModernWhenUnknown(core.serverVersionNumber)
     }
 
     var capabilities: PluginCapabilities {
@@ -51,6 +59,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func connect() async throws {
         core.onPostConnect = { [weak self] in
+            await self?.probeSessionFacts()
             await self?.probeCatalogPresence()
             await self?.probePostgisOids()
             await self?.probeEnumOids()
@@ -71,13 +80,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private func probePostgisOids() async {
         do {
             let result = try await core.execute(query: PostGISSpatialRewrite.probeQuery)
-            var map: [UInt32: String] = [:]
+            var map: [UInt32: PostGISType] = [:]
             for row in result.rows {
-                guard row.count >= 2,
+                guard row.count >= 3,
                       let oidText = row[0].asText,
                       let oid = UInt32(oidText),
-                      let typname = row[1].asText else { continue }
-                map[oid] = typname
+                      let typname = row[1].asText,
+                      let schema = row[2].asText else { continue }
+                map[oid] = PostGISType(name: typname, schema: schema)
             }
             core.setPostgisOidMap(map)
         } catch {
@@ -93,7 +103,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         catalogPresence?.hasForeignTables ?? versionedCapabilities.hasForeignTablesCatalog
     }
 
-    private func includesSequencesCatalog() -> Bool {
+    func includesSequencesCatalog() -> Bool {
         catalogPresence?.hasSequences ?? versionedCapabilities.hasSequencesCatalog
     }
 
@@ -116,7 +126,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// A duplicated database arrives with `public` alone, so every other schema its tables are
     /// qualified with has to be made before the first `CREATE TABLE` names one.
     func createSchemaStatement(name: String) -> String? {
-        "CREATE SCHEMA IF NOT EXISTS \(quoteIdentifier(name))"
+        PostgreSQLVersionedStatements.createSchema(name, capabilities: versionedCapabilities)
     }
 
     // MARK: - Maintenance
@@ -138,7 +148,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         case "ANALYZE":
             return [target.map { "ANALYZE \($0)" } ?? "ANALYZE"]
         case "REINDEX":
-            return [target.map { "REINDEX TABLE \($0)" } ?? "REINDEX DATABASE CONCURRENTLY"]
+            if let target { return ["REINDEX TABLE \(target)"] }
+            return PostgreSQLVersionedStatements.reindexDatabase(
+                currentDatabase: connectedDatabase,
+                capabilities: versionedCapabilities
+            ).map { [$0] }
         case "CLUSTER":
             return target.map { ["CLUSTER \($0)"] }
         default:
@@ -164,10 +178,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let schemaName = schema ?? core.currentSchema
         func query(_ attempt: PostgreSQLTableListingAttempt) -> String {
             PostgreSQLSchemaQueries.fetchTables(
-                schemaLiteral: schemaLiteral,
+                schema: schemaName,
                 includeMaterializedViews: attempt.includeOptionalCatalogs && includesMaterializedViews(),
                 includeForeignTables: attempt.includeOptionalCatalogs && includesForeignTables(),
                 includeComments: attempt.includeComments,
@@ -229,90 +243,19 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// schemas holding a table of the same name returned each other's indexes merged into one list,
     /// which a comparison between those two schemas reports as neither side differing.
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let columnOrdering = versionedCapabilities.hasArrayPosition
-            ? "ORDER BY array_position(ix.indkey, a.attnum)"
-            : "ORDER BY a.attnum"
-        let query = """
-            SELECT
-                i.relname AS index_name,
-                ARRAY_AGG(a.attname \(columnOrdering)) AS columns,
-                ix.indisunique AS is_unique,
-                ix.indisprimary AS is_primary,
-                am.amname AS index_type,
-                pg_get_expr(ix.indpred, ix.indrelid) AS predicate
-            FROM pg_index ix
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_class t ON t.oid = ix.indrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            JOIN pg_am am ON am.oid = i.relam
-            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE t.relname = '\(escapeLiteral(table))' AND n.nspname = '\(schemaLiteral)'
-            GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname, ix.indpred, ix.indrelid
-            ORDER BY ix.indisprimary DESC, i.relname
-            """
+        let query = PostgreSQLIndexQueries.indexList(schema: schema ?? core.currentSchema, table: table)
         let result = try await execute(query: query)
-        return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0, offset: 0) }
+        return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0)?.index }
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                con.conname,
-                src_col.attname,
-                ref_cl.relname AS referenced_table,
-                ref_col.attname AS referenced_column,
-                ref_ns.nspname AS referenced_schema,
-                CASE con.confdeltype
-                    WHEN 'c' THEN 'CASCADE'
-                    WHEN 'n' THEN 'SET NULL'
-                    WHEN 'd' THEN 'SET DEFAULT'
-                    WHEN 'r' THEN 'RESTRICT'
-                    ELSE 'NO ACTION'
-                END AS delete_rule,
-                CASE con.confupdtype
-                    WHEN 'c' THEN 'CASCADE'
-                    WHEN 'n' THEN 'SET NULL'
-                    WHEN 'd' THEN 'SET DEFAULT'
-                    WHEN 'r' THEN 'RESTRICT'
-                    ELSE 'NO ACTION'
-                END AS update_rule
-            FROM pg_catalog.pg_constraint con
-            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
-            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
-            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
-            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
-            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
-                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
-            JOIN pg_catalog.pg_attribute src_col
-                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
-            JOIN pg_catalog.pg_attribute ref_col
-                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
-            WHERE con.contype = 'f'
-                AND src_cl.relname = '\(escapeLiteral(table))'
-                AND src_ns.nspname = '\(schemaLiteral)'
-            ORDER BY con.conname, cols.ord
-            """
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = PostgreSQLForeignKeyQueries.foreignKeyList(
+            schema: resolvedSchema, table: table, capabilities: catalogCapabilities
+        )
         let result = try await execute(query: query)
-        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard row.count >= 7,
-                  let name = row[0].asText,
-                  let column = row[1].asText,
-                  let refTable = row[2].asText,
-                  let refColumn = row[3].asText
-            else { return nil }
-            return PluginForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                referencedSchema: row[4].asText,
-                onDelete: row[5].asText ?? "NO ACTION",
-                onUpdate: row[6].asText ?? "NO ACTION"
-            )
-        }
-        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(schema ?? self.core.currentSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        let foreignKeys = result.rows.compactMap { PostgreSQLForeignKeyRow($0)?.foreignKey }
+        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
         return foreignKeys
     }
 
@@ -327,70 +270,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
         Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
         return triggers
-    }
-
-    var triggerEditUsesReplace: Bool { true }
-
-    var supportsTransactionalDDL: Bool { true }
-
-    private func qualifiedTable(_ table: String, schema: String?) -> String {
-        let resolved = schema ?? core.currentSchema
-        return "\(quoteIdentifier(resolved)).\(quoteIdentifier(table))"
-    }
-
-    func createTriggerTemplate(table: String, schema: String?) -> String? {
-        let qualified = qualifiedTable(table, schema: schema)
-        let fn = qualifiedTable("trigger_function", schema: schema)
-        return """
-        CREATE OR REPLACE FUNCTION \(fn)()
-        RETURNS trigger
-        LANGUAGE plpgsql
-        AS $function$
-        BEGIN
-            -- NEW.updated_at := now();
-            RETURN NEW;
-        END;
-        $function$;
-
-        CREATE OR REPLACE TRIGGER \(quoteIdentifier("trigger_name"))
-            BEFORE INSERT ON \(qualified)
-            FOR EACH ROW
-            EXECUTE FUNCTION \(fn)();
-        """
-    }
-
-    func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
-        let resolvedSchema = schema ?? core.currentSchema
-        let query = """
-            SELECT pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid)
-            FROM pg_catalog.pg_trigger t
-            JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE t.tgname = '\(escapeLiteral(name))'
-                AND c.relname = '\(escapeLiteral(table))'
-                AND n.nspname = '\(escapeLiteral(resolvedSchema))'
-                AND NOT t.tgisinternal
-            LIMIT 1
-            """
-        let result = try await execute(query: query)
-        guard let row = result.rows.first, row.count >= 2,
-              let functionDef = row[0].asText,
-              let triggerDef = row[1].asText else { return nil }
-        let editableTrigger: String
-        if triggerDef.range(of: "CREATE CONSTRAINT TRIGGER", options: .caseInsensitive) != nil {
-            let drop = generateDropTriggerSQL(name: name, table: table, schema: schema) ?? ""
-            editableTrigger = "\(drop);\n\(triggerDef)"
-        } else {
-            editableTrigger = triggerDef.replacingOccurrences(
-                of: "CREATE TRIGGER ",
-                with: "CREATE OR REPLACE TRIGGER "
-            )
-        }
-        return "\(functionDef);\n\n\(editableTrigger);"
-    }
-
-    func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
-        "DROP TRIGGER IF EXISTS \(quoteIdentifier(name)) ON \(qualifiedTable(table, schema: schema))"
     }
 
     /// PostgreSQL allows `f(integer)` and `f(text)` in one schema, so a drop that names only `f`
@@ -409,64 +288,14 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                src_cl.relname AS table_name,
-                con.conname,
-                src_col.attname,
-                ref_cl.relname AS referenced_table,
-                ref_col.attname AS referenced_column,
-                ref_ns.nspname AS referenced_schema,
-                CASE con.confdeltype
-                    WHEN 'c' THEN 'CASCADE'
-                    WHEN 'n' THEN 'SET NULL'
-                    WHEN 'd' THEN 'SET DEFAULT'
-                    WHEN 'r' THEN 'RESTRICT'
-                    ELSE 'NO ACTION'
-                END AS delete_rule,
-                CASE con.confupdtype
-                    WHEN 'c' THEN 'CASCADE'
-                    WHEN 'n' THEN 'SET NULL'
-                    WHEN 'd' THEN 'SET DEFAULT'
-                    WHEN 'r' THEN 'RESTRICT'
-                    ELSE 'NO ACTION'
-                END AS update_rule
-            FROM pg_catalog.pg_constraint con
-            JOIN pg_catalog.pg_class src_cl ON src_cl.oid = con.conrelid
-            JOIN pg_catalog.pg_namespace src_ns ON src_ns.oid = src_cl.relnamespace
-            JOIN pg_catalog.pg_class ref_cl ON ref_cl.oid = con.confrelid
-            JOIN pg_catalog.pg_namespace ref_ns ON ref_ns.oid = ref_cl.relnamespace
-            CROSS JOIN LATERAL unnest(con.conkey, con.confkey)
-                WITH ORDINALITY AS cols(src_attnum, ref_attnum, ord)
-            JOIN pg_catalog.pg_attribute src_col
-                ON src_col.attrelid = con.conrelid AND src_col.attnum = cols.src_attnum
-            JOIN pg_catalog.pg_attribute ref_col
-                ON ref_col.attrelid = con.confrelid AND ref_col.attnum = cols.ref_attnum
-            WHERE con.contype = 'f'
-                AND src_ns.nspname = '\(schemaLiteral)'
-            ORDER BY src_cl.relname, con.conname, cols.ord
-            """
+        let query = PostgreSQLForeignKeyQueries.foreignKeyList(
+            schema: schema ?? core.currentSchema, table: nil, capabilities: catalogCapabilities
+        )
         let result = try await execute(query: query)
         var grouped: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
-            guard row.count >= 8,
-                  let tableName = row[0].asText,
-                  let name = row[1].asText,
-                  let column = row[2].asText,
-                  let refTable = row[3].asText,
-                  let refColumn = row[4].asText
-            else { continue }
-            let fk = PluginForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                referencedSchema: row[5].asText,
-                onDelete: row[6].asText ?? "NO ACTION",
-                onUpdate: row[7].asText ?? "NO ACTION"
-            )
-            grouped[tableName, default: []].append(fk)
+            guard let decoded = PostgreSQLForeignKeyRow(row) else { continue }
+            grouped[decoded.table, default: []].append(decoded.foreignKey)
         }
         return grouped
     }
@@ -718,7 +547,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT DISTINCT t.typname,
-                   array_agg(e.enumlabel ORDER BY e.enumsortorder)
+                   array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -735,105 +564,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> (name: String, labels: [String])? in
             guard let typeName = row[0].asText, let labelsStr = row[1].asText else { return nil }
-            let labels = labelsStr
-                .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
-                .components(separatedBy: ",")
-            return (name: typeName, labels: labels)
-        }
-    }
-
-    func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] {
-        guard includesSequencesCatalog() else { return [] }
-        let safeTable = escapeLiteral(table)
-        let schemaName = schema ?? core.currentSchema
-        let schemaLiteral = escapeLiteral(schemaName)
-        let query = """
-            SELECT s.sequencename,
-                   s.start_value,
-                   s.min_value,
-                   s.max_value,
-                   s.increment_by,
-                   s.cycle,
-                   s.last_value
-            FROM pg_attrdef ad
-            JOIN pg_class c ON c.oid = ad.adrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            JOIN pg_sequences s ON s.schemaname = n.nspname
-                 AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%' || quote_ident(s.sequencename) || '%'
-            WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(schemaLiteral)'
-              AND c.relkind IN \(Self.relkindsCreatedByTableDDL)
-              AND pg_get_expr(ad.adbin, ad.adrelid) LIKE '%nextval%'
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> (name: String, ddl: String)? in
-            guard let seqName = row[0].asText else { return nil }
-            let startVal = row[1].asText ?? "1"
-            let minVal = row[2].asText ?? "1"
-            let maxVal = row[3].asText ?? "9223372036854775807"
-            let incrementBy = row[4].asText ?? "1"
-            let cycle = row[5].asText == "t" ? " CYCLE" : ""
-            let lastValue = row.count > 6 ? row[6].asText : nil
-            let quotedSeqName = quoteIdentifier(seqName)
-            let escapedSeqForLiteral = escapeStringLiteral(seqName)
-            var ddl = "CREATE SEQUENCE \(quotedSeqName) INCREMENT BY \(incrementBy)"
-                + " MINVALUE \(minVal) MAXVALUE \(maxVal)"
-                + " START WITH \(startVal)\(cycle);"
-            /// Unqualified, so it names the sequence the line above created rather than the one it
-            /// was read from. `setval` takes a `regclass`, which resolves through `search_path`, and
-            /// the `CREATE SEQUENCE` beside it is already schema-relative. Spelling the source's own
-            /// schema here made the pair disagree: run against another schema it repositioned the
-            /// original sequence, and against another database it named one that was not there.
-            if let last = lastValue, !last.isEmpty, Int64(last) != nil {
-                ddl += "\nSELECT pg_catalog.setval('\"\(escapedSeqForLiteral)\"', \(last), true);"
-            }
-            return (name: seqName, ddl: ddl)
-        }
-    }
-
-    /// Every sequence in the schema, including the ones no column defaults from.
-    ///
-    /// `fetchDependentSequences` answers only those a table's `nextval` default reaches, which is
-    /// what a table dump needs. A sequence a routine or the application advances by hand belongs to
-    /// nothing, so it is invisible to that query and a dump built only from it restores a database
-    /// whose sequence is gone.
-    func fetchSequences(schema: String?) async throws -> [PluginSequenceInfo] {
-        guard includesSequencesCatalog() else { return [] }
-        let schemaName = schema ?? core.currentSchema
-        let schemaLiteral = escapeLiteral(schemaName)
-        let query = """
-            SELECT s.sequencename,
-                   s.start_value,
-                   s.min_value,
-                   s.max_value,
-                   s.increment_by,
-                   s.cycle,
-                   s.last_value,
-                   d.refobjid IS NOT NULL AS owned
-            FROM pg_sequences s
-            JOIN pg_class c ON c.relname = s.sequencename
-            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = s.schemaname
-            LEFT JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a'
-            WHERE s.schemaname = '\(schemaLiteral)'
-            ORDER BY s.sequencename
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginSequenceInfo? in
-            guard let name = row[0].asText else { return nil }
-            let start = row[1].asText ?? "1"
-            let minValue = row[2].asText ?? "1"
-            let maxValue = row[3].asText ?? "9223372036854775807"
-            let increment = row[4].asText ?? "1"
-            let cycle = row[5].asText == "t" ? " CYCLE" : ""
-            let lastValue = row.count > 6 ? row[6].asText : nil
-            let quoted = quoteIdentifier(name)
-            var ddl = "CREATE SEQUENCE \(quoted) INCREMENT BY \(increment)"
-                + " MINVALUE \(minValue) MAXVALUE \(maxValue)"
-                + " START WITH \(start)\(cycle);"
-            if let last = lastValue, !last.isEmpty, Int64(last) != nil {
-                ddl += "\nSELECT pg_catalog.setval('\"\(escapeStringLiteral(name))\"', \(last), true);"
-            }
-            return PluginSequenceInfo(name: name, ddl: ddl, schema: schemaName)
+            return (name: typeName, labels: PostgreSQLTextArray.values(labelsStr))
         }
     }
 
@@ -975,7 +706,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         case "icu":
             guard supportsProvider else {
                 throw LibPQPluginError(
-                    message: String(localized: "ICU provider requires PostgreSQL 15 or newer"),
+                    message: String(localized: "ICU provider requires PostgreSQL 15 or later"),
                     sqlState: nil,
                     detail: nil
                 )
@@ -1064,9 +795,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func fetchCollations() async -> (libc: [String], icu: [String]) {
         do {
-            let result = try await execute(
-                query: "SELECT collname, collprovider FROM pg_collation WHERE collprovider IN ('b', 'c', 'i') ORDER BY collname"
-            )
+            let result = try await execute(query: PostgreSQLSchemaQueries.collationList(capabilities: catalogCapabilities))
             var libc: [String] = []
             var icu: [String] = []
             for row in result.rows {
@@ -1092,27 +821,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        let s = schema ?? currentSchema ?? "public"
-        return """
-        SELECT
-            schemaname as schema,
-            relname as name,
-            'TABLE' as kind,
-            n_live_tup as estimated_rows,
-            pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) as total_size,
-            pg_size_pretty(pg_relation_size(schemaname||'.'||relname)) as data_size,
-            pg_size_pretty(pg_indexes_size(schemaname||'.'||relname)) as index_size,
-            obj_description((schemaname||'.'||relname)::regclass) as comment
-        FROM pg_stat_user_tables
-        WHERE schemaname = '\(s)'
-        ORDER BY relname
-        """
+        PostgreSQLSchemaQueries.allTablesMetadata(schema: schema ?? currentSchema ?? "public")
     }
 
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
+        guard !definition.columns.isEmpty,
+              PostgreSQLVersionedStatements.refusal(for: definition, capabilities: versionedCapabilities) == nil
+        else { return nil }
 
         let schema = core.currentSchema
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
@@ -1210,7 +927,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let unique = index.isUnique ? "UNIQUE " : ""
         var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable)"
         if let type = index.indexType?.uppercased(),
-           ["BTREE", "HASH", "GIN", "GIST", "BRIN"].contains(type) {
+           PostgreSQLVersionedStatements.postgreSQLIndexMethods.contains(type) {
             def += " USING \(type.lowercased())"
         }
         def += " (\(cols))"
@@ -1246,10 +963,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Definition SQL (clipboard copy)
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        pgColumnDefinition(column, inlinePK: false)
+        guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
+        return pgColumnDefinition(column, inlinePK: false)
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
         let qualifiedTable = tableName.map { quoteIdentifier($0) } ?? "\"table\""
         return pgIndexDefinition(index, qualifiedTable: qualifiedTable)
     }
@@ -1265,6 +984,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        guard schemaOperationRefusal(.addColumn(column)) == nil else { return nil }
         let qt = qualifiedTableName(table)
         let colDef = pgColumnDefinition(column, inlinePK: false)
         return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
@@ -1315,7 +1035,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
+        guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
+        return pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -1343,9 +1064,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func generateRenameCheckConstraintSQL(table: String, from oldName: String, to newName: String) -> String? {
-        guard !oldName.isEmpty, !newName.isEmpty else { return nil }
-        return "ALTER TABLE \(qualifiedTableName(table)) RENAME CONSTRAINT "
-            + "\(quoteIdentifier(oldName)) TO \(quoteIdentifier(newName))"
+        PostgreSQLVersionedStatements.renameConstraint(
+            qualifiedTable: qualifiedTableName(table),
+            from: oldName,
+            to: newName,
+            capabilities: versionedCapabilities
+        )
     }
 
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {

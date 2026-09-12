@@ -7,66 +7,56 @@ import Foundation
 
 @MainActor
 final class RowVisualIndex {
-    private var states: [Int: RowVisualState] = [:]
+    private var states: [RowID: RowVisualState] = [:]
 
-    func visualState(for row: Int) -> RowVisualState {
-        states[row] ?? .empty
+    var isEmpty: Bool { states.isEmpty }
+
+    func visualState(for rowID: RowID) -> RowVisualState {
+        states[rowID] ?? .empty
     }
 
     func clear() {
         states.removeAll(keepingCapacity: true)
     }
 
-    func rebuild(from changeManager: AnyChangeManager, displayIDs: [RowID]?) {
+    func rebuild(from changeManager: AnyChangeManager) {
         states.removeAll(keepingCapacity: true)
 
-        let insertedRowIndices = Self.insertedRowIndices(
-            from: changeManager,
-            displayIDs: displayIDs
-        )
-
-        if !changeManager.hasChanges && insertedRowIndices.isEmpty {
-            return
-        }
+        let insertedRowIDs = changeManager.insertedRowIDs
+        guard changeManager.hasChanges || !insertedRowIDs.isEmpty else { return }
 
         for rowChange in changeManager.rowChanges {
-            states[rowChange.rowIndex] = Self.makeState(
+            states[rowChange.rowID] = Self.makeState(
                 for: rowChange,
-                inserted: insertedRowIndices.contains(rowChange.rowIndex)
+                inserted: insertedRowIDs.contains(rowChange.rowID)
             )
         }
 
-        for rowIndex in insertedRowIndices where states[rowIndex] == nil {
-            states[rowIndex] = RowVisualState(
-                isDeleted: false,
-                isInserted: true,
-                modifiedColumns: []
-            )
+        for rowID in insertedRowIDs where states[rowID] == nil {
+            states[rowID] = Self.insertedState
         }
     }
 
-    func updateRow(_ rowIndex: Int, from changeManager: AnyChangeManager, displayIDs: [RowID]?) {
-        let isInsertedDisplay = Self.isRowInsertedAtDisplayIndex(
-            rowIndex,
-            changeManager: changeManager,
-            displayIDs: displayIDs
-        )
+    func updateRow(_ rowID: RowID, from changeManager: AnyChangeManager) {
+        let isInserted = changeManager.insertedRowIDs.contains(rowID)
 
-        if let rowChange = changeManager.rowChanges.first(where: { $0.rowIndex == rowIndex }) {
-            states[rowIndex] = Self.makeState(for: rowChange, inserted: isInsertedDisplay)
+        if let rowChange = changeManager.rowChanges.first(where: { $0.rowID == rowID }) {
+            states[rowID] = Self.makeState(for: rowChange, inserted: isInserted)
             return
         }
 
-        if isInsertedDisplay {
-            states[rowIndex] = RowVisualState(
-                isDeleted: false,
-                isInserted: true,
-                modifiedColumns: []
-            )
+        if isInserted {
+            states[rowID] = Self.insertedState
         } else {
-            states.removeValue(forKey: rowIndex)
+            states.removeValue(forKey: rowID)
         }
     }
+
+    private static let insertedState = RowVisualState(
+        isDeleted: false,
+        isInserted: true,
+        modifiedColumns: []
+    )
 
     private static func makeState(for rowChange: RowChange, inserted: Bool) -> RowVisualState {
         let isDeleted = rowChange.type == .delete
@@ -79,29 +69,5 @@ final class RowVisualIndex {
             isInserted: isInserted,
             modifiedColumns: modifiedColumns
         )
-    }
-
-    private static func insertedRowIndices(
-        from changeManager: AnyChangeManager,
-        displayIDs: [RowID]?
-    ) -> Set<Int> {
-        guard let displayIDs else { return changeManager.insertedRowIndices }
-        var indices = Set<Int>()
-        for (displayIndex, id) in displayIDs.enumerated() where id.isInserted {
-            indices.insert(displayIndex)
-        }
-        return indices
-    }
-
-    private static func isRowInsertedAtDisplayIndex(
-        _ rowIndex: Int,
-        changeManager: AnyChangeManager,
-        displayIDs: [RowID]?
-    ) -> Bool {
-        if let displayIDs {
-            guard rowIndex >= 0, rowIndex < displayIDs.count else { return false }
-            return displayIDs[rowIndex].isInserted
-        }
-        return changeManager.insertedRowIndices.contains(rowIndex)
     }
 }

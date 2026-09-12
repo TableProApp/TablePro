@@ -11,7 +11,7 @@ extension PostgreSQLPluginDriver {
         let resolvedSchema = schema ?? currentSchema ?? "public"
         let query = PostgreSQLObjectQueries.routineList(
             schema: resolvedSchema,
-            serverVersionNumber: serverVersionNumber
+            capabilities: catalogCapabilities
         )
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
@@ -89,7 +89,7 @@ extension PostgreSQLPluginDriver {
             orientation: row[safe: 5]?.asText,
             statement: definition,
             definition: definition,
-            enabled: row[safe: 6]?.asText == "t",
+            enabled: PostgreSQLCatalogBoolean.isTrue(row[safe: 6]?.asText),
             attributes: attributes
         )
     }

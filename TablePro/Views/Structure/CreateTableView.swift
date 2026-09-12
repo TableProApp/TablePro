@@ -56,6 +56,7 @@ struct CreateTableView: View {
     @State private var selectedRows: Set<Int> = []
     @State private var sortState = SortState()
     @State private var columnLayout = ColumnLayoutState()
+    @State private var serverSupport = StructureServerSupport.unrestricted
 
     init(
         connection: DatabaseConnection,
@@ -91,6 +92,7 @@ struct CreateTableView: View {
             coordinator?.inspectorRowSource = gridDelegate
             gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
+            serverSupport = StructureServerSupport.forConnection(connection.id)
             updateGridDelegate()
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
@@ -300,9 +302,11 @@ struct CreateTableView: View {
             changeManager: structureChangeManager,
             tab: structureTab,
             databaseType: connection.type,
-            additionalFields: [.primaryKey]
+            additionalFields: [.primaryKey],
+            serverSupport: serverSupport
         )
         gridDelegate.structureTab = structureTab
+        gridDelegate.serverSupport = serverSupport
         gridDelegate.orderedFields = provider.orderedColumnFields
         gridDelegate.schemaName = coordinator?.toolbarState.currentSchema
         coordinator?.inspectorRowSourceRevision += 1
@@ -313,7 +317,8 @@ struct CreateTableView: View {
             changeManager: structureChangeManager,
             tab: structureTab,
             databaseType: connection.type,
-            additionalFields: [.primaryKey]
+            additionalFields: [.primaryKey],
+            serverSupport: serverSupport
         )
 
         // Rebuild the row snapshot fresh on every call so cell edits made
@@ -323,13 +328,15 @@ struct CreateTableView: View {
         let manager = structureChangeManager
         let tab = structureTab
         let dbType = connection.type
+        let support = serverSupport
         return DataGridView(
             tableRowsProvider: {
                 StructureRowProvider(
                     changeManager: manager,
                     tab: tab,
                     databaseType: dbType,
-                    additionalFields: [.primaryKey]
+                    additionalFields: [.primaryKey],
+                    serverSupport: support
                 ).asTableRows()
             },
             changeManager: wrappedChangeManager,

@@ -149,7 +149,10 @@ internal extension SQLTypeRenderer {
 
     // MARK: - PostgreSQL
 
-    static func postgres(_ type: CanonicalColumnType) -> RenderedColumnType {
+    static func postgres(
+        _ type: CanonicalColumnType,
+        jsonColumnType: PostgreSQLJSONColumnType = .jsonb
+    ) -> RenderedColumnType {
         switch type.kind {
         case .boolean:
             return RenderedColumnType(spelling: "BOOLEAN")
@@ -183,7 +186,7 @@ internal extension SQLTypeRenderer {
         case .uuid:
             return RenderedColumnType(spelling: "UUID")
         case .json:
-            return RenderedColumnType(spelling: "JSONB")
+            return postgresJSON(type, jsonColumnType: jsonColumnType)
         case .xml:
             return RenderedColumnType(spelling: "XML")
         case .enumeration(let values):
@@ -206,9 +209,10 @@ internal extension SQLTypeRenderer {
                 reason: noEquivalent(type.sourceSpelling, as: String(localized: "text"))
             )
         case .array(let element):
-            let inner = postgres(CanonicalColumnType(
-                kind: element, isUnsigned: type.isUnsigned, sourceSpelling: type.sourceSpelling
-            ))
+            let inner = postgres(
+                CanonicalColumnType(kind: element, isUnsigned: type.isUnsigned, sourceSpelling: type.sourceSpelling),
+                jsonColumnType: jsonColumnType
+            )
             return RenderedColumnType(spelling: "\(inner.spelling)[]", fidelity: inner.fidelity, reason: inner.reason)
         case .unsupported:
             return RenderedColumnType(
@@ -216,6 +220,19 @@ internal extension SQLTypeRenderer {
                 reason: noEquivalent(type.sourceSpelling, as: String(localized: "text"))
             )
         }
+    }
+
+    private static func postgresJSON(
+        _ type: CanonicalColumnType,
+        jsonColumnType: PostgreSQLJSONColumnType
+    ) -> RenderedColumnType {
+        guard jsonColumnType == .text else {
+            return RenderedColumnType(spelling: jsonColumnType.rawValue)
+        }
+        return RenderedColumnType(
+            spelling: jsonColumnType.rawValue, fidelity: .approximated,
+            reason: noEquivalent(type.sourceSpelling, as: String(localized: "text"))
+        )
     }
 
     /// PostgreSQL has no unsigned integers, so an unsigned source widens by one step and the widest
