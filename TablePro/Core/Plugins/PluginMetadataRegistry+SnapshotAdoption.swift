@@ -21,7 +21,7 @@ extension PluginMetadataRegistry {
     ///
     /// Two facts qualify: case-insensitive matching, which is why Redshift is spelled
     /// `postgresqlDialect.withCaseSensitivityStyle(.caseFoldFunction)`, and the column type list,
-    /// which TiDB narrows (no spatial types) and Databend replaces with its own. Each has its own
+    /// which TiDB and OceanBase narrow (no spatial types) and Databend replaces with its own. Each has its own
     /// named adoption here rather than a value comparison: `SQLDialectDescriptor` is not
     /// `Equatable`, and a whole-descriptor diff would report "differs" for Redshift and hand it
     /// the stub back.

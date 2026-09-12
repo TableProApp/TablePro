@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 enum DockerComposeExtractor {
     struct ServiceDatabase {
@@ -70,6 +71,16 @@ enum DockerComposeExtractor {
         "datafuselabs/databend-query", "databendlabs/databend-query",
     ]
 
+    /// The `oceanbase` organization also publishes OCP, obagent, the config server and miniob, none of
+    /// which speak the MySQL protocol, so the repository is matched rather than the whole image name.
+    /// OBProxy serves SQL on 2883, the observer on 2881.
+    private static let oceanbaseRepositories: [String: Int] = [
+        "oceanbase/oceanbase-ce": 2_881,
+        "oceanbase/oceanbase": 2_881,
+        "oceanbase/obproxy-ce": 2_883,
+        "oceanbase/obproxy": 2_883,
+    ]
+
     static func databaseKind(for image: String) -> ServiceDatabase? {
         let name = image.lowercased()
         let repositoryPath = repositoryComponents(of: name)
@@ -78,6 +89,9 @@ enum DockerComposeExtractor {
         }
         if databendRepositories.contains(repositoryPath.suffix(2).joined(separator: "/")) {
             return ServiceDatabase(type: .databend, defaultPort: 3_307)
+        }
+        if let port = oceanbaseRepositories[repositoryPath.suffix(2).joined(separator: "/")] {
+            return ServiceDatabase(type: .oceanbase, defaultPort: port)
         }
         if name.contains("postgres"), !name.contains("postgrest") {
             return ServiceDatabase(type: .postgresql, defaultPort: 5_432)
@@ -101,6 +115,18 @@ enum DockerComposeExtractor {
             return ServiceDatabase(type: .mssql, defaultPort: 1_433)
         }
         return nil
+    }
+
+    /// OBProxy routes by a cluster the observer's own port does not need, and `root@sys` reaches it
+    /// only when the proxy was given a default cluster, so the name goes into the username whenever
+    /// the compose file states it.
+    private static func applyOceanBaseCredentials(_ fields: inout ScannedConnectionFields, variables: [String: String]) {
+        let tenantPassword = variables["OB_TENANT_PASSWORD"]?.nilIfEmpty
+        let tenant = variables["OB_TENANT_NAME"]?.nilIfEmpty ?? (tenantPassword != nil ? "test" : "sys")
+        let cluster = variables["OB_CLUSTER_NAME"]?.nilIfEmpty
+        fields.username = "root@\(tenant)" + (cluster.map { "#\($0)" } ?? "")
+        fields.password = tenant == "sys" ? variables["OB_SYS_PASSWORD"] ?? "" : tenantPassword ?? ""
+        fields.database = variables["OB_DATABASE"] ?? ""
     }
 
     static func repositoryComponents(of image: String) -> [String] {
@@ -179,6 +205,8 @@ enum DockerComposeExtractor {
             fields.username = variables["QUERY_DEFAULT_USER"] ?? "root"
             fields.password = variables["QUERY_DEFAULT_PASSWORD"] ?? ""
             fields.database = "default"
+        case .oceanbase:
+            applyOceanBaseCredentials(&fields, variables: variables)
         case .mariadb, .mysql:
             let prefix = variables["MARIADB_PASSWORD"] != nil || variables["MARIADB_DATABASE"] != nil
                 ? "MARIADB"

@@ -10,6 +10,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mariadb.rawValue == "MariaDB")
         #expect(DatabaseType.tidb.rawValue == "TiDB")
         #expect(DatabaseType.databend.rawValue == "Databend")
+        #expect(DatabaseType.oceanbase.rawValue == "OceanBase")
         #expect(DatabaseType.postgresql.rawValue == "PostgreSQL")
         #expect(DatabaseType.sqlite.rawValue == "SQLite")
         #expect(DatabaseType.redis.rawValue == "Redis")
@@ -29,6 +30,7 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mariadb.pluginTypeId == "MySQL")
         #expect(DatabaseType.tidb.pluginTypeId == "MySQL")
         #expect(DatabaseType.databend.pluginTypeId == "MySQL")
+        #expect(DatabaseType.oceanbase.pluginTypeId == "MySQL")
         #expect(DatabaseType.postgresql.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
         #expect(DatabaseType.sqlite.pluginTypeId == "SQLite")
@@ -59,10 +61,11 @@ struct DatabaseTypeTests {
 
     @Test("allKnownTypes contains all expected types")
     func allKnownTypesComplete() {
-        #expect(DatabaseType.allKnownTypes.count == 29)
+        #expect(DatabaseType.allKnownTypes.count == 30)
         #expect(DatabaseType.allKnownTypes.contains(.mysql))
         #expect(DatabaseType.allKnownTypes.contains(.tidb))
         #expect(DatabaseType.allKnownTypes.contains(.databend))
+        #expect(DatabaseType.allKnownTypes.contains(.oceanbase))
         #expect(DatabaseType.allKnownTypes.contains(.bigquery))
         #expect(DatabaseType.allKnownTypes.contains(.spanner))
         #expect(DatabaseType.allKnownTypes.contains(.snowflake))

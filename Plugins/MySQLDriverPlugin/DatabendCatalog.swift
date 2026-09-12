@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-internal enum DatabendCatalog {
+nonisolated internal enum DatabendCatalog {
     static func quoteIdentifier(_ name: String) -> String {
         guard name.contains("`") else { return "`\(name)`" }
         let escaped = name

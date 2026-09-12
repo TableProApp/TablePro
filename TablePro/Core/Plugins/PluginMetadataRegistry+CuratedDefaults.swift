@@ -11,7 +11,7 @@ import TableProPluginKit
 /// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
 /// registers, so these are the pre-load answer for those. For a variant id they are the whole
 /// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
-/// is the only reason MariaDB, TiDB, Databend, Redshift, CockroachDB and PGlite can differ from
+/// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
 /// the plugin that drives them.
 extension PluginMetadataRegistry {
     // swiftlint:disable:next function_body_length

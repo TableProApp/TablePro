@@ -18,6 +18,9 @@ struct SQLBuilderDefaultValuesTests {
         #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "`t`", for: .tidb)
             == "INSERT INTO `t` () VALUES ()")
         #expect(SQLBuilder.quoteIdentifier("a`b", for: .tidb) == "`a``b`")
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "`t`", for: .oceanbase)
+            == "INSERT INTO `t` () VALUES ()")
+        #expect(SQLBuilder.speaksMySQLDialect(.oceanbase))
     }
 
     @Test("Databend is not a MySQL dialect on iOS")

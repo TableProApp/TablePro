@@ -12,6 +12,10 @@ extension PluginMetadataRegistry {
         ExplainVariant(id: "explain-analyze", label: "EXPLAIN ANALYZE", sqlPrefix: "EXPLAIN ANALYZE", format: .plainText),
     ]
 
+    static let oceanbaseExplainVariants: [ExplainVariant] = [
+        ExplainVariant(id: "explain", label: "EXPLAIN", sqlPrefix: "EXPLAIN", format: .plainText),
+    ]
+
     /// A grid reads every cell back as text and a keyless save compares that text to the stored
     /// value. Measured on MySQL 8.4.11 and OceanBase CE 4.4.2.1, on these three types it does not
     /// compare equal to what it was read from, so the save matched no row and was reported as a
@@ -39,7 +43,7 @@ extension PluginMetadataRegistry {
         "Spatial": ["GEOMETRY", "GEOGRAPHY"],
     ]
 
-    static func tidbColumnTypes(from mysqlColumnTypes: [String: [String]]) -> [String: [String]] {
+    static func mysqlColumnTypesWithoutSpatial(from mysqlColumnTypes: [String: [String]]) -> [String: [String]] {
         mysqlColumnTypes.filter { $0.key != "Spatial" }
     }
 
@@ -49,7 +53,18 @@ extension PluginMetadataRegistry {
         idleReleaseField: ConnectionField
     ) -> [(typeId: String, snapshot: PluginMetadataSnapshot)] {
         [
-            ("TiDB", PluginMetadataSnapshot(
+            tidbVariant(dialect: dialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: idleReleaseField),
+            databendVariant(dialect: dialect, idleReleaseField: idleReleaseField),
+            oceanbaseVariant(dialect: dialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: idleReleaseField),
+        ]
+    }
+
+    private static func tidbVariant(
+        dialect: SQLDialectDescriptor,
+        mysqlColumnTypes: [String: [String]],
+        idleReleaseField: ConnectionField
+    ) -> (typeId: String, snapshot: PluginMetadataSnapshot) {
+        ("TiDB", PluginMetadataSnapshot(
             displayName: "TiDB", iconName: "tidb-icon", defaultPort: 4_000,
             requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
             isDownloadable: false, primaryUrlScheme: "tidb", parameterStyle: .questionMark,
@@ -104,15 +119,21 @@ extension PluginMetadataRegistry {
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: dialect,
                 statementCompletions: [],
-                columnTypesByCategory: tidbColumnTypes(from: mysqlColumnTypes)
+                columnTypesByCategory: mysqlColumnTypesWithoutSpatial(from: mysqlColumnTypes)
             ),
             connection: PluginMetadataSnapshot.ConnectionConfig(
                 additionalConnectionFields: [idleReleaseField],
                 category: .relational,
                 tagline: String(localized: "Distributed SQL, MySQL-compatible")
-            )
-        )),
-            ("Databend", PluginMetadataSnapshot(
+        )
+        ))
+    }
+
+    private static func databendVariant(
+        dialect: SQLDialectDescriptor,
+        idleReleaseField: ConnectionField
+    ) -> (typeId: String, snapshot: PluginMetadataSnapshot) {
+        ("Databend", PluginMetadataSnapshot(
             displayName: "Databend", iconName: "databend-icon", defaultPort: 3_307,
             requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: true,
             isDownloadable: false, primaryUrlScheme: "", parameterStyle: .questionMark,
@@ -172,8 +193,77 @@ extension PluginMetadataRegistry {
                 additionalConnectionFields: [idleReleaseField],
                 category: .analytical,
                 tagline: String(localized: "Cloud data warehouse, built in Rust")
-            )
+        )
         ))
-        ]
+    }
+
+    private static func oceanbaseVariant(
+        dialect: SQLDialectDescriptor,
+        mysqlColumnTypes: [String: [String]],
+        idleReleaseField: ConnectionField
+    ) -> (typeId: String, snapshot: PluginMetadataSnapshot) {
+        ("OceanBase", PluginMetadataSnapshot(
+            displayName: "OceanBase", iconName: "oceanbase-icon", defaultPort: 2_881,
+            requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: true,
+            isDownloadable: false, primaryUrlScheme: "oceanbase", parameterStyle: .questionMark,
+            navigationModel: .standard, explainVariants: oceanbaseExplainVariants, pathFieldRole: .database,
+            supportsHealthMonitor: true, urlSchemes: ["oceanbase"], postConnectActions: [.selectDatabaseFromLastSession],
+            brandColorHex: "#006AFF",
+            queryLanguageName: "SQL", editorLanguage: .sql,
+            connectionMode: .network, supportsDatabaseSwitching: true,
+            structureEditing: SchemaEditingSupport(columnReorder: .alter, foreignKeyEdit: .alter),
+            capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                supportsSchemaSwitching: false,
+                supportsImport: true,
+                supportsExport: true,
+                supportsSSH: true,
+                supportsSSL: true,
+                supportsCascadeDrop: false,
+                supportsForeignKeyDisable: false,
+                supportsReadOnlyMode: true,
+                supportsQueryProgress: false,
+                requiresReconnectForDatabaseSwitch: false,
+                supportsDropDatabase: true,
+                supportsRenameTable: true,
+                supportsRenameView: true,
+                supportsRenameColumn: true,
+                supportsTriggers: true,
+                supportsTriggerEditing: false,
+                supportsCheckConstraints: true,
+                supportsCheckConstraintEditing: false,
+                supportsGeneratedColumns: true,
+                supportsRoutines: true,
+                supportsDatabaseTriggerBrowse: true,
+                defaultSSLMode: .preferred,
+                supportsPrincipalConnectionLimit: false
+            ),
+            schema: PluginMetadataSnapshot.SchemaInfo(
+                defaultSchemaName: "public",
+                defaultGroupName: "main",
+                tableEntityName: "Tables",
+                containerEntityName: "Database",
+                defaultPrimaryKeyColumn: nil,
+                immutableColumns: [],
+                systemDatabaseNames: ["information_schema", "mysql", "oceanbase"],
+                systemSchemaNames: [],
+                fileExtensions: [],
+                databaseGroupingStrategy: .byDatabase,
+                structureColumnFields: [
+                    .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
+                    .onUpdate, .autoIncrement, .comment, .charset, .collation
+                ],
+                rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
+            ),
+            editor: PluginMetadataSnapshot.EditorConfig(
+                sqlDialect: dialect,
+                statementCompletions: [],
+                columnTypesByCategory: mysqlColumnTypesWithoutSpatial(from: mysqlColumnTypes)
+            ),
+            connection: PluginMetadataSnapshot.ConnectionConfig(
+                additionalConnectionFields: [idleReleaseField],
+                category: .relational,
+                tagline: String(localized: "Distributed HTAP, MySQL-compatible")
+        )
+        ))
     }
 }

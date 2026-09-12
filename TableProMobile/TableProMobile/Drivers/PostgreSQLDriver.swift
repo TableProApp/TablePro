@@ -312,16 +312,12 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     static func foreignKeysQuery(schema: String, table: String, serverVersionNumber: Int32) -> String {
         PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: literal(schema),
-            tableLiteral: literal(table),
+            schema: schema,
+            table: table,
             excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
                 serverVersionNumber: serverVersionNumber
             )
         )
-    }
-
-    private static func literal(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
     }
 
     func fetchDatabases() async throws -> [String] {

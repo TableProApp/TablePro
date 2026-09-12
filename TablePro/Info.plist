@@ -415,6 +415,7 @@
 				<string>mysql</string>
 				<string>mariadb</string>
 				<string>tidb</string>
+				<string>oceanbase</string>
 				<string>sqlite</string>
 				<string>mongodb</string>
 				<string>redis</string>

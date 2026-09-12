@@ -38,6 +38,9 @@ enum MySQLServerVersion {
         case .tidb(let version):
             guard let version else { return false }
             return version >= MySQLEngineVersion(major: 7, minor: 2, patch: 0)
+        case .oceanbase(let version):
+            guard let version else { return false }
+            return version >= MySQLEngineVersion(major: 4, minor: 0, patch: 0)
         case .databend:
             return false
         }
@@ -53,6 +56,9 @@ enum MySQLServerVersion {
             return isAtLeast((10, 2, 0), banner: banner)
         case .tidb:
             return true
+        case .oceanbase(let version):
+            guard let version else { return false }
+            return version >= MySQLEngineVersion(major: 4, minor: 0, patch: 0)
         case .databend:
             return false
         }

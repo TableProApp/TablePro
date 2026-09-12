@@ -1,0 +1,59 @@
+---
+title: OceanBase
+description: Connect to OceanBase MySQL mode through the bundled MySQL driver on port 2881
+---
+
+Sign in as `user@tenant`. The sys tenant's root is `root@sys`. Oracle compatibility mode is a different protocol and does not connect.
+
+No minimum OceanBase version is enforced. Host, password, SSH tunnels, SSL/TLS and `Cmd+K` database switching work as on [MySQL](/databases/mysql).
+
+## Connection settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Port** | `2881` | The SQL port for MySQL mode. Do not point at an OBProxy extras port unless that is the SQL listener |
+| **Database** | empty | Optional. Leave it empty to browse every database in the tenant |
+| **SSL Mode** | Preferred | TLS first, plain text if the server refuses |
+| **Username** | empty | `user@tenant`. In a URL, write the `@` as `%40`: `root%40sys` |
+
+**Release the Server Connection After** is available under Advanced. AWS IAM, Cloud SQL Auth Proxy and Unix socket are not offered; reach a private cluster through an [SSH tunnel](/connections/ssh-tunneling).
+
+## Connection URL
+
+```text
+oceanbase://root%40sys:password@host:2881/database
+```
+
+`oceanbase+ssh://` opens it through an SSH tunnel. See [Connection URL Reference](/connections/urls).
+
+## Tables without a primary key
+
+OceanBase keeps a hidden `__pk_increment` column on a table declared without a primary key, but the catalog never reports it and a plain `SELECT *` never returns it, so TablePro edits such a table the way it edits one on [MySQL](/databases/mysql): the `UPDATE` or `DELETE` matches every column of the row, and a save that would touch more than one row is rolled back with a message that identical rows cannot be told apart. A `FLOAT`, `DOUBLE` or `JSON` column is compared through `CONCAT()`, because the text those types read back as does not compare equal to the value it came from.
+
+The connection type decides the sidebar, the type picker, EXPLAIN and Stop. A server reached through a connection saved as **MySQL** is treated as MySQL, because the MySQL handshake reports `5.7.25` and names no engine. Choose **OceanBase** for what this page describes.
+
+Opening an OceanBase connection reads `@@version_comment`. A server that does not name OceanBase there is refused, so a mistyped host or port fails at connect instead of part way through a session.
+
+## What the MySQL driver does not copy
+
+- The sidebar hides `information_schema`, `mysql` and `oceanbase`. User databases such as `test` stay listed.
+- **Stop** sends `KILL QUERY` for the session's own id, as on MySQL.
+- `EXPLAIN` is plain text. `EXPLAIN FORMAT=JSON` is not offered.
+- The type picker has MySQL's types without the Spatial group.
+- [Users & Roles](/features/users-roles) has no connection limit field.
+- Table Maintenance offers `ANALYZE TABLE` only.
+- Foreign keys can be created. `SET FOREIGN_KEY_CHECKS` is not sent. Triggers appear in the Structure tab; adding one from there is not offered.
+
+## Limitations
+
+- Oracle compatibility mode does not connect. Use a MySQL-mode tenant and the MySQL protocol port.
+- No Server Dashboard, and **File > Backup Dump…** stays dimmed.
+- [Compare & Sync](/features/compare-sync) writes no structure script between OceanBase and MySQL or MariaDB. OceanBase against OceanBase works.
+- Cluster tenant administration is out of scope.
+
+## Related
+
+- [MySQL](/databases/mysql), for connection fields, SSL/TLS, and troubleshooting
+- [MariaDB](/databases/mariadb)
+- [TiDB](/databases/tidb)
+- [SSH Tunneling](/connections/ssh-tunneling)

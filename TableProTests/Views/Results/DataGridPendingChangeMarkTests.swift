@@ -190,7 +190,7 @@ struct DataGridPendingChangeMarkTests {
         )
 
         #expect(struck.gain > textWidth / 2)
-        #expect(selected.gain > textWidth / 2)
+        #expect(selected.reach > textWidth / 2)
     }
 
     /// The two lines have to land in different places, or they are the same cue twice.

@@ -54,7 +54,7 @@ internal enum ColumnDefaultVocabulary {
 
     private static func expressionSQL(for databaseType: DatabaseType) -> [String] {
         switch databaseType {
-        case .mysql, .tidb:
+        case .mysql, .tidb, .oceanbase:
             return ["CURRENT_TIMESTAMP", "(UUID())", "(CURRENT_DATE)"]
         case .mariadb:
             return ["CURRENT_TIMESTAMP", "uuid()", "curdate()"]

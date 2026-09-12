@@ -104,6 +104,7 @@ struct PluginMetadataRegistryVariantTests {
         #expect(registry.snapshot(for: .cockroachdb)?.defaultPort == 26_257)
         #expect(registry.snapshot(for: .tidb)?.defaultPort == 4_000)
         #expect(registry.snapshot(for: .databend)?.defaultPort == 3_307)
+        #expect(registry.snapshot(for: .oceanbase)?.defaultPort == 2_881)
     }
 
     /// One connection, one dialect. The filter preview reads PluginManager.sqlDialect while the
@@ -112,7 +113,7 @@ struct PluginMetadataRegistryVariantTests {
     @MainActor
     @Test("every reader of the editor dialect agrees for a variant type")
     func dialectReadersAgreeForAVariant() throws {
-        for databaseType in [DatabaseType.redshift, .cockroachdb, .pglite, .mariadb, .tidb, .databend] {
+        for databaseType in [DatabaseType.redshift, .cockroachdb, .pglite, .mariadb, .tidb, .databend, .oceanbase] {
             let viaManager = try #require(PluginManager.shared.sqlDialect(for: databaseType))
             let viaHelper = try resolveSQLDialect(for: databaseType)
             #expect(viaManager.caseSensitivityStyle == viaHelper.caseSensitivityStyle)

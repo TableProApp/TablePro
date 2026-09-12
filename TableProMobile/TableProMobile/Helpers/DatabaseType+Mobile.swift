@@ -7,6 +7,7 @@ extension DatabaseType {
         case .mysql, .mariadb: return "3306"
         case .tidb: return "4000"
         case .databend: return "3307"
+        case .oceanbase: return "2881"
         case .postgresql: return "5432"
         case .redshift: return "5439"
         case .redis: return "6379"
@@ -23,6 +24,7 @@ extension DatabaseType {
         case .mariadb: "MariaDB"
         case .tidb: "TiDB"
         case .databend: "Databend"
+        case .oceanbase: "OceanBase"
         case .postgresql: "PostgreSQL"
         case .redshift: "Redshift"
         case .sqlite: "SQLite"
@@ -38,6 +40,7 @@ extension DatabaseType {
         .mysql,
         .mariadb,
         .tidb,
+        .oceanbase,
         .postgresql,
         .sqlite,
         .duckdb,

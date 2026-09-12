@@ -9,7 +9,7 @@ struct IntentDatabaseSession {
 
     static func supportsTabularInsert(_ type: DatabaseType) -> Bool {
         switch type {
-        case .mysql, .mariadb, .tidb, .postgresql, .redshift, .mssql, .sqlite, .duckdb, .oracle:
+        case .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .mssql, .sqlite, .duckdb, .oracle:
             return true
         default:
             return false

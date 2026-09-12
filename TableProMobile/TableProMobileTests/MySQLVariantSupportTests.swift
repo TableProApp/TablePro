@@ -9,9 +9,11 @@ struct MySQLVariantSupportTests {
     @Test("TiDB is offered and supported, Databend is neither")
     func offeredTypes() {
         #expect(DatabaseType.mobileSupportedTypes.contains(.tidb))
+        #expect(DatabaseType.mobileSupportedTypes.contains(.oceanbase))
         #expect(!DatabaseType.mobileSupportedTypes.contains(.databend))
         let supported = IOSDriverFactory().supportedTypes()
         #expect(supported.contains(.tidb))
+        #expect(supported.contains(.oceanbase))
         #expect(!supported.contains(.databend))
     }
 
@@ -21,11 +23,14 @@ struct MySQLVariantSupportTests {
         #expect(DatabaseType.tidb.mobileDisplayName == "TiDB")
         #expect(DatabaseType.databend.defaultPort == "3307")
         #expect(DatabaseType.databend.mobileDisplayName == "Databend")
+        #expect(DatabaseType.oceanbase.defaultPort == "2881")
+        #expect(DatabaseType.oceanbase.mobileDisplayName == "OceanBase")
     }
 
     @Test("TiDB takes tabular inserts from Shortcuts, Databend does not")
     func tabularInsert() {
         #expect(IntentDatabaseSession.supportsTabularInsert(.tidb))
+        #expect(IntentDatabaseSession.supportsTabularInsert(.oceanbase))
         #expect(!IntentDatabaseSession.supportsTabularInsert(.databend))
     }
 
@@ -35,5 +40,13 @@ struct MySQLVariantSupportTests {
         let driver = try IOSDriverFactory().createDriver(for: connection, password: nil)
         let mysql = try #require(driver as? MySQLDriver)
         #expect(mysql.databaseType == .tidb)
+    }
+
+    @Test("OceanBase routes to the MySQL driver with its own type")
+    func oceanBaseRoutesToMySQLDriver() throws {
+        let connection = DatabaseConnection(name: "o", type: .oceanbase, host: "127.0.0.1", port: 2_881)
+        let driver = try IOSDriverFactory().createDriver(for: connection, password: nil)
+        let mysql = try #require(driver as? MySQLDriver)
+        #expect(mysql.databaseType == .oceanbase)
     }
 }

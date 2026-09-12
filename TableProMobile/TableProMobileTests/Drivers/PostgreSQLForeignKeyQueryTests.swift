@@ -49,6 +49,13 @@ struct PostgreSQLForeignKeyQueryTests {
         #expect(query.contains("cl.relname = 'it''s'"))
     }
 
+    @Test("a backslash in the schema name is quoted as an E-string")
+    func escapesBackslash() {
+        let query = PostgreSQLDriver.foreignKeysQuery(schema: #"a\b"#, table: "t", serverVersionNumber: 170_011)
+
+        #expect(query.contains(#"ns.nspname = E'a\\b'"#))
+    }
+
     @Test("a Redshift server never receives the PostgreSQL 11 clone filter")
     func redshiftKeepsPortableQuery() {
         let redshift = PostgreSQLDriver.foreignKeysQuery(schema: "public", table: "t", serverVersionNumber: 80_002)

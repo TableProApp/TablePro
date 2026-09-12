@@ -57,6 +57,7 @@ struct DatabaseTypeTests {
         (DatabaseType.mariadb, "MariaDB"),
         (DatabaseType.tidb, "TiDB"),
         (DatabaseType.databend, "Databend"),
+        (DatabaseType.oceanbase, "OceanBase"),
         (DatabaseType.postgresql, "PostgreSQL"),
         (DatabaseType.sqlite, "SQLite"),
         (DatabaseType.mongodb, "MongoDB"),
@@ -119,6 +120,11 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.databend.pluginTypeId == "MySQL")
     }
 
+    @Test("OceanBase pluginTypeId maps to MySQL plugin")
+    func testOceanBasePluginTypeId() {
+        #expect(DatabaseType.oceanbase.pluginTypeId == "MySQL")
+    }
+
     @Test("Redshift pluginTypeId maps to PostgreSQL plugin")
     func testRedshiftPluginTypeId() {
         #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
@@ -156,7 +162,8 @@ struct DatabaseTypeTests {
         DatabaseType.mysql,
         DatabaseType.mariadb,
         DatabaseType.tidb,
-        DatabaseType.databend
+        DatabaseType.databend,
+        DatabaseType.oceanbase
     ])
     func testMariaDBClientEnginesDefaultSSLPreferred(type: DatabaseType) {
         #expect(type.defaultSSLMode == .preferred)
@@ -194,6 +201,7 @@ struct DatabaseTypeTests {
         DatabaseType.mariadb,
         DatabaseType.tidb,
         DatabaseType.databend,
+        DatabaseType.oceanbase,
         DatabaseType.mssql
     ])
     func testOpportunisticTLSSupported(type: DatabaseType) {

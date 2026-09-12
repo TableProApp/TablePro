@@ -49,6 +49,7 @@ struct PluginManagerVariantAccessorTests {
             "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys"
         ])
         #expect(manager.systemDatabaseNames(for: .databend) == ["information_schema", "system"])
+        #expect(manager.systemDatabaseNames(for: .oceanbase) == ["information_schema", "mysql", "oceanbase"])
     }
 
     /// The reason the editor half of this was reported: Redshift has no non-ASCII ILIKE, so it

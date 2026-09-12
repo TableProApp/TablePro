@@ -395,6 +395,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["TiDB"] = "MySQL"
         reverseTypeIndex["Databend"] = "MySQL"
+        reverseTypeIndex["OceanBase"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"
         reverseTypeIndex["PGlite"] = "PostgreSQL"
@@ -693,7 +694,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     /// Keyed by `databaseTypeId`. Stale plugins from the registry inherit these on registration.
     static func fallbackCategory(forTypeId typeId: String) -> DatabaseCategory {
         switch typeId {
-        case "MySQL", "MariaDB", "PostgreSQL", "SQLite", "Oracle", "MSSQL":
+        case "MySQL", "MariaDB", "PostgreSQL", "SQLite", "Oracle", "MSSQL", "OceanBase":
             return .relational
         case "Redshift", "ClickHouse", "DuckDB", "BigQuery":
             return .analytical
@@ -720,6 +721,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         switch typeId {
         case "MySQL":          return String(localized: "Most popular open-source SQL database")
         case "MariaDB":        return String(localized: "Open-source fork of MySQL")
+        case "OceanBase":      return String(localized: "Distributed HTAP, MySQL-compatible")
         case "PostgreSQL":     return String(localized: "Advanced object-relational SQL")
         case "Redshift":       return String(localized: "Amazon's columnar warehouse on Postgres")
         case "SQLite":         return String(localized: "Embedded zero-config SQL database")

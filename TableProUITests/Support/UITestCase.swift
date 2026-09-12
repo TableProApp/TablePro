@@ -182,6 +182,23 @@ internal class UITestCase: XCTestCase {
         waitForPredicate(timeout: timeout) { element.exists && element.isHittable }
     }
 
+    /// The settings window is 720x500, and the Editor pane's SQL toggles run past that. XCUITest
+    /// reports the Vim switch as existing and not hittable, because it is below the fold; a swipe
+    /// is what brings it into the window.
+    internal func waitUntilHittableByScrolling(
+        _ element: XCUIElement,
+        in container: XCUIElement,
+        timeout: TimeInterval
+    ) -> Bool {
+        if waitUntilHittable(element, timeout: 1) { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            container.scrollViews.firstMatch.swipeUp()
+            if waitUntilHittable(element, timeout: 0.8) { return true }
+        }
+        return element.exists && element.isHittable
+    }
+
     /// Switches the result to its Structure editor, through **View > Result View > Structure**
     /// rather than the `Structure` segment of the results status bar.
     ///

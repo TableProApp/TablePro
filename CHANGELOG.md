@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OceanBase MySQL-mode connection type. (#1748)
 - Strikethrough on a row queued for deletion, and an underline on a new row or an edited value.
 - Google Cloud Spanner as a registry plugin over the REST API. (#1226, #2480)
 - Weaviate as a registry REST plugin, collections as tables. (#1724)
@@ -58,6 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Statement folded onto one line and cut at 400 characters in an MCP client's approval prompt.
 - Blank line under "Are you sure you want to execute this query?" when confirming a rename.
 - Row numbers and their divider painted over the find bar, the filter panel and the result tab bar.
+- iOS PostgreSQL foreign-key listing after catalog quoting moved to the shared helper. (#2726)
+- iOS MySQL driver after maintenance operations moved to a shared helper.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
 - Add Row under a column value filter selecting and opening the wrong row for editing.

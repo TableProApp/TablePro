@@ -63,6 +63,10 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      # Maintenance operations and identifier quoting the iOS flavor switch shares with the macOS plugin.
+      - ../Plugins/MySQLDriverPlugin/MySQLColumnDefinitionSQL.swift
+      - ../Plugins/MySQLDriverPlugin/DatabendCatalog.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       # Foreign key catalog read the iOS PostgreSQL driver shares with the macOS plugin, plus the
       # single owner of the plugin's literal quoting that it builds its SQL with, and the version
       # gate that owner projects against.
