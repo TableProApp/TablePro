@@ -96,7 +96,7 @@ struct ForeignKeyPickerView: View {
     private var content: some View {
         if let errorMessage {
             RevealedTextView(errorMessage)
-                .foregroundStyle(.red)
+                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)

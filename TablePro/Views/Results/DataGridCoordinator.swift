@@ -622,6 +622,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 /// the width was already going stale here.
                 self?.resizeRowNumberColumnForCurrentRange()
                 self?.repaintRowGutter()
+                self?.selectionController.overlay?.needsDisplay = true
             }
     }
 

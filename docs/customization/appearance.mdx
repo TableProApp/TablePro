@@ -39,6 +39,7 @@ Custom themes get color wells here. A built-in or registry theme shows a lock an
 | Editor | Background, text, cursor, selection, current line, current statement, line number, invisibles |
 | Syntax Colors | Keyword, string, number, comment, NULL, operator, function, type |
 | Data Grid | Background, text, alternate row, header background, header text, grid line, selection, selected text, inactive selection, focus border, NULL value, bool true/false, row number, modified/inserted/deleted rows, deleted text |
+| Panels | Pane background, field background, pane text, secondary text, tertiary text, separator |
 | Status | Success, warning, error |
 
 A slot holds either a hex color or the name of a macOS system color. Default Light and Default Dark keep the data grid surrounds on system colors, which is why an untouched theme follows your system accent and its Increase Contrast setting. Right-click a well that a built-in leaves on a system color to put that system color back.
@@ -54,6 +55,7 @@ A theme is one JSON file. **Export…** in the gear menu writes every color the 
 | `appearance` | `light` or `dark`. Decides which slot lists the theme |
 | `content.editor` | Editor colors, with syntax colors nested under `syntax` |
 | `content.dataGrid` | Grid colors |
+| `content.panel` | Colors of the panes around the editor and the grid: results, inspector, structure, compare, query plan |
 | `content.status` | Success, warning and error colors |
 
 ```json

@@ -39,6 +39,7 @@ internal enum BuiltInThemes {
             deleted: "#FF3B304D",
             deletedText: "#FF3B3080"
         ),
+        panel: .systemPanel,
         status: StatusThemeColors(
             success: .hex("#248A3D"),
             warning: .hex("#C55B00"),
@@ -77,6 +78,7 @@ internal enum BuiltInThemes {
             deleted: "#FF453A26",
             deletedText: "#FF453A80"
         ),
+        panel: .systemPanel,
         status: StatusThemeColors(
             success: .hex("#32D74B"),
             warning: .hex("#FF9F0A"),
@@ -124,4 +126,17 @@ internal enum BuiltInThemes {
             deletedText: .hex(deletedText)
         )
     }
+}
+
+internal extension PanelThemeColors {
+    /// The semantic colours these surfaces already named before the theme owned them, so a default
+    /// theme is invisible against the unthemed app and keeps the system's contrast handling.
+    static let systemPanel = PanelThemeColors(
+        background: .system(.controlBackground),
+        controlBackground: .system(.textBackground),
+        text: .system(.label),
+        secondaryText: .system(.secondaryLabel),
+        tertiaryText: .system(.tertiaryLabel),
+        separator: .system(.separator)
+    )
 }

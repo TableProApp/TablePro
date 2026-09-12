@@ -223,8 +223,9 @@ struct SQLReviewSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
+                .foregroundStyle(ThemeEngine.shared.palette.color(.editorText))
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(ThemeEngine.shared.palette.color(.editorBackground))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)

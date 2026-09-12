@@ -162,7 +162,7 @@ struct ArrayValueEditorView: View {
         .pickerStyle(.menu)
         if ArrayValueEditorModel.isDriftedValue(row.element, allowedValues: allowedValues) {
             Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
+                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
                 .help(Text("This value is not one of the type's current labels"))
         }
     }
