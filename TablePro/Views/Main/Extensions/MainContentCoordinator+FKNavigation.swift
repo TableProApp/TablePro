@@ -27,18 +27,23 @@ extension MainContentCoordinator {
                 referencedColumn: reference.referencedColumn,
                 referencedSchema: reference.referencedSchema
             ),
-            openInNewTab: false
+            intent: .follow
         )
     }
 
     /// Navigate to the referenced table filtered by the FK value.
-    /// Reuses the current tab when it holds nothing the user authored, and otherwise opens the
-    /// reference in its own tab so the originating query or edits survive.
-    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {
+    ///
+    /// The choice is `ReferenceNavigationPlanner`'s, so it can be read and tested in one place. It
+    /// never re-points the selected tab at a different table. A tab already on the referenced table
+    /// is re-filtered, which is a move within the table the reader is in and which Back undoes.
+    /// Retargeting used to be guarded by a predicate of its own, which knew about unsaved edits but
+    /// not about applied filters, a sort or pinned results, so the arrow in a cell took over a tab
+    /// the sidebar would have left alone and the reader lost the rows they were reading.
+    func navigateToFKReference(value: String, fkInfo: ForeignKeyInfo, intent: ReferenceOpenIntent) {
         let referencedTable = fkInfo.referencedTable
         let referencedColumn = fkInfo.referencedColumn
 
-        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value) newTab=\(openInNewTab)")
+        fkNavigationLogger.debug("FK navigate: \(referencedTable).\(referencedColumn) = \(value) intent=\(String(describing: intent))")
 
         let filter = TableFilter(
             columnName: referencedColumn,
@@ -62,47 +67,73 @@ extension MainContentCoordinator {
         let targetDatabase = target.database
         let targetSchema = target.schema
 
-        if !openInNewTab,
-           let current = tabManager.selectedTab,
-           matchesFKTarget(current, table: referencedTable, database: targetDatabase, schema: targetSchema) {
-            /// Re-filtering the tab in place is a jump like any other, so it goes on the history.
-            /// Clicking the reference the tab is already showing is not, and recording it would
-            /// stack identical entries a reader has to press Back through.
-            let departing = showsOnlyFKPredicate(current, filter: filter) ? nil : captureNavigationEntry()
-            applyFKFilter(filter, for: referencedTable)
-            commitNavigationEntry(departing)
-            return
-        }
+        let selectedTab = tabManager.selectedTab
+        let showsTarget = selectedTab.map {
+            matchesFKTarget($0, table: referencedTable, database: targetDatabase, schema: targetSchema)
+        } ?? false
+        let existing = intent == .follow ? openFKTargetTab(
+            table: referencedTable,
+            database: targetDatabase,
+            schema: targetSchema,
+            filter: filter
+        ) : nil
 
-        guard openInNewTab || selectedTabHoldsProtectedContent else {
-            replaceSelectedTabWithFKTarget(
-                referencedTable: referencedTable,
+        let plan = ReferenceNavigationPlanner.plan(
+            for: ReferenceNavigationContext(
+                intent: intent,
+                selectedTabShowsTarget: showsTarget,
+                /// The discard alert clears staged cell edits and nothing else, so re-querying
+                /// under a staged structure edit would promise something this path cannot keep.
+                /// Back and Forward stand down on the same tab for the same reason.
+                selectedTabAcceptsRefilter: selectedTab.map { !hasStagedStructureEdits(in: $0) } ?? false,
+                anotherTabShowsReference: existing != nil
+            )
+        )
+
+        /// Both jumps that leave the tab keep it. The reader navigated away from it rather than
+        /// clicking past it, so the next sidebar click must not retarget it; `openTableTab` promotes
+        /// before it hands off for the same reason. Re-filtering stays on the tab, so it does not.
+        switch plan {
+        case .refilterSelectedTab:
+            refilterSelectedTab(with: filter, showsReferenceAlready: selectedTab.map {
+                showsOnlyFKPredicate($0, filter: filter)
+            } ?? false)
+        case .revealExistingTab:
+            promotePreviewTab()
+            guard let existing, hostedTabRouting.reveal(existing.coordinator, existing.tabId) else {
+                openReferenceInNewTab(
+                    filter: filter,
+                    referencedTable: referencedTable,
+                    databaseName: targetDatabase,
+                    schemaName: targetSchema
+                )
+                return
+            }
+        case .openNewTab:
+            promotePreviewTab()
+            openReferenceInNewTab(
                 filter: filter,
+                referencedTable: referencedTable,
                 databaseName: targetDatabase,
                 schemaName: targetSchema
             )
-            return
         }
+    }
 
-        if !openInNewTab,
-           let existing = openFKTargetTab(
-               table: referencedTable,
-               database: targetDatabase,
-               schema: targetSchema,
-               filter: filter
-           ) {
-            existing.coordinator.selectTabAndFocusWindow(existing.tabId)
-            return
-        }
-
-        promotePreviewTab()
-        let payload = makeFKReferencePayload(
-            filter: filter,
-            referencedTable: referencedTable,
-            databaseName: targetDatabase,
-            schemaName: targetSchema
+    private func openReferenceInNewTab(
+        filter: TableFilter,
+        referencedTable: String,
+        databaseName: String,
+        schemaName: String?
+    ) {
+        openTabInNewWindow(
+            makeFKReferencePayload(
+                filter: filter,
+                referencedTable: referencedTable,
+                databaseName: databaseName,
+                schemaName: schemaName
+            )
         )
-        openTabInNewWindow(payload)
     }
 
     func makeFKReferencePayload(
@@ -172,8 +203,13 @@ extension MainContentCoordinator {
 
     /// Whether this tab is already showing exactly this reference and nothing else. One definition,
     /// because the reuse search and the history both have to agree on what "already here" means.
+    ///
+    /// Asked of what the rows were fetched with, never of `appliedFilters`, which resolves from the
+    /// panel's editable draft. Typing `id = 42` into a tab showing `id = 7` and not pressing Apply
+    /// made that tab answer yes, and revealing it runs no query, so the reader landed on the rows
+    /// for 7 while the app reported it had found the reference.
     private func showsOnlyFKPredicate(_ tab: QueryTab, filter: TableFilter) -> Bool {
-        let applied = tab.filterState.appliedFilters
+        let applied = tab.filterState.executedFilters
         guard applied.count == 1 else { return false }
         return isSameFKPredicate(applied[0], filter)
     }
@@ -195,61 +231,31 @@ extension MainContentCoordinator {
             return (self, match.id)
         }
 
-        for sibling in MainContentCoordinator.allActiveCoordinators()
-            where sibling !== self && sibling.connectionId == connectionId {
+        /// Hosted coordinators, not `allActiveCoordinators()`, which is a registry of every
+        /// coordinator SwiftUI has built and can hold one whose window is gone. A reveal has to
+        /// land somewhere the reader can see.
+        for sibling in hostedTabRouting.coordinators(connectionId) where sibling !== self {
             guard let match = sibling.tabManager.tabs.first(where: matches) else { continue }
             return (sibling, match.id)
         }
         return nil
     }
 
-    private func replaceSelectedTabWithFKTarget(
-        referencedTable: String,
-        filter: TableFilter,
-        databaseName: String,
-        schemaName: String?
-    ) {
-        let departing = captureNavigationEntry()
-        if let outgoingTable = tabManager.selectedTab?.tableContext.tableName {
-            saveLastFilters(for: outgoingTable)
+    /// Re-points the tab the reader is already on at another row of the same table.
+    ///
+    /// Everything happens inside one discard guard. The pair this replaced ran `applyFilters`,
+    /// which defers behind the alert, beside `setFKFilter`, which does not, so refusing the alert
+    /// left the panel showing an applied filter the grid was never re-queried for and pushed a
+    /// history entry for a jump that never happened, dropping the forward stack with it.
+    private func refilterSelectedTab(with filter: TableFilter, showsReferenceAlready: Bool) {
+        /// Re-filtering the tab in place is a jump like any other, so it goes on the history.
+        /// Clicking the reference the tab is already showing is not, and recording it would stack
+        /// identical entries a reader has to press Back through.
+        let departing = showsReferenceAlready ? nil : captureNavigationEntry()
+        confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            filterCoordinator.commitReferenceFilter(filter)
+            commitNavigationEntry(departing)
         }
-
-        let replaced: Bool
-        do {
-            replaced = try tabManager.replaceTabContent(
-                tableName: referencedTable,
-                databaseType: connection.type,
-                isView: false,
-                databaseName: databaseName,
-                schemaName: schemaName
-            )
-        } catch {
-            fkNavigationLogger.error("navigateToFKReference replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
-            return
-        }
-
-        commitNavigationEntry(departing)
-        guard replaced, let (replacedTab, tabIndex) = tabManager.selectedTabAndIndex else {
-            applyFKFilter(filter, for: referencedTable)
-            return
-        }
-
-        /// The load goes through the first-load path like every other retarget, because the new
-        /// table has no rows to type the filter value from and that path waits for its schema.
-        cancelTableLoad(for: replacedTab.id)
-        discardRowsForRetarget()
-        restoreLastHiddenColumnsForTable()
-        updateFilterState(filter, for: referencedTable)
-        rebuildTableQuery(at: tabIndex)
-        lazyLoadCurrentTabIfNeeded()
-    }
-
-    private func applyFKFilter(_ filter: TableFilter, for tableName: String) {
-        applyFilters([filter])
-        updateFilterState(filter, for: tableName)
-    }
-
-    private func updateFilterState(_ filter: TableFilter, for tableName: String) {
-        setFKFilter(filter)
     }
 }

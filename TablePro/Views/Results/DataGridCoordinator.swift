@@ -1437,8 +1437,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 // MARK: - DataGridCellAccessoryDelegate
 
 extension TableViewCoordinator: DataGridCellAccessoryDelegate {
-    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, openInNewTab: Bool) {
-        handleFKArrowAction(row: row, columnIndex: columnIndex, openInNewTab: openInNewTab)
+    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, intent: ReferenceOpenIntent) {
+        handleFKArrowAction(row: row, columnIndex: columnIndex, intent: intent)
     }
 
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int) {

@@ -74,7 +74,7 @@ extension TableViewCoordinator {
                 onNavigate: { [weak self, model] in
                     dismiss()
                     guard let value = model.cellValue else { return }
-                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo, openInNewTab: false)
+                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: model.fkInfo, intent: .follow)
                 },
                 onDismiss: dismiss
             )

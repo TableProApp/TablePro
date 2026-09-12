@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **None** in the foreign key picker's Label menu forgotten on reopen.
+- **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
+- TablePlus import saving a password for a connection TablePlus was set never to store one for.
+- TablePlus import reading the CA certificate and client key paths the wrong way round.
 - MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
 - Nested foreign key chevrons in the row inspector pointing into the database the sidebar is on rather than the referenced one.
 - Ref Columns in the structure editor offering only **Custom…** for the rest of the tab after one failed read, with no error and no retry.
@@ -58,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Empty **Ref Table** menu in the structure editor on MySQL, MariaDB, TiDB, PostgreSQL, CockroachDB, Redshift, SQL Server and DuckDB.
 - **New Trigger** pre-filling a template naming the sidebar's database, and **Drop Trigger** naming it in the statement it ran elsewhere.
 - `describe_table` over MCP answering with one database's columns beside another's indexes, foreign keys, row count and DDL.
+- Foreign key arrow replacing the tab you were reading. (#1421)
+- Applied filter left in the panel after cancelling the unsaved-changes alert on a foreign key jump.
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
 - Column header shown as selected after a cell drag reached the first and last row of the page.
 - No outline around a swept cell block whose rows reached both ends of the page.
@@ -245,6 +251,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- TablePlus connections set to VERIFY-IDENTITY or VERIFY-FULL imported with TLS turned off.
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
 - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)

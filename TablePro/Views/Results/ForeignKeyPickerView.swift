@@ -204,6 +204,7 @@ struct ForeignKeyPickerView: View {
             .pickerStyle(.menu)
             .controlSize(.small)
             .disabled(columns.isEmpty)
+            .accessibilityIdentifier("fk-picker-label")
 
             Spacer(minLength: 4)
 
@@ -236,7 +237,12 @@ struct ForeignKeyPickerView: View {
             get: { labelColumnName },
             set: { newValue in
                 labelColumnName = newValue
-                ForeignKeyLabelColumnStore.shared.setLabelColumn(newValue, for: referencedTableScope)
+                /// A cleared menu is the reader choosing to see keys on their own, not the reader
+                /// saying nothing: storing it as absence let the heuristic pick a label again on the
+                /// next open.
+                ForeignKeyLabelColumnStore.shared.setLabelChoice(
+                    newValue.map(ForeignKeyLabelChoice.column) ?? .noLabel, for: referencedTableScope
+                )
             }
         )
     }
@@ -295,11 +301,11 @@ struct ForeignKeyPickerView: View {
                 in: scope, databaseType: databaseType, reference: fkInfo
             )
             guard !Task.isCancelled else { return }
-            let stored = ForeignKeyLabelColumnStore.shared.labelColumn(for: referencedTableScope)
+            let choice = ForeignKeyLabelColumnStore.shared.labelChoice(for: referencedTableScope)
             labelColumnName = ForeignKeyLabelColumn.resolve(
                 columns: fetched,
                 keyColumn: fkInfo.referencedColumn,
-                preferred: stored
+                choice: choice
             )?.name
             columns = fetched
             hasLoadedColumns = true
