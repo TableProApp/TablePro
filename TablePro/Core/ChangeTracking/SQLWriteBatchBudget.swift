@@ -29,9 +29,26 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
     internal let maxRows: Int
     internal let maxBytes: Int
 
-    internal init(maxRows: Int, maxBytes: Int = SQLWriteBatchBudget.maximumBytes) {
+    /// Whether the target's driver sends a value as a bind parameter or renders it into the SQL.
+    /// Databend has no binary protocol here: `MariaDBPluginConnection` routes it through
+    /// `DatabendLiteral.inline`, so a value crosses as a literal, binary doubles as hex and text
+    /// grows by whatever escaping it needs. Charging it the parameter rate made the cap no bound at
+    /// all: two 400,000-byte values are 800,024 bytes of parameters but over 1.6 MiB of SQL.
+    internal let rendersValuesAsLiterals: Bool
+
+    internal init(
+        maxRows: Int,
+        maxBytes: Int = SQLWriteBatchBudget.maximumBytes,
+        rendersValuesAsLiterals: Bool = false
+    ) {
         self.maxRows = max(1, maxRows)
         self.maxBytes = max(1, maxBytes)
+        self.rendersValuesAsLiterals = rendersValuesAsLiterals
+    }
+
+    /// The engines whose driver inlines a parameter rather than binding it.
+    internal static func rendersValuesAsLiterals(_ databaseType: DatabaseType) -> Bool {
+        databaseType == .databend
     }
 
     /// The engine's bind-parameter ceiling over the row's width, clamped by its multi-row `VALUES`
@@ -48,7 +65,8 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
                 SQLMultiRowInsert.maximumRowsPerStatement(
                     forDatabaseTypeId: generator.databaseType.rawValue),
                 generator.maxBindParameters / max(1, columnCount)),
-            maxBytes: maxBytes)
+            maxBytes: maxBytes,
+            rendersValuesAsLiterals: Self.rendersValuesAsLiterals(generator.databaseType))
     }
 
     /// A batch holding nothing takes the row whatever it weighs: a row cannot be split across two
@@ -69,20 +87,26 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
     /// null-bitmap bit. Twelve covers every size including the 9-byte prefix a value could
     /// theoretically carry, and over-charging many small values is safe where under-charging a few
     /// large ones is exactly what fails.
-    internal static func byteCount<Values: Sequence>(of values: Values) -> Int
+    internal func byteCount<Values: Sequence>(of values: Values) -> Int
     where Values.Element == PluginCellValue {
         var total = 0
         for value in values {
             switch value {
             case .null:
-                total += valueOverheadBytes
+                total += Self.valueOverheadBytes
             case .text(let text):
-                total += valueOverheadBytes + text.utf8.count
+                total += Self.valueOverheadBytes + charged(text.utf8.count)
             case .bytes(let data):
-                total += valueOverheadBytes + data.count
+                total += Self.valueOverheadBytes + charged(data.count)
             }
         }
         return total
+    }
+
+    /// A driver that inlines is charged double, which is exactly what hex costs a binary value and
+    /// the worst case for escaping a text one.
+    private func charged(_ bytes: Int) -> Int {
+        rendersValuesAsLiterals ? bytes * 2 : bytes
     }
 
     private static let valueOverheadBytes = 12

@@ -132,10 +132,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         columns: [String],
         generator: SQLStatementGenerator
     ) async throws {
-        var filler = SQLWriteBatchFiller<[PluginCellValue]>(
-            budget: SQLWriteBatchBudget(columnCount: columns.count, generator: generator))
+        let budget = SQLWriteBatchBudget(columnCount: columns.count, generator: generator)
+        var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
         for row in groupValues {
-            guard let batch = filler.append(row, bytes: SQLWriteBatchBudget.byteCount(of: row)) else {
+            guard let batch = filler.append(row, bytes: budget.byteCount(of: row)) else {
                 continue
             }
             try await write(batch, columns: columns, generator: generator)

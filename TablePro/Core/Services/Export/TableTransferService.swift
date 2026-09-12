@@ -238,6 +238,10 @@ final class TableTransferService {
         do {
             if request.deleteExistingRows {
                 try await sink.deleteAllRowsFromTargetTable()
+                /// The delete is the destructive half. A Stop arriving while it ran, or while an
+                /// empty source stream was awaiting, used to reach the commit without another loop
+                /// iteration and make the deletion permanent.
+                try checkCancellation()
             }
             for try await element in source.streamRows(for: exportTable) {
                 try checkCancellation()
@@ -247,7 +251,7 @@ final class TableTransferService {
                 case .rows(let rows):
                     for row in rows {
                         let keyed = Self.dictionary(columns: columns, row: row)
-                        let bytes = SQLWriteBatchBudget.byteCount(of: keyed.values)
+                        let bytes = Self.batchBudget.byteCount(of: keyed.values)
                         guard let batch = filler.append(keyed, bytes: bytes) else { continue }
                         try await sink.insertRows(batch)
                         state.transferredRows += batch.count
@@ -260,6 +264,9 @@ final class TableTransferService {
                 state.transferredRows += batch.count
                 wroteAnything = true
             }
+            /// The last awaited write is not followed by a loop check, so without this a Stop during
+            /// it committed anyway and reported success.
+            try checkCancellation()
             if request.wrapInTransaction {
                 try await sink.commitTransaction()
             }

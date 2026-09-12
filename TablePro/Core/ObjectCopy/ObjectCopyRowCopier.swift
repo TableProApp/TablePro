@@ -55,8 +55,8 @@ internal struct ObjectCopyRowCopier: Sendable {
             return try await copyOnServer(statement, using: targetDriver, onProgress: onProgress)
         }
         let generator = try makeGenerator(targetDriver: targetDriver)
-        var filler = SQLWriteBatchFiller<[PluginCellValue]>(
-            budget: SQLWriteBatchBudget(columnCount: step.columns.count, generator: generator))
+        let budget = SQLWriteBatchBudget(columnCount: step.columns.count, generator: generator)
+        var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
         var stream = sourceDriver.streamRows(query: step.sourceQuery).makeAsyncIterator()
 
         var inserted = 0
@@ -66,7 +66,7 @@ internal struct ObjectCopyRowCopier: Sendable {
             guard case .rows(let rows) = element else { continue }
             for row in rows {
                 let values = try aligned(row)
-                let rowBytes = SQLWriteBatchBudget.byteCount(of: values)
+                let rowBytes = budget.byteCount(of: values)
                 guard let batch = filler.append(values, bytes: rowBytes) else { continue }
                 inserted += try await write(batch, generator: generator, driver: targetDriver)
                 onProgress(inserted)

@@ -233,7 +233,8 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         XCTAssertEqual(target.executedParameters.flatMap { $0 }.count, 12)
         for batch in target.executedParameters {
             XCTAssertLessThanOrEqual(
-                SQLWriteBatchBudget.byteCount(of: batch.map { PluginCellValue.text($0.asText ?? "") }),
+                SQLWriteBatchBudget(maxRows: 1_000)
+                    .byteCount(of: batch.map { PluginCellValue.text($0.asText ?? "") }),
                 SQLWriteBatchBudget.maximumBytes + 400_012,
                 "no batch may exceed the budget by more than the one row that cannot be split"
             )

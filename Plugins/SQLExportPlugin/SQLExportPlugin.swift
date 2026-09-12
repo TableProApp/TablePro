@@ -224,6 +224,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
+            /// The publication point. Every phase above can suspend on a driver call, and the
+            /// grant phase makes no cancellation check of its own, so a Stop arriving in one of
+            /// them used to resume and replace the user's file anyway. Nothing is published past
+            /// this line without the stop having been seen.
+            try progress.checkCancellation()
             let writtenParts = try writer.commit()
             committed = true
             if writer.didSplit, let first = writtenParts.first, let last = writtenParts.last {

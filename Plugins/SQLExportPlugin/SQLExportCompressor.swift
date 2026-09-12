@@ -74,13 +74,27 @@ internal enum SQLExportCompressor {
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                     process.terminationHandler = { finished in
-                        try? handle.close()
-                        guard finished.terminationStatus != 0 else {
-                            continuation.resume()
+                        /// Closing the handle is part of compressing, not cleanup after it: a
+                        /// volume that reports a deferred write failure does so here, and the plain
+                        /// writer propagates its own close error. Swallowed, a truncated temp would
+                        /// have replaced a valid dump on a gzip that exited zero.
+                        let closeError: (any Error)?
+                        do {
+                            try handle.close()
+                            closeError = nil
+                        } catch {
+                            closeError = error
+                        }
+                        guard finished.terminationStatus == 0 else {
+                            continuation.resume(throwing: failure(
+                                status: finished.terminationStatus, from: errorPipe))
                             return
                         }
-                        continuation.resume(throwing: failure(
-                            status: finished.terminationStatus, from: errorPipe))
+                        if let closeError {
+                            continuation.resume(throwing: closeError)
+                            return
+                        }
+                        continuation.resume()
                     }
                     do {
                         try gate.launch(process)

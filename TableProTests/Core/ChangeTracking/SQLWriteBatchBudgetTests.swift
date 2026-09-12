@@ -65,7 +65,7 @@ final class SQLWriteBatchBudgetTests: XCTestCase {
     /// 21,845-row parameter ceiling and went out as one ~500 MB statement the server refused.
     func testAByteHeavyRowClosesTheBatchLongBeforeTheRowCap() throws {
         let budget = try SQLWriteBatchBudget(columnCount: 3, generator: generator(.mysql))
-        let megabyte = SQLWriteBatchBudget.byteCount(
+        let megabyte = budget.byteCount(
             of: (0 ..< 3).map { _ in PluginCellValue.text(String(repeating: "a", count: 1_048_576)) })
 
         XCTAssertGreaterThan(budget.maxRows, 500, "the parameter ceiling alone allows far more")
@@ -92,12 +92,31 @@ final class SQLWriteBatchBudgetTests: XCTestCase {
     /// NULLs is not free. Measured against MariaDB 12.3.3, the real per-value cost settles near 6
     /// bytes; 12 is the documented upper bound and over-charging is the safe direction.
     func testEveryValueCostsItsOverheadEvenWhenItCarriesNothing() {
-        XCTAssertEqual(SQLWriteBatchBudget.byteCount(of: [PluginCellValue.null]), 12)
-        XCTAssertEqual(SQLWriteBatchBudget.byteCount(of: [PluginCellValue.text("abc")]), 15)
+        let budget = SQLWriteBatchBudget(maxRows: 500)
+
+        XCTAssertEqual(budget.byteCount(of: [PluginCellValue.null]), 12)
+        XCTAssertEqual(budget.byteCount(of: [PluginCellValue.text("abc")]), 15)
         XCTAssertEqual(
-            SQLWriteBatchBudget.byteCount(of: [PluginCellValue.bytes(Data(repeating: 0, count: 100))]),
-            112)
-        XCTAssertEqual(SQLWriteBatchBudget.byteCount(of: [PluginCellValue]()), 0)
+            budget.byteCount(of: [PluginCellValue.bytes(Data(repeating: 0, count: 100))]), 112)
+        XCTAssertEqual(budget.byteCount(of: [PluginCellValue]()), 0)
+    }
+
+    /// Databend's driver inlines a parameter into the SQL, so binary crosses as hex at two
+    /// characters a byte. Charged the bind-parameter rate, the cap bounded nothing on that engine.
+    func testAnEngineThatInlinesItsValuesIsChargedDouble() throws {
+        let databend = try SQLWriteBatchBudget(columnCount: 1, generator: generator(.databend))
+        let mysql = try SQLWriteBatchBudget(columnCount: 1, generator: generator(.mysql))
+        let value = [PluginCellValue.bytes(Data(repeating: 0xAB, count: 400_000))]
+
+        XCTAssertTrue(databend.rendersValuesAsLiterals)
+        XCTAssertFalse(mysql.rendersValuesAsLiterals)
+        XCTAssertEqual(mysql.byteCount(of: value), 400_012)
+        XCTAssertEqual(databend.byteCount(of: value), 800_012)
+        XCTAssertFalse(
+            databend.hasRoom(for: databend.byteCount(of: value), inBatchOf: 1,
+                             bytes: databend.byteCount(of: value)),
+            "two of these exceed a mebibyte of rendered SQL, so the second must close the batch"
+        )
     }
 
     /// A multi-byte value is charged its UTF-8 length, not its character count: the packet the
@@ -106,7 +125,8 @@ final class SQLWriteBatchBudgetTests: XCTestCase {
         let emoji = String(repeating: "😀", count: 10)
 
         XCTAssertEqual(emoji.count, 10)
-        XCTAssertEqual(SQLWriteBatchBudget.byteCount(of: [PluginCellValue.text(emoji)]), 12 + 40)
+        XCTAssertEqual(
+            SQLWriteBatchBudget(maxRows: 500).byteCount(of: [PluginCellValue.text(emoji)]), 12 + 40)
     }
 
     // MARK: - The filler
