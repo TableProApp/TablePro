@@ -147,7 +147,6 @@ struct SQLEditorView: View {
         }
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration()
-            coordinator.reapplyThemeColors()
         }
         .onAppear {
             initializeEditor()

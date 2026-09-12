@@ -21,7 +21,7 @@ struct InlineErrorBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                .foregroundStyle(.red)
             ScrollView(.vertical) {
                 RevealedTextView(message)
                     .font(.subheadline)
@@ -63,7 +63,7 @@ struct InlineErrorBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(ThemeEngine.shared.palette.color(.statusError).opacity(0.08))
+        .background(.red.opacity(0.08))
     }
 }
 

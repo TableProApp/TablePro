@@ -66,7 +66,7 @@ struct JSONRowInspectorView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(ThemeEngine.shared.palette.color(.statusError).opacity(0.6))
+                .strokeBorder(Color.red.opacity(0.6))
                 .opacity(viewModel.isFilterInvalid ? 1 : 0)
         )
         .help(viewModel.isFilterInvalid

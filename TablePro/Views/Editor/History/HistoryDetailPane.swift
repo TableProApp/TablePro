@@ -66,7 +66,7 @@ struct HistoryDetailPane: View {
             if let errorMessage = entry.errorMessage {
                 RevealedTextView(errorMessage)
                     .font(.caption)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                    .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }

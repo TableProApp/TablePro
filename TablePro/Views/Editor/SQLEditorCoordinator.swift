@@ -27,13 +27,6 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
     @ObservationIgnored weak var controller: TextViewController?
-
-    /// The editor configuration carries the new colours, but an emphasis already on screen baked
-    /// its own into a `CAShapeLayer` that nothing else repaints.
-    func reapplyThemeColors() {
-        guard let controller else { return }
-        diagnosticsController.reapplyColors(in: controller)
-    }
     @ObservationIgnored private lazy var diagnosticsController = QueryDiagnosticsController(
         databaseType: databaseType
     )

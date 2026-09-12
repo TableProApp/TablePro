@@ -252,7 +252,7 @@ private struct TriggerListPane: View {
     private func enabledIndicator(_ trigger: TriggerInfo) -> some View {
         if let enabled = trigger.enabled {
             Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(enabled ? ThemeEngine.shared.palette.color(.statusSuccess) : Color.secondary)
+                .foregroundStyle(enabled ? Color.green : Color.secondary)
                 .accessibilityLabel(enabled ? String(localized: "Enabled") : String(localized: "Disabled"))
         }
     }
@@ -274,7 +274,7 @@ private struct TriggerDetailPane: View {
                 onOpenInEditor: { onOpenInEditor(trigger) }
             )
         } else {
-            ThemeEngine.shared.palette.color(.editorBackground)
+            Color(nsColor: .textBackgroundColor)
         }
     }
 
