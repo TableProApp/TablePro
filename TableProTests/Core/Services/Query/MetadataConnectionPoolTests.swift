@@ -300,4 +300,99 @@ struct MetadataConnectionPoolPlanTests {
         #expect(plan.connectDatabase == "reports")
         #expect(plan.switchDatabase == nil)
     }
+
+    /// A pooled entry is pinned once and answered from for the whole idle timeout, and the only
+    /// thing that runs between the connect and the first read is the user's own startup commands.
+    /// A `USE other` there left every unqualified read answering from `other` while the driver still
+    /// reported the database it was asked for.
+    @Test("A connection carrying startup commands is put back on its target database")
+    func planReassertsAfterStartupCommands() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "shop",
+            targetDatabase: "shop",
+            authenticationIsDatabaseScoped: false,
+            runsStartupCommands: true,
+            switchesDatabaseWithoutReconnecting: true
+        )
+
+        #expect(plan.connectDatabase == "shop")
+        #expect(plan.switchDatabase == "shop")
+    }
+
+    @Test("A connection with no startup commands cannot have moved, so nothing is re-asserted")
+    func planSkipsReassertWithoutStartupCommands() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "shop",
+            targetDatabase: "reports",
+            authenticationIsDatabaseScoped: false,
+            runsStartupCommands: false,
+            switchesDatabaseWithoutReconnecting: true
+        )
+
+        #expect(plan.connectDatabase == "reports")
+        #expect(plan.switchDatabase == nil)
+    }
+
+    /// An engine that reconnects to switch would throw away the startup commands it just ran, and
+    /// one that cannot switch at all would fail a connection that works today.
+    @Test("An engine that cannot switch on the open connection is left alone")
+    func planSkipsReassertWhereSwitchingNeedsAReconnect() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "shop",
+            targetDatabase: "shop",
+            authenticationIsDatabaseScoped: false,
+            runsStartupCommands: true,
+            switchesDatabaseWithoutReconnecting: false
+        )
+
+        #expect(plan.connectDatabase == "shop")
+        #expect(plan.switchDatabase == nil)
+    }
+
+    /// An empty database is the server itself, which is not a name any switch can take.
+    @Test("A server-scoped connection is never re-asserted onto an empty name")
+    func planSkipsReassertForServerScope() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "",
+            targetDatabase: "",
+            authenticationIsDatabaseScoped: false,
+            runsStartupCommands: true,
+            switchesDatabaseWithoutReconnecting: true
+        )
+
+        #expect(plan.connectDatabase == "")
+        #expect(plan.switchDatabase == nil)
+    }
+
+    /// Snowflake keys its session on the account and role and not on the database, so every pooled
+    /// scope of one connection shares a single mutable `currentDatabase`. Selecting a database on
+    /// behalf of one entry selects it for all of them, which would let a structure edit leased for
+    /// one database write into another.
+    @Test("An engine whose pooled drivers share one session is never re-asserted")
+    func planSkipsReassertWhereThePooledSessionIsShared() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "analytics",
+            targetDatabase: "analytics",
+            authenticationIsDatabaseScoped: false,
+            runsStartupCommands: true,
+            switchesDatabaseWithoutReconnecting: false
+        )
+
+        #expect(plan.connectDatabase == "analytics")
+        #expect(plan.switchDatabase == nil)
+    }
+
+    @Test("A database-scoped engine still switches to its target, startup commands or not")
+    func planKeepsTheDatabaseScopedSwitch() {
+        let plan = MetadataConnectionPool.planConnection(
+            configuredDatabase: "admin",
+            targetDatabase: "newly_created",
+            authenticationIsDatabaseScoped: true,
+            runsStartupCommands: true,
+            switchesDatabaseWithoutReconnecting: true
+        )
+
+        #expect(plan.connectDatabase == "admin")
+        #expect(plan.switchDatabase == "newly_created")
+    }
 }

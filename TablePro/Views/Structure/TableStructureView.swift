@@ -396,7 +396,8 @@ struct TableStructureView: View {
         case .parts:
             ClickHousePartsView(
                 tableName: tableName,
-                connectionId: connection.id,
+                scope: scope,
+                connection: connection,
                 reloadToken: partsReloadToken
             )
         }

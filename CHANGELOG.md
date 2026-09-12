@@ -56,11 +56,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)
 - Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
 - Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
+- ClickHouse **Drop Partition** and **Detach Partition** acting on the sidebar's database instead of the table on screen, and running without the connection's destructive-statement confirmation.
+- Import listing one database's tables and mapping their columns while the rows went to another.
+- **New Table** created in the database the sidebar moved to rather than the one its own tab names.
+- **Show All Tables** listing whichever database a cross-database tab last left the connection on.
+- Sidebar **Refresh** reloading the object list from a container the user is not browsing.
+- Wrong export row total where the objects picked span more than one database.
+- Snowflake foreign keys into another database opening the current database's same-named table.
+- Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **None** in the foreign key picker's Label menu forgotten on reopen.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
 - TablePlus import reading the CA certificate and client key paths the wrong way round.
 - MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
+- Nested foreign key chevrons in the row inspector pointing into the database the sidebar is on rather than the referenced one.
+- Ref Columns in the structure editor offering only **Custom…** for the rest of the tab after one failed read, with no error and no retry.
+- Ref Columns reading the sidebar's database instead of the tab's.
+- Empty **Ref Table** menu in the structure editor on MySQL, MariaDB, TiDB, PostgreSQL, CockroachDB, Redshift, SQL Server and DuckDB.
+- **New Trigger** pre-filling a template naming the sidebar's database, and **Drop Trigger** naming it in the statement it ran elsewhere.
+- `describe_table` over MCP answering with one database's columns beside another's indexes, foreign keys, row count and DDL.
 - Foreign key arrow replacing the tab you were reading. (#1421)
 - Applied filter left in the panel after cancelling the unsaved-changes alert on a foreign key jump.
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.

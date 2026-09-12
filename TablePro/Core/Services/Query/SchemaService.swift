@@ -597,9 +597,12 @@ final class SchemaService {
         resumeRefreshWaiters(connectionId)
     }
 
+    /// Leased rather than handed the session driver, which is wherever a tab's execution last
+    /// pinned it. The object list follows the browse cursor, so reading from the shared handle
+    /// refreshed the sidebar with a container the user was not browsing.
     func refresh(connectionId: UUID) async {
         guard let session = DatabaseManager.shared.activeSessions[connectionId],
-              let driver = session.driver else {
+              let scope = DatabaseManager.shared.browseScope(for: connectionId) else {
             markLoadFailed(
                 connectionId: connectionId,
                 message: String(localized: "The connection is not available. Reconnect and try again.")
@@ -607,12 +610,19 @@ final class SchemaService {
             return
         }
         await prepareForReload(connectionId: connectionId)
-        await reload(
-            connectionId: connectionId,
-            driver: driver,
-            connection: session.connection,
-            scope: DatabaseManager.shared.browseScope(for: connectionId)
-        )
+        let connection = session.connection
+        do {
+            try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { [self] driver in
+                await reload(
+                    connectionId: connectionId,
+                    driver: driver,
+                    connection: connection,
+                    scope: scope
+                )
+            }
+        } catch {
+            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+        }
     }
 
     func markLoadFailed(connectionId: UUID, message: String) {

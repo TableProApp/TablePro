@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 /// The menus behind the Foreign Keys grid's Columns, Ref Table and Ref Columns cells.
@@ -19,19 +20,77 @@ final class ForeignKeyReferenceMenus {
     static let rowDependentColumns: Set<Int> = [1, 2, 3]
 
     private let connectionId: UUID
+    private let databaseType: DatabaseType
 
     /// The schema the grid is browsing, used when a row names no Ref Schema of its own.
     var schemaName: String?
+
+    /// The scope the grid's own tab is bound to, which every reference read starts from. A tab stays
+    /// on the database it opened while the sidebar moves. Nil for a grid with no tab behind it, such
+    /// as the Create Table draft, which creates its table wherever the connection is browsing.
+    var origin: DatabaseScope?
 
     /// Fired when a referenced table's columns arrive. A menu built before the fetch landed shows
     /// `Loading…` and nothing else would rebuild it until an unrelated edit.
     var onListsChanged: (() -> Void)?
 
-    private var columnCache: [String: [String]] = [:]
-    private var inFlight: Set<String> = []
+    /// Which list, in which container. The kind is part of the key because a container's table list
+    /// and one of its tables' column lists are both `[String]`: keyed on the container alone they
+    /// overwrite each other, and the Ref Table menu starts offering column names.
+    private struct ListKey: Hashable {
+        enum Kind: Hashable {
+            case tables
+            case columns(String)
+        }
 
-    init(connectionId: UUID) {
+        let database: String
+        let schema: String?
+        let kind: Kind
+    }
+
+    private var lists: [ListKey: [String]] = [:]
+
+    /// Keys whose read failed. Separate from `lists` because an empty list and a read that could not
+    /// run are different answers, and storing the failure as `[]` made the menu offer nothing but
+    /// Custom for the life of the tab, with no error and no retry.
+    private var failedKeys: Set<ListKey> = []
+    private var inFlight: Set<ListKey> = []
+
+    private enum ListState {
+        case loading
+        case loaded([String])
+        case failed
+
+        var names: [String] {
+            guard case .loaded(let names) = self else { return [] }
+            return names
+        }
+
+        var isLoading: Bool {
+            guard case .loading = self else { return false }
+            return true
+        }
+    }
+
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ForeignKeyReferenceMenus")
+
+    private let provider: any ScopedMetadataProviding
+
+    /// Read per use rather than stored, because a plugin's capabilities settle when it loads and a
+    /// slot resolved at construction would freeze whatever was known before that.
+    private let resolveSlot: @MainActor (DatabaseType) -> EngineNamespaceSlot
+
+    init(
+        connectionId: UUID,
+        databaseType: DatabaseType,
+        provider: any ScopedMetadataProviding = DatabaseManager.shared,
+        resolveSlot: @escaping @MainActor (DatabaseType) -> EngineNamespaceSlot =
+            EngineNamespaceSlot.init(databaseType:)
+    ) {
         self.connectionId = connectionId
+        self.databaseType = databaseType
+        self.provider = provider
+        self.resolveSlot = resolveSlot
     }
 
     /// - Parameter tableColumns: the columns of the table being edited, which the referencing
@@ -47,11 +106,13 @@ final class ForeignKeyReferenceMenus {
             return listOptions(
                 names: tableColumns.filter { !$0.isEmpty },
                 appendingTo: foreignKey.columns,
-                loading: false
+                state: .loaded(tableColumns)
             )
         case 2:
-            return ForeignKeyReferenceVocabulary.options(
-                names: referencedTableNames(schema: foreignKey.referencedSchema), loading: false
+            let tables = listState(.tables, schema: foreignKey.referencedSchema)
+            return reporting(
+                tables,
+                over: ForeignKeyReferenceVocabulary.options(names: tables.names, loading: tables.isLoading)
             )
         case 3:
             let table = foreignKey.referencedTable.trimmingCharacters(in: .whitespaces)
@@ -59,72 +120,140 @@ final class ForeignKeyReferenceMenus {
                 return [.custom(title: String(localized: "Custom…"))]
             }
             let schema = foreignKey.referencedSchema
+            let state = listState(.columns(table), schema: schema)
             return listOptions(
-                names: referencedColumnNames(of: table, schema: schema),
+                names: state.names,
                 appendingTo: foreignKey.referencedColumns,
-                loading: columnCache[cacheKey(table: table, schema: schema)] == nil
+                state: state
             )
         default:
             return nil
         }
     }
 
+    /// Drops what a schema refresh can have changed. The column lists survive: a refresh that
+    /// changed a referenced table's columns did not change which tables exist, and re-reading every
+    /// one of them on every refresh costs a round trip per open menu.
+    func invalidateTableLists() {
+        for key in lists.keys where key.kind == .tables {
+            lists.removeValue(forKey: key)
+        }
+        failedKeys = failedKeys.filter { $0.kind != .tables }
+    }
+
+    /// Warms the list before the chevron is opened. A key that already failed is left alone: the
+    /// retry belongs to the user reopening the menu, not to a render.
     func prefetchReferencedColumns(of table: String, schema: String?) {
         let trimmed = table.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, columnCache[cacheKey(table: trimmed, schema: schema)] == nil else { return }
-        loadReferencedColumns(of: trimmed, schema: schema)
+        guard !trimmed.isEmpty, let resolved = resolvedList(.columns(trimmed), schema: schema) else { return }
+        guard lists[resolved.key] == nil, !failedKeys.contains(resolved.key) else { return }
+        load(resolved.key, from: resolved.target)
     }
 
     /// A cell holding a comma-separated list appends rather than replaces, so each entry carries the
     /// whole new list as the value it writes. That keeps the menu machinery untouched: it still just
     /// sets the cell to the selected option's SQL.
-    private func listOptions(names: [String], appendingTo current: [String], loading: Bool) -> [GridMenuOption] {
+    private func listOptions(
+        names: [String],
+        appendingTo current: [String],
+        state: ListState
+    ) -> [GridMenuOption] {
         let joined = current.joined(separator: ", ")
-        return ForeignKeyReferenceVocabulary.options(names: names, loading: loading).map { option in
-            guard case .value(let title, _) = option else { return option }
-            return .value(title: title, sql: ForeignKeyReferenceVocabulary.appending(title, to: joined))
-        }
+        let options = ForeignKeyReferenceVocabulary
+            .options(names: names, loading: state.isLoading)
+            .map { option -> GridMenuOption in
+                guard case .value(let title, _) = option else { return option }
+                return .value(title: title, sql: ForeignKeyReferenceVocabulary.appending(title, to: joined))
+            }
+        return reporting(state, over: options)
     }
 
-    /// Views are left out. `SchemaService.tables` returns them alongside tables on every engine that
-    /// reports both, SQLite included, and a foreign key cannot target one: offering it makes a
-    /// constraint the server refuses.
-    private func referencedTableNames(schema: String?) -> [String] {
-        let service = SchemaService.shared
-        let scopeSchema = schema ?? schemaName
-        let tables = scopeSchema.map { service.tables(for: connectionId, schema: $0) }
-            ?? service.tables(for: connectionId)
-        return tables.filter { $0.type.isForeignKeyTarget }.map(\.name)
+    /// A read that could not run and a container that holds nothing produce the same empty list, so
+    /// the menu says which it was rather than offering nothing and looking settled.
+    private func reporting(_ state: ListState, over options: [GridMenuOption]) -> [GridMenuOption] {
+        guard case .failed = state else { return options }
+        return [.sectionHeader(String(localized: "Couldn't read the referenced table"))] + options
     }
 
-    private func referencedColumnNames(of table: String, schema: String?) -> [String] {
-        if let cached = columnCache[cacheKey(table: table, schema: schema)] {
-            return cached
-        }
-        loadReferencedColumns(of: table, schema: schema)
-        return []
+    /// Reopening the menu is the retry: a failure is reported once and the read starts again behind
+    /// it, so a list that was briefly unreachable fills in by the next open.
+    private func listState(_ kind: ListKey.Kind, schema: String?) -> ListState {
+        guard let resolved = resolvedList(kind, schema: schema) else { return .loading }
+        if let cached = lists[resolved.key] { return .loaded(cached) }
+        load(resolved.key, from: resolved.target)
+        guard failedKeys.remove(resolved.key) != nil else { return .loading }
+        return .failed
     }
 
-    private func loadReferencedColumns(of table: String, schema: String?) {
-        let key = cacheKey(table: table, schema: schema)
+    /// Read through the tab's own driver rather than `SchemaService`, whose per-schema lists are
+    /// filled only for an engine that groups its tree by schema under a database. On every other
+    /// engine that store is never written, so a Ref Table menu asking it for a named schema got an
+    /// empty list on PostgreSQL, MySQL and the rest, whatever the connection actually holds.
+    private func load(_ key: ListKey, from target: DatabaseScope) {
         guard !inFlight.contains(key) else { return }
-        guard let scope = DatabaseManager.shared.browseScope(for: connectionId) else { return }
         inFlight.insert(key)
 
         Task { @MainActor in
             defer { inFlight.remove(key) }
-            let columns = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.fetchColumns(table: table, schema: schema)
+            do {
+                let names = try await names(for: key.kind, in: target)
+                failedKeys.remove(key)
+                lists[key] = names
+            } catch {
+                Self.logger.error("Reference list read failed: \(error.localizedDescription)")
+                failedKeys.insert(key)
             }
-            columnCache[key] = (columns ?? []).map(\.name)
             onListsChanged?()
         }
     }
 
-    /// The row's own Ref Schema, not the grid's. Two rows pointing at `public.users` and
-    /// `audit.users` are different tables with different columns, and one key for both hands the
-    /// second row the first one's list.
-    private func cacheKey(table: String, schema: String?) -> String {
-        "\(connectionId.uuidString)|\(schema ?? schemaName ?? "")|\(table)"
+    /// Views are left out of the table list. Every engine that reports both returns them alongside
+    /// tables, SQLite included, and a foreign key cannot target one: offering it makes a constraint
+    /// the server refuses.
+    private func names(for kind: ListKey.Kind, in target: DatabaseScope) async throws -> [String] {
+        switch kind {
+        case .tables:
+            let tables = try await provider.withMetadataDriver(scope: target) { driver in
+                try await driver.fetchTables(schema: target.schema)
+            }
+            return tables.filter { $0.type.isForeignKeyTarget }.map(\.name)
+        case .columns(let table):
+            let columns = try await provider.withMetadataDriver(scope: target) { driver in
+                try await driver.fetchColumns(table: table, schema: target.schema)
+            }
+            return columns.map(\.name)
+        }
+    }
+
+    /// The row names its target in whatever the engine's catalog calls a schema, which on an engine
+    /// with no schema layer is a database, so it goes through `ForeignKeyTargetScope` rather than
+    /// into the schema slot, where it would be inert.
+    private func targetScope(for schema: String?) -> DatabaseScope? {
+        guard let origin = origin ?? provider.browseScope(for: connectionId) else {
+            return nil
+        }
+        return ForeignKeyTargetScope.resolve(
+            origin: origin, referencedSchema: schema, slot: resolveSlot(databaseType)
+        )
+    }
+
+    /// The row's own Ref Schema, not the grid's, and resolved the way the read is. Two rows
+    /// pointing at `public.users` and `audit.users` are different tables with different columns, and
+    /// one key for both hands the second row the first one's list. Keying on the raw value instead
+    /// collapses two databases to one entry on an engine whose catalog calls a database a schema.
+    ///
+    /// The key and the scope it was resolved from travel together: the key has already collapsed a
+    /// schema-less engine's reference into its database, so re-deriving the scope from the key would
+    /// read the tab's own container instead of the referenced one.
+    ///
+    /// Nil where no scope can be resolved at all, which is a connection with nothing to read rather
+    /// than a list that happens to be empty, so nothing is cached under it.
+    private func resolvedList(
+        _ kind: ListKey.Kind,
+        schema: String?
+    ) -> (key: ListKey, target: DatabaseScope)? {
+        guard let target = targetScope(for: schema) else { return nil }
+        let key = ListKey(database: target.database, schema: target.schema ?? schemaName, kind: kind)
+        return (key, target)
     }
 }

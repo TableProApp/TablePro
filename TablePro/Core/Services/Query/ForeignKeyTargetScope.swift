@@ -21,14 +21,25 @@ import TableProPluginKit
 internal enum ForeignKeyTargetScope {
     internal static func resolve(
         origin: DatabaseScope,
+        referencedDatabase: String? = nil,
         referencedSchema: String?,
         slot: EngineNamespaceSlot
     ) -> DatabaseScope {
-        guard let referenced = referencedSchema?.nilIfEmpty else { return origin }
+        let database = referencedDatabase?.nilIfEmpty
+        guard let referenced = referencedSchema?.nilIfEmpty else {
+            guard let database, slot == .schema else { return origin }
+            return DatabaseScope(
+                connectionId: origin.connectionId, database: database, schema: origin.schema
+            )
+        }
         switch slot {
         case .schema:
+            /// Only an engine that names objects in three parts reports a referenced database, and
+            /// only that arm can carry one: the others already hold a database in this slot.
             return DatabaseScope(
-                connectionId: origin.connectionId, database: origin.database, schema: referenced
+                connectionId: origin.connectionId,
+                database: database ?? origin.database,
+                schema: referenced
             )
         case .database:
             return DatabaseScope(
@@ -43,11 +54,17 @@ internal enum ForeignKeyTargetScope {
 
     internal static func tableScope(
         origin: DatabaseScope,
+        referencedDatabase: String? = nil,
         referencedSchema: String?,
         referencedTable: String,
         slot: EngineNamespaceSlot
     ) -> TableScope {
-        let scope = resolve(origin: origin, referencedSchema: referencedSchema, slot: slot)
+        let scope = resolve(
+            origin: origin,
+            referencedDatabase: referencedDatabase,
+            referencedSchema: referencedSchema,
+            slot: slot
+        )
         return TableScope(
             connectionId: scope.connectionId,
             database: scope.database.nilIfEmpty,
@@ -61,11 +78,13 @@ internal enum ForeignKeyTargetScope {
 internal extension ForeignKeyTargetScope {
     static func resolve(
         origin: DatabaseScope,
+        referencedDatabase: String? = nil,
         referencedSchema: String?,
         databaseType: DatabaseType
     ) -> DatabaseScope {
         resolve(
             origin: origin,
+            referencedDatabase: referencedDatabase,
             referencedSchema: referencedSchema,
             slot: EngineNamespaceSlot(databaseType: databaseType)
         )
@@ -73,12 +92,14 @@ internal extension ForeignKeyTargetScope {
 
     static func tableScope(
         origin: DatabaseScope,
+        referencedDatabase: String? = nil,
         referencedSchema: String?,
         referencedTable: String,
         databaseType: DatabaseType
     ) -> TableScope {
         tableScope(
             origin: origin,
+            referencedDatabase: referencedDatabase,
             referencedSchema: referencedSchema,
             referencedTable: referencedTable,
             slot: EngineNamespaceSlot(databaseType: databaseType)
