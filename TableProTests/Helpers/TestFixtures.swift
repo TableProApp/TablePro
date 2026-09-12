@@ -261,6 +261,7 @@ enum TestFixtures {
         column: String = "user_id",
         referencedTable: String = "users",
         referencedColumn: String = "id",
+        referencedSchema: String? = nil,
         onDelete: String = "CASCADE",
         onUpdate: String = "NO ACTION"
     ) -> ForeignKeyInfo {
@@ -269,6 +270,7 @@ enum TestFixtures {
             column: column,
             referencedTable: referencedTable,
             referencedColumn: referencedColumn,
+            referencedSchema: referencedSchema,
             onDelete: onDelete,
             onUpdate: onUpdate
         )

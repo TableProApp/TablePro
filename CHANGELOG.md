@@ -198,6 +198,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Garbled or double-encoded non-ASCII text on iOS with PostgreSQL databases not encoded in UTF-8.
 - Garbled non-ASCII text when restoring a PostgreSQL SQL export into a database not encoded in UTF-8.
 - Display As formats and foreign key labels lost on a rename, and kept with column layouts after deleting a connection.
+- Foreign key value picker failing to read a referenced table in another MySQL database. (#2768)
+- MySQL table reached through a foreign key keeping its own filters, column layout, highlight rules and Display As formats. (#2768)
+- Referenced database shown as a schema in a MySQL tab title and in the foreign key picker's header. (#2768)
 - Composite foreign keys listing mismatched column pairs on iOS, CockroachDB and Redshift.
 - Foreign keys missing on iOS for a PostgreSQL role that does not own the table.
 - Redshift foreign keys from other schemas shown on a table.
@@ -207,7 +210,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Edit View Definition** in the Database menu opening a same-named view from the browsed schema. (#2726)
 - **Edit View Definition** enabled in the Database menu on a read-only connection. (#2726)
 - Enum types and sequences written in front of a PostgreSQL view's DDL. (#2726)
-- Display As formats lost on a rename, and kept with column layouts after deleting a connection.
 - Garbled ClickHouse text whenever another value in the same result held binary data.
 - Carriage returns, quotes, NUL bytes and Enum type names shown with backslash escapes on ClickHouse.
 - Edits and deletes matching no row on ClickHouse tables with a binary value in the row.
