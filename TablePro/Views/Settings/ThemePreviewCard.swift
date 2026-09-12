@@ -91,7 +91,14 @@ struct ThemePreviewCard: View {
         size == .compact ? 14 : 28
     }
 
+    /// A miniature of the theme's own colors. The name and kind beside it carry the meaning, so
+    /// the shapes are decorative and say nothing.
     private var thumbnail: some View {
+        thumbnailContent
+            .accessibilityHidden(true)
+    }
+
+    private var thumbnailContent: some View {
         HStack(spacing: 0) {
             sidebarStrip
                 .frame(width: sidebarStripWidth)

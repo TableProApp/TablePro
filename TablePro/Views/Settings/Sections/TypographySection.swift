@@ -29,7 +29,7 @@ internal struct TypographySection: View {
     @Binding internal var settings: TypographySettings
 
     internal var body: some View {
-        Section(domain.title) {
+        Section {
             Picker(String(localized: "Family:"), selection: familyBinding) {
                 ForEach(EditorFontResolver.availableMonospacedFamilies) { family in
                     Text(family.displayName).tag(family.id)
@@ -41,10 +41,10 @@ internal struct TypographySection: View {
                     Text(verbatim: "\(size) pt").tag(size)
                 }
             }
-
+        } header: {
+            Text(domain.title)
+        } footer: {
             Text(domain.caption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
