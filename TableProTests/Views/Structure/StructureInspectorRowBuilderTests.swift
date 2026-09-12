@@ -38,6 +38,7 @@ struct StructureInspectorRowBuilderTests {
             tab: tab,
             databaseType: .mysql,
             additionalFields: [.primaryKey],
+            serverSupport: .unrestricted,
             filterText: filterText,
             sortDescriptor: sortDescriptor
         )

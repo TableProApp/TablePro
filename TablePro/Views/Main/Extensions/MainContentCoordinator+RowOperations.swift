@@ -38,10 +38,6 @@ extension MainContentCoordinator {
         rowEditingCoordinator.duplicateSelectedRow(index: index)
     }
 
-    func undoInsertRow(at rowIndex: Int) {
-        rowEditingCoordinator.undoInsertRow(at: rowIndex)
-    }
-
     func handleUndoResult(_ result: UndoResult) {
         rowEditingCoordinator.handleUndoResult(result)
     }

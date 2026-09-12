@@ -46,6 +46,15 @@ final class MSSQLStringLiteralTests: XCTestCase {
         )
     }
 
+    /// `[` opens a character class in T-SQL and in no other engine this app speaks to, so a
+    /// filter for `a[bc]` matched `ab` and `ac` and never the text the user typed.
+    func testLikePatternEscapesBracketWildcards() {
+        XCTAssertEqual(
+            MSSQLStringLiteral.likePattern("a[bc]", prefixWildcard: true, suffixWildcard: true),
+            "N'%a\\[bc]%' ESCAPE '\\'"
+        )
+    }
+
     func testLikePatternEscapesBackslashBeforeWildcards() {
         XCTAssertEqual(
             MSSQLStringLiteral.likePattern("a\\b", prefixWildcard: false, suffixWildcard: false),

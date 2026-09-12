@@ -1,80 +1,54 @@
 {
-    "id": "tablepro.dracula",
-    "name": "Dracula",
-    "version": 1,
-    "appearance": "dark",
-    "author": "TablePro",
-    "editor": {
-        "background": "#282A36",
-        "text": "#F8F8F2",
-        "cursor": "#F8F8F2",
-        "currentLineHighlight": "#44475A",
-        "currentStatementHighlight": "#FFFFFF0F",
-        "selection": "#44475A",
-        "lineNumber": "#6272A4",
-        "invisibles": "#424450",
-        "syntax": {
-            "keyword": "#FF79C6",
-            "string": "#F1FA8C",
-            "number": "#BD93F9",
-            "comment": "#6272A4",
-            "null": "#FFB86C",
-            "operator": "#FF79C6",
-            "function": "#50FA7B",
-            "type": "#8BE9FD"
-        }
-    },
+  "appearance": "dark",
+  "author": "TablePro",
+  "content": {
     "dataGrid": {
-        "background": "#282A36",
-        "text": "#F8F8F2",
-        "alternateRow": "#21222C",
-        "nullValue": "#6272A4",
-        "boolTrue": "#50FA7B",
-        "boolFalse": "#FF5555",
-        "rowNumber": "#6272A4",
-        "modified": "#FFB86C4D",
-        "inserted": "#50FA7B26",
-        "deleted": "#FF555526",
-        "deletedText": "#FF555580"
+      "alternateRow": "#21222C",
+      "background": "#282A36",
+      "boolFalse": "#FF5555",
+      "boolTrue": "#50FA7B",
+      "deleted": "#FF555526",
+      "deletedText": "#FF555580",
+      "focusBorder": "#BD93F9",
+      "gridLine": "#44475A",
+      "headerBackground": "#21222C",
+      "headerText": "#F8F8F2",
+      "inactiveSelection": "#44475A80",
+      "inserted": "#50FA7B26",
+      "modified": "#FFB86C4D",
+      "nullValue": "#6272A4",
+      "rowNumber": "#6272A4",
+      "selection": "#44475A",
+      "selectionText": "#F8F8F2",
+      "text": "#F8F8F2"
     },
-    "ui": {
-        "windowBackground": "#282A36",
-        "controlBackground": "#343746",
-        "cardBackground": "#21222C",
-        "border": "#44475A",
-        "primaryText": "#F8F8F2",
-        "secondaryText": "#BFC0C9",
-        "tertiaryText": "#6272A4",
-        "accentColor": "#BD93F9",
-        "selectionBackground": "#44475A",
-        "hoverBackground": "#44475A80",
-        "status": {
-            "success": "#50FA7B",
-            "warning": "#FFB86C",
-            "error": "#FF5555",
-            "info": "#8BE9FD"
-        },
-        "badges": {
-            "background": "#44475A",
-            "primaryKey": "#8BE9FD26",
-            "autoIncrement": "#BD93F926"
-        }
+    "editor": {
+      "background": "#282A36",
+      "currentLine": "#44475A",
+      "currentStatement": "#FFFFFF0F",
+      "cursor": "#F8F8F2",
+      "invisibles": "#424450",
+      "lineNumber": "#6272A4",
+      "selection": "#44475A",
+      "syntax": {
+        "comment": "#6272A4",
+        "function": "#50FA7B",
+        "keyword": "#FF79C6",
+        "null": "#FFB86C",
+        "number": "#BD93F9",
+        "operator": "#FF79C6",
+        "string": "#F1FA8C",
+        "type": "#8BE9FD"
+      },
+      "text": "#F8F8F2"
     },
-    "sidebar": {
-        "background": "#21222C",
-        "text": "#F8F8F2",
-        "selectedItem": "#44475A",
-        "hover": "#343746",
-        "sectionHeader": "#6272A4"
-    },
-    "toolbar": {
-        "secondaryText": "#BFC0C9",
-        "tertiaryText": "#6272A4"
-    },
-    "fonts": {
-        "editorFontFamily": "System Mono",
-        "editorFontSize": 13,
-        "dataGridFontFamily": "System Mono",
-        "dataGridFontSize": 13
+    "status": {
+      "error": "#FF5555",
+      "success": "#50FA7B",
+      "warning": "#FFB86C"
     }
+  },
+  "id": "tablepro.dracula",
+  "name": "Dracula",
+  "schema": 2
 }

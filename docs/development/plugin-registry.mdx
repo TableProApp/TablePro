@@ -68,13 +68,13 @@ Themes carry no native code, so they match on architecture alone.
   "binaries": [
     {
       "architecture": "arm64",
-      "pluginKitVersion": 26,
+      "pluginKitVersion": 28,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-arm64.zip",
       "sha256": "<sha256>"
     },
     {
       "architecture": "x86_64",
-      "pluginKitVersion": 26,
+      "pluginKitVersion": 28,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-x86_64.zip",
       "sha256": "<sha256>"
     }
@@ -140,9 +140,9 @@ The app fetches the manifest from `raw.githubusercontent.com/TableProApp/plugins
 Themes use the same manifest with `category: "theme"`. Four things differ from a driver:
 
 - Pure JSON data. No executable code, no code signing, no `.tableplugin` bundle
-- The ZIP holds `.json` files, each a valid `ThemeDefinition`. Packs with several themes work
+- The ZIP holds `.json` files, each a theme file in format `schema: 2`. Packs with several themes work
 - They install to `~/Library/Application Support/TablePro/Themes/Registry/`
-- No `pluginKitVersion` is needed, and the flat v1 fields still decode
+- No `pluginKitVersion` is needed. Set `minAppVersion` to the release that reads the format the theme is written in, because that is the only check an older TablePro runs before installing it
 
 ```json
 {

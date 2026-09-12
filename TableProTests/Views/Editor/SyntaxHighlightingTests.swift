@@ -177,11 +177,11 @@ struct SyntaxHighlightingTests {
     @MainActor
     @Test("The theme's operator and function colours reach the editor")
     func themeCarriesOperatorAndFunctionColors() {
-        let colors = ThemeEngine.shared.colors.editor
+        let resolved = ThemeEngine.shared.resolved
         let theme = ThemeEngine.shared.makeEditorTheme()
 
-        #expect(Self.sameColor(theme.operators.color, colors.operator))
-        #expect(Self.sameColor(theme.functions.color, colors.function))
+        #expect(Self.sameColor(theme.operators.color, resolved[.syntaxOperator]))
+        #expect(Self.sameColor(theme.functions.color, resolved[.syntaxFunction]))
     }
 
     // MARK: - Helpers

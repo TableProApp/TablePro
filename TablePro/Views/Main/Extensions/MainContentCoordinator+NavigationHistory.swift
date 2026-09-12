@@ -102,15 +102,12 @@ extension MainContentCoordinator {
         let tableRows = tabSessionRegistry.tableRows(for: tab.id)
         guard let row = gridCoordinator.displayRow(at: displayIndex, in: tableRows) else { return nil }
 
-        let rowIndex = gridCoordinator.tableRowsIndex(forDisplayRow: displayIndex)
-
         return NavigationRowAnchor.build(
             keyColumns: keyColumns,
             columns: tableRows.columns,
             values: row.values,
             isModified: { column in
-                guard let rowIndex else { return false }
-                return changeManager.isCellModified(rowIndex: rowIndex, columnIndex: column)
+                changeManager.isCellModified(rowID: row.id, columnIndex: column)
             }
         )
     }

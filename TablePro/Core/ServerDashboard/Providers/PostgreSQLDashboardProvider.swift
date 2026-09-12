@@ -4,22 +4,26 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLDashboardProvider")
+
     let supportedPanels: Set<DashboardPanel> = [.activeSessions, .serverMetrics, .slowQueries]
+    let activityCatalog: PostgreSQLActivityCatalog
+    let metricSet: PostgreSQLDashboardMetricSet
+
+    init(
+        activityCatalog: PostgreSQLActivityCatalog = .current,
+        metricSet: PostgreSQLDashboardMetricSet = .full
+    ) {
+        self.activityCatalog = activityCatalog
+        self.metricSet = metricSet
+    }
 
     func fetchSessions(execute: (String) async throws -> QueryResult) async throws -> [DashboardSession] {
-        let sql = """
-            SELECT pid, usename, datname, state,
-                   EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                   left(query, 1000) AS query
-            FROM pg_stat_activity
-            WHERE pid <> pg_backend_pid()
-              AND backend_type = 'client backend'
-            ORDER BY query_start NULLS LAST
-            """
-        let result = try await execute(sql)
+        let result = try await execute(activityCatalog.sessionsQuery)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
             let pid = value(row, at: col["pid"])
@@ -38,87 +42,37 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
 
     func fetchMetrics(execute: (String) async throws -> QueryResult) async throws -> [DashboardMetric] {
         var metrics: [DashboardMetric] = []
+        var firstFailure: Error?
 
-        let connections = try await execute("SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'")
-        if let row = connections.rows.first {
-            metrics.append(DashboardMetric(
-                id: "connections",
-                label: String(localized: "Connections"),
-                value: value(row, at: 0),
-                unit: "",
-                icon: "person.2"
-            ))
+        for definition in metricDefinitions {
+            do {
+                let result = try await execute(definition.query)
+                guard let row = result.rows.first else { continue }
+                metrics.append(DashboardMetric(
+                    id: definition.id,
+                    label: definition.label,
+                    value: value(row, at: 0),
+                    unit: definition.unit,
+                    icon: definition.icon
+                ))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                Self.logger.warning(
+                    "Metric \(definition.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                )
+                if firstFailure == nil { firstFailure = error }
+            }
         }
 
-        let cacheHit = try await execute("""
-            SELECT CASE WHEN blks_hit + blks_read = 0 THEN '0'
-                        ELSE round(blks_hit::numeric / (blks_hit + blks_read) * 100, 1)::text
-                   END
-            FROM pg_stat_database WHERE datname = current_database()
-            """)
-        if let row = cacheHit.rows.first {
-            metrics.append(DashboardMetric(
-                id: "cache_hit",
-                label: String(localized: "Cache Hit Ratio"),
-                value: value(row, at: 0),
-                unit: "%",
-                icon: "bolt"
-            ))
+        if metrics.isEmpty, let firstFailure {
+            throw firstFailure
         }
-
-        let dbSize = try await execute("SELECT pg_size_pretty(pg_database_size(current_database()))")
-        if let row = dbSize.rows.first {
-            metrics.append(DashboardMetric(
-                id: "db_size",
-                label: String(localized: "Database Size"),
-                value: value(row, at: 0),
-                unit: "",
-                icon: "internaldrive"
-            ))
-        }
-
-        let uptime = try await execute(
-            "SELECT date_trunc('second', now() - pg_postmaster_start_time())::text"
-        )
-        if let row = uptime.rows.first {
-            metrics.append(DashboardMetric(
-                id: "uptime",
-                label: String(localized: "Uptime"),
-                value: value(row, at: 0),
-                unit: "",
-                icon: "clock"
-            ))
-        }
-
-        let activeQueries = try await execute("""
-            SELECT count(*) FROM pg_stat_activity
-            WHERE state = 'active' AND pid <> pg_backend_pid()
-            """)
-        if let row = activeQueries.rows.first {
-            metrics.append(DashboardMetric(
-                id: "active_queries",
-                label: String(localized: "Active Queries"),
-                value: value(row, at: 0),
-                unit: "",
-                icon: "bolt.horizontal"
-            ))
-        }
-
         return metrics
     }
 
     func fetchSlowQueries(execute: (String) async throws -> QueryResult) async throws -> [DashboardSlowQuery] {
-        let sql = """
-            SELECT pid, usename, datname,
-                   EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                   left(query, 1000) AS query
-            FROM pg_stat_activity
-            WHERE state = 'active'
-              AND now() - query_start > interval '1 second'
-              AND pid <> pg_backend_pid()
-            ORDER BY query_start
-            """
-        let result = try await execute(sql)
+        let result = try await execute(activityCatalog.slowQueriesQuery)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
             let secs = Int(value(row, at: col["duration_secs"])) ?? 0
@@ -139,6 +93,67 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     func cancelQuerySQL(processId: String) -> String? {
         guard let pid = Int(processId) else { return nil }
         return "SELECT pg_cancel_backend(\(pid))"
+    }
+}
+
+// MARK: - Metrics
+
+private extension PostgreSQLDashboardProvider {
+    struct MetricDefinition {
+        let id: String
+        let label: String
+        let unit: String
+        let icon: String
+        let query: String
+    }
+
+    var metricDefinitions: [MetricDefinition] {
+        allMetricDefinitions.filter { metricSet.identifiers.contains($0.id) }
+    }
+
+    var allMetricDefinitions: [MetricDefinition] {
+        [
+            MetricDefinition(
+                id: "connections",
+                label: String(localized: "Connections"),
+                unit: "",
+                icon: "person.2",
+                query: activityCatalog.connectionCountQuery
+            ),
+            MetricDefinition(
+                id: "cache_hit",
+                label: String(localized: "Cache Hit Ratio"),
+                unit: "%",
+                icon: "bolt",
+                query: """
+                    SELECT CASE WHEN blks_hit + blks_read = 0 THEN '0'
+                                ELSE round(blks_hit::numeric / (blks_hit + blks_read) * 100, 1)::text
+                           END
+                    FROM pg_stat_database WHERE datname = current_database()
+                    """
+            ),
+            MetricDefinition(
+                id: "db_size",
+                label: String(localized: "Database Size"),
+                unit: "",
+                icon: "internaldrive",
+                query: "SELECT pg_size_pretty(pg_database_size(current_database()))"
+            ),
+            MetricDefinition(
+                id: "uptime",
+                label: String(localized: "Uptime"),
+                unit: "",
+                icon: "clock",
+                query: "SELECT date_trunc('second', now() - pg_postmaster_start_time())::text"
+            ),
+            MetricDefinition(
+                id: "active_queries",
+                label: String(localized: "Active Queries"),
+                unit: "",
+                icon: "bolt.horizontal",
+                query: activityCatalog.activeQueryCountQuery
+            )
+        ]
     }
 }
 

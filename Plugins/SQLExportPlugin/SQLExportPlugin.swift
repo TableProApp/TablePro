@@ -54,6 +54,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     /// a table whose `CREATE TABLE` came back fine and only lost its indexes is a different thing
     /// to tell the user about.
     var indexFailures: [String] = []
+
+    /// Kept apart for the same reason `indexFailures` is: an object whose definition came back fine
+    /// and only lost its comments is a different thing to tell the user about.
+    var commentFailures: [String] = []
     var metadataWarnings: [String] = []
 
     /// The tables a foreign key cycle left the ordering unable to place. They keep the order the
@@ -114,6 +118,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     ) async throws -> ExportFormatResult {
         ddlFailures = []
         indexFailures = []
+        commentFailures = []
         metadataWarnings = []
         exportSpansContainers = false
         tablesUnorderedByCycle = []
@@ -243,6 +248,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             warnings.append(String(
                 format: String(localized: "Could not fetch indexes for: %@"),
                 indexFailures.joined(separator: ", ")))
+        }
+        if !commentFailures.isEmpty {
+            warnings.append(String(
+                format: String(localized: "Could not fetch comments for: %@"),
+                commentFailures.joined(separator: ", ")))
         }
         warnings.append(contentsOf: metadataWarnings)
         return ExportFormatResult(warnings: warnings)
@@ -489,7 +499,51 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 let ddlWarning = "Warning: failed to fetch DDL for table \(sanitizedName): \(error)"
                 Self.logger.warning("Failed to fetch DDL for table \(sanitizedName): \(error)")
                 try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(ddlWarning))\n\n")
+                continue
             }
+            try await writeComments(for: table, dataSource: dataSource, to: writer)
+        }
+    }
+
+    /// The kinds whose `CREATE` this dump writes as the object the driver's `COMMENT` keyword names.
+    /// A routine, trigger, sequence or type is skipped rather than asked, so a dump of one costs no
+    /// round trip.
+    ///
+    /// A foreign table is left out for a harder reason: the dump writes `CREATE TABLE` for it, so
+    /// PostgreSQL's own `COMMENT ON FOREIGN TABLE` fails the restore with `"f_orders" is not a
+    /// foreign table`. Measured on PostgreSQL 17.11. Add it back once a foreign table's `CREATE` is
+    /// its own.
+    private static let commentedKinds: Set<PluginExportObjectKind> = [
+        .table, .view, .materializedView
+    ]
+
+    /// Writes an object's comments directly after its own `CREATE`, which is where `pg_dump` puts
+    /// them, so a comment travels with the object it belongs to rather than with a later phase.
+    ///
+    /// Only ever called on the success branch: a `COMMENT` on an object whose `CREATE` was not
+    /// written fails the restore. An unreadable comment list is recorded and commented into the file
+    /// rather than failing the export, exactly as the index phase does.
+    private func writeComments(
+        for object: PluginExportTable,
+        dataSource: any PluginExportDataSource,
+        to writer: SQLExportFileWriter
+    ) async throws {
+        guard Self.commentedKinds.contains(object.kind) else { return }
+        let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(object.name)
+        do {
+            let statements = try await dataSource.fetchCommentDDL(
+                table: object.name, databaseName: object.databaseName)
+            guard !statements.isEmpty else { return }
+            for statement in statements {
+                let terminated = statement.hasSuffix(";") ? statement : "\(statement);"
+                try writer.write("\(terminated)\n")
+            }
+            try writer.write("\n")
+        } catch {
+            commentFailures.append(sanitizedName)
+            Self.logger.warning("Failed to fetch comments for \(sanitizedName): \(error)")
+            let warning = "Warning: failed to fetch comments for \(sanitizedName): \(error)"
+            try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
         }
     }
 
@@ -532,7 +586,9 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 Self.logger.warning("Failed to fetch DDL for \(sanitizedName): \(error)")
                 let warning = "Warning: failed to fetch definition for \(label.lowercased()) \(sanitizedName): \(error)"
                 try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
+                continue
             }
+            try await writeComments(for: object, dataSource: dataSource, to: writer)
         }
     }
 

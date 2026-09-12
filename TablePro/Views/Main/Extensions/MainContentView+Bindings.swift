@@ -144,8 +144,14 @@ extension MainContentView {
 
     var isSelectedRowDeleted: Bool {
         guard gridSelectionOwner == .dataGrid,
-              let firstIndex = coordinator.selectionState.indices.min() else { return false }
-        return coordinator.changeManager.isRowDeleted(firstIndex)
+              let tabId = coordinator.tabManager.selectedTab?.id,
+              let firstIndex = coordinator.selectionState.indices.min(),
+              let row = DisplayRowMapping.row(
+                  forDisplay: firstIndex,
+                  displayIDs: coordinator.activeGridDisplayIDs,
+                  in: coordinator.tabSessionRegistry.tableRows(for: tabId)
+              ) else { return false }
+        return coordinator.changeManager.isRowDeleted(row.id)
     }
 
     // MARK: - Sort State Binding

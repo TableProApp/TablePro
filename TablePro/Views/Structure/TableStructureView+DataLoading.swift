@@ -90,6 +90,7 @@ extension TableStructureView {
     }
 
     func loadSchemaForEditing() {
+        session.serverSupport = StructureServerSupport.forConnection(connection.id)
         let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
         let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
         let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes

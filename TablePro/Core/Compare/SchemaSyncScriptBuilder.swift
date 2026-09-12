@@ -96,6 +96,13 @@ internal struct SchemaSyncScriptBuilder {
             charset: snapshot.charset,
             collation: snapshot.collation
         )
+        if let reason = SchemaOperationRefusal.reason(for: definition, driver: targetDriver) {
+            throw CompareSyncError.unsupportedOperation(String(
+                format: String(localized: "Cannot create table %@: %@"),
+                snapshot.name,
+                reason
+            ))
+        }
         guard let sql = targetDriver.generateCreateTableSQL(definition: definition) else {
             throw CompareSyncError.unsupportedOperation(String(
                 format: String(localized: "The target does not support creating table %@."),

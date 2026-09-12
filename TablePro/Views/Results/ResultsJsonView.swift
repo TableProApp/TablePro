@@ -10,7 +10,7 @@ internal struct ResultsJsonView: View {
     let tableRows: TableRows
     let selectedRowIndices: Set<Int>
     let displayIDs: [RowID]?
-    let deletedRowIndices: Set<Int>
+    let deletedRowIDs: Set<RowID>
     let valueFilter: GridValueFilterState
     let dataRevision: Int
     let displayRevision: Int
@@ -32,7 +32,7 @@ internal struct ResultsJsonView: View {
         tableRows: TableRows,
         selectedRowIndices: Set<Int>,
         displayIDs: [RowID]?,
-        deletedRowIndices: Set<Int>,
+        deletedRowIDs: Set<RowID>,
         valueFilter: GridValueFilterState,
         dataRevision: Int,
         displayRevision: Int,
@@ -41,7 +41,7 @@ internal struct ResultsJsonView: View {
         self.tableRows = tableRows
         self.selectedRowIndices = selectedRowIndices
         self.displayIDs = displayIDs
-        self.deletedRowIndices = deletedRowIndices
+        self.deletedRowIDs = deletedRowIDs
         self.valueFilter = valueFilter
         self.dataRevision = dataRevision
         self.displayRevision = displayRevision
@@ -58,7 +58,7 @@ internal struct ResultsJsonView: View {
         let dataRevision: Int
         let displayRevision: Int
         let selectedRowIndices: Set<Int>
-        let deletedRowIndices: Set<Int>
+        let deletedRowIDs: Set<RowID>
         let valueFilter: GridValueFilterState
         let hiddenColumns: Set<String>
         let columnOrder: [String]?
@@ -69,7 +69,7 @@ internal struct ResultsJsonView: View {
             dataRevision: dataRevision,
             displayRevision: displayRevision,
             selectedRowIndices: selectedRowIndices,
-            deletedRowIndices: deletedRowIndices,
+            deletedRowIDs: deletedRowIDs,
             valueFilter: valueFilter,
             hiddenColumns: columnLayout.hiddenColumns,
             columnOrder: columnLayout.columnOrder
@@ -209,7 +209,7 @@ internal struct ResultsJsonView: View {
         let snapshot = tableRows
         let ids = displayIDs
         let selectedIndices = selectedRowIndices
-        let deletedIndices = deletedRowIndices
+        let deletedIDs = deletedRowIDs
         let layout = columnLayout
 
         let result = await Task.detached(priority: .userInitiated) {
@@ -217,7 +217,7 @@ internal struct ResultsJsonView: View {
                 tableRows: snapshot,
                 displayIDs: ids,
                 selectedIndices: selectedIndices,
-                deletedIndices: deletedIndices,
+                deletedRowIDs: deletedIDs,
                 columnLayout: layout
             )
         }.value
@@ -251,14 +251,14 @@ internal struct ResultsJsonView: View {
         tableRows: TableRows,
         displayIDs: [RowID]?,
         selectedIndices: Set<Int>,
-        deletedIndices: Set<Int> = [],
+        deletedRowIDs: Set<RowID> = [],
         columnLayout: ColumnLayoutState
     ) -> RenderedJson {
         let output = ResultJsonSerializer.serialize(
             tableRows: tableRows,
             displayIDs: displayIDs,
             selectedDisplayIndices: selectedIndices,
-            deletedDisplayIndices: deletedIndices,
+            deletedRowIDs: deletedRowIDs,
             columns: .fromColumnLayout(columnLayout, columns: tableRows.columns)
         )
         return RenderedJson(

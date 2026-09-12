@@ -22,9 +22,8 @@ extension DamengPluginDriver {
     /// Runs a statement, and when the connection died under it, rebuilds the connection and
     /// runs it once more.
     ///
-    /// This is the shape MySQL (`MySQLPluginDriver.executeWithReconnect`) and PostgreSQL
-    /// (`LibPQDriverCore.executeWithReconnect`) already ship, and it is what the Dameng
-    /// driver's own documentation has always claimed to do. A stop is never retried: the user
+    /// This is the shape MySQL (`MySQLPluginDriver.executeWithReconnect`) already ships, and it
+    /// is what the Dameng driver's own documentation has always claimed to do. A stop is never retried: the user
     /// asked for the statement to end.
     func executeWithReconnect(
         query: String,

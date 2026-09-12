@@ -48,8 +48,8 @@ extension RowVisualState {
     /// The wash a row in this state carries, read by the row and by the pinned row gutter over it so
     /// the two cannot disagree.
     @MainActor var tint: NSColor? {
-        if isDeleted { return ThemeEngine.shared.colors.dataGrid.deleted }
-        if isInserted { return ThemeEngine.shared.colors.dataGrid.inserted }
+        if isDeleted { return ThemeEngine.shared.palette[.gridDeleted] }
+        if isInserted { return ThemeEngine.shared.palette[.gridInserted] }
         return highlight.rowColor?.washColor
     }
 
@@ -379,7 +379,7 @@ struct DataGridView: NSViewRepresentable {
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.recomputeValueFilteredIDs()
         coordinator.updateCache()
-        coordinator.visualIndex.rebuild(from: coordinator.changeManager, displayIDs: coordinator.displayIDs)
+        coordinator.visualIndex.rebuild(from: coordinator.changeManager)
 
         if !latestRows.columns.isEmpty {
             coordinator.isRebuildingColumns = true

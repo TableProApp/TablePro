@@ -36,6 +36,9 @@ struct PluginKitABIResilienceTests {
         #expect(driver.defaultExportQuery(table: "users") == nil)
         #expect(driver.createViewTemplate() == nil)
         #expect(driver.generateCreateTableSQL(definition: .init(tableName: "users", columns: [], primaryKeyColumns: [])) == nil)
+        #expect(driver.unsupportedStructureColumnFields.isEmpty)
+        #expect(driver.unsupportedIndexTypes.isEmpty)
+        #expect(driver.schemaOperationRefusal(.renameCheckConstraint(from: "a", to: "b")) == nil)
     }
 
     @Test("A driver that omits defaulted requirements falls back to the documented asynchronous defaults")
@@ -44,6 +47,8 @@ struct PluginKitABIResilienceTests {
         #expect(try await driver.fetchSchemas().isEmpty)
         #expect(try await driver.fetchExternalSchemaNames().isEmpty)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
+        #expect(try await driver.fetchIndexDDL(table: "users", schema: nil).isEmpty)
+        #expect(try await driver.fetchCommentDDL(table: "users", schema: nil).isEmpty)
         let base = QueryCompletionProfile(
             resolvedDialect: nil,
             statementCompletions: [CompletionEntry(label: "SELECT", insertText: "SELECT")],

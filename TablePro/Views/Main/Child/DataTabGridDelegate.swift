@@ -18,7 +18,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onSortStateChanged: ((SortState) -> Void)?
     var onAddRow: (() -> Void)?
-    var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
 
     // MARK: - DataGridViewDelegate
@@ -54,10 +53,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
 
     func dataGridAddRow() {
         onAddRow?()
-    }
-
-    func dataGridUndoInsert(at index: Int) {
-        onUndoInsert?(index)
     }
 
     func dataGridFilterColumn(_ columnName: String) {

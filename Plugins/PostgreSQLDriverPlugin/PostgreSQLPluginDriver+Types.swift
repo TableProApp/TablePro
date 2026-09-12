@@ -12,7 +12,7 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLObjectQueries.userDefinedTypeList(
             schema: resolvedSchema,
             identity: nil,
-            serverVersionNumber: serverVersionNumber
+            capabilities: catalogCapabilities
         )
         let result = try await execute(query: query)
         return result.rows
@@ -30,7 +30,7 @@ extension PostgreSQLPluginDriver {
             let query = PostgreSQLObjectQueries.userDefinedTypeList(
                 schema: nil,
                 identity: String(oid),
-                serverVersionNumber: serverVersionNumber
+                capabilities: catalogCapabilities
             )
             let result = try await execute(query: query)
             let match = result.rows
@@ -43,7 +43,7 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLObjectQueries.userDefinedTypeList(
             schema: resolvedSchema,
             identity: nil,
-            serverVersionNumber: serverVersionNumber
+            capabilities: catalogCapabilities
         )
         let result = try await execute(query: query)
         let match = result.rows

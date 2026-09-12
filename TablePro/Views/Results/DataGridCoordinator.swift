@@ -613,6 +613,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .sink { [weak self] _ in
                 if let tableView = self?.tableView {
                     DataGridBodyChrome.applyBackground(to: tableView)
+                    tableView.headerView?.needsDisplay = true
+                    tableView.cornerView?.needsDisplay = true
                 }
                 self?.reloadVisibleRowsAndStates()
                 /// The row-number font is a theme value and it decides the column's width, which
@@ -751,7 +753,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         updateCache()
         tableView.insertRows(at: indices, withAnimation: Self.rowAnimation(.slideDown))
         repaintVisibleRowDecorations()
@@ -769,7 +771,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             reloadAfterRowMutationWithValueFilter()
             return
         }
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         updateCache()
         tableView.removeRows(at: indices, withAnimation: Self.rowAnimation(.slideUp))
         repaintVisibleRowDecorations()
@@ -808,7 +810,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         guard let tableView else { return }
         recomputeValueFilteredIDs()
         updateCache()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
         tableView.reloadData()
         startBackgroundPrewarm()
     }
@@ -930,7 +932,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func invalidateAllDisplayCaches() {
         displayCache.removeAll()
-        visualIndex.rebuild(from: changeManager, displayIDs: displayIDs)
+        visualIndex.rebuild(from: changeManager)
     }
 
     @discardableResult
@@ -1070,7 +1072,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             else { return }
             guard row >= 0, row < tableView.numberOfRows else { return }
             invalidateDisplayCache(forDisplayRow: row, column: column)
-            visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
+            updateVisualIndex(forDisplayRow: row)
             redrawCells(rows: IndexSet(integer: row), tableColumnIndexes: IndexSet(integer: tableColumn))
             invalidateRowDecoration(displayRow: row)
         case .cellsChanged(let positions):
@@ -1088,7 +1090,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             for row in rowSet {
-                visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
+                updateVisualIndex(forDisplayRow: row)
             }
             redrawCells(rows: rowSet, tableColumnIndexes: colSet)
             for row in rowSet {
@@ -1418,7 +1420,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         if let delegateState = delegate?.dataGridVisualState(forRow: row) {
             return delegateState
         }
-        return visualIndex.visualState(for: row).highlighted(highlight(forDisplayRow: row))
+        guard !visualIndex.isEmpty || !highlightRuleSet.isEmpty,
+              let displayed = displayRow(at: row) else { return .empty }
+        return visualState(of: displayed, atDisplayRow: row)
     }
 
     // MARK: - NSTableViewDataSource

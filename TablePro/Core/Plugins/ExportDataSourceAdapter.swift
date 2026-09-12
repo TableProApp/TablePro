@@ -213,6 +213,11 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         return try await pluginDriver.fetchIndexDDL(table: table, schema: exportSchema(for: databaseName))
     }
 
+    func fetchCommentDDL(table: String, databaseName: String) async throws -> [String] {
+        guard let pluginDriver else { return [] }
+        return try await pluginDriver.fetchCommentDDL(table: table, schema: exportSchema(for: databaseName))
+    }
+
     // MARK: - Object DDL
 
     /// A driver addresses a routine, trigger or type through the info object it handed out, which

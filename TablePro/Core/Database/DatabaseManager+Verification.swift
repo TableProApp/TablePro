@@ -71,7 +71,13 @@ extension DatabaseManager {
         /// No record means no answer, which is a reason to ask rather than a reason to assume.
         /// That is also what makes waking from sleep work: it throws every answer away, and the
         /// next thing anyone does pays for one check.
-        if let last = lastVerifiedAt[connectionId], ConnectionHealthCheck.isFresh(last) { return }
+        /// A driver that reported a lost connection has already answered the question a ping
+        /// would ask, so its stamp says nothing about the socket it is holding now.
+        if let last = lastVerifiedAt[connectionId],
+           ConnectionHealthCheck.isFresh(last),
+           !driver.hasLostConnection {
+            return
+        }
 
         try? await verificationDedup.execute(key: connectionId) {
             await self.runVerification(connectionId, driver: driver)

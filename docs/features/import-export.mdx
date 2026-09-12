@@ -121,6 +121,8 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
 
     Structure carries the table's indexes. They are written after the rows, next to the deferred foreign keys, which is where `pg_dump` and `sqlite3 .dump` put them: a bulk load into an indexed table pays to maintain an index the restore is about to build anyway. On MySQL, MariaDB, ClickHouse, Trino and CockroachDB the server writes them inside `CREATE TABLE`, so they arrive with the table instead. A materialized view's indexes follow the view.
 
+    On PostgreSQL, Structure carries comments as well. Each table, view and materialized view gets its own `COMMENT ON` and one `COMMENT ON COLUMN` per commented column, directly after its `CREATE`. A foreign table is the exception: its comments are dropped, because the dump writes `CREATE TABLE` for it and PostgreSQL then refuses `COMMENT ON FOREIGN TABLE`. Where the server's own `CREATE TABLE` already carries the comment, MySQL and MariaDB among them, it arrives with the table instead.
+
     <Warning>
     All three are on by default, so an SQL export carries `DROP TABLE IF EXISTS` unless you untick **Drop**. Run that file against the wrong database and it drops the tables first.
     </Warning>
@@ -306,7 +308,7 @@ The sheet accepts an array of objects `[{…}, {…}]`, newline-delimited JSON s
 
 The proposed name drops the extension, turns spaces and punctuation into underscores, and lowercases the result. Letters from any script are kept as they are. On Oracle the name comes through in upper case instead, and is cut to 30 bytes rather than 63. A name an existing table or view already holds gains a numeric suffix, so re-importing `users.csv` next to a `users` table proposes `users_2`. Whatever you type over it is held to the same rules: a name already taken, one longer than the engine allows, or one starting with a prefix the engine keeps for itself is reported in the sheet, with **Import** off until it changes.
 
-Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text.
+Rows insert through parameterized statements, so a JSON value is never concatenated into SQL. Nested objects and arrays are stored as JSON text. In a new PostgreSQL table their column is `jsonb`, or `json` on 9.2 and 9.3, and `text` on 9.1, which has no JSON type.
 
 ### Import XLSX
 

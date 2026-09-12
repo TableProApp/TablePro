@@ -20,6 +20,7 @@ final class DataGridCellRenderer {
         let text: String
         let font: NSFont
         let color: NSColor
+        let mark: DataGridCellTextMark?
     }
 
     /// A viewport holds a few hundred cells and a scroll reuses them, so this only has to outlive a
@@ -64,9 +65,9 @@ final class DataGridCellRenderer {
         let availableWidth = appearance.accessory.availableTextWidth(in: rect)
         guard availableWidth > 0, let context = NSGraphicsContext.current?.cgContext else { return }
 
-        let fullLine = line(for: appearance.text, font: appearance.font, color: appearance.textColor)
+        let fullLine = line(for: appearance.text, appearance: appearance)
         let typographicWidth = CTLineGetTypographicBounds(fullLine, nil, nil, nil)
-        let ellipsis = line(for: "\u{2026}", font: appearance.font, color: appearance.textColor)
+        let ellipsis = line(for: "\u{2026}", appearance: appearance)
         let ellipsisWidth = CTLineGetTypographicBounds(ellipsis, nil, nil, nil)
         guard Double(availableWidth) >= ellipsisWidth else { return }
 
@@ -87,18 +88,22 @@ final class DataGridCellRenderer {
         context.restoreGState()
     }
 
-    private func line(for text: String, font: NSFont, color: NSColor) -> CTLine {
-        let key = LineKey(text: text, font: font, color: color)
+    /// Built with the mark's own attribute so `CTLineDraw` draws the line from the font's metrics,
+    /// and so `CTLineCreateTruncatedLine` carries it onto a truncated line and its ellipsis. The
+    /// mark is part of the key because two cells holding the same value in the same font and colour
+    /// are two different drawings once one of them is struck through.
+    private func line(for text: String, appearance: DataGridCellAppearance) -> CTLine {
+        let font = appearance.font
+        let key = LineKey(text: text, font: font, color: appearance.textColor, mark: appearance.textMark)
         if let cached = lineCache[key] { return cached }
 
         let source = text as NSString
         let laidOut = source.length > Self.maximumLaidOutCharacters
             ? source.substring(to: Self.maximumLaidOutCharacters) + "\u{2026}"
             : text
-        let attributed = NSAttributedString(
-            string: laidOut,
-            attributes: [.font: font, .foregroundColor: color]
-        )
+        var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: appearance.textColor]
+        appearance.textMark?.attributes.forEach { attributes[$0.key] = $0.value }
+        let attributed = NSAttributedString(string: laidOut, attributes: attributes)
         let created = CTLineCreateWithAttributedString(attributed as CFAttributedString)
 
         if lineCache.count >= Self.lineCacheLimit {
@@ -133,7 +138,7 @@ final class DataGridCellRenderer {
     private func drawFocusRing(in rect: NSRect) {
         let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
         path.lineWidth = 2
-        NSColor.keyboardFocusIndicatorColor.setStroke()
+        ThemeEngine.shared.palette[.gridFocusBorder].setStroke()
         path.stroke()
     }
 }

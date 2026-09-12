@@ -47,6 +47,9 @@ struct DDLTextView: View {
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }
+            .onReceive(AppEvents.shared.themeChanged) { _ in
+                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
+            }
             .onChange(of: fontSize) { _, newSize in
                 editorConfiguration = Self.makeConfiguration(fontSize: newSize)
             }

@@ -17,6 +17,9 @@ struct DataGridCellAppearance: Equatable {
     let textColor: NSColor
     /// Painted behind the text, for a find match, a modified value or a highlight rule.
     let backgroundTint: NSColor?
+    /// The line a pending change draws through or under the text. Unlike the tint, it survives a
+    /// selection, which is what makes it the cue rather than a decoration on one.
+    let textMark: DataGridCellTextMark?
     let accessory: DataGridCellAccessory
     /// Which symbol the accessory draws, resolved here because it follows the row's state rather
     /// than anything the renderer can see.
@@ -94,6 +97,7 @@ struct DataGridCellAppearance: Equatable {
             font: font,
             textColor: textColor,
             backgroundTint: backgroundTint,
+            textMark: DataGridCellTextMark.resolve(state: state.visualState, columnIndex: state.columnIndex),
             accessory: accessory,
             accessoryRole: DataGridCellAccessoryGlyph.Role(
                 accessory: accessory,
@@ -113,6 +117,6 @@ struct DataGridCellAppearance: Equatable {
         guard kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) else {
             return palette.text
         }
-        return (isTrue ? palette.booleanTrueText : palette.booleanFalseText) ?? palette.text
+        return isTrue ? palette.booleanTrueText : palette.booleanFalseText
     }
 }

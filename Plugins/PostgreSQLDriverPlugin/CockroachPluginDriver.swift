@@ -115,14 +115,14 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                   let columnName = row[columnIndex].asText else { continue }
 
             if let implicitIndex, implicitIndex < row.count,
-               row[implicitIndex].asText.map(Self.isTruthy) == true {
+               PostgreSQLCatalogBoolean.isTrue(row[implicitIndex].asText) {
                 continue
             }
 
             if columnsByIndex[indexName] == nil {
                 order.append(indexName)
                 if let nonUniqueIndex, nonUniqueIndex < row.count {
-                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map(Self.isTruthy) == false
+                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map { !PostgreSQLCatalogBoolean.isTrue($0) } ?? false
                 } else {
                     uniqueByIndex[indexName] = false
                 }
@@ -143,48 +143,15 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = """
-            SELECT
-                tc.constraint_name,
-                kcu.column_name,
-                ccu.table_name AS referenced_table,
-                ccu.column_name AS referenced_column,
-                rc.delete_rule,
-                rc.update_rule
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name
-                AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.referential_constraints rc
-                ON tc.constraint_name = rc.constraint_name
-                AND tc.table_schema = rc.constraint_schema
-            JOIN information_schema.constraint_column_usage ccu
-                ON rc.unique_constraint_name = ccu.constraint_name
-                AND rc.unique_constraint_schema = ccu.table_schema
-            WHERE tc.table_name = '\(safeTable)'
-                AND tc.table_schema = '\(schemaLiteral)'
-                AND tc.constraint_type = 'FOREIGN KEY'
-            ORDER BY tc.constraint_name
-            """
-        let result = try await execute(query: query)
-        return result.rows.compactMap { row -> PluginForeignKeyInfo? in
-            guard row.count >= 6,
-                  let name = row[0].asText,
-                  let column = row[1].asText,
-                  let refTable = row[2].asText,
-                  let refColumn = row[3].asText
-            else { return nil }
-            return PluginForeignKeyInfo(
-                name: name,
-                column: column,
-                referencedTable: refTable,
-                referencedColumn: refColumn,
-                onDelete: row[4].asText ?? "NO ACTION",
-                onUpdate: row[5].asText ?? "NO ACTION"
+        let query = PostgreSQLCatalogForeignKeys.query(
+            schemaLiteral: PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema),
+            tableLiteral: PostgreSQLObjectQueries.quoteLiteral(table),
+            excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
+                serverVersionNumber: core.serverVersionNumber
             )
-        }
+        )
+        let result = try await execute(query: query)
+        return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -339,10 +306,5 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let createIndex = result.columns.firstIndex(of: "create_statement") ?? (row.count > 1 ? 1 : 0)
         guard createIndex < row.count, let ddl = row[createIndex].asText, !ddl.isEmpty else { return nil }
         return ddl
-    }
-
-    private static func isTruthy(_ value: String) -> Bool {
-        let lowered = value.lowercased()
-        return lowered == "t" || lowered == "true"
     }
 }

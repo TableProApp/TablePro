@@ -20,6 +20,11 @@ public protocol PluginExportDataSource: AnyObject, Sendable {
     /// statements this table needs that `fetchTableDDL` does not already declare.
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String]
 
+    /// Mirrors `PluginDatabaseDriver.fetchCommentDDL` for the export side: the `COMMENT` statements
+    /// that reattach this relation's comment and its column comments, which `fetchTableDDL` does not
+    /// declare.
+    func fetchCommentDDL(table: String, databaseName: String) async throws -> [String]
+
     /// The CREATE statement for any exportable object, routines, triggers, views and user types
     /// included. One method rather than one per kind, because the caller already knows the kind and
     /// every driver answers the same question: what would recreate this.
@@ -60,6 +65,8 @@ public extension PluginExportDataSource {
     var tableDDLIncludesForeignKeys: Bool { false }
 
     func fetchIndexDDL(table: String, databaseName: String) async throws -> [String] { [] }
+
+    func fetchCommentDDL(table: String, databaseName: String) async throws -> [String] { [] }
 
     func fetchObjectDDL(_ object: PluginExportTable) async throws -> String {
         try await fetchTableDDL(table: object.name, databaseName: object.databaseName)

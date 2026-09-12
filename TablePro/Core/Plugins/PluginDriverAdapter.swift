@@ -23,6 +23,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         state.withLock { $0.status }
     }
 
+    var hasLostConnection: Bool {
+        pluginDriver.hasLostConnection
+    }
+
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
 
@@ -389,6 +393,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     var supportsTransactionalDDL: Bool { pluginDriver.supportsTransactionalDDL }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { pluginDriver.unsupportedStructureColumnFields }
+
+    var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
+
     func fetchApproximateRowCount(table: String) async throws -> Int? {
         try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
     }
@@ -422,6 +430,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchIndexDDL(table: String) async throws -> [String] {
         try await pluginDriver.fetchIndexDDL(table: table, schema: pluginDriver.currentSchema)
+    }
+
+    func fetchCommentDDL(table: String) async throws -> [String] {
+        try await pluginDriver.fetchCommentDDL(table: table, schema: pluginDriver.currentSchema)
     }
 
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {

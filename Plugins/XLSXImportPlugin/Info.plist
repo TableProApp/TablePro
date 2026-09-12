@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>26</integer>
+	<integer>28</integer>
 	<key>TableProProvidesImportFormatIds</key>
 	<array>
 		<string>xlsx</string>

@@ -19,6 +19,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Current connection status
     var status: ConnectionStatus { get }
 
+    var hasLostConnection: Bool { get }
+
     /// Server version string (e.g., "8.0.35" for MySQL)
     /// Optional - not all drivers may implement this
     var serverVersion: String? { get }
@@ -128,6 +130,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     var triggerEditUsesReplace: Bool { get }
     var supportsTransactionalDDL: Bool { get }
 
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { get }
+    var unsupportedIndexTypes: Set<String> { get }
+
     /// Fetch foreign keys for all tables in the current database/schema in bulk.
     /// Default implementation falls back to per-table fetchForeignKeys.
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]]
@@ -158,6 +163,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// The CREATE INDEX statements this table needs that `fetchTableDDL` does not already declare.
     /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
     func fetchIndexDDL(table: String) async throws -> [String]
+
+    /// The COMMENT statements that reattach this relation's comment and its column comments. Empty
+    /// on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchCommentDDL(table: String) async throws -> [String]
 
     /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
     /// Returns array of (typeName, labels) pairs. Default returns empty.
@@ -342,6 +351,8 @@ extension DatabaseDriver {
 
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
 
+    func fetchCommentDDL(table: String) async throws -> [String] { [] }
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -389,6 +400,9 @@ extension DatabaseDriver {
     func generateDropTriggerSQL(name: String, table: String) -> String? { nil }
     var triggerEditUsesReplace: Bool { false }
     var supportsTransactionalDDL: Bool { false }
+
+    var unsupportedStructureColumnFields: Set<StructureColumnField> { [] }
+    var unsupportedIndexTypes: Set<String> { [] }
 
     func ping() async throws {
         _ = try await execute(query: "SELECT 1")
@@ -620,6 +634,8 @@ extension DatabaseDriver {
     }
 
     var supportsTransactions: Bool { true }
+
+    var hasLostConnection: Bool { false }
 
     func cancelQuery() throws {
     }

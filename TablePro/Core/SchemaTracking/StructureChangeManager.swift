@@ -376,7 +376,7 @@ final class StructureChangeManager: ChangeManaging {
     // MARK: - Row-Specific Undo Delete
 
     /// Clear the deletion mark for the entity at `row` in `tab`. Mirrors
-    /// `DataChangeManager.undoRowDeletion(rowIndex:)`: the global NSUndoManager
+    /// `DataChangeManager.undoRowDeletion(rowID:)`: the global NSUndoManager
     /// stack is intentionally left alone. The original `applySchemaUndo(...)`
     /// handler the deletion registered remains on the stack; if global Cmd+Z
     /// later invokes it, the handler finds `pendingChanges` no longer marks
@@ -733,12 +733,12 @@ final class StructureChangeManager: ChangeManaging {
 
     var rowChanges: [RowChange] { [] }
 
-    var insertedRowIndices: Set<Int> { [] }
+    var insertedRowIDs: Set<RowID> { [] }
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool { false }
+    func isRowDeleted(_ rowID: RowID) -> Bool { false }
 
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -746,9 +746,7 @@ final class StructureChangeManager: ChangeManaging {
         originalRow: [PluginCellValue]?
     ) {}
 
-    func undoRowDeletion(rowIndex: Int) {}
-
-    func undoRowInsertion(rowIndex: Int) {}
+    func undoRowDeletion(rowID: RowID) {}
 }
 
 // MARK: - Schema Undo Action

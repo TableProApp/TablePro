@@ -152,11 +152,24 @@ struct SQLRowToStatementConverterTests {
         #expect(result == "UPDATE `users` SET `name` = 'Alice', `email` = 'alice@example.com' WHERE `id` = '1';")
     }
 
-    @Test("MSSQL uses bracket quoting")
+    /// The `N` is not decoration: a plain `'…'` is a `varchar` literal, so pasting these
+    /// statements into a database with a non-Unicode collation stores `?` for every character
+    /// outside its code page, whatever the column type is.
+    @Test("MSSQL uses bracket quoting and N-prefixed literals")
     func mssqlUsesBracketQuoting() throws {
         let converter = try makeConverter(databaseType: .mssql, dialect: Self.mssqlDialect)
         let result = converter.generateInserts(rows: [["1", "Alice", "alice@example.com"]])
-        #expect(result == "INSERT INTO [users] ([id], [name], [email]) VALUES ('1', 'Alice', 'alice@example.com');")
+        #expect(result == "INSERT INTO [users] ([id], [name], [email]) VALUES (N'1', N'Alice', N'alice@example.com');")
+    }
+
+    @Test("MSSQL: non-Latin text survives a copied INSERT and UPDATE")
+    func mssqlKeepsNonLatinText() throws {
+        let converter = try makeConverter(databaseType: .mssql, dialect: Self.mssqlDialect)
+        let inserts = converter.generateInserts(rows: [["1", "日本語", "a@b.c"]])
+        #expect(inserts.contains("N'日本語'"))
+        let updates = converter.generateUpdates(rows: [["1", "日本語", "a@b.c"]])
+        #expect(updates.contains("[name] = N'日本語'"))
+        #expect(updates.contains("WHERE [id] = N'1'"))
     }
 
     @Test("PostgreSQL uses double-quote quoting")

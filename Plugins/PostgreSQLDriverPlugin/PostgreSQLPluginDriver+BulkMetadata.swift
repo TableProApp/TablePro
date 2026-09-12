@@ -21,36 +21,13 @@ extension PostgreSQLPluginDriver {
     var providesBulkIndexFetch: Bool { true }
 
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let columnOrdering = versionedCapabilities.hasArrayPosition
-            ? "ORDER BY array_position(ix.indkey, a.attnum)"
-            : "ORDER BY a.attnum"
-        let query = """
-            SELECT
-                t.relname AS table_name,
-                i.relname AS index_name,
-                ARRAY_AGG(a.attname \(columnOrdering)) AS columns,
-                ix.indisunique AS is_unique,
-                ix.indisprimary AS is_primary,
-                am.amname AS index_type,
-                pg_get_expr(ix.indpred, ix.indrelid) AS predicate
-            FROM pg_index ix
-            JOIN pg_class i ON i.oid = ix.indexrelid
-            JOIN pg_class t ON t.oid = ix.indrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-            JOIN pg_am am ON am.oid = i.relam
-            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
-            WHERE n.nspname = '\(schemaLiteral)'
-            GROUP BY t.relname, i.relname, ix.indisunique, ix.indisprimary, am.amname, ix.indpred, ix.indrelid
-            ORDER BY t.relname, ix.indisprimary DESC, i.relname
-            """
+        let query = PostgreSQLIndexQueries.indexList(schema: schema ?? core.currentSchema, table: nil)
         let result = try await execute(query: query)
 
         var indexes: [String: [PluginIndexInfo]] = [:]
         for row in result.rows {
-            guard row.count >= 6, let table = row[0].asText,
-                  let index = PostgreSQLIndexRow.index(from: row) else { continue }
-            indexes[table, default: []].append(index)
+            guard let decoded = PostgreSQLIndexRow.index(from: row) else { continue }
+            indexes[decoded.table, default: []].append(decoded.index)
         }
         return indexes
     }
@@ -89,26 +66,5 @@ extension PostgreSQLPluginDriver {
             )
         }
         return metadata
-    }
-}
-
-enum PostgreSQLIndexRow {
-    /// The shared shaping for a `pg_index` row, so the per-table and whole-schema reads cannot
-    /// disagree about how an index is named, ordered or typed. The row's first field is the table
-    /// name in the bulk form and the index name in the per-table form, so the offset is passed in.
-    static func index(from row: [PluginCellValue], offset: Int = 1) -> PluginIndexInfo? {
-        guard let name = row[safe: offset]?.asText,
-              let columnsText = row[safe: offset + 1]?.asText else { return nil }
-        let columns = columnsText
-            .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
-            .components(separatedBy: ",")
-        return PluginIndexInfo(
-            name: name,
-            columns: columns,
-            isUnique: row[safe: offset + 2]?.asText == "t",
-            isPrimary: row[safe: offset + 3]?.asText == "t",
-            type: row[safe: offset + 4]?.asText?.uppercased() ?? "BTREE",
-            whereClause: row[safe: offset + 5]?.asText
-        )
     }
 }

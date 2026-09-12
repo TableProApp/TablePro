@@ -154,7 +154,7 @@ final class VimCursorManager {
         } else {
             let layer = CALayer()
             layer.contentsScale = textView.window?.backingScaleFactor ?? 2.0
-            layer.backgroundColor = ThemeEngine.shared.colors.editor.cursor.withAlphaComponent(0.4).cgColor
+            layer.backgroundColor = ThemeEngine.shared.resolved[.editorCursor].withAlphaComponent(0.4).cgColor
             layer.frame = frame
 
             if !isPaused {

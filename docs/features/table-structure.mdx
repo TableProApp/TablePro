@@ -47,7 +47,7 @@ Changing the default of a column that already exists takes a different route per
 
 ### Generated columns
 
-PostgreSQL, CockroachDB, PGlite, MySQL, MariaDB and SQLite add two more fields. **Generated** is a menu of Not generated, STORED and VIRTUAL; **Expression** holds the SQL the value is computed from. Set both on a new row and the column is created as `GENERATED ALWAYS AS (expression)`.
+PostgreSQL, CockroachDB, PGlite, MySQL, MariaDB and SQLite add two more fields. **Generated** is a menu of Not generated, STORED and VIRTUAL; **Expression** holds the SQL the value is computed from. Set both on a new row and the column is created as `GENERATED ALWAYS AS (expression)`. PostgreSQL 11 and earlier have no generated columns, so on those servers neither field appears.
 
 The keyword is always written out. PostgreSQL 17 and earlier accept STORED only, PostgreSQL 18 made VIRTUAL the default, and MySQL and MariaDB default to VIRTUAL, so leaving it implicit would mean different columns on different servers.
 
@@ -85,7 +85,7 @@ Everything that runs goes to query history rather than the change queue.
 | Field | Description |
 |-------|-------------|
 | **Columns** | Indexed columns. Multi-column indexes list several columns in one row. MySQL prefix lengths are written as `email(20)` |
-| **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL) |
+| **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL 9.5 and later) |
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 
@@ -169,7 +169,7 @@ Triggers are available for MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, Oracl
 
 ## DDL tab
 
-Read-only `CREATE TABLE` with syntax highlighting and font size controls. **Copy**, **Export** as a `.sql` file, and **Open in Editor** send it onward. On PostgreSQL the `CREATE SEQUENCE` and `CREATE TYPE … AS ENUM` statements the table depends on are prepended, so the script runs on an empty database.
+Read-only `CREATE TABLE` with syntax highlighting and font size controls. **Copy**, **Export** as a `.sql` file, and **Open in Editor** send it onward. On PostgreSQL the `CREATE SEQUENCE` and `CREATE TYPE … AS ENUM` statements the table depends on are prepended, so the script runs on an empty database, and the table's `COMMENT ON` statements follow it.
 
 Open the tab on a view and it carries that view's own `CREATE VIEW` or `CREATE MATERIALIZED VIEW` instead, the same statement **Show DDL** opens. A materialized view's indexes follow it.
 

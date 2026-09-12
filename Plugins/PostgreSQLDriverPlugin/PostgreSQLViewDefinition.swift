@@ -33,7 +33,7 @@ public enum PostgreSQLViewDefinition {
         }
     }
 
-    /// Run with `search_path` emptied first (see `qualifiedReadPrefix`). `pg_get_viewdef` writes a
+    /// Run with `search_path` narrowed first (see `qualifiedReadPrefix`). `pg_get_viewdef` writes a
     /// table name bare whenever the reading session could resolve it without its schema, and the
     /// scoped connection this runs on has its path set to the view's own schema, so the body came
     /// back naming `orders` rather than `sales.orders`. Run anywhere else, that text silently bound
@@ -43,7 +43,7 @@ public enum PostgreSQLViewDefinition {
         SELECT
             c.relkind::text,
             pg_catalog.pg_get_viewdef(c.oid, true),
-            pg_catalog.array_to_json(c.reloptions)::text,
+            c.reloptions::text,
             am.amname::text,
             ts.spcname::text
         FROM pg_catalog.pg_class c
@@ -60,7 +60,11 @@ public enum PostgreSQLViewDefinition {
     /// as the read, the pair is one implicit transaction, so the path is back to what it was as
     /// soon as the read returns. Inside a transaction the caller already holds, it would last until
     /// that transaction ends, which is why the driver wraps the read in a savepoint there.
-    public static let qualifiedReadPrefix = "SET LOCAL search_path = ''; "
+    ///
+    /// `pg_catalog` rather than an empty path: PostgreSQL 9.1 rejects `''` ("schema "" does not
+    /// exist"), and `pg_catalog` is searched implicitly anyway, so every user relation is still
+    /// written with its schema. Measured identical output on 9.2, 9.3, 9.6 and 17.
+    public static let qualifiedReadPrefix = "SET LOCAL search_path = pg_catalog; "
 
     public static func parse(row: [String?]) -> CatalogRow? {
         guard row.count >= 5,
@@ -71,7 +75,7 @@ public enum PostgreSQLViewDefinition {
         return CatalogRow(
             kind: kind,
             query: query,
-            options: options(fromJSON: row[2]),
+            options: PostgreSQLTextArray.values(row[2]),
             accessMethod: row[3]?.nilIfBlank,
             tablespace: row[4]?.nilIfBlank
         )
@@ -83,15 +87,6 @@ public enum PostgreSQLViewDefinition {
         case "m": return .materializedView
         default: return nil
         }
-    }
-
-    /// Read as JSON rather than as array text, because an option value may itself hold a comma or
-    /// a quote and splitting `{a=1,b=2}` on commas would cut it in two.
-    public static func options(fromJSON json: String?) -> [String] {
-        guard let data = json?.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return decoded
     }
 
     public static func statement(name: String, schema: String, row: CatalogRow) -> String {

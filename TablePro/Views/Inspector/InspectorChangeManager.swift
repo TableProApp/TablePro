@@ -13,12 +13,12 @@ final class InspectorChangeManager: ChangeManaging {
     var hasChanges: Bool { false }
     var canRedo: Bool { false }
     var rowChanges: [RowChange] { [] }
-    var insertedRowIndices: Set<Int> { [] }
+    var insertedRowIDs: Set<RowID> { [] }
 
-    func isRowDeleted(_ rowIndex: Int) -> Bool { false }
+    func isRowDeleted(_ rowID: RowID) -> Bool { false }
 
     func recordCellChange(
-        rowIndex: Int,
+        rowID: RowID,
         columnIndex: Int,
         columnName: String,
         oldValue: PluginCellValue,
@@ -26,8 +26,7 @@ final class InspectorChangeManager: ChangeManaging {
         originalRow: [PluginCellValue]?
     ) {}
 
-    func undoRowDeletion(rowIndex: Int) {}
-    func undoRowInsertion(rowIndex: Int) {}
+    func undoRowDeletion(rowID: RowID) {}
 
     func bumpReload() {
         reloadVersion &+= 1
