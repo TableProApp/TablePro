@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Editor and results divider of one query tab following whichever tab in the pane was opened first.
+- Divider position of every query tab ever opened kept in preferences forever, slowing every launch.
 - Data grid and bottom bar cut off at both edges in a narrow window, with rows and pagination buttons out of reach.
 - Filter panel wider than the pane when a table has a long column name.
 - `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)

@@ -188,6 +188,6 @@ custom_rules:
   storage_environment_defaults:
     name: "Storage Environment Defaults"
     regex: 'UserDefaults\.standard'
-    excluded: ".*/(AppStorageEnvironment|GeneralSettings|WorkspaceRailViewController)\\.swift"
+    excluded: ".*/(AppStorageEnvironment|GeneralSettings|WorkspaceRailViewController|SplitViewAutosaveSweep)\\.swift"
     message: "Resolve preferences through AppStorageEnvironment.shared.defaults. Only a macOS-owned system preference reads the standard domain."
     severity: error

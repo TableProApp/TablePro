@@ -59,9 +59,11 @@ struct VerticalCollapsibleSplitView<TopContent: View, BottomContent: View>: NSVi
         }
         context.coordinator.observeCollapse(of: bottomItem)
 
-        if isBottomCollapsed {
-            bottomItem.isCollapsed = true
-        }
+        /// Assigned either way, so the tab's own state wins over whatever the autosave record
+        /// restored. Collapsing only when the binding says so let a record that was saved collapsed
+        /// leave a pane collapsed against a tab whose `isResultsCollapsed` is false, and nothing
+        /// afterwards expanded it.
+        bottomItem.isCollapsed = isBottomCollapsed
 
         return splitViewController
     }
