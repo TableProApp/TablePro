@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Row numbers and their divider painted over the find bar, the filter panel and the result tab bar.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
 - Add Row under a column value filter selecting and opening the wrong row for editing.

@@ -208,7 +208,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         installSelectionOverlay(tableView: tableView, coordinator: coordinator)
-        installRowGutter(scrollView: scrollView, tableView: tableView, coordinator: coordinator)
+        Self.installRowGutter(scrollView: scrollView, tableView: tableView, coordinator: coordinator)
         coordinator.attachScrollObservers(scrollView: scrollView)
         // Intentionally do not prime cachedRowCount/cachedColumnCount here.
         // They represent what NSTableView has actually rendered. Leaving them
@@ -587,11 +587,23 @@ struct DataGridView: NSViewRepresentable {
     ///
     /// Its heading is not a view of its own: `SortableHeaderView` draws it, because nothing but the
     /// header view's own drawing can match the headings beside it.
-    private func installRowGutter(
+    static func installRowGutter(
         scrollView: NSScrollView,
         tableView: KeyHandlingTableView,
         coordinator: TableViewCoordinator
     ) {
+        /// The strip is document-tall, and nothing between it and the window frame clips it on its
+        /// own: measured on macOS 27, AppKit reparents a floating subview into a
+        /// `_NSScrollViewFloatingSubviewsContainerView` whose `clipsToBounds` is false, and
+        /// `NSScrollView`'s is false too, which is `NSView`'s documented default for the macOS 14
+        /// SDK. So the strip painted its row numbers and its column separator over whatever the
+        /// window stacked above the grid, every one of which is an earlier sibling and therefore
+        /// underneath it: the find bar, the filter panel, the key-pattern search bar, the result tab
+        /// bar and the banners. The scroll view is the view this code owns, so it is where the clip
+        /// belongs; clipping the container instead would reach into a view AppKit owns and would
+        /// stop working the day AppKit reparents somewhere else.
+        scrollView.clipsToBounds = true
+
         let gutter = DataGridRowGutterView(frame: .zero)
         gutter.coordinator = coordinator
         tableView.addSubview(gutter)
