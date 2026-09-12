@@ -91,7 +91,7 @@ struct EvictionTests {
         let (coordinator, tabManager) = makeCoordinator()
         try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
 
-        tabManager.tabs[0].pendingChanges.deletedRowIndices = [0]
+        tabManager.tabs[0].pendingChanges.deletedRowIDs = [.existing(0)]
         let loadEpoch = tabManager.tabs[0].loadEpoch
         try addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "orders")
 

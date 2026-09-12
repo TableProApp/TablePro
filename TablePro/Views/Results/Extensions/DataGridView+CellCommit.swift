@@ -18,7 +18,7 @@ extension TableViewCoordinator {
         guard recordCellEdit(row: row, columnIndex: columnIndex, newValue: typedNewValue) != nil else { return }
 
         invalidateDisplayCache()
-        visualIndex.updateRow(row, from: changeManager, displayIDs: displayIDs)
+        updateVisualIndex(forDisplayRow: row)
 
         invalidateRowDecoration(displayRow: row)
         guard let tableColumnIndex = tableColumnIndex(for: columnIndex) else { return }
@@ -46,11 +46,10 @@ extension TableViewCoordinator {
         isCommittingCellEdit = true
         defer { isCommittingCellEdit = false }
 
-        let storageRow = tableRowsIndex(forDisplayRow: row)
         let columnName = tableRows.columns[columnIndex]
         let originalRow = Array(displayRowValues.values)
         changeManager.recordCellChange(
-            rowIndex: row,
+            rowID: displayRowValues.id,
             columnIndex: columnIndex,
             columnName: columnName,
             oldValue: oldValue,
@@ -59,7 +58,7 @@ extension TableViewCoordinator {
         )
 
         var delta: Delta = .none
-        if let storageRow {
+        if let storageRow = tableRows.index(of: displayRowValues.id) {
             delta = tableRowsMutator { tableRows in
                 tableRows.edit(row: storageRow, column: columnIndex, value: typedNewValue)
             }

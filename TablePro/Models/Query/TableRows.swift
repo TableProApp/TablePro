@@ -119,9 +119,10 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func appendInsertedRow(values: [PluginCellValue]) -> Delta {
+    mutating func appendInsertedRow(id: RowID = .inserted(UUID()), values: [PluginCellValue]) -> Delta {
+        guard indexByID[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: .inserted(UUID()), values: normalized)
+        let row = Row(id: id, values: normalized)
         let newIndex = rows.count
         rows.append(row)
         indexByID[row.id] = newIndex
@@ -129,10 +130,14 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
-    mutating func insertInsertedRow(at index: Int, values: [PluginCellValue]) -> Delta {
-        guard index >= 0, index <= rows.count else { return .none }
+    mutating func insertInsertedRow(
+        at index: Int,
+        id: RowID = .inserted(UUID()),
+        values: [PluginCellValue]
+    ) -> Delta {
+        guard index >= 0, index <= rows.count, indexByID[id] == nil else { return .none }
         let normalized = Self.normalize(values: values, toCount: columns.count)
-        let row = Row(id: .inserted(UUID()), values: normalized)
+        let row = Row(id: id, values: normalized)
         rows.insert(row, at: index)
         for offset in index..<rows.count {
             indexByID[rows[offset].id] = offset

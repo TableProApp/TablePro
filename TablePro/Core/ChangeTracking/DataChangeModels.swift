@@ -35,7 +35,7 @@ struct CellChange: Identifiable, Equatable {
 
 struct RowChange: Identifiable, Equatable {
     let id: UUID
-    var rowIndex: Int
+    let rowID: RowID
     let type: ChangeType
     var cellChanges: [CellChange]
     let originalRow: [PluginCellValue]?
@@ -49,14 +49,14 @@ struct RowChange: Identifiable, Equatable {
     var sequence: Int
 
     init(
-        rowIndex: Int,
+        rowID: RowID,
         type: ChangeType,
         cellChanges: [CellChange] = [],
         originalRow: [PluginCellValue]? = nil,
         sequence: Int = 0
     ) {
         self.id = UUID()
-        self.rowIndex = rowIndex
+        self.rowID = rowID
         self.type = type
         self.cellChanges = cellChanges
         self.originalRow = originalRow
@@ -65,21 +65,26 @@ struct RowChange: Identifiable, Equatable {
 }
 
 struct RowChangeKey: Hashable {
-    let rowIndex: Int
+    let rowID: RowID
     let type: ChangeType
+}
+
+struct InsertedRowLocation {
+    let rowID: RowID
+    let storageIndex: Int
 }
 
 enum UndoAction {
     case cellEdit(
-            rowIndex: Int,
+            rowID: RowID,
             columnIndex: Int,
             columnName: String,
             previousValue: PluginCellValue,
             newValue: PluginCellValue,
             originalRow: [PluginCellValue]?
          )
-    case rowInsertion(rowIndex: Int)
-    case rowDeletion(rowIndex: Int, originalRow: [PluginCellValue])
-    case batchRowDeletion(rows: [(rowIndex: Int, originalRow: [PluginCellValue])])
-    case batchRowInsertion(rowIndices: [Int], rowValues: [[PluginCellValue]])
+    case rowInsertion(rowID: RowID)
+    case rowDeletion(rowID: RowID, originalRow: [PluginCellValue])
+    case batchRowDeletion(rows: [(rowID: RowID, originalRow: [PluginCellValue])])
+    case batchRowInsertion(rows: [InsertedRowLocation], rowValues: [[PluginCellValue]])
 }

@@ -83,6 +83,26 @@ struct PostgreSQLObjectQueryTests {
         let triggers = PostgreSQLObjectQueries.triggerList(schema: "public", table: "o'brien")
         #expect(triggers.contains("'o''brien'"))
     }
+
+    @Test("A backslash before a quote in a name becomes an E'' literal in every query")
+    func backslashNamesUseEscapeStringLiterals() {
+        let hostile = "a\\'; DROP TABLE victim; --"
+        let expected = "E'a\\\\''; DROP TABLE victim; --'"
+
+        let list = PostgreSQLObjectQueries.routineList(schema: hostile, serverVersionNumber: 160_000)
+        #expect(list.contains("n.nspname = \(expected)"))
+
+        let byName = PostgreSQLObjectQueries.routineDefinitionByName(
+            name: hostile, schema: hostile, arguments: hostile
+        )
+        #expect(byName.contains("p.proname = \(expected)"))
+        #expect(byName.contains("n.nspname = \(expected)"))
+        #expect(byName.contains("')' = \(expected)"))
+
+        let triggers = PostgreSQLObjectQueries.triggerList(schema: hostile, table: hostile)
+        #expect(triggers.contains("c.relname = \(expected)"))
+        #expect(triggers.contains("n.nspname = \(expected)"))
+    }
 }
 
 @Suite("MySQL Object Catalog Queries")
