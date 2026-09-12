@@ -79,6 +79,58 @@ struct ForeignKeyTargetScopeTests {
         #expect(resolved.schema == nil)
     }
 
+    // MARK: - A referenced database
+
+    /// Snowflake names objects in three parts, so a key can point outside the database it was read
+    /// from. Only the schema arm can carry one: the other two already hold a database in that slot.
+    @Test("A schema engine follows a reference into another database")
+    func schemaEngineFollowsAReferencedDatabase() {
+        let resolved = ForeignKeyTargetScope.resolve(
+            origin: origin(database: "analytics", schema: "public"),
+            referencedDatabase: "raw",
+            referencedSchema: "events",
+            slot: .schema
+        )
+        #expect(resolved.database == "raw")
+        #expect(resolved.schema == "events")
+    }
+
+    @Test("A referenced database with no schema of its own keeps the origin's")
+    func referencedDatabaseAloneKeepsTheOriginSchema() {
+        let resolved = ForeignKeyTargetScope.resolve(
+            origin: origin(database: "analytics", schema: "public"),
+            referencedDatabase: "raw",
+            referencedSchema: nil,
+            slot: .schema
+        )
+        #expect(resolved.database == "raw")
+        #expect(resolved.schema == "public")
+    }
+
+    /// An engine with no schema layer already names its referenced database in the schema slot, so
+    /// a second one would be two answers to one question. MySQL cannot move.
+    @Test("A schema-less engine ignores a referenced database", arguments: [EngineNamespaceSlot.database, .unqualified])
+    func schemaLessEngineIgnoresAReferencedDatabase(slot: EngineNamespaceSlot) {
+        let resolved = ForeignKeyTargetScope.resolve(
+            origin: origin(),
+            referencedDatabase: "ignored",
+            referencedSchema: "warehouse",
+            slot: slot
+        )
+        #expect(resolved.database == (slot == .database ? "warehouse" : "shop"))
+        #expect(resolved.schema == nil)
+    }
+
+    @Test("A reference naming neither container still keeps the origin untouched")
+    func neitherContainerKeepsOrigin() {
+        let source = origin(schema: "public")
+        #expect(
+            ForeignKeyTargetScope.resolve(
+                origin: source, referencedDatabase: nil, referencedSchema: nil, slot: .schema
+            ) == source
+        )
+    }
+
     // MARK: - Agreement with the canonical table scope
 
     /// The invariant #2768 broke. A foreign key label, a filter, a column layout, a highlight rule

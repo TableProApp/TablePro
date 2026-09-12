@@ -115,7 +115,10 @@ enum ForeignKeyLookupService {
         reference: ForeignKeyInfo
     ) -> DatabaseScope {
         ForeignKeyTargetScope.resolve(
-            origin: origin, referencedSchema: reference.referencedSchema, databaseType: databaseType
+            origin: origin,
+            referencedDatabase: reference.referencedDatabase,
+            referencedSchema: reference.referencedSchema,
+            databaseType: databaseType
         )
     }
 
@@ -126,6 +129,7 @@ enum ForeignKeyLookupService {
     ) -> TableScope {
         ForeignKeyTargetScope.tableScope(
             origin: origin,
+            referencedDatabase: reference.referencedDatabase,
             referencedSchema: reference.referencedSchema,
             referencedTable: reference.referencedTable,
             databaseType: databaseType

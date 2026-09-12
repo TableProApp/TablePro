@@ -340,6 +340,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 column: fk.column,
                 referencedTable: fk.referencedTable,
                 referencedColumn: fk.referencedColumn,
+                referencedDatabase: fk.referencedDatabase,
                 referencedSchema: fk.referencedSchema,
                 onDelete: fk.onDelete,
                 onUpdate: fk.onUpdate
@@ -586,7 +587,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         for (table, fks) in pluginResult {
             result[table] = fks.map { fk in
                 ForeignKeyInfo(name: fk.name, column: fk.column, referencedTable: fk.referencedTable,
-                               referencedColumn: fk.referencedColumn, referencedSchema: fk.referencedSchema,
+                               referencedColumn: fk.referencedColumn,
+                               referencedDatabase: fk.referencedDatabase,
+                               referencedSchema: fk.referencedSchema,
                                onDelete: fk.onDelete, onUpdate: fk.onUpdate)
             }
         }

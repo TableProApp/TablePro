@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>29</integer>
+	<integer>30</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>SurrealDB</string>
