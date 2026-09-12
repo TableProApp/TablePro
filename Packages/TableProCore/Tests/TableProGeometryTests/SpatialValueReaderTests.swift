@@ -104,6 +104,70 @@ final class SpatialValueReaderTests: XCTestCase {
         XCTAssertNil(SpatialValueReader.readElasticsearchGeoPoint("1,2,3"))
     }
 
+    /// ClickHouse writes a `Tuple` in parentheses and an `Array` in square brackets, which is what
+    /// `ClickHouseTabSeparatedRowDecoderTests` already pins for ordinary arrays. Requiring
+    /// parentheses at every level rejected every `Ring`, `Polygon` and `MultiPolygon` the driver
+    /// hands over.
+    func testClickHouseRingUsesSquareBrackets() {
+        guard case .polygon(let rings)? = geometry("[(0,0),(4,0),(4,4),(0,0)]") else {
+            return XCTFail("expected a ring")
+        }
+        XCTAssertEqual(rings.count, 1)
+        XCTAssertEqual(rings[0].count, 4)
+        XCTAssertEqual(rings[0][1], SpatialPoint(x: 4, y: 0))
+    }
+
+    func testClickHousePolygonUsesSquareBracketsAtEveryLevel() {
+        guard case .polygon(let rings)? = geometry("[[(0,0),(4,0),(4,4),(0,0)],[(1,1),(2,1),(2,2),(1,1)]]") else {
+            return XCTFail("expected a polygon with a hole")
+        }
+        XCTAssertEqual(rings.count, 2)
+    }
+
+    func testClickHouseMultiPolygonUsesSquareBrackets() {
+        let text = "[[[(0,0),(1,0),(1,1),(0,0)]],[[(5,5),(6,5),(6,6),(5,5)]]]"
+        guard case .multiPolygon(let polygons)? = geometry(text) else {
+            return XCTFail("expected a multipolygon")
+        }
+        XCTAssertEqual(polygons.count, 2)
+    }
+
+    /// Elasticsearch's object form is latitude-first, as Elasticsearch documents it, while its array
+    /// form is longitude-first to match GeoJSON. Reading one as the other puts the point in the
+    /// wrong hemisphere, so both are pinned.
+    func testElasticsearchObjectFormIsLatitudeFirst() {
+        XCTAssertEqual(
+            geometry(#"{"lat":37.7749,"lon":-122.4194}"#),
+            .point(SpatialPoint(x: -122.4194, y: 37.7749))
+        )
+        XCTAssertEqual(
+            geometry(#"{"lat": 37.7749, "long": -122.4194}"#),
+            .point(SpatialPoint(x: -122.4194, y: 37.7749))
+        )
+    }
+
+    func testElasticsearchArrayFormIsLongitudeFirst() {
+        XCTAssertEqual(
+            geometry("[-122.4194,37.7749]"),
+            .point(SpatialPoint(x: -122.4194, y: 37.7749))
+        )
+    }
+
+    /// A geohash resolves to the centre of its cell, which is what Elasticsearch itself does.
+    /// `9q8yyk8ytpxr` is San Francisco; twelve characters places it within a metre.
+    func testElasticsearchGeohashResolvesToTheCellCentre() {
+        guard case .point(let point)? = geometry("9q8yyk8ytpxr") else {
+            return XCTFail("expected a point")
+        }
+        XCTAssertEqual(point.y, 37.7749, accuracy: 0.0001)
+        XCTAssertEqual(point.x, -122.4194, accuracy: 0.0001)
+    }
+
+    func testElasticsearchGeohashRejectsLettersOutsideItsAlphabet() {
+        XCTAssertNil(SpatialValueReader.readElasticsearchGeoPoint("aio1"))
+        XCTAssertNil(SpatialValueReader.readElasticsearchGeoPoint("9q8yyk8ytpxr9q8yy"))
+    }
+
     func testOrdinaryTextIsRefused() {
         XCTAssertEqual(SpatialValueReader.read("hello"), .failure(.notGeometry))
         XCTAssertEqual(SpatialValueReader.read("   "), .failure(.notGeometry))

@@ -73,6 +73,7 @@ public enum WKTGeometryReader {
         private let bytes: [UInt8]
         private var index: Int
         var failure: SpatialReadFailure?
+        private var depth = 0
 
         init(_ text: String) {
             bytes = Array(text.utf8)
@@ -125,6 +126,12 @@ public enum WKTGeometryReader {
         }
 
         mutating func readGeometry() -> SpatialGeometry? {
+            depth += 1
+            defer { depth -= 1 }
+            guard depth <= SpatialLimits.maximumNestingDepth else {
+                failure = .malformed
+                return nil
+            }
             skipWhitespace()
             guard let word = readKeyword() else {
                 failure = .notGeometry

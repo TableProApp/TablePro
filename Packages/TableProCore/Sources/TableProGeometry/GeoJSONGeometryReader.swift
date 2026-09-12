@@ -22,7 +22,7 @@ public enum GeoJSONGeometryReader {
         else {
             return .failure(.notGeometry)
         }
-        guard let geometry = geometry(from: object) else { return .failure(.notGeometry) }
+        guard let geometry = geometry(from: object, depth: 1) else { return .failure(.notGeometry) }
         return .success(SpatialValue(srid: 4326, geometry: geometry))
     }
 
@@ -34,19 +34,20 @@ public enum GeoJSONGeometryReader {
             || text.contains("\"features\""))
     }
 
-    private static func geometry(from object: [String: Any]) -> SpatialGeometry? {
+    private static func geometry(from object: [String: Any], depth: Int) -> SpatialGeometry? {
+        guard depth <= SpatialLimits.maximumNestingDepth else { return nil }
         guard let type = object["type"] as? String else { return nil }
         switch type {
         case "Feature":
             guard let nested = object["geometry"] as? [String: Any] else { return nil }
-            return geometry(from: nested)
+            return geometry(from: nested, depth: depth + 1)
         case "FeatureCollection":
             guard let features = object["features"] as? [[String: Any]] else { return nil }
-            let children = features.compactMap { geometry(from: $0) }
+            let children = features.compactMap { geometry(from: $0, depth: depth + 1) }
             return children.count == 1 ? children[0] : .collection(children)
         case "GeometryCollection":
             guard let members = object["geometries"] as? [[String: Any]] else { return nil }
-            return .collection(members.compactMap { geometry(from: $0) })
+            return .collection(members.compactMap { geometry(from: $0, depth: depth + 1) })
         case "Point":
             guard let point = position(object["coordinates"]) else { return nil }
             return .point(point)

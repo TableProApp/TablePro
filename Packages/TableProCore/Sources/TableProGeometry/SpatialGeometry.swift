@@ -125,3 +125,14 @@ public extension SpatialGeometry {
         }
     }
 }
+
+/// Bounds every reader shares, so one crafted value cannot cost more than a page of rows does.
+public enum SpatialLimits {
+    /// How deeply a geometry collection may nest before a value is refused.
+    ///
+    /// Each level of `GEOMETRYCOLLECTION(...)` is one more frame on the reader's stack, and the
+    /// wire formats put no limit on it, so a few hundred bytes of nothing but nested collection
+    /// headers would exhaust the stack rather than fail. Thirty-two is far past anything a database
+    /// writes: PostGIS, MySQL and MapKit's own GeoJSON decoder all produce at most two.
+    public static let maximumNestingDepth = 32
+}

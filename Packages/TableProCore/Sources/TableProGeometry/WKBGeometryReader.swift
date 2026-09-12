@@ -98,6 +98,7 @@ public enum WKBGeometryReader {
     private struct Cursor {
         private let bytes: [UInt8]
         private var index: Int
+        private var depth = 0
         var failure: SpatialReadFailure?
 
         init(_ bytes: [UInt8]) {
@@ -108,6 +109,12 @@ public enum WKBGeometryReader {
         var isAtEnd: Bool { index >= bytes.count }
 
         mutating func readGeometry(inheritedSRID: Int32?) -> SpatialValue? {
+            depth += 1
+            defer { depth -= 1 }
+            guard depth <= SpatialLimits.maximumNestingDepth else {
+                failure = .malformed
+                return nil
+            }
             guard let order = readByteOrder() else { return nil }
             guard let rawType = readUInt32(order) else { return nil }
 
