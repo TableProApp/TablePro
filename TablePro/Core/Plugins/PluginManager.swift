@@ -38,6 +38,12 @@ final class PluginManager {
     /// the first to answer them: it takes a whole-file write lock for the life of its handle, so an
     /// idle connection stops every other process from opening the same database.
     ///
+    /// Raised to 30 for `ExportFormatResult.notes` and its `init(warnings:notes:)`, which is what lets
+    /// an export report a fact about what it wrote without the summary alert reading it as a problem.
+    /// The old `init(warnings:)` is kept verbatim as `@_disfavoredOverload`, so every already-built
+    /// export plugin keeps loading and only a plugin rebuilt against the new initializer needs a host
+    /// that has it.
+    ///
     /// Raised to 22 before that for `fetchIndexDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
     /// which is what lets a dump write a table's indexes after its rows instead of leaving whether
     /// they appear at all to each driver's `fetchTableDDL`.

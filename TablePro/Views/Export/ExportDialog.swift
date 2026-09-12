@@ -183,6 +183,7 @@ struct ExportDialog: View {
             guard isShowing else { return }
             TransferResultAlert.presentExportSuccess(
                 warnings: exportService?.state.warnings ?? [],
+                notes: exportService?.state.notes ?? [],
                 window: hostWindow
             ) { choice in
                 showSuccessDialog = false

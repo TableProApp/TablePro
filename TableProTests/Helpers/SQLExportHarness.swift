@@ -21,13 +21,17 @@ import TableProPluginKit
 internal actor SQLExportHarness {
     internal static let shared = SQLExportHarness()
 
+    /// `progress` is injectable so a suite can cancel the export from inside its own data source and
+    /// assert what a stopped run leaves behind.
     internal func dump(
         tables: [PluginExportTable],
-        dataSource: any PluginExportDataSource
+        dataSource: any PluginExportDataSource,
+        options: SQLExportOptions = SQLExportOptions(),
+        progress: PluginExportProgress? = nil
     ) async throws -> (text: String, result: ExportFormatResult) {
         let plugin = SQLExportPlugin()
         let storedSettings = plugin.settings
-        plugin.settings = SQLExportOptions()
+        plugin.settings = options
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).sql")
         defer {
@@ -39,7 +43,7 @@ internal actor SQLExportHarness {
             tables: tables,
             dataSource: dataSource,
             destination: destination,
-            progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
+            progress: progress ?? PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
         return (try String(contentsOf: destination, encoding: .utf8), result)
     }

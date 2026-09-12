@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
 - UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
+- **Max INSERT size** for SQL export, 1 MB by default. (#2533)
+- Largest INSERT written, in the SQL export summary. (#2533)
 
 ### Changed
 
@@ -53,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Data grid and bottom bar cut off at both edges in a narrow window, with rows and pagination buttons out of reach.
 - Filter panel wider than the pane when a table has a long column name.
+- `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)
+- Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
+- Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
+- ClickHouse **Drop Partition** and **Detach Partition** acting on the sidebar's database instead of the table on screen, and running without the connection's destructive-statement confirmation.
+- Import listing one database's tables and mapping their columns while the rows went to another.
+- **New Table** created in the database the sidebar moved to rather than the one its own tab names.
+- **Show All Tables** listing whichever database a cross-database tab last left the connection on.
+- Sidebar **Refresh** reloading the object list from a container the user is not browsing.
+- Wrong export row total where the objects picked span more than one database.
 - Snowflake foreign keys into another database opening the current database's same-named table.
 - Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **None** in the foreign key picker's Label menu forgotten on reopen.

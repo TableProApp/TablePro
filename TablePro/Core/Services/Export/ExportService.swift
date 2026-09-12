@@ -51,6 +51,11 @@ struct ExportState {
     var statusMessage: String = ""
     var errorMessage: String?
     var warnings: [String] = []
+
+    /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
+    /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
+    /// takes the caution icon, and drops its "Do not show this again" checkbox.
+    var notes: [String] = []
 }
 
 // MARK: - Export Service
@@ -138,10 +143,10 @@ final class ExportService {
             throw ExportError.notConnected
         }
 
-        state.totalRows = await fetchTotalRowCount(
-            for: objects.filter { $0.kind.carriesRows }, driver: driver)
-
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
+
+        state.totalRows = await fetchTotalRowCount(
+            for: objects.filter { $0.kind.carriesRows }, driver: driver, dataSource: dataSource)
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -200,6 +205,7 @@ final class ExportService {
         state.processedRows = progress.processedRows
 
         state.warnings = result.warnings + dataSource.cappedTableWarnings
+        state.notes = result.notes
     }
 
     // MARK: - Statement Timeout
@@ -290,6 +296,7 @@ final class ExportService {
         state.processedRows = progress.processedRows
 
         state.warnings = result.warnings
+        state.notes = result.notes
     }
 
     func exportStreamingQuery(
@@ -358,6 +365,7 @@ final class ExportService {
             pagination: PaginationCapability.of(databaseType)
         )
         state.warnings = result.warnings + [capWarning].compactMap { $0 }
+        state.notes = result.notes
     }
 
     /// A query result exported from an engine that returns only its leading rows stops at the
@@ -381,7 +389,15 @@ final class ExportService {
         )
     }
 
-    private func fetchTotalRowCount(for tables: [ExportObjectItem], driver: DatabaseDriver) async -> Int {
+    /// The non-SQL count goes through the data source, which knows the container each object was
+    /// listed under. Asking the driver directly answers about whichever one it is leased to, so an
+    /// export spanning two databases counted one of them twice and reported a total no progress bar
+    /// could reach.
+    private func fetchTotalRowCount(
+        for tables: [ExportObjectItem],
+        driver: DatabaseDriver,
+        dataSource: ExportDataSourceAdapter
+    ) async -> Int {
         guard !tables.isEmpty else { return 0 }
 
         var total = 0
@@ -390,7 +406,10 @@ final class ExportService {
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             for table in tables {
                 do {
-                    if let count = try await driver.fetchApproximateRowCount(table: table.name) {
+                    let count = try await dataSource.fetchApproximateRowCount(
+                        table: table.name, databaseName: table.databaseName
+                    )
+                    if let count {
                         total += count
                     }
                 } catch {
