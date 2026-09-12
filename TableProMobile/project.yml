@@ -62,6 +62,7 @@ targets:
       - ../Plugins/MySQLDriverPlugin/MySQLColumnDecoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLConnectionEncoding.swift
       - ../Plugins/MySQLDriverPlugin/MySQLLatin1.swift
+      - ../Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - ../Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
       # Foreign key catalog read the iOS PostgreSQL driver shares with the macOS plugin, plus the
       # single owner of the plugin's literal quoting that it builds its SQL with, and the version

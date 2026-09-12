@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-public enum PostgreSQLObjectQueries {
+nonisolated public enum PostgreSQLObjectQueries {
     /// The single owner of literal quoting for every statement this plugin builds, which is why it
     /// returns the quotes too: the `E` prefix sits outside them, so a helper that returns inner text
     /// for a call site to wrap can never be setting-independent. Measured on PostgreSQL 17.11 with
