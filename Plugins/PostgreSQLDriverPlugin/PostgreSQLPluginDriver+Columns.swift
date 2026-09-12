@@ -14,7 +14,8 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
             tableLiteral: safeTable,
-            capabilities: versionedCapabilities
+            capabilities: versionedCapabilities,
+            includeMaterializedViews: includesMaterializedViews()
         )
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
@@ -28,7 +29,8 @@ extension PostgreSQLPluginDriver {
         let query = PostgreSQLSchemaQueries.columnsQuery(
             schemaLiteral: safeSchema,
             tableLiteral: nil,
-            capabilities: versionedCapabilities
+            capabilities: versionedCapabilities,
+            includeMaterializedViews: includesMaterializedViews()
         )
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]

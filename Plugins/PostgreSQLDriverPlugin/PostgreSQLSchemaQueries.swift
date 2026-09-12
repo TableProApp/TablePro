@@ -188,13 +188,6 @@ enum PostgreSQLSchemaQueries {
         return "SET search_path TO \(quotedIdentifier)"
     }
 
-    /// Column introspection for one schema. Passing `tableLiteral` restricts the
-    /// result to a single table; passing `nil` returns every table's columns and
-    /// prefixes each row with `table_name`. `schemaLiteral` is the only schema
-    /// source, so the caller resolves the target schema (qualified reference,
-    /// then current schema) before escaping and passing it here. The identity,
-    /// generated, and attribute-join fragments come from the connected server's
-    /// versioned capabilities.
     static let enumTypeOidQuery = """
         SELECT t.oid::text, t.typarray::text, t.typname
         FROM pg_catalog.pg_type t
@@ -246,12 +239,29 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
+    /// Column introspection for one schema. Passing `tableLiteral` restricts the result to a single
+    /// table; passing `nil` returns every table's columns and prefixes each row with `table_name`.
+    /// `schemaLiteral` is the only schema source, so the caller resolves the target schema
+    /// (qualified reference, then current schema) before escaping and passing it here. The identity,
+    /// generated, and attribute-join fragments come from the connected server's versioned
+    /// capabilities.
+    ///
+    /// `includeMaterializedViews` appends a second arm for `relkind = 'm'`.
+    /// `information_schema.columns` is defined with `relkind = ANY (ARRAY['r','v','f','p'])`, so a
+    /// materialized view has no rows there at all and both its Structure tab and its autocomplete
+    /// came back empty. The arm reproduces `information_schema.columns`' own type, collation,
+    /// nullability, comment and privilege expressions rather than replacing the base, so the
+    /// relation kinds that already worked keep byte-identical rows. The caller gates it on probed
+    /// catalog presence rather than on the server version, because a PostgreSQL-compatible engine
+    /// can report a recent version and still have no materialized views (#1383).
     static func columnsQuery(
         schemaLiteral: String,
         tableLiteral: String?,
-        capabilities: PostgreSQLCapabilities
+        capabilities: PostgreSQLCapabilities,
+        includeMaterializedViews: Bool
     ) -> String {
         let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
+        let includesTableName = tableLiteral == nil
         let identityProjection = capabilities.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
         let generationExpressionProjection = capabilities.hasGeneratedColumns
@@ -263,20 +273,21 @@ enum PostgreSQLSchemaQueries {
                     ON a.attrelid = rel.oid
                     AND a.attnum = c.ordinal_position
             """ : ""
-        return """
+        let informationSchemaArm = """
             SELECT
-                \(shape.selectPrefix)c.column_name,
-                c.data_type,
-                c.is_nullable,
-                c.column_default,
-                c.collation_name,
-                pg_catalog.col_description(rel.oid, c.ordinal_position),
-                c.udt_name,
+                \(includesTableName ? "c.table_name AS table_name,\n    " : "")c.column_name AS column_name,
+                c.data_type AS data_type,
+                c.is_nullable AS is_nullable,
+                c.column_default AS column_default,
+                c.collation_name AS collation_name,
+                pg_catalog.col_description(rel.oid, c.ordinal_position) AS column_comment,
+                c.udt_name AS udt_name,
                 CASE WHEN pk.column_name IS NOT NULL THEN 'YES' ELSE 'NO' END AS is_pk,
-                \(identityProjection),
-                \(generatedProjection),
-                c.udt_schema,
-                \(generationExpressionProjection)
+                \(identityProjection) AS identity_kind,
+                \(generatedProjection) AS generated_kind,
+                c.udt_schema AS udt_schema,
+                \(generationExpressionProjection) AS generation_expression,
+                c.ordinal_position AS ordinal_position
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_namespace relns
                 ON relns.nspname = c.table_schema
@@ -285,7 +296,109 @@ enum PostgreSQLSchemaQueries {
                 AND rel.relname = c.table_name\(attributeJoin)
             \(ColumnQueryShape.primaryKeyJoin(schemaLiteral: schemaLiteral, fragments: shape))
             WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
-            ORDER BY \(shape.orderBy)
             """
+        var arms = [informationSchemaArm]
+        if includeMaterializedViews {
+            arms.append(
+                materializedViewColumnsArm(
+                    schemaLiteral: schemaLiteral,
+                    tableLiteral: tableLiteral,
+                    capabilities: capabilities,
+                    includesTableName: includesTableName
+                )
+            )
+        }
+        let orderBy = includesTableName ? "cols.table_name, cols.ordinal_position" : "cols.ordinal_position"
+        return """
+            SELECT
+                \(columnsOuterProjection(includesTableName: includesTableName))
+            FROM (
+            \(arms.joined(separator: "\nUNION ALL\n"))
+            ) cols
+            ORDER BY \(orderBy)
+            """
+    }
+
+    /// The order `PostgreSQLPluginDriver.mapPgColumnRow` reads the row in. It maps by position, so
+    /// this list is the contract between the two arms of `columnsQuery` and the mapper.
+    /// `ordinal_position` stays inside the derived table, named only by the outer `ORDER BY`.
+    private static func columnsOuterProjection(includesTableName: Bool) -> String {
+        let columns = (includesTableName ? ["cols.table_name"] : []) + [
+            "cols.column_name",
+            "cols.data_type",
+            "cols.is_nullable",
+            "cols.column_default",
+            "cols.collation_name",
+            "cols.column_comment",
+            "cols.udt_name",
+            "cols.is_pk",
+            "cols.identity_kind",
+            "cols.generated_kind",
+            "cols.udt_schema",
+            "cols.generation_expression"
+        ]
+        return columns.joined(separator: ",\n    ")
+    }
+
+    /// A materialized view's columns, built from `information_schema.columns`' own expressions so a
+    /// matview column reaches `PostgresColumnTypeResolver` with the same `data_type`, `udt_name` and
+    /// `udt_schema` a table column does. The `NULL` typmod in `format_type` is deliberate:
+    /// `information_schema` also spells `numeric(10,2)` as `numeric`, and diverging here would
+    /// classify one column two different ways depending on which relation it sits in.
+    ///
+    /// There is no `pg_attrdef` join and no primary key lookup because PostgreSQL gives a
+    /// materialized view column neither a default nor a constraint.
+    private static func materializedViewColumnsArm(
+        schemaLiteral: String,
+        tableLiteral: String?,
+        capabilities: PostgreSQLCapabilities,
+        includesTableName: Bool
+    ) -> String {
+        let tableNameProjection = includesTableName ? "mvc.relname AS table_name,\n    " : ""
+        let tableFilter = tableLiteral.map { "\n  AND mvc.relname = '\($0)'" } ?? ""
+        let identityProjection = capabilities.hasIdentityColumns ? "mva.attidentity" : "NULL::text"
+        let generatedProjection = capabilities.hasGeneratedColumns ? "mva.attgenerated" : "NULL::text"
+        return """
+        SELECT
+            \(tableNameProjection)mva.attname AS column_name,
+            CASE WHEN mvt.typtype = 'd'
+                 THEN CASE WHEN mvbt.typelem <> 0 AND mvbt.typlen = -1 THEN 'ARRAY'
+                           WHEN mvbtn.nspname = 'pg_catalog' THEN pg_catalog.format_type(mvt.typbasetype, NULL)
+                           ELSE 'USER-DEFINED' END
+                 ELSE CASE WHEN mvt.typelem <> 0 AND mvt.typlen = -1 THEN 'ARRAY'
+                           WHEN mvtn.nspname = 'pg_catalog' THEN pg_catalog.format_type(mva.atttypid, NULL)
+                           ELSE 'USER-DEFINED' END
+            END AS data_type,
+            CASE WHEN mva.attnotnull OR (mvt.typtype = 'd' AND mvt.typnotnull) THEN 'NO' ELSE 'YES' END AS is_nullable,
+            NULL::text AS column_default,
+            CASE WHEN mvcon.nspname <> 'pg_catalog' OR mvco.collname <> 'default' THEN mvco.collname END AS collation_name,
+            pg_catalog.col_description(mvc.oid, mva.attnum) AS column_comment,
+            COALESCE(mvbt.typname, mvt.typname) AS udt_name,
+            'NO' AS is_pk,
+            \(identityProjection) AS identity_kind,
+            \(generatedProjection) AS generated_kind,
+            COALESCE(mvbtn.nspname, mvtn.nspname) AS udt_schema,
+            NULL::text AS generation_expression,
+            mva.attnum AS ordinal_position
+        FROM pg_catalog.pg_class mvc
+        JOIN pg_catalog.pg_namespace mvn ON mvn.oid = mvc.relnamespace
+        JOIN pg_catalog.pg_attribute mva
+            ON mva.attrelid = mvc.oid
+            AND mva.attnum > 0
+            AND NOT mva.attisdropped
+        JOIN pg_catalog.pg_type mvt ON mvt.oid = mva.atttypid
+        JOIN pg_catalog.pg_namespace mvtn ON mvtn.oid = mvt.typnamespace
+        LEFT JOIN pg_catalog.pg_type mvbt
+            ON mvt.typtype = 'd'
+            AND mvbt.oid = mvt.typbasetype
+        LEFT JOIN pg_catalog.pg_namespace mvbtn ON mvbtn.oid = mvbt.typnamespace
+        LEFT JOIN pg_catalog.pg_collation mvco ON mvco.oid = mva.attcollation
+        LEFT JOIN pg_catalog.pg_namespace mvcon ON mvcon.oid = mvco.collnamespace
+        WHERE mvc.relkind = 'm'
+          AND mvn.nspname = '\(schemaLiteral)'\(tableFilter)
+          AND NOT pg_catalog.pg_is_other_temp_schema(mvn.oid)
+          AND (pg_catalog.pg_has_role(mvc.relowner, 'USAGE')
+               OR pg_catalog.has_column_privilege(mvc.oid, mva.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'))
+        """
     }
 }

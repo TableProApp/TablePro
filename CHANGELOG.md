@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
