@@ -134,7 +134,7 @@ class DataGridRowView: NSTableRowView {
             coordinator.dataGridCellDidClickFKArrow(
                 row: rowIndex,
                 columnIndex: dataColumn,
-                openInNewTab: modifiers.contains(.command)
+                intent: modifiers.contains(.command) ? .newTab : .follow
             )
             return true
         case .chevron where !visualState.isDeleted:
@@ -790,14 +790,14 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: false)
+        performForeignKeyNavigation(from: sender, intent: .follow)
     }
 
     @objc private func navigateToForeignKeyInNewTab(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: true)
+        performForeignKeyNavigation(from: sender, intent: .newTab)
     }
 
-    private func performForeignKeyNavigation(from sender: NSMenuItem, openInNewTab: Bool) {
+    private func performForeignKeyNavigation(from sender: NSMenuItem, intent: ReferenceOpenIntent) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
         let tableRows = coordinator.tableRowsProvider()
@@ -805,7 +805,7 @@ class DataGridRowView: NSTableRowView {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
-        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, intent: intent)
     }
 }
 

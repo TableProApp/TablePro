@@ -24,10 +24,6 @@ extension MainContentCoordinator {
         filterCoordinator.addFilterForColumn(columnName)
     }
 
-    func setFKFilter(_ filter: TableFilter) {
-        filterCoordinator.setFKFilter(filter)
-    }
-
     func duplicateFilter(_ filter: TableFilter) {
         filterCoordinator.duplicateFilter(filter)
     }

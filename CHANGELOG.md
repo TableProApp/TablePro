@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
 - TablePlus import reading the CA certificate and client key paths the wrong way round.
 - MySQL and MariaDB reads of an object in another database answering about the current database's same-named one, including the foreign key picker's column list. (#2769)
+- Foreign key arrow replacing the tab you were reading. (#1421)
+- Applied filter left in the panel after cancelling the unsaved-changes alert on a foreign key jump.
 - Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
 - Column header shown as selected after a cell drag reached the first and last row of the page.
 - No outline around a swept cell block whose rows reached both ends of the page.
