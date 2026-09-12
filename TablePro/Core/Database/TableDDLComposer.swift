@@ -46,15 +46,19 @@ internal enum TableDDLComposer {
     /// tab's DDL, Show DDL and Copy DDL all come through here, so the three can never disagree about
     /// the same object. `includesDependencies` adds the sequences and enum types the table's columns
     /// use, which the Structure tab writes first so its text runs on its own.
+    /// `schema` names the container the caller means, for the callers that know it. All three reads
+    /// take it together: a DDL composed from one container's CREATE TABLE and another's indexes and
+    /// comments describes a table that does not exist.
     internal static func fetchDDL(
         for table: String,
         using driver: DatabaseDriver,
-        includesDependencies: Bool
+        includesDependencies: Bool,
+        schema: String? = nil
     ) async throws -> String {
         let preamble = includesDependencies ? try await dependencyPreamble(for: table, using: driver) : ""
-        let baseDDL = try await driver.fetchTableDDL(table: table)
-        let indexDDL = (try? await driver.fetchIndexDDL(table: table)) ?? []
-        let commentDDL = (try? await driver.fetchCommentDDL(table: table)) ?? []
+        let baseDDL = try await driver.fetchTableDDL(table: table, schema: schema)
+        let indexDDL = (try? await driver.fetchIndexDDL(table: table, schema: schema)) ?? []
+        let commentDDL = (try? await driver.fetchCommentDDL(table: table, schema: schema)) ?? []
         return compose(
             tableDDL: baseDDL,
             indexDDL: indexDDL,

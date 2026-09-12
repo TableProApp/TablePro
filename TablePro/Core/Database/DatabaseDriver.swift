@@ -119,6 +119,20 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Fetch foreign keys for a specific table
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo]
 
+    /// The same reads for a table in a named container, for a caller that knows which one it means.
+    ///
+    /// A caller that names a container for one part of a table's description and not the rest gets
+    /// a description of two different tables: the columns of one and the indexes, keys and size of
+    /// whichever the connection happens to be on. Each of these defaults to the unqualified read,
+    /// so a driver that cannot tell containers apart is unaffected.
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo]
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo]
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo]
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int?
+    func fetchTableDDL(table: String, schema: String?) async throws -> String
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
+
     /// Fetch triggers for a specific table
     func fetchTriggers(table: String) async throws -> [TriggerInfo]
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo]
@@ -401,6 +415,34 @@ extension DatabaseDriver {
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         try await fetchColumns(table: table)
+    }
+
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
+        try await fetchIndexes(table: table)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        try await fetchForeignKeys(table: table)
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
+        try await fetchCheckConstraints(table: table)
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        try await fetchApproximateRowCount(table: table)
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        try await fetchTableDDL(table: table)
+    }
+
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        try await fetchIndexDDL(table: table)
+    }
+
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
+        try await fetchCommentDDL(table: table)
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }

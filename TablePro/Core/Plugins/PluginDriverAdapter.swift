@@ -300,7 +300,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] {
-        let pluginIndexes = try await pluginDriver.fetchIndexes(table: table, schema: pluginDriver.currentSchema)
+        try await fetchIndexes(table: table, schema: nil)
+    }
+
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
+        let pluginIndexes = try await pluginDriver.fetchIndexes(
+            table: table, schema: schema ?? pluginDriver.currentSchema
+        )
         return pluginIndexes.map(Self.mapPluginIndex)
     }
 
@@ -333,7 +339,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
-        let pluginFKs = try await pluginDriver.fetchForeignKeys(table: table, schema: pluginDriver.currentSchema)
+        try await fetchForeignKeys(table: table, schema: nil)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        let pluginFKs = try await pluginDriver.fetchForeignKeys(
+            table: table, schema: schema ?? pluginDriver.currentSchema
+        )
         return pluginFKs.map { fk in
             ForeignKeyInfo(
                 name: fk.name,
@@ -348,8 +360,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] {
+        try await fetchCheckConstraints(table: table, schema: nil)
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
         let pluginConstraints = try await pluginDriver.fetchCheckConstraints(
-            table: table, schema: pluginDriver.currentSchema
+            table: table, schema: schema ?? pluginDriver.currentSchema
         )
         return pluginConstraints.map { constraint in
             CheckConstraintInfo(
@@ -398,7 +414,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? {
-        try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
+        try await fetchApproximateRowCount(table: table, schema: nil)
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        try await pluginDriver.fetchApproximateRowCount(
+            table: table, schema: schema ?? pluginDriver.currentSchema
+        )
     }
 
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
@@ -425,15 +447,27 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTableDDL(table: String) async throws -> String {
-        try await pluginDriver.fetchTableDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchTableDDL(table: table, schema: nil)
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        try await pluginDriver.fetchTableDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchIndexDDL(table: String) async throws -> [String] {
-        try await pluginDriver.fetchIndexDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchIndexDDL(table: table, schema: nil)
+    }
+
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        try await pluginDriver.fetchIndexDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchCommentDDL(table: String) async throws -> [String] {
-        try await pluginDriver.fetchCommentDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchCommentDDL(table: table, schema: nil)
+    }
+
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
+        try await pluginDriver.fetchCommentDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {

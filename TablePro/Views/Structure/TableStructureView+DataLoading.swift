@@ -173,6 +173,7 @@ extension TableStructureView {
 
     private func reloadAllTabs() async {
         tabData.markAllStale()
+        session.gridDelegate.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()
         if selectedTab == .ddl {
