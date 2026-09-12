@@ -80,7 +80,7 @@ A foreign key cell carries an arrow on its right edge. Click it to open the refe
 
 Double-click a foreign key cell, press `Return` on it, or open its right-click menu to pick the key rather than type it. The picker lists rows from the referenced table, each key with a label beside it, and narrows as you type. `Return` in the search field commits the text as typed, which covers a key the search has not turned up. **Set NULL** appears on a nullable column.
 
-**Label** at the foot of the picker chooses the column that reads as the row's name. The choice is remembered for the referenced table, so every column pointing at it shows the same one. A search fetches the first 50 matches, which keeps the list quick on a large table.
+**Label** at the foot of the picker chooses the column that reads as the row's name, or **None** to list keys on their own. Either choice is remembered for the referenced table, so every column pointing at it shows the same one. A search fetches the first 50 matches, which keeps the list quick on a large table.
 
 A column of a foreign key that spans several columns keeps the text editor. The picker sets one column, and a key it offered might not pair with the values the row holds in the constraint's other columns. Type the key, or open the referenced table and read the pair off it.
 
