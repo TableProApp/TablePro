@@ -215,7 +215,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
 - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
-- PostgreSQL comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
+- PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
 
 ## [0.73.0] - 2026-09-09
 

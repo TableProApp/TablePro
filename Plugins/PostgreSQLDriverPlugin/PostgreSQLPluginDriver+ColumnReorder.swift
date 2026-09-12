@@ -118,28 +118,28 @@ extension PostgreSQLPluginDriver {
         /// A new identity column starts its sequence at one, so it is wound forward to the rows the
         /// copy just wrote. Without this the next insert collides with an existing key.
         ///
-        /// Both arguments are escaped. A schema or table name may legally contain an apostrophe,
-        /// and it lands inside a single-quoted literal here.
+        /// `qualified` is already a quoted identifier pair, and `pg_get_serial_sequence` takes the
+        /// whole pair as one literal, so it is composed first and quoted once. A schema, table or
+        /// column name may legally contain an apostrophe or a backslash, and both land inside a
+        /// literal here.
         func identityResets(qualified: String, quote: (String) -> String) -> [String] {
-            identityColumns.map { column in
-                """
+            let relationLiteral = PostgreSQLObjectQueries.quoteLiteral(qualified)
+            return identityColumns.map { column in
+                let columnLiteral = PostgreSQLObjectQueries.quoteLiteral(column)
+                return """
                 SELECT setval(
-                  pg_get_serial_sequence('\(literal(qualified))', '\(literal(column))'),
+                  pg_get_serial_sequence(\(relationLiteral), \(columnLiteral)),
                   GREATEST(COALESCE((SELECT MAX(\(quote(column))) FROM \(qualified)), 0), 1),
                   true
                 )
                 """
             }
         }
-
-        private func literal(_ value: String) -> String {
-            value.replacingOccurrences(of: "'", with: "''")
-        }
     }
 
     private func fetchRebuildParts(table: String, schema: String) async throws -> RebuildParts {
-        let safeTable = escapeLiteral(table)
-        let safeSchema = escapeLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let caps = versionedCapabilities
         var parts = RebuildParts()
 
@@ -182,7 +182,7 @@ extension PostgreSQLPluginDriver {
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0 AND NOT a.attisdropped
             ORDER BY a.attnum
             """).rows
@@ -203,7 +203,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_constraint con
             JOIN pg_class c ON c.oid = con.conrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND con.contype IN ('p', 'u', 'c', 'x')
             ORDER BY CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 ELSE 2 END, con.conname
             """)
@@ -213,7 +213,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_constraint con
             JOIN pg_class c ON c.oid = con.conrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)' AND con.contype = 'f'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral) AND con.contype = 'f'
             ORDER BY con.conname
             """)
 
@@ -226,7 +226,7 @@ extension PostgreSQLPluginDriver {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_class c2 ON c2.oid = con.conrelid
             JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)' AND con.contype = 'f'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral) AND con.contype = 'f'
               AND con.conrelid <> con.confrelid
             ORDER BY con.conname
             """
@@ -245,12 +245,12 @@ extension PostgreSQLPluginDriver {
         /// fail on a duplicate name.
         parts.indexes = try await textRows("""
             SELECT indexdef FROM pg_indexes
-            WHERE tablename = '\(safeTable)' AND schemaname = '\(safeSchema)'
+            WHERE tablename = \(tableLiteral) AND schemaname = \(schemaLiteral)
               AND indexname NOT IN (
                 SELECT con.conname FROM pg_constraint con
                 JOIN pg_class c ON c.oid = con.conrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+                WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               )
             ORDER BY indexname
             """)
@@ -260,7 +260,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_trigger t
             JOIN pg_class c ON c.oid = t.tgrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)' AND NOT t.tgisinternal
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral) AND NOT t.tgisinternal
             ORDER BY t.tgname
             """)
 
@@ -279,7 +279,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_trigger t
             JOIN pg_class c ON c.oid = t.tgrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)' AND NOT t.tgisinternal
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral) AND NOT t.tgisinternal
               AND t.tgenabled <> 'O'
             ORDER BY t.tgname
             """)
@@ -296,7 +296,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0 AND NOT a.attisdropped
               AND \(caps.hasIdentityColumns ? "a.attidentity = ''" : "true")
               AND pg_get_serial_sequence(
@@ -310,7 +310,7 @@ extension PostgreSQLPluginDriver {
                    || ' IS ' || quote_literal(obj_description(c.oid, 'pg_class'))
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND obj_description(c.oid, 'pg_class') IS NOT NULL
             UNION ALL
             SELECT 'COMMENT ON COLUMN ' || quote_ident(n.nspname) || '.' || quote_ident(c.relname)
@@ -319,7 +319,7 @@ extension PostgreSQLPluginDriver {
             FROM pg_attribute a
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0 AND NOT a.attisdropped
               AND col_description(c.oid, a.attnum) IS NOT NULL
             """)
@@ -332,7 +332,7 @@ extension PostgreSQLPluginDriver {
             JOIN pg_namespace dn ON dn.oid = dc.relnamespace
             JOIN pg_class c ON c.oid = d.refobjid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)' AND n.nspname = '\(safeSchema)'
+            WHERE c.relname = \(tableLiteral) AND n.nspname = \(schemaLiteral)
               AND dc.relkind IN ('v', 'm')
               AND dc.oid <> c.oid
             ORDER BY 1

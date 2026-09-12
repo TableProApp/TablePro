@@ -37,7 +37,9 @@ nonisolated enum PostgreSQLCatalogForeignKeys {
         }
     }
 
-    static func query(schemaLiteral: String, tableLiteral: String, excludesPartitionClones: Bool) -> String {
+    static func query(schema: String, table: String, excludesPartitionClones: Bool) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         let cloneFilter = excludesPartitionClones ? """
 
               AND NOT EXISTS (
@@ -49,7 +51,7 @@ nonisolated enum PostgreSQLCatalogForeignKeys {
         let branches = Side.allCases.map { side in
             """
             SELECT c.oid, c.conname, ref_ns.nspname, ref_cl.relname, c.confdeltype, c.confupdtype,
-                   c.conkey, c.confkey, '\(side.rawValue)', a.attnum, a.attname
+                   c.conkey, c.confkey, \(PostgreSQLObjectQueries.quoteLiteral(side.rawValue)), a.attnum, a.attname
             FROM pg_catalog.pg_constraint c
             JOIN pg_catalog.pg_class cl ON cl.oid = c.conrelid
             JOIN pg_catalog.pg_namespace ns ON ns.oid = cl.relnamespace

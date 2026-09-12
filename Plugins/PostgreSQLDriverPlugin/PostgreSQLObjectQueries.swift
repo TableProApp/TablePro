@@ -10,20 +10,29 @@ import Foundation
 import TableProPluginKit
 
 public enum PostgreSQLObjectQueries {
-    public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+    /// The single owner of literal quoting for every statement this plugin builds, which is why it
+    /// returns the quotes too: the `E` prefix sits outside them, so a helper that returns inner text
+    /// for a call site to wrap can never be setting-independent. Measured on PostgreSQL 17.11 with
+    /// `standard_conforming_strings = off`: a schema named `a\b` listed as `'a\b'` returns no rows,
+    /// and one named `x\' OR true--` listed that way closes the literal after `x'` and runs
+    /// `OR true` as SQL, which turned a one-row listing into every relation in the database.
+    ///
+    /// Doubling the quote is enough while the value holds no backslash, and the output is then
+    /// byte-identical to plain quote doubling. With one, the value is written as an `E''` string,
+    /// where a backslash is always an escape whatever the setting says, and is doubled here. This is
+    /// what the server's own `quote_literal` emits for the same values.
+    ///
+    /// A NUL is dropped rather than escaped. libpq takes a NUL-terminated C string, so a NUL would
+    /// truncate the statement, and PostgreSQL rejects `\000` in a literal outright ("invalid byte
+    /// sequence for encoding UTF8"). This matches the PluginKit default's own NUL strip.
+    public static func quoteLiteral(_ value: String) -> String {
+        let stripped = value.replacingOccurrences(of: "\0", with: "")
+        guard stripped.contains("\\") else { return "'\(escapeQuotes(stripped))'" }
+        return "E'\(escapeQuotes(stripped.replacingOccurrences(of: "\\", with: "\\\\")))'"
     }
 
-    /// A literal that reads the same whatever `standard_conforming_strings` is set to. Doubling the
-    /// quote is enough while the value has no backslash; with one, a server running the legacy
-    /// setting would let `\'` swallow a doubled quote and close the literal early, so such a value
-    /// is written as an `E''` string, where a backslash is always an escape and is doubled here.
-    public static func quoteLiteral(_ value: String) -> String {
-        guard value.contains("\\") else { return "'\(escapeLiteral(value))'" }
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
-        return "E'\(escaped)'"
+    private static func escapeQuotes(_ value: String) -> String {
+        value.replacingOccurrences(of: "'", with: "''")
     }
 
     public static func quoteIdentifier(_ name: String) -> String {

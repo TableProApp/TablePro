@@ -20,8 +20,8 @@ struct PostgreSQLColumnsQueryTests {
 
     private func singleTable(schema: String, table: String) -> String {
         PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: schema,
-            tableLiteral: table,
+            schema: schema,
+            table: table,
             capabilities: modern,
             includeMaterializedViews: true
         )
@@ -29,8 +29,8 @@ struct PostgreSQLColumnsQueryTests {
 
     private func allTables(schema: String) -> String {
         PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: schema,
-            tableLiteral: nil,
+            schema: schema,
+            table: nil,
             capabilities: legacy,
             includeMaterializedViews: false
         )
@@ -145,8 +145,8 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         includeMaterializedViews: Bool = true
     ) -> String {
         PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: schema,
-            tableLiteral: table,
+            schema: schema,
+            table: table,
             capabilities: capabilities ?? modern,
             includeMaterializedViews: includeMaterializedViews
         )
@@ -251,7 +251,7 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
 struct RedshiftColumnsQueryTests {
     @Test("single-table query filters on the requested schema and table")
     func singleTableFiltersOnRequestedSchema() {
-        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: "s2", tableLiteral: "orders")
+        let query = RedshiftSchemaQueries.columnsQuery(schema: "s2", table: "orders")
         #expect(query.contains("WHERE c.table_schema = 's2' AND c.table_name = 'orders'"))
         #expect(query.contains("AND tc.table_schema = 's2'"))
         #expect(query.contains("AND tc.table_name = 'orders'"))
@@ -261,13 +261,13 @@ struct RedshiftColumnsQueryTests {
 
     @Test("a non-active schema is not ignored", arguments: ["s2", "analytics", "public"])
     func nonActiveSchemaThreadsThrough(schema: String) {
-        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: schema, tableLiteral: "orders")
+        let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: "orders")
         #expect(query.contains("c.table_schema = '\(schema)'"))
     }
 
     @Test("all-tables query selects table_name, drops the table filter, and orders by table")
     func allTablesProjectsTableName() {
-        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: "s2", tableLiteral: nil)
+        let query = RedshiftSchemaQueries.columnsQuery(schema: "s2", table: nil)
         #expect(query.contains("c.table_name,"))
         #expect(query.contains("WHERE c.table_schema = 's2'"))
         #expect(!query.contains("c.table_name = '"))
@@ -278,7 +278,7 @@ struct RedshiftColumnsQueryTests {
     @Test("primary key columns are matched to the constraint's own table")
     func primaryKeyJoinIsTableScoped() {
         for table in ["orders", nil] {
-            let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: "s2", tableLiteral: table)
+            let query = RedshiftSchemaQueries.columnsQuery(schema: "s2", table: table)
             #expect(query.contains("AND tc.table_name = kcu.table_name"))
         }
     }
@@ -286,7 +286,7 @@ struct RedshiftColumnsQueryTests {
     @Test("Redshift keeps a single-arm read and never names relkind")
     func redshiftKeepsASingleArmRead() {
         for table in ["orders", nil] {
-            let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: "s2", tableLiteral: table)
+            let query = RedshiftSchemaQueries.columnsQuery(schema: "s2", table: table)
             #expect(!query.contains("UNION ALL"))
             #expect(!query.contains("relkind"))
         }

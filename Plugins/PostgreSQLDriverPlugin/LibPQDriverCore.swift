@@ -203,7 +203,7 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func applyQueryTimeout(_ seconds: Int) async throws {
         let ms = seconds * 1_000
-        _ = try await execute(query: "SET statement_timeout = '\(ms)'")
+        _ = try await execute(query: "SET statement_timeout = \(ms)")
     }
 
     private func connection() throws -> LibPQPluginConnection {
@@ -310,11 +310,12 @@ extension LibPQBackedDriver {
     var hasLostConnection: Bool { core.hasLostConnection }
     var parameterStyle: ParameterStyle { .dollar }
 
+    /// The PluginKit requirement, whose contract is inner text: the app and the export plugins wrap
+    /// the result in their own quotes. Nothing in this plugin may build catalog SQL with it, because
+    /// its correctness rests on `standard_conforming_strings` still being what the last connection
+    /// message reported. `PostgreSQLObjectQueries.quoteLiteral` needs no such agreement, so every
+    /// statement this plugin builds goes through that instead.
     func escapeStringLiteral(_ value: String) -> String {
         LibPQStringConformance.escape(value, standardConformingStrings: core.standardConformingStrings)
-    }
-
-    func escapeLiteral(_ str: String) -> String {
-        escapeStringLiteral(str)
     }
 }

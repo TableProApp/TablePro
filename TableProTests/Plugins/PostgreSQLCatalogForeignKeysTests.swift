@@ -136,8 +136,8 @@ struct PostgreSQLCatalogForeignKeysTests {
     @Test("The query filters on the table's own schema and name and reads both key arrays")
     func queryFiltersOnSchemaAndTable() {
         let query = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: "'sales'",
-            tableLiteral: "'orders'",
+            schema: "sales",
+            table: "orders",
             excludesPartitionClones: true
         )
         #expect(query.contains("ns.nspname = 'sales'"))
@@ -150,8 +150,8 @@ struct PostgreSQLCatalogForeignKeysTests {
     @Test("Both branches project every decoded column")
     func branchesProjectEveryColumn() {
         let query = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: "'public'",
-            tableLiteral: "'t'",
+            schema: "public",
+            table: "t",
             excludesPartitionClones: false
         )
         let branches = query.components(separatedBy: "UNION ALL")
@@ -170,13 +170,13 @@ struct PostgreSQLCatalogForeignKeysTests {
     @Test("A server without conparentid is never sent the clone filter")
     func cloneFilterOmittedWhenUnsupported() {
         let filtered = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: "'public'",
-            tableLiteral: "'t'",
+            schema: "public",
+            table: "t",
             excludesPartitionClones: true
         )
         let plain = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: "'public'",
-            tableLiteral: "'t'",
+            schema: "public",
+            table: "t",
             excludesPartitionClones: false
         )
         #expect(filtered.contains("parent.oid = c.conparentid"))

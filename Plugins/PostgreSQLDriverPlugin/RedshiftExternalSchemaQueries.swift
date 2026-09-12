@@ -21,30 +21,30 @@ enum RedshiftExternalSchemaQueries {
 
     /// Tables registered in one external schema. Both views carry rows for
     /// every database on the cluster, so the connected database is part of the
-    /// filter; two databases can each hold a schema of the same name. Literals
-    /// are escaped by the caller, matching the convention in
+    /// filter; two databases can each hold a schema of the same name. Names
+    /// arrive raw and are quoted here, matching the convention in
     /// RedshiftSchemaQueries.
-    static func listExternalTables(schemaLiteral: String, databaseLiteral: String) -> String {
+    static func listExternalTables(schema: String, database: String) -> String {
         """
         SELECT tablename, tabletype
         FROM svv_external_tables
-        WHERE schemaname = '\(schemaLiteral)'
-            AND redshift_database_name = '\(databaseLiteral)'
+        WHERE schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+            AND redshift_database_name = \(PostgreSQLObjectQueries.quoteLiteral(database))
         ORDER BY tablename
         """
     }
 
-    /// Column introspection for one external schema. Passing `tableLiteral`
-    /// restricts the result to a single table; passing `nil` returns every
-    /// table's columns and prefixes each row with `tablename`.
+    /// Column introspection for one external schema. Passing `table` restricts
+    /// the result to a single table; passing `nil` returns every table's columns
+    /// and prefixes each row with `tablename`.
     static func listExternalColumns(
-        schemaLiteral: String,
-        tableLiteral: String?,
-        databaseLiteral: String
+        schema: String,
+        table: String?,
+        database: String
     ) -> String {
-        let selectPrefix = tableLiteral == nil ? "tablename,\n                " : ""
-        let tableFilter = tableLiteral.map { " AND tablename = '\($0)'" } ?? ""
-        let orderBy = tableLiteral == nil ? "tablename, columnnum" : "columnnum"
+        let selectPrefix = table == nil ? "tablename,\n                " : ""
+        let tableFilter = table.map { " AND tablename = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        let orderBy = table == nil ? "tablename, columnnum" : "columnnum"
         return """
             SELECT
                 \(selectPrefix)columnname,
@@ -52,8 +52,8 @@ enum RedshiftExternalSchemaQueries {
                 is_nullable,
                 part_key
             FROM svv_external_columns
-            WHERE schemaname = '\(schemaLiteral)'\(tableFilter)
-                AND redshift_database_name = '\(databaseLiteral)'
+            WHERE schemaname = \(PostgreSQLObjectQueries.quoteLiteral(schema))\(tableFilter)
+                AND redshift_database_name = \(PostgreSQLObjectQueries.quoteLiteral(database))
             ORDER BY \(orderBy)
             """
     }

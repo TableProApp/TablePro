@@ -220,11 +220,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
         guard versionedCapabilities.hasDeclarativePartitioning else { return [] }
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
         let result = try await execute(
             query: PostgreSQLSchemaQueries.fetchPartitions(
-                schemaLiteral: schemaLiteral,
-                tableLiteral: escapeLiteral(table)
+                schema: schema ?? core.currentSchema,
+                table: table
             )
         )
         return result.rows.compactMap { row -> PluginTableInfo? in
@@ -304,7 +303,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let query = """
             SELECT reltuples::bigint
             FROM pg_class
-            WHERE relname = '\(escapeLiteral(table))'
+            WHERE relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
               AND relnamespace = (
                   SELECT oid FROM pg_namespace WHERE nspname = current_schema()
               )
@@ -315,9 +314,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let safeTable = escapeLiteral(table)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         let resolvedSchema = schema ?? core.currentSchema
-        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let quotedTable = quoteIdentifier(table)
         let caps = versionedCapabilities
 
@@ -364,8 +363,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-            WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(schemaLiteral)'
+            WHERE c.relname = \(tableLiteral)
+              AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
@@ -377,8 +376,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             FROM pg_constraint con
             JOIN pg_class c ON c.oid = con.conrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(schemaLiteral)'
+            WHERE c.relname = \(tableLiteral)
+              AND n.nspname = \(schemaLiteral)
               AND con.contype IN ('p', 'u', 'c')
             ORDER BY
               CASE con.contype WHEN 'p' THEN 0 WHEN 'u' THEN 1 WHEN 'c' THEN 2 END
@@ -428,8 +427,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_class c ON c.oid = ix.indrelid
             JOIN pg_class i ON i.oid = ix.indexrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(escapeLiteral(table))'
-              AND n.nspname = '\(escapeLiteral(schema ?? core.currentSchema))'
+            WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+              AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema))
               AND NOT EXISTS (
                 SELECT 1 FROM pg_constraint con WHERE con.conindid = ix.indexrelid
               )
@@ -440,7 +439,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 pg_total_relation_size(c.oid) AS total_size,
@@ -450,8 +449,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 obj_description(c.oid, 'pg_class') AS comment
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE c.relname = '\(escapeLiteral(table))'
-              AND n.nspname = '\(schemaLiteral)'
+            WHERE c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+              AND n.nspname = \(schemaLiteral)
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
@@ -486,12 +485,12 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDbLiteral = escapeLiteral(database)
+        let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let query = """
             SELECT
                 (SELECT COUNT(*)
                  FROM information_schema.tables t
-                 WHERE t.table_catalog = '\(escapedDbLiteral)'
+                 WHERE t.table_catalog = \(databaseLiteral)
                    AND t.table_schema NOT LIKE 'pg!_%' ESCAPE '!'
                    AND t.table_schema <> 'information_schema'
                    AND NOT EXISTS (
@@ -503,7 +502,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                          WHERE cn.nspname = t.table_schema
                            AND child.relname = t.table_name
                            AND parent.relkind IN ('p', 'I'))),
-                pg_database_size('\(escapedDbLiteral)')
+                pg_database_size(\(databaseLiteral))
         """
         let result = try await execute(query: query)
         let row = result.rows.first
@@ -543,8 +542,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     private static let relkindsCreatedByTableDDL = "('r', 'p', 'f')"
 
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT DISTINCT t.typname,
                    array_agg(e.enumlabel ORDER BY e.enumsortorder)::text
@@ -553,8 +552,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_type t ON t.oid = a.atttypid
             JOIN pg_enum e ON e.enumtypid = t.oid
-            WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(schemaLiteral)'
+            WHERE c.relname = \(tableLiteral)
+              AND n.nspname = \(schemaLiteral)
               AND c.relkind IN \(Self.relkindsCreatedByTableDDL)
               AND a.attnum > 0
               AND NOT a.attisdropped
@@ -665,7 +664,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             )
         }
 
-        var sql = "CREATE DATABASE \(quotedName) ENCODING '\(encoding)'"
+        var sql = "CREATE DATABASE \(quotedName) ENCODING \(PostgreSQLObjectQueries.quoteLiteral(encoding))"
 
         let supportsProvider = versionedCapabilities.hasDatabaseICULocale
         let provider = supportsProvider ? (request.values["provider"] ?? "libc") : "libc"
@@ -689,8 +688,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                     detail: nil
                 )
             }
-            let escapedCollation = escapeLiteral(collation)
-            sql += " LC_COLLATE '\(escapedCollation)' LC_CTYPE '\(escapedCollation)'"
+            let collationLiteral = PostgreSQLObjectQueries.quoteLiteral(collation)
+            sql += " LC_COLLATE \(collationLiteral) LC_CTYPE \(collationLiteral)"
 
             guard let templateDefaults = await templateDefaultsTask else {
                 throw LibPQPluginError(
@@ -726,11 +725,11 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                     detail: nil
                 )
             }
-            let escapedIcu = escapeLiteral(icuLocale)
+            let icuLiteral = PostgreSQLObjectQueries.quoteLiteral(icuLocale)
             if versionedCapabilities.hasModernICUSyntax {
-                sql += " LOCALE_PROVIDER 'icu' LOCALE '\(escapedIcu)' TEMPLATE template0"
+                sql += " LOCALE_PROVIDER 'icu' LOCALE \(icuLiteral) TEMPLATE template0"
             } else {
-                sql += " LOCALE_PROVIDER 'icu' ICU_LOCALE '\(escapedIcu)' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
+                sql += " LOCALE_PROVIDER 'icu' ICU_LOCALE \(icuLiteral) LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
             }
 
         default:

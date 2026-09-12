@@ -10,13 +10,13 @@
 import Foundation
 
 enum RedshiftSchemaQueries {
-    /// Column introspection for one schema. Passing `tableLiteral` restricts the
-    /// result to a single table; passing `nil` returns every table's columns and
-    /// prefixes each row with `table_name`. `schemaLiteral` is the only schema
-    /// source, so the caller resolves the target schema (qualified reference,
-    /// then current schema) before escaping and passing it here.
-    static func columnsQuery(schemaLiteral: String, tableLiteral: String?) -> String {
-        let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
+    /// Column introspection for one schema. Passing `table` restricts the result
+    /// to a single table; passing `nil` returns every table's columns and prefixes
+    /// each row with `table_name`. `schema` is the only schema source, so the
+    /// caller resolves the target schema (qualified reference, then current
+    /// schema) and passes it raw; quoting happens here.
+    static func columnsQuery(schema: String, table: String?) -> String {
+        let shape = ColumnQueryShape.fragments(table: table)
         return """
             SELECT
                 \(shape.selectPrefix)c.column_name,
@@ -34,8 +34,8 @@ enum RedshiftSchemaQueries {
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = cls.oid
                 AND pgd.objsubid = c.ordinal_position
-            \(ColumnQueryShape.primaryKeyJoin(schemaLiteral: schemaLiteral, fragments: shape))
-            WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
+            \(ColumnQueryShape.primaryKeyJoin(schema: schema, fragments: shape))
+            WHERE c.table_schema = \(PostgreSQLObjectQueries.quoteLiteral(schema))\(shape.mainTableFilter)
             ORDER BY \(shape.orderBy)
             """
     }

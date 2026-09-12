@@ -28,7 +28,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     ) async throws -> [PluginPrivilegeScope] {
         let database = try await currentDatabaseName()
         let sql = PostgreSQLPrincipalQueries.searchObjects(
-            patternLiteral: escapeStringLiteral(query),
+            pattern: query,
             limit: limit
         )
         let result = try await execute(query: sql)
@@ -78,13 +78,13 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     }
 
     func fetchGrants(for principal: PluginPrincipalRef) async throws -> [PluginGrantInfo] {
-        let roleLiteral = escapeStringLiteral(principal.name)
+        let role = principal.name
         let database = try await currentDatabaseName()
 
-        let databaseGrants = try await fetchDatabaseGrants(roleLiteral: roleLiteral)
-        let schemaGrants = try await fetchSchemaGrants(roleLiteral: roleLiteral, database: database)
-        let tableGrants = try await fetchTableGrants(roleLiteral: roleLiteral, database: database)
-        let columnGrants = try await fetchColumnGrants(roleLiteral: roleLiteral, database: database)
+        let databaseGrants = try await fetchDatabaseGrants(role: role)
+        let schemaGrants = try await fetchSchemaGrants(role: role, database: database)
+        let tableGrants = try await fetchTableGrants(role: role, database: database)
+        let columnGrants = try await fetchColumnGrants(role: role, database: database)
 
         return databaseGrants + schemaGrants + tableGrants + columnGrants
     }
@@ -118,7 +118,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
     }
 
     private func tables(in database: String, schema: String) async throws -> [PluginPrivilegeScope] {
-        let query = PostgreSQLPrincipalQueries.tables(schemaLiteral: escapeStringLiteral(schema))
+        let query = PostgreSQLPrincipalQueries.tables(schema: schema)
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
             guard let table = row[safe: 0]?.asText else { return nil }
@@ -132,8 +132,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         table: String
     ) async throws -> [PluginPrivilegeScope] {
         let query = PostgreSQLPrincipalQueries.columns(
-            schemaLiteral: escapeStringLiteral(schema),
-            tableLiteral: escapeStringLiteral(table)
+            schema: schema,
+            table: table
         )
         let result = try await execute(query: query)
         return result.rows.compactMap { row in
@@ -142,8 +142,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         }
     }
 
-    private func fetchColumnGrants(roleLiteral: String, database: String) async throws -> [PluginGrantInfo] {
-        let query = PostgreSQLPrincipalQueries.columnGrants(roleLiteral: roleLiteral)
+    private func fetchColumnGrants(role: String, database: String) async throws -> [PluginGrantInfo] {
+        let query = PostgreSQLPrincipalQueries.columnGrants(role: role)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginGrantInfo? in
             guard let schema = row[safe: 0]?.asText,
@@ -166,7 +166,7 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
 
     func principalOwnsObjects(_ principal: PluginPrincipalRef) async throws -> Bool {
         let query = PostgreSQLPrincipalQueries.ownsObjects(
-            roleLiteral: escapeStringLiteral(principal.name)
+            role: principal.name
         )
         let result = try await execute(query: query)
         return PostgreSQLCatalogBoolean.isTrue(result.rows.first?[safe: 0]?.asText)
@@ -188,8 +188,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         return result.rows.first?[safe: 0]?.asText ?? ""
     }
 
-    private func fetchDatabaseGrants(roleLiteral: String) async throws -> [PluginGrantInfo] {
-        let query = PostgreSQLPrincipalQueries.databaseGrants(roleLiteral: roleLiteral)
+    private func fetchDatabaseGrants(role: String) async throws -> [PluginGrantInfo] {
+        let query = PostgreSQLPrincipalQueries.databaseGrants(role: role)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginGrantInfo? in
             guard let database = row[safe: 0]?.asText,
@@ -202,8 +202,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         }
     }
 
-    private func fetchSchemaGrants(roleLiteral: String, database: String) async throws -> [PluginGrantInfo] {
-        let query = PostgreSQLPrincipalQueries.schemaGrants(roleLiteral: roleLiteral)
+    private func fetchSchemaGrants(role: String, database: String) async throws -> [PluginGrantInfo] {
+        let query = PostgreSQLPrincipalQueries.schemaGrants(role: role)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginGrantInfo? in
             guard let schema = row[safe: 0]?.asText,
@@ -216,8 +216,8 @@ extension PostgreSQLPluginDriver: PluginPrincipalManagement {
         }
     }
 
-    private func fetchTableGrants(roleLiteral: String, database: String) async throws -> [PluginGrantInfo] {
-        let query = PostgreSQLPrincipalQueries.tableGrants(roleLiteral: roleLiteral)
+    private func fetchTableGrants(role: String, database: String) async throws -> [PluginGrantInfo] {
+        let query = PostgreSQLPrincipalQueries.tableGrants(role: role)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginGrantInfo? in
             guard let schema = row[safe: 0]?.asText,

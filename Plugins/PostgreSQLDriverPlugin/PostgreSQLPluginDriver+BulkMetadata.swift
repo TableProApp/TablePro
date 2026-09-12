@@ -35,7 +35,7 @@ extension PostgreSQLPluginDriver {
     var providesBulkTableMetadataFetch: Bool { true }
 
     func fetchAllTableMetadata(schema: String?) async throws -> [String: PluginTableMetadata] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 c.relname AS table_name,
@@ -46,7 +46,7 @@ extension PostgreSQLPluginDriver {
                 obj_description(c.oid, 'pg_class') AS comment
             FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = '\(schemaLiteral)' AND c.relkind IN ('r', 'p', 'm', 'f')
+            WHERE n.nspname = \(schemaLiteral) AND c.relkind IN ('r', 'p', 'm', 'f')
             ORDER BY c.relname
             """
         let result = try await execute(query: query)

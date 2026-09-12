@@ -57,11 +57,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let resolvedSchema = schema ?? core.currentSchema
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
+            WHERE table_schema = \(PostgreSQLObjectQueries.quoteLiteral(resolvedSchema))
             ORDER BY table_name
             """
         let result = try await execute(query: query)
@@ -74,16 +74,18 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = Self.columnsQuery(schemaLiteral: schemaLiteral, tableFilter: "AND c.table_name = '\(safeTable)'")
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = Self.columnsQuery(
+            schema: resolvedSchema,
+            tableFilter: "AND c.table_name = \(PostgreSQLObjectQueries.quoteLiteral(table))"
+        )
         let result = try await execute(query: query)
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
-        let query = Self.columnsQuery(schemaLiteral: schemaLiteral, tableFilter: "", includesTableName: true)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = Self.columnsQuery(schema: resolvedSchema, tableFilter: "", includesTableName: true)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -145,8 +147,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let query = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema),
-            tableLiteral: PostgreSQLObjectQueries.quoteLiteral(table),
+            schema: schema ?? core.currentSchema,
+            table: table,
             excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
                 serverVersionNumber: core.serverVersionNumber
             )
@@ -190,11 +192,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = escapeLiteral(database)
+        let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let query = """
             SELECT COUNT(*)
             FROM information_schema.tables
-            WHERE table_catalog = '\(escapedDb)'
+            WHERE table_catalog = \(databaseLiteral)
               AND table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension')
             """
         let tableCount = (try? await execute(query: query))
@@ -226,10 +228,11 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Query Helpers
 
     private static func columnsQuery(
-        schemaLiteral: String,
+        schema: String,
         tableFilter: String,
         includesTableName: Bool = false
     ) -> String {
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
         let selectPrefix = includesTableName ? "c.table_name,\n" : ""
         let orderBy = includesTableName ? "c.table_name, c.ordinal_position" : "c.ordinal_position"
         return """
@@ -256,9 +259,9 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                     ON tc.constraint_name = kcu.constraint_name
                     AND tc.table_schema = kcu.table_schema
                 WHERE tc.constraint_type = 'PRIMARY KEY'
-                    AND tc.table_schema = '\(schemaLiteral)'
+                    AND tc.table_schema = \(schemaLiteral)
             ) pk ON c.table_name = pk.table_name AND c.column_name = pk.column_name
-            WHERE c.table_schema = '\(schemaLiteral)' \(tableFilter)
+            WHERE c.table_schema = \(schemaLiteral) \(tableFilter)
             ORDER BY \(orderBy)
             """
     }

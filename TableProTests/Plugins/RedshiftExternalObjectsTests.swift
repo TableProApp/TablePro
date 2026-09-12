@@ -16,16 +16,16 @@ struct RedshiftExternalSchemaQueriesTests {
     private var allQueries: [String] {
         [
             RedshiftExternalSchemaQueries.listExternalSchemaNames,
-            RedshiftExternalSchemaQueries.listExternalTables(schemaLiteral: "etl", databaseLiteral: "dev"),
+            RedshiftExternalSchemaQueries.listExternalTables(schema: "etl", database: "dev"),
             RedshiftExternalSchemaQueries.listExternalColumns(
-                schemaLiteral: "etl",
-                tableLiteral: "customers",
-                databaseLiteral: "dev"
+                schema: "etl",
+                table: "customers",
+                database: "dev"
             ),
             RedshiftExternalSchemaQueries.listExternalColumns(
-                schemaLiteral: "etl",
-                tableLiteral: nil,
-                databaseLiteral: "dev"
+                schema: "etl",
+                table: nil,
+                database: "dev"
             ),
         ]
     }
@@ -52,7 +52,7 @@ struct RedshiftExternalSchemaQueriesTests {
 
     @Test("table listing filters on the requested schema and orders by name")
     func tableListingFiltersOnSchema() {
-        let query = RedshiftExternalSchemaQueries.listExternalTables(schemaLiteral: "etl", databaseLiteral: "dev")
+        let query = RedshiftExternalSchemaQueries.listExternalTables(schema: "etl", database: "dev")
         #expect(query.contains("FROM svv_external_tables"))
         #expect(query.contains("WHERE schemaname = 'etl'"))
         #expect(query.contains("ORDER BY tablename"))
@@ -61,20 +61,20 @@ struct RedshiftExternalSchemaQueriesTests {
 
     @Test("every external catalog read is scoped to the connected database")
     func externalReadsAreScopedToDatabase() {
-        let tables = RedshiftExternalSchemaQueries.listExternalTables(schemaLiteral: "etl", databaseLiteral: "dev")
+        let tables = RedshiftExternalSchemaQueries.listExternalTables(schema: "etl", database: "dev")
         #expect(tables.contains("redshift_database_name = 'dev'"))
 
         let single = RedshiftExternalSchemaQueries.listExternalColumns(
-            schemaLiteral: "etl",
-            tableLiteral: "customers",
-            databaseLiteral: "dev"
+            schema: "etl",
+            table: "customers",
+            database: "dev"
         )
         #expect(single.contains("redshift_database_name = 'dev'"))
 
         let all = RedshiftExternalSchemaQueries.listExternalColumns(
-            schemaLiteral: "etl",
-            tableLiteral: nil,
-            databaseLiteral: "dev"
+            schema: "etl",
+            table: nil,
+            database: "dev"
         )
         #expect(all.contains("redshift_database_name = 'dev'"))
     }
@@ -82,9 +82,9 @@ struct RedshiftExternalSchemaQueriesTests {
     @Test("single-table column query filters on the table and orders by column number")
     func singleTableColumnQuery() {
         let query = RedshiftExternalSchemaQueries.listExternalColumns(
-            schemaLiteral: "etl",
-            tableLiteral: "customers",
-            databaseLiteral: "dev"
+            schema: "etl",
+            table: "customers",
+            database: "dev"
         )
         #expect(query.contains("FROM svv_external_columns"))
         #expect(query.contains("WHERE schemaname = 'etl'"))
@@ -97,20 +97,20 @@ struct RedshiftExternalSchemaQueriesTests {
     @Test("all-tables column query prefixes tablename and omits the table filter")
     func allTablesColumnQuery() {
         let query = RedshiftExternalSchemaQueries.listExternalColumns(
-            schemaLiteral: "etl",
-            tableLiteral: nil,
-            databaseLiteral: "dev"
+            schema: "etl",
+            table: nil,
+            database: "dev"
         )
         #expect(query.contains("tablename,"))
         #expect(!query.contains("AND tablename ="))
         #expect(query.contains("ORDER BY tablename, columnnum"))
     }
 
-    @Test("escaped schema literals reach the generated SQL intact")
-    func escapedLiteralsAreInterpolated() {
+    @Test("A raw name with an apostrophe reaches the generated SQL doubled")
+    func rawNamesAreQuoted() {
         let query = RedshiftExternalSchemaQueries.listExternalTables(
-            schemaLiteral: "o''brien",
-            databaseLiteral: "d''ev"
+            schema: "o'brien",
+            database: "d'ev"
         )
         #expect(query.contains("WHERE schemaname = 'o''brien'"))
         #expect(query.contains("redshift_database_name = 'd''ev'"))

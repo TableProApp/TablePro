@@ -31,9 +31,9 @@ internal extension PostgreSQLPluginDriver {
             FROM pg_catalog.pg_trigger t
             JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE t.tgname = '\(escapeLiteral(name))'
-                AND c.relname = '\(escapeLiteral(table))'
-                AND n.nspname = '\(escapeLiteral(resolvedSchema))'
+            WHERE t.tgname = \(PostgreSQLObjectQueries.quoteLiteral(name))
+                AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+                AND n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(resolvedSchema))
                 AND NOT t.tgisinternal
             LIMIT 1
             """

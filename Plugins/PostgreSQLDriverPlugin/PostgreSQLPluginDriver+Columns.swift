@@ -8,12 +8,10 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
-        let safeTable = escapeStringLiteral(table)
         let catalog = try await fetchTypeCatalog()
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: safeSchema,
-            tableLiteral: safeTable,
+            schema: schema ?? core.currentSchema,
+            table: table,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
@@ -24,11 +22,10 @@ extension PostgreSQLPluginDriver {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let safeSchema = escapeStringLiteral(schema ?? core.currentSchema)
         let catalog = try await fetchTypeCatalog()
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schemaLiteral: safeSchema,
-            tableLiteral: nil,
+            schema: schema ?? core.currentSchema,
+            table: nil,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )

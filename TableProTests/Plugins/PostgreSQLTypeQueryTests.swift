@@ -116,6 +116,8 @@ struct PostgreSQLTypeQueryTests {
         #expect(PostgreSQLObjectQueries.quoteLiteral("it's") == "'it''s'")
         #expect(PostgreSQLObjectQueries.quoteLiteral("back\\slash") == "E'back\\\\slash'")
         #expect(PostgreSQLObjectQueries.quoteLiteral("\\'; DROP TYPE x; --") == "E'\\\\''; DROP TYPE x; --'")
+        #expect(PostgreSQLObjectQueries.quoteLiteral("a\0b") == "'ab'")
+        #expect(PostgreSQLObjectQueries.quoteLiteral("a\0\\b") == "E'a\\\\b'")
 
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
             schema: "a\\'b", identity: nil, capabilities: .assumingModernWhenUnknown(170_000)

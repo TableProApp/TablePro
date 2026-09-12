@@ -33,10 +33,10 @@ struct PostgreSQLLegacyCatalogQueryTests {
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: "public", table: "t"),
             PostgreSQLSchemaQueries.collationList(capabilities: legacy),
             PostgreSQLSchemaQueries.allTablesMetadata(schema: "public"),
-            PostgreSQLPrincipalQueries.databaseGrants(roleLiteral: "r"),
-            PostgreSQLPrincipalQueries.schemaGrants(roleLiteral: "r"),
-            PostgreSQLPrincipalQueries.tableGrants(roleLiteral: "r"),
-            PostgreSQLPrincipalQueries.columnGrants(roleLiteral: "r"),
+            PostgreSQLPrincipalQueries.databaseGrants(role: "r"),
+            PostgreSQLPrincipalQueries.schemaGrants(role: "r"),
+            PostgreSQLPrincipalQueries.tableGrants(role: "r"),
+            PostgreSQLPrincipalQueries.columnGrants(role: "r"),
             PostgreSQLSequenceQueries.sequenceList(schema: "public", dependentOnTable: "orders", source: .sequenceParameters),
             PostgreSQLSchemaQueries.fetchTables(schema: "public", includeMaterializedViews: true, includeForeignTables: true),
             PostgreSQLViewDefinition.catalogQuery(name: "v", schema: "public")
@@ -382,10 +382,10 @@ struct PostgreSQLGrantQueryTests {
     @Test("aclexplode runs in a subquery's select list, which PostgreSQL 9.1 accepts")
     func grantsAvoidLateral() {
         let queries = [
-            PostgreSQLPrincipalQueries.databaseGrants(roleLiteral: "reader"),
-            PostgreSQLPrincipalQueries.schemaGrants(roleLiteral: "reader"),
-            PostgreSQLPrincipalQueries.tableGrants(roleLiteral: "reader"),
-            PostgreSQLPrincipalQueries.columnGrants(roleLiteral: "reader")
+            PostgreSQLPrincipalQueries.databaseGrants(role: "reader"),
+            PostgreSQLPrincipalQueries.schemaGrants(role: "reader"),
+            PostgreSQLPrincipalQueries.tableGrants(role: "reader"),
+            PostgreSQLPrincipalQueries.columnGrants(role: "reader")
         ]
         for sql in queries {
             #expect(!sql.contains("LATERAL"))

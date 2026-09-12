@@ -76,14 +76,21 @@ enum PostgreSQLPrincipalQueries {
         PluginPrivilegeDescriptor(name: "REFERENCES", label: "References", category: structure)
     ]
 
-    static func searchObjects(patternLiteral: String, limit: Int) -> String {
+    /// The wildcards are wrapped around the pattern before it is quoted, because an `E` prefix
+    /// cannot be spliced into the middle of a literal: `ILIKE '%' || E'…' || '%'` would be the only
+    /// alternative, and one literal is simpler to read.
+    ///
+    /// LIKE metacharacters in the typed pattern are deliberately left alone and remain a separate
+    /// defect: a typed `%` still matches anything, and a typed backslash still acts as LIKE's own
+    /// escape. Quoting fixes which statement runs, not what the pattern means.
+    static func searchObjects(pattern: String, limit: Int) -> String {
         """
         SELECT n.nspname, c.relname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f')
           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-          AND c.relname ILIKE '%\(patternLiteral)%'
+          AND c.relname ILIKE \(PostgreSQLObjectQueries.quoteLiteral("%\(pattern)%"))
         ORDER BY n.nspname, c.relname
         LIMIT \(max(1, limit))
         """
@@ -97,32 +104,32 @@ enum PostgreSQLPrincipalQueries {
         ORDER BY n.nspname
         """
 
-    static func tables(schemaLiteral: String) -> String {
+    static func tables(schema: String) -> String {
         """
         SELECT c.relname
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = '\(schemaLiteral)'
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
           AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
         ORDER BY c.relname
         """
     }
 
-    static func columns(schemaLiteral: String, tableLiteral: String) -> String {
+    static func columns(schema: String, table: String) -> String {
         """
         SELECT a.attname
         FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = '\(schemaLiteral)'
-          AND c.relname = '\(tableLiteral)'
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
           AND a.attnum > 0
           AND NOT a.attisdropped
         ORDER BY a.attnum
         """
     }
 
-    static func columnGrants(roleLiteral: String) -> String {
+    static func columnGrants(role: String) -> String {
         """
         SELECT s.nspname, s.relname, s.attname, (s.acl).privilege_type, (s.acl).is_grantable
         FROM (
@@ -136,7 +143,7 @@ enum PostgreSQLPrincipalQueries {
               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ) s
         JOIN pg_roles r ON r.oid = (s.acl).grantee
-        WHERE r.rolname = '\(roleLiteral)'
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
         ORDER BY s.nspname, s.relname, s.attname, (s.acl).privilege_type
         """
     }
@@ -168,7 +175,7 @@ enum PostgreSQLPrincipalQueries {
         ORDER BY member.rolname, grantedRole.rolname
         """
 
-    static func databaseGrants(roleLiteral: String) -> String {
+    static func databaseGrants(role: String) -> String {
         """
         SELECT s.datname, (s.acl).privilege_type, (s.acl).is_grantable
         FROM (
@@ -178,12 +185,12 @@ enum PostgreSQLPrincipalQueries {
               AND NOT d.datistemplate
         ) s
         JOIN pg_roles r ON r.oid = (s.acl).grantee
-        WHERE r.rolname = '\(roleLiteral)'
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
         ORDER BY s.datname, (s.acl).privilege_type
         """
     }
 
-    static func schemaGrants(roleLiteral: String) -> String {
+    static func schemaGrants(role: String) -> String {
         """
         SELECT s.nspname, (s.acl).privilege_type, (s.acl).is_grantable
         FROM (
@@ -193,12 +200,12 @@ enum PostgreSQLPrincipalQueries {
               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ) s
         JOIN pg_roles r ON r.oid = (s.acl).grantee
-        WHERE r.rolname = '\(roleLiteral)'
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
         ORDER BY s.nspname, (s.acl).privilege_type
         """
     }
 
-    static func tableGrants(roleLiteral: String) -> String {
+    static func tableGrants(role: String) -> String {
         """
         SELECT s.nspname, s.relname, (s.acl).privilege_type, (s.acl).is_grantable
         FROM (
@@ -210,18 +217,18 @@ enum PostgreSQLPrincipalQueries {
               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ) s
         JOIN pg_roles r ON r.oid = (s.acl).grantee
-        WHERE r.rolname = '\(roleLiteral)'
+        WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
         ORDER BY s.nspname, s.relname, (s.acl).privilege_type
         """
     }
 
-    static func ownsObjects(roleLiteral: String) -> String {
+    static func ownsObjects(role: String) -> String {
         """
         SELECT EXISTS (
             SELECT 1
             FROM pg_shdepend s
             JOIN pg_roles r ON r.oid = s.refobjid
-            WHERE r.rolname = '\(roleLiteral)'
+            WHERE r.rolname = \(PostgreSQLObjectQueries.quoteLiteral(role))
               AND s.deptype IN ('o', 'a')
         )
         """

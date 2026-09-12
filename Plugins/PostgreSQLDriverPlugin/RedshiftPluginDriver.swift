@@ -75,11 +75,11 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let resolvedSchema = schema ?? core.currentSchema
-        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let query = """
             SELECT table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = '\(schemaLiteral)'
+            WHERE table_schema = \(schemaLiteral)
             ORDER BY table_name
             """
         let result = try await execute(query: query)
@@ -92,7 +92,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         guard isExternalSchema(resolvedSchema) else { return localTables }
 
-        let externalTables = await fetchExternalTables(schemaLiteral: schemaLiteral, schema: resolvedSchema)
+        let externalTables = await fetchExternalTables(schema: resolvedSchema)
         guard !externalTables.isEmpty else { return localTables }
 
         let localNames = Set(localTables.map(\.name))
@@ -100,12 +100,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return merged.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    private func fetchExternalTables(schemaLiteral: String, schema: String) async -> [PluginTableInfo] {
+    private func fetchExternalTables(schema: String) async -> [PluginTableInfo] {
         do {
             let result = try await execute(
                 query: RedshiftExternalSchemaQueries.listExternalTables(
-                    schemaLiteral: schemaLiteral,
-                    databaseLiteral: escapeLiteral(connectedDatabase)
+                    schema: schema,
+                    database: connectedDatabase
                 )
             )
             return result.rows.compactMap { row -> PluginTableInfo? in
@@ -128,27 +128,19 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let resolvedSchema = schema ?? core.currentSchema
         if isExternalSchema(resolvedSchema) {
-            let external = await fetchExternalColumns(
-                schemaLiteral: escapeLiteral(resolvedSchema),
-                tableLiteral: escapeLiteral(table),
-                schema: resolvedSchema
-            )
+            let external = await fetchExternalColumns(schema: resolvedSchema, table: table)
             if !external.isEmpty { return external }
         }
         return try await fetchLocalColumns(table: table, schema: resolvedSchema)
     }
 
-    private func fetchExternalColumns(
-        schemaLiteral: String,
-        tableLiteral: String,
-        schema: String
-    ) async -> [PluginColumnInfo] {
+    private func fetchExternalColumns(schema: String, table: String) async -> [PluginColumnInfo] {
         do {
             let result = try await execute(
                 query: RedshiftExternalSchemaQueries.listExternalColumns(
-                    schemaLiteral: schemaLiteral,
-                    tableLiteral: tableLiteral,
-                    databaseLiteral: escapeLiteral(connectedDatabase)
+                    schema: schema,
+                    table: table,
+                    database: connectedDatabase
                 )
             )
             return result.rows.compactMap { row -> PluginColumnInfo? in
@@ -186,11 +178,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func fetchLocalColumns(table: String, schema: String) async throws -> [PluginColumnInfo] {
-        let schemaLiteral = escapeLiteral(schema)
-        let query = RedshiftSchemaQueries.columnsQuery(
-            schemaLiteral: schemaLiteral,
-            tableLiteral: escapeLiteral(table)
-        )
+        let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: table)
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginColumnInfo? in
             guard row.count >= 4,
@@ -236,25 +224,19 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         if isExternalSchema(resolvedSchema) {
-            let external = await fetchExternalAllColumns(
-                schemaLiteral: escapeLiteral(resolvedSchema),
-                schema: resolvedSchema
-            )
+            let external = await fetchExternalAllColumns(schema: resolvedSchema)
             if !external.isEmpty { return external }
         }
         return try await fetchLocalAllColumns(schema: resolvedSchema)
     }
 
-    private func fetchExternalAllColumns(
-        schemaLiteral: String,
-        schema: String
-    ) async -> [String: [PluginColumnInfo]] {
+    private func fetchExternalAllColumns(schema: String) async -> [String: [PluginColumnInfo]] {
         do {
             let result = try await execute(
                 query: RedshiftExternalSchemaQueries.listExternalColumns(
-                    schemaLiteral: schemaLiteral,
-                    tableLiteral: nil,
-                    databaseLiteral: escapeLiteral(connectedDatabase)
+                    schema: schema,
+                    table: nil,
+                    database: connectedDatabase
                 )
             )
             var allColumns: [String: [PluginColumnInfo]] = [:]
@@ -277,8 +259,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func fetchLocalAllColumns(schema: String) async throws -> [String: [PluginColumnInfo]] {
-        let schemaLiteral = escapeLiteral(schema)
-        let query = RedshiftSchemaQueries.columnsQuery(schemaLiteral: schemaLiteral, tableLiteral: nil)
+        let query = RedshiftSchemaQueries.columnsQuery(schema: schema, table: nil)
         let result = try await execute(query: query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -326,8 +307,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT
                 "column",
@@ -335,8 +316,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 distkey,
                 sortkey
             FROM pg_table_def
-            WHERE schemaname = '\(schemaLiteral)'
-              AND tablename = '\(safeTable)'
+            WHERE schemaname = \(schemaLiteral)
+              AND tablename = \(tableLiteral)
               AND (distkey = true OR sortkey != 0)
             ORDER BY sortkey
             """
@@ -366,8 +347,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         let query = PostgreSQLCatalogForeignKeys.query(
-            schemaLiteral: PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema),
-            tableLiteral: PostgreSQLObjectQueries.quoteLiteral(table),
+            schema: schema ?? core.currentSchema,
+            table: table,
             excludesPartitionClones: PostgreSQLCatalogForeignKeys.excludesPartitionClones(
                 serverVersionNumber: core.serverVersionNumber
             )
@@ -379,13 +360,13 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
         let resolvedSchema = schema ?? core.currentSchema
         guard !isExternalSchema(resolvedSchema) else { return nil }
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let query = """
             SELECT tbl_rows
             FROM svv_table_info
-            WHERE "table" = '\(safeTable)'
-              AND schema = '\(schemaLiteral)'
+            WHERE "table" = \(tableLiteral)
+              AND schema = \(schemaLiteral)
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
@@ -393,9 +374,9 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let safeTable = escapeLiteral(table)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
         let resolvedSchema = schema ?? core.currentSchema
-        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let quotedTable = quoteIdentifier(table)
         let quotedSchema = quoteIdentifier(resolvedSchema)
 
@@ -417,8 +398,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             JOIN pg_class c ON c.oid = a.attrelid
             JOIN pg_namespace n ON n.oid = c.relnamespace
             LEFT JOIN pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
-            WHERE c.relname = '\(safeTable)'
-              AND n.nspname = '\(schemaLiteral)'
+            WHERE c.relname = \(tableLiteral)
+              AND n.nspname = \(schemaLiteral)
               AND a.attnum > 0
               AND NOT a.attisdropped
             ORDER BY a.attnum
@@ -483,13 +464,13 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let safeView = escapeLiteral(view)
-        let schemaLiteral = escapeLiteral(schema ?? core.currentSchema)
+        let viewLiteral = PostgreSQLObjectQueries.quoteLiteral(view)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? core.currentSchema)
         let query = """
             SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl
             FROM pg_views
-            WHERE viewname = '\(safeView)'
-              AND schemaname = '\(schemaLiteral)'
+            WHERE viewname = \(viewLiteral)
+              AND schemaname = \(schemaLiteral)
             """
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let ddl = firstRow[0].asText else {
@@ -503,8 +484,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         guard !isExternalSchema(resolvedSchema) else {
             return PluginTableMetadata(tableName: table, engine: "Redshift External")
         }
-        let safeTable = escapeLiteral(table)
-        let schemaLiteral = escapeLiteral(resolvedSchema)
+        let tableLiteral = PostgreSQLObjectQueries.quoteLiteral(table)
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(resolvedSchema)
         let query = """
             SELECT
                 tbl_rows,
@@ -513,8 +494,8 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 unsorted,
                 stats_off
             FROM svv_table_info
-            WHERE "table" = '\(safeTable)'
-              AND schema = '\(schemaLiteral)'
+            WHERE "table" = \(tableLiteral)
+              AND schema = \(schemaLiteral)
             """
         let result = try await execute(query: query)
         guard let row = result.rows.first else {
@@ -552,12 +533,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDbLiteral = escapeLiteral(database)
+        let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let countQuery = """
             SELECT COUNT(DISTINCT "table") AS table_count
             FROM svv_table_info
             WHERE schema NOT IN ('pg_internal', 'pg_catalog', 'information_schema')
-              AND database = '\(escapedDbLiteral)'
+              AND database = \(databaseLiteral)
             """
         let sizeQuery = """
             SELECT SUM(size) FROM svv_table_info WHERE database = current_database()
@@ -651,7 +632,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        let s = schema ?? currentSchema ?? "public"
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema ?? currentSchema ?? "public")
         return """
         SELECT
             schema,
@@ -663,7 +644,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             unsorted,
             stats_off
         FROM svv_table_info
-        WHERE schema = '\(s)'
+        WHERE schema = \(schemaLiteral)
         ORDER BY "table"
         """
     }

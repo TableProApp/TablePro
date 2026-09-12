@@ -176,15 +176,15 @@ enum PostgreSQLSchemaQueries {
     /// `relpartbound` exists only from PostgreSQL 10, so unlike `fetchTables`
     /// this query cannot be issued against an older server. The caller gates it
     /// on `PostgreSQLCapabilities.hasDeclarativePartitioning`.
-    static func fetchPartitions(schemaLiteral: String, tableLiteral: String) -> String {
+    static func fetchPartitions(schema: String, table: String) -> String {
         """
         SELECT cc.relname, cc.relkind
         FROM pg_catalog.pg_inherits i
         JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
         JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
         JOIN pg_catalog.pg_class cc ON cc.oid = i.inhrelid
-        WHERE pn.nspname = '\(schemaLiteral)'
-          AND parent.relname = '\(tableLiteral)'
+        WHERE pn.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND parent.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
           AND parent.relkind = 'p'
         ORDER BY pg_catalog.pg_get_expr(cc.relpartbound, cc.oid) = 'DEFAULT', cc.relname
         """
@@ -271,10 +271,10 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
-    /// Column introspection for one schema. Passing `tableLiteral` restricts the result to a single
-    /// table; passing `nil` returns every table's columns and prefixes each row with `table_name`.
-    /// `schemaLiteral` is the only schema source, so the caller resolves the target schema
-    /// (qualified reference, then current schema) before escaping and passing it here. The identity,
+    /// Column introspection for one schema. Passing `table` restricts the result to a single table;
+    /// passing `nil` returns every table's columns and prefixes each row with `table_name`.
+    /// `schema` is the only schema source, so the caller resolves the target schema (qualified
+    /// reference, then current schema) and passes it raw; quoting happens here. The identity,
     /// generated, and attribute-join fragments come from the connected server's versioned
     /// capabilities.
     ///
@@ -287,13 +287,14 @@ enum PostgreSQLSchemaQueries {
     /// catalog presence rather than on the server version, because a PostgreSQL-compatible engine
     /// can report a recent version and still have no materialized views (#1383).
     static func columnsQuery(
-        schemaLiteral: String,
-        tableLiteral: String?,
+        schema: String,
+        table: String?,
         capabilities: PostgreSQLCapabilities,
         includeMaterializedViews: Bool
     ) -> String {
-        let shape = ColumnQueryShape.fragments(tableLiteral: tableLiteral)
-        let includesTableName = tableLiteral == nil
+        let schemaLiteral = PostgreSQLObjectQueries.quoteLiteral(schema)
+        let shape = ColumnQueryShape.fragments(table: table)
+        let includesTableName = table == nil
         let identityProjection = capabilities.hasIdentityColumns ? "a.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated" : "NULL::text"
         let generationExpressionProjection = capabilities.hasGeneratedColumns
@@ -326,15 +327,15 @@ enum PostgreSQLSchemaQueries {
             LEFT JOIN pg_catalog.pg_class rel
                 ON rel.relnamespace = relns.oid
                 AND rel.relname = c.table_name\(attributeJoin)
-            \(ColumnQueryShape.primaryKeyJoin(schemaLiteral: schemaLiteral, fragments: shape))
-            WHERE c.table_schema = '\(schemaLiteral)'\(shape.mainTableFilter)
+            \(ColumnQueryShape.primaryKeyJoin(schema: schema, fragments: shape))
+            WHERE c.table_schema = \(schemaLiteral)\(shape.mainTableFilter)
             """
         var arms = [informationSchemaArm]
         if includeMaterializedViews {
             arms.append(
                 materializedViewColumnsArm(
                     schemaLiteral: schemaLiteral,
-                    tableLiteral: tableLiteral,
+                    table: table,
                     capabilities: capabilities,
                     includesTableName: includesTableName
                 )
@@ -382,12 +383,12 @@ enum PostgreSQLSchemaQueries {
     /// materialized view column neither a default nor a constraint.
     private static func materializedViewColumnsArm(
         schemaLiteral: String,
-        tableLiteral: String?,
+        table: String?,
         capabilities: PostgreSQLCapabilities,
         includesTableName: Bool
     ) -> String {
         let tableNameProjection = includesTableName ? "mvc.relname AS table_name,\n    " : ""
-        let tableFilter = tableLiteral.map { "\n  AND mvc.relname = '\($0)'" } ?? ""
+        let tableFilter = table.map { "\n  AND mvc.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
         let identityProjection = capabilities.hasIdentityColumns ? "mva.attidentity" : "NULL::text"
         let generatedProjection = capabilities.hasGeneratedColumns ? "mva.attgenerated" : "NULL::text"
         return """
@@ -427,7 +428,7 @@ enum PostgreSQLSchemaQueries {
         LEFT JOIN pg_catalog.pg_collation mvco ON mvco.oid = mva.attcollation
         LEFT JOIN pg_catalog.pg_namespace mvcon ON mvcon.oid = mvco.collnamespace
         WHERE mvc.relkind = 'm'
-          AND mvn.nspname = '\(schemaLiteral)'\(tableFilter)
+          AND mvn.nspname = \(schemaLiteral)\(tableFilter)
           AND NOT pg_catalog.pg_is_other_temp_schema(mvn.oid)
           AND (pg_catalog.pg_has_role(mvc.relowner, 'USAGE')
                OR pg_catalog.has_column_privilege(mvc.oid, mva.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'))
