@@ -8,8 +8,6 @@ import Foundation
 struct PostgreSQLCapabilities: Sendable, Equatable {
     let serverVersion: Int32
 
-    static let unknown = PostgreSQLCapabilities(serverVersion: 0)
-
     /// libpq answers 0 for a handle it has not connected. A catalog query built for that has to
     /// assume a current server, or it emits the legacy projection on every server that exists.
     static func assumingModernWhenUnknown(_ serverVersion: Int32) -> PostgreSQLCapabilities {
@@ -18,7 +16,6 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
 
     var hasMaterializedViewsCatalog: Bool { serverVersion >= 90_300 }
     var hasRangeTypes: Bool { serverVersion >= 90_200 }
-    var hasJsonBuildObject: Bool { serverVersion >= 90_400 }
     var hasEnumLabelPlacement: Bool { serverVersion >= 90_100 }
     /// ADD VALUE IF NOT EXISTS landed in 9.3. With it an add is idempotent, which is what makes
     /// the driver's one reconnect-and-resend safe for a label that already landed.
@@ -28,8 +25,9 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
     /// Every range gained a companion multirange in 14, with a name the creator may choose.
     var hasMultirangeTypes: Bool { serverVersion >= 140_000 }
     var hasForeignTablesCatalog: Bool { serverVersion >= 90_100 }
-    var hasSequencesCatalog: Bool { serverVersion >= 90_500 }
+    var hasSequencesCatalog: Bool { serverVersion >= 100_000 }
     var hasBypassRLS: Bool { serverVersion >= 90_500 }
+    var hasProcedureKind: Bool { serverVersion >= 110_000 }
 
     var hasIdentityColumns: Bool { serverVersion >= 100_000 }
     var hasGeneratedColumns: Bool { serverVersion >= 120_000 }
@@ -39,9 +37,10 @@ struct PostgreSQLCapabilities: Sendable, Equatable {
     /// Virtual generated columns landed in 18; VIRTUAL is a syntax error on every earlier server.
     var hasVirtualGeneratedColumns: Bool { serverVersion >= 180_000 }
     var hasDeclarativePartitioning: Bool { serverVersion >= 100_000 }
-
-    var hasArrayPosition: Bool { serverVersion >= 90_500 }
-    var hasOrderedAggregates: Bool { serverVersion >= 90_000 }
+    /// A foreign key that reaches a partitioned table is stored once per partition from PostgreSQL
+    /// 12, and each clone points at the constraint it was cloned from through `conparentid`, a
+    /// column that exists from 11.
+    var hasConstraintParent: Bool { serverVersion >= 110_000 }
 
     var hasCollationProvider: Bool { serverVersion >= 100_000 }
 

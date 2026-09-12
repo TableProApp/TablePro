@@ -34,6 +34,8 @@ Every connection to the server except this one, sortable, one row each.
 | Duration | How long the current operation has been running |
 | Query | The statement, truncated at 1,000 characters. Hover for the full text |
 
+On PostgreSQL 9.1 an idle session shows an empty Query: that server keeps only the running statement, not the last one.
+
 Two buttons sit on each row. **Cancel Query** stops the running statement and leaves the connection up: `pg_cancel_backend` on PostgreSQL, `KILL QUERY` on MySQL. **Terminate Session** ends the connection itself with `pg_terminate_backend` or `KILL`, and the server rolls back any transaction that session had open. Both confirm first, and a refusal from the server comes back as an **Action Failed** alert.
 
 ## Slow Queries
@@ -50,7 +52,8 @@ The interval menu offers 1s, 2s, 5s (the default), 10s, 30s, and Off. **Pause** 
 
 | Database | Sessions | Metrics | Slow queries | Cancel | Terminate |
 |----------|:--------:|---------|:------------:|:------:|:---------:|
-| PostgreSQL / Redshift / CockroachDB | Yes | Connections, cache hit ratio, database size, uptime, active queries | Yes | Yes | Yes |
+| PostgreSQL / Redshift | Yes | Connections, cache hit ratio, database size, uptime, active queries | Yes | Yes | Yes |
+| CockroachDB | Yes | Connections, active queries | Yes | Yes | Yes |
 | MySQL / MariaDB | Yes | Connected threads, running threads, uptime, total queries, slow queries, max connections, bytes received, bytes sent | Yes | Yes | Yes |
 | SQL Server | Yes | User sessions, uptime, database size | Yes | - | Yes |
 | ClickHouse | Yes | Active queries, active merges, part mutations, disk usage | Yes | - | Yes |

@@ -15,7 +15,7 @@ import Testing
 struct PostgreSQLTypeQueryTests {
     @Test("The listing reads pg_type for enums, composites, domains and ranges in one schema")
     func listReadsPgType() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 170_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(170_000))
         #expect(sql.contains("FROM pg_catalog.pg_type t"))
         #expect(sql.contains("t.typtype IN ('e', 'c', 'd', 'r')"))
         #expect(sql.contains("AND n.nspname = 'app'"))
@@ -26,7 +26,7 @@ struct PostgreSQLTypeQueryTests {
     /// the extension. Neither is a type the user created.
     @Test("Table row types and extension members are excluded")
     func excludesRowTypesAndExtensionMembers() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 170_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(170_000))
         #expect(sql.contains("(t.typtype <> 'c' OR c.relkind = 'c')"))
         #expect(sql.contains("d.deptype = 'e'"))
     }
@@ -35,16 +35,17 @@ struct PostgreSQLTypeQueryTests {
     /// would state the same thing twice in the definition.
     @Test("Only CHECK constraints are collected for a domain")
     func domainConstraintsAreChecksOnly() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 170_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(170_000))
         #expect(sql.contains("con.contype = 'c'"))
     }
 
     @Test("The projection matches the parser's column order")
     func projectionOrderMatchesParser() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 170_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(170_000))
         let aliases = [
             "AS identity", "AS name", "AS schema", "AS kind", "AS owner", "AS comment", "AS enum_labels",
-            "AS fields", "AS base_type", "AS collation", "AS not_null", "AS default_value", "AS constraints",
+            "AS field_names", "AS field_types", "AS field_collations", "AS base_type", "AS collation",
+            "AS not_null", "AS default_value", "AS constraint_names", "AS constraint_definitions",
             "AS range_subtype", "AS range_canonical", "AS range_subtype_diff", "AS range_opclass",
             "AS range_collation", "AS range_multirange", "AS spelling"
         ]
@@ -63,7 +64,7 @@ struct PostgreSQLTypeQueryTests {
     @Test("A reload addresses one oid and nothing else")
     func identityPredicate() {
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: nil, identity: "16387", serverVersionNumber: 170_000
+            schema: nil, identity: "16387", capabilities: .assumingModernWhenUnknown(170_000)
         )
         #expect(sql.contains("AND t.oid = 16387::oid"))
         #expect(!sql.contains("n.nspname ="))
@@ -72,7 +73,7 @@ struct PostgreSQLTypeQueryTests {
     @Test("A listing escapes the schema literal")
     func schemaLiteral() {
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: "o'brien", identity: nil, serverVersionNumber: 170_000
+            schema: "o'brien", identity: nil, capabilities: .assumingModernWhenUnknown(170_000)
         )
         #expect(sql.contains("AND n.nspname = 'o''brien'"))
         #expect(!sql.contains("AND t.oid = "))
@@ -82,16 +83,16 @@ struct PostgreSQLTypeQueryTests {
     /// knows its own reserved words and folding, is what quotes it.
     @Test("The listing carries the server's own quoted, qualified spelling of each type")
     func listingCarriesSpelling() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 170_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(170_000))
         #expect(sql.contains("pg_catalog.quote_ident(n.nspname) || '.' || pg_catalog.quote_ident(t.typname) AS spelling"))
     }
 
     @Test("A server before 14 has no multirange to report")
     func legacyServerSkipsMultirange() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 130_000)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(130_000))
         #expect(sql.contains("NULL::text AS range_multirange"))
         #expect(!sql.contains("rngmultitypid"))
-        let modern = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 140_000)
+        let modern = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(140_000))
         #expect(modern.contains("rngmultitypid"))
     }
 
@@ -100,7 +101,7 @@ struct PostgreSQLTypeQueryTests {
     @Test("A non-numeric identity is ignored rather than interpolated")
     func nonNumericIdentityIsIgnored() {
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: "app", identity: "1 OR 1=1", serverVersionNumber: 170_000
+            schema: "app", identity: "1 OR 1=1", capabilities: .assumingModernWhenUnknown(170_000)
         )
         #expect(!sql.contains("AND t.oid = "))
         #expect(!sql.contains("OR 1=1"))
@@ -117,7 +118,7 @@ struct PostgreSQLTypeQueryTests {
         #expect(PostgreSQLObjectQueries.quoteLiteral("\\'; DROP TYPE x; --") == "E'\\\\''; DROP TYPE x; --'")
 
         let sql = PostgreSQLObjectQueries.userDefinedTypeList(
-            schema: "a\\'b", identity: nil, serverVersionNumber: 170_000
+            schema: "a\\'b", identity: nil, capabilities: .assumingModernWhenUnknown(170_000)
         )
         #expect(sql.contains("AND n.nspname = E'a\\\\''b'"))
         #expect(
@@ -129,26 +130,41 @@ struct PostgreSQLTypeQueryTests {
 
     @Test("A server before 9.2 has no pg_range and lists no ranges")
     func legacyServerSkipsRanges() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 90_100)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(90_100))
         #expect(!sql.contains("pg_range"))
         #expect(sql.contains("t.typtype IN ('e', 'c', 'd')"))
         #expect(sql.contains("NULL::text AS range_subtype"))
     }
 
-    @Test("A server before 9.4 has no json_build_object and reports no fields or constraints")
-    func legacyServerSkipsJsonObjects() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 90_300)
-        #expect(!sql.contains("json_build_object"))
-        #expect(sql.contains("NULL::text AS fields"))
+    @Test("A server before 9.4 still reports composite fields and domain CHECK constraints")
+    func legacyServerReportsFieldsAndConstraints() {
+        for version: Int32 in [90_124, 90_300] {
+            let sql = PostgreSQLObjectQueries.userDefinedTypeList(
+                schema: "app", identity: nil, capabilities: PostgreSQLCapabilities(serverVersion: version)
+            )
+            #expect(!sql.contains("NULL::text AS field_names"))
+            #expect(sql.contains("array_agg(a.attname ORDER BY a.attnum)"))
+            #expect(sql.contains("array_agg(pg_catalog.pg_get_constraintdef(con.oid) ORDER BY con.conname)"))
+        }
+    }
+
+    @Test("No server version reads a JSON function or type, which 9.1 does not have")
+    func listingNeverUsesJson() {
+        for version: Int32 in [90_124, 90_300, 90_400, 170_000] {
+            let sql = PostgreSQLObjectQueries.userDefinedTypeList(
+                schema: "app", identity: nil, capabilities: PostgreSQLCapabilities(serverVersion: version)
+            )
+            #expect(!sql.lowercased().contains("json"))
+        }
     }
 
     /// libpq answers 0 for a handle it has not connected, and reading that as ancient would emit
     /// the legacy projection on every current server.
     @Test("An unknown server version reads as modern")
     func unknownVersionIsModern() {
-        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, serverVersionNumber: 0)
+        let sql = PostgreSQLObjectQueries.userDefinedTypeList(schema: "app", identity: nil, capabilities: .assumingModernWhenUnknown(0))
         #expect(sql.contains("pg_range"))
-        #expect(sql.contains("json_build_object"))
+        #expect(sql.contains("rngmultitypid"))
     }
 
     @Test("Adding a label appends by default and places beside a neighbour when asked")

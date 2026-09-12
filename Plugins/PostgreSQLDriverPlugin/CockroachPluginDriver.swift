@@ -116,14 +116,14 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                   let columnName = row[columnIndex].asText else { continue }
 
             if let implicitIndex, implicitIndex < row.count,
-               row[implicitIndex].asText.map(Self.isTruthy) == true {
+               PostgreSQLCatalogBoolean.isTrue(row[implicitIndex].asText) {
                 continue
             }
 
             if columnsByIndex[indexName] == nil {
                 order.append(indexName)
                 if let nonUniqueIndex, nonUniqueIndex < row.count {
-                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map(Self.isTruthy) == false
+                    uniqueByIndex[indexName] = row[nonUniqueIndex].asText.map { !PostgreSQLCatalogBoolean.isTrue($0) } ?? false
                 } else {
                     uniqueByIndex[indexName] = false
                 }
@@ -305,10 +305,5 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let createIndex = result.columns.firstIndex(of: "create_statement") ?? (row.count > 1 ? 1 : 0)
         guard createIndex < row.count, let ddl = row[createIndex].asText, !ddl.isEmpty else { return nil }
         return ddl
-    }
-
-    private static func isTruthy(_ value: String) -> Bool {
-        let lowered = value.lowercased()
-        return lowered == "t" || lowered == "true"
     }
 }

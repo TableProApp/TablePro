@@ -346,7 +346,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         var sortkeyCols: [String] = []
         for row in result.rows {
             guard let colName = row[0].asText else { continue }
-            let isDistkey = row[2].asText == "t"
+            let isDistkey = PostgreSQLCatalogBoolean.isTrue(row[2].asText)
             let sortKeyVal = Int(row[3].asText ?? "0") ?? 0
             if isDistkey { distkeyCols.append(colName) }
             if sortKeyVal != 0 { sortkeyCols.append(colName) }

@@ -724,12 +724,17 @@ struct RowImportSheet: View {
         defer { isLoadingContext = false }
         do {
             let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: nil)
+            let serverVersion = DatabaseManager.shared.driver(for: connection.id)?.serverVersion
             newColumns = fields.map { field in
                 NewColumn(
                     field: field,
                     include: true,
                     name: field.name,
-                    type: ImportTypeMapper.sqlType(for: field.inferredType, databaseType: connection.type),
+                    type: ImportTypeMapper.sqlType(
+                        for: field.inferredType,
+                        databaseType: connection.type,
+                        serverVersion: serverVersion
+                    ),
                     isPrimaryKey: false,
                     isNullable: true,
                     defaultValue: ""
