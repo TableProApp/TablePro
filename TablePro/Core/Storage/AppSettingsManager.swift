@@ -26,7 +26,7 @@ final class AppSettingsManager {
     var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            themeEngine.apply(
+            themeEngine.updateAppearanceAndTheme(
                 mode: appearance.appearanceMode,
                 lightThemeId: appearance.preferredLightThemeId,
                 darkThemeId: appearance.preferredDarkThemeId
@@ -38,18 +38,16 @@ final class AppSettingsManager {
     var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
+            themeEngine.updateEditorSettings(
+                highlightCurrentLine: editor.highlightCurrentLine,
+                highlightCurrentStatement: editor.highlightCurrentStatement,
+                showLineNumbers: editor.showLineNumbers,
+                tabWidth: editor.clampedTabWidth,
+
+                wordWrap: editor.wordWrap
+            )
             appEvents.editorSettingsChanged.send(())
             syncTracker.markDirty(.settings, id: AppSettingsCategory.editor)
-        }
-    }
-
-    /// Device-local: it is deliberately absent from `AppSettingsCategory.synced`, so a zoom press
-    /// never pushes an iCloud record and a Mac on an older build cannot reset it.
-    var typography: TypographySettings {
-        didSet {
-            guard typography != oldValue else { return }
-            storage.saveTypography(typography)
-            themeEngine.apply(typography: typography)
         }
     }
 
@@ -244,15 +242,21 @@ final class AppSettingsManager {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
         self.notifications = storage.loadNotifications()
-        self.typography = storage.loadTypography()
 
         general.language.apply()
 
-        themeEngine.apply(typography: typography)
-        themeEngine.apply(
+        themeEngine.updateAppearanceAndTheme(
             mode: appearance.appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
+        )
+
+        themeEngine.updateEditorSettings(
+            highlightCurrentLine: editor.highlightCurrentLine,
+            highlightCurrentStatement: editor.highlightCurrentStatement,
+            showLineNumbers: editor.showLineNumbers,
+            tabWidth: editor.clampedTabWidth,
+            wordWrap: editor.wordWrap
         )
 
         dateFormattingService.updateFormat(dataGrid.dateFormat)
@@ -292,7 +296,6 @@ final class AppSettingsManager {
         ai = .default
         sync = .default
         mcp = .default
-        typography = .default
         storage.resetToDefaults()
     }
 }

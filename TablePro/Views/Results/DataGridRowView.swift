@@ -250,17 +250,8 @@ class DataGridRowView: NSTableRowView {
         dirtyRect.fill()
     }
 
-    /// `NSTableRowView` fills a selected row with the system's selection colour and offers no way
-    /// to change it, so the theme's own selection is painted here instead. `super` is not called:
-    /// its fill would sit on top of this one.
-    override func drawSelection(in dirtyRect: NSRect) {
-        guard isSelected else { return }
-        cellSelectionFill.setFill()
-        dirtyRect.fill()
-    }
-
-    /// A cell range on a row the table has selected is already covered by the row's own selection
-    /// fill, which runs after this, so only the remaining rows are painted here.
+    /// A cell range on a row the table has selected is already covered by `NSTableRowView`'s own
+    /// selection fill, which runs after this, so only the remaining rows are painted here.
     private func drawCellSelectionFill(in dirtyRect: NSRect) {
         guard !isSelected,
               let coordinator,
@@ -287,9 +278,8 @@ class DataGridRowView: NSTableRowView {
     /// emphasized accent is far too dark to sit behind text these rows do not recolour, so that
     /// one goes on as a tint.
     private var cellSelectionFill: NSColor {
-        let palette = ThemeEngine.shared.palette
-        guard isEmphasized else { return palette[.gridInactiveSelection] }
-        return palette[.gridSelection].withAlphaComponent(Self.emphasizedCellSelectionAlpha)
+        guard isEmphasized else { return .unemphasizedSelectedContentBackgroundColor }
+        return NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.emphasizedCellSelectionAlpha)
     }
 
     private static let emphasizedCellSelectionAlpha: CGFloat = 0.28

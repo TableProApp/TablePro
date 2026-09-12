@@ -15,10 +15,10 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// The first two tests change the fonts on the shared `ThemeEngine`. What keeps that from reaching a
+/// The first two tests activate a theme on the shared `ThemeEngine`. What keeps that from reaching a
 /// suite running in parallel is that both bodies are synchronous and `@MainActor`, so nothing else on
-/// the main actor can interleave between applying the test fonts and restoring the original ones, the
-/// same way `DataGridRowTintThemeTests` holds. Adding an `await` inside `withTypography` breaks it.
+/// the main actor can interleave between activating the test theme and restoring the original one, the
+/// same way `DataGridRowTintThemeTests` holds. Adding an `await` inside `withTheme` would break it.
 @Suite("Stored value font", .serialized)
 @MainActor
 struct ValueFontTests {
@@ -30,27 +30,30 @@ struct ValueFontTests {
         return url
     }()
 
-    private static func typography(editorSize: Int, gridSize: Int) -> TypographySettings {
-        TypographySettings(
+    private static func theme(editorSize: Int, gridSize: Int) -> ThemeDefinition {
+        var theme = ThemeDefinition.default
+        theme.id = "user.value-font-tests"
+        theme.fonts = ThemeFonts(
             editorFontFamily: "Menlo",
             editorFontSize: editorSize,
             dataGridFontFamily: "Courier",
             dataGridFontSize: gridSize
         )
+        return theme
     }
 
-    private func withTypography(_ typography: TypographySettings, _ body: () -> Void) {
-        let previous = AppSettingsManager.shared.typography
-        ThemeEngine.shared.apply(typography: typography)
+    private func withTheme(_ theme: ThemeDefinition, _ body: () -> Void) {
+        let previous = ThemeEngine.shared.activeTheme
+        ThemeEngine.shared.activateTheme(theme)
         body()
-        ThemeEngine.shared.apply(typography: previous)
+        ThemeEngine.shared.activateTheme(previous)
     }
 
     // MARK: - Which setting the value font comes from
 
     @Test("The value font is the data grid font, not the editor font")
     func valueFontFollowsTheDataGridFont() {
-        withTypography(Self.typography(editorSize: 18, gridSize: 11)) {
+        withTheme(Self.theme(editorSize: 18, gridSize: 11)) {
             let engine = ThemeEngine.shared
             #expect(engine.valueFont == engine.dataGridFonts.regular)
             #expect(engine.valueFont != engine.editorFonts.font)
@@ -64,8 +67,8 @@ struct ValueFontTests {
     func valueFontIgnoresTheEditorSize() {
         var afterSmall: NSFont?
         var afterLarge: NSFont?
-        withTypography(Self.typography(editorSize: 11, gridSize: 13)) { afterSmall = ThemeEngine.shared.valueFont }
-        withTypography(Self.typography(editorSize: 18, gridSize: 13)) { afterLarge = ThemeEngine.shared.valueFont }
+        withTheme(Self.theme(editorSize: 11, gridSize: 13)) { afterSmall = ThemeEngine.shared.valueFont }
+        withTheme(Self.theme(editorSize: 18, gridSize: 13)) { afterLarge = ThemeEngine.shared.valueFont }
 
         #expect(afterSmall == afterLarge)
     }

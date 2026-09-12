@@ -34,7 +34,7 @@ internal struct ImageFieldView: View {
         )
         .frame(height: 220)
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
         .task(id: context.value.wrappedValue) {
             data = context.value.wrappedValue.storedBytes
         }

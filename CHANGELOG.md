@@ -24,10 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Warnings in the SQL editor for full-width punctuation, curly quotes and non-ASCII spaces. (#2717)
 - Highlight rules that color data grid rows or cells by value. (#2723)
 - **Encoding** option for MySQL and MariaDB connections, with **UTF-8 via Latin 1** for databases written through a Latin 1 client. (#2725)
-- Header, grid line, selection and focus colors in the theme editor.
-- Themes that name a system color for a slot, so the built-in themes keep the system's own contrast settings.
-- Reason shown in Settings > Appearance for a theme file that could not be loaded.
-- Panel and status colors in the theme editor, covering the results, inspector, structure, compare and query plan panes.
 - **Refresh Materialized View…** on PostgreSQL, with a concurrent refresh where the view qualifies. (#2726)
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
@@ -35,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Query confirmation shows the statement syntax highlighted and scrollable, with **Copy All** and the name of whatever asked to run it. (#2759)
 - 5 MB smaller app bundle.
 - 7 MB smaller DMG download.
 - Connect progress reads as a labelled bar, with a step named only where the app is waiting on something outside itself.
@@ -45,39 +42,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First-launch tour replaced by a one-page welcome sheet, shown again from Help > Getting Started.
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
-- Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
-- Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data & Results, and kept per Mac.
-- Editor font size range of 10 to 24 points everywhere, including zoom.
 - Structure editor options the connected PostgreSQL server does not support left out: generated columns before 12, BRIN before 9.5, and the MySQL-only FULLTEXT and SPATIAL index types.
 - Structure tab read-only on a view, a materialized view, a foreign table or a system table outside PostgreSQL. (#2726)
 
 ### Removed
 
 - Focus Border color in the theme editor.
-- Interface, Sidebar and Toolbar color groups from the theme editor and the theme file.
-- Fonts from the theme file.
 
 ### Fixed
 
 - Silently lost edit on a table with no primary key holding a `FLOAT`, `DOUBLE` or `JSON` column.
 - A save on a table with no primary key reporting success when it matched no row.
 - SQL Server and Oracle reporting zero rows affected for every `INSERT`, `UPDATE` and `DELETE`.
+- Query confirmation dialog cut to the first 200 characters of the statement. (#2759)
+- Statement folded onto one line and cut at 400 characters in an MCP client's approval prompt.
+- Blank line under "Are you sure you want to execute this query?" when confirming a rename.
+- Row numbers and their divider painted over the find bar, the filter panel and the result tab bar.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
 - Add Row under a column value filter selecting and opening the wrong row for editing.
 - Data grid ignoring the theme's background, text, alternate row, NULL, boolean and row number colors.
-- Interface, Sidebar and Toolbar colors having no effect anywhere in the app.
-- Line Number color having no effect on the editor gutter.
-- Default Light used for the dark theme when the chosen dark theme could not be loaded.
-- Editor zoom lost on the next appearance or theme change.
-- DDL, trigger and SQL import previews keeping the previous theme's colors.
-- Query history preview ignoring the theme and the editor font.
-- Theme editor changing the active theme instead of the theme selected for the slot being edited.
-- Malformed theme files loading as Default Light under their own name.
-- Content panes outside the editor and the data grid ignoring the theme.
-- JSON and PHP tree values colored differently from the same values in the row inspector.
-- Autocomplete icon colors ignoring the theme.
-- Color with a typo in it rendering as a different color instead of being reported.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
 - Garbled non-Latin text saved from iPhone and iPad to MySQL servers that force a Latin 1 session. (#2725)
@@ -250,6 +234,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BigQuery Google sign-in accepting an authorization response without PKCE or a state check.
 - PostgreSQL sessions inheriting `standard_conforming_strings = off`, which let a backslash break out of any quoted literal.
 - PostgreSQL catalog, comment and password literals escaped by quote doubling alone, which a backslash can break out of. (#2726)
+- An MCP token without Full Access approving its own write and skipping TablePro's confirmation dialog.
 
 ## [0.73.0] - 2026-09-09
 

@@ -26,7 +26,7 @@ internal struct MultiLineEditorView: View {
                 movesFocusOnTab: true
             )
             .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
             .overlay(alignment: .topLeading) { placeholder }
             .overlay(alignment: .bottomTrailing) { popOutButton }
         }

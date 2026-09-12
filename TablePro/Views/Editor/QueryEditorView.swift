@@ -97,6 +97,7 @@ struct QueryEditorView: View {
             .frame(minHeight: 100)
             .clipped()
         }
+        .background(Color(nsColor: .textBackgroundColor))
     }
 
     // MARK: - Toolbar

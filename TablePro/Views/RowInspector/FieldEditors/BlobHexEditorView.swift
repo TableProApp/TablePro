@@ -94,11 +94,11 @@ internal struct BlobHexEditorView: View {
             if isTruncated {
                 Text("Truncated, read only")
                     .font(.caption2)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                    .foregroundStyle(.orange)
             } else if BlobFormattingService.shared.parseHex(hexEditText) == nil, !hexEditText.isEmpty {
                 Text("Invalid hex")
                     .font(.caption2)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                    .foregroundStyle(.red)
             }
         }
     }

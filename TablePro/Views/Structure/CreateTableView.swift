@@ -178,7 +178,7 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(ThemeEngine.shared.palette.color(.panelBackground))
+        .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: draft.tableOptions.charset) { _, newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first

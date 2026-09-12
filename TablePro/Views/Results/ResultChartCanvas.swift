@@ -41,27 +41,27 @@ struct ResultChartCanvas: View {
         .chartYAxis {
             AxisMarks(position: .leading) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSeparator).opacity(0.55))
+                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSeparator))
+                    .foregroundStyle(Color(nsColor: .separatorColor))
                 AxisValueLabel()
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSecondaryText))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
         }
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 7)) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSeparator).opacity(0.55))
+                    .foregroundStyle(Color(nsColor: .separatorColor).opacity(0.55))
                 AxisTick(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSeparator))
+                    .foregroundStyle(Color(nsColor: .separatorColor))
                 AxisValueLabel(collisionResolution: .greedy(minimumSpacing: 8))
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.panelSecondaryText))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
             }
         }
         .chartPlotStyle { plotArea in
             plotArea
                 .background(
-                    ThemeEngine.shared.palette.color(.panelBackground).opacity(0.45),
+                    Color(nsColor: .controlBackgroundColor).opacity(0.45),
                     in: .rect(cornerRadius: 8)
                 )
         }

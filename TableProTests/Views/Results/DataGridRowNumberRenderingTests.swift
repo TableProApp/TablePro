@@ -74,6 +74,22 @@ private struct Raster {
     }
 }
 
+/// A band above the grid, the shape the window itself has: the find bar, the filter panel, the
+/// key-pattern search bar, the result tab bar and the banners are all siblings stacked above the
+/// data grid, and every one of them is an earlier sibling, so anything the grid paints outside
+/// itself lands on top of them.
+@MainActor
+private final class StripHost: NSView {
+    static let color = NSColor(srgbRed: 0.15, green: 0.45, blue: 0.85, alpha: 1)
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        Self.color.setFill()
+        dirtyRect.fill()
+    }
+}
+
 private func matches(_ lhs: NSColor, _ rhs: NSColor, tolerance: CGFloat = 0.02) -> Bool {
     abs(lhs.redComponent - rhs.redComponent) <= tolerance
         && abs(lhs.greenComponent - rhs.greenComponent) <= tolerance
@@ -87,6 +103,7 @@ struct DataGridRowNumberRenderingTests {
     @MainActor
     private struct Grid {
         let window: NSWindow
+        let host: StripHost?
         let scrollView: NSScrollView
         let tableView: KeyHandlingTableView
         let header: SortableHeaderView
@@ -101,6 +118,15 @@ struct DataGridRowNumberRenderingTests {
         func scroll(toX x: CGFloat) {
             tableView.scroll(NSPoint(x: x, y: scrollView.contentView.bounds.origin.y))
             scrollView.layoutSubtreeIfNeeded()
+        }
+
+        /// Far enough down that the strip's own drawing reaches past the top of the viewport, which
+        /// is the offset the escape shows at.
+        func scrollVertically(toRow row: Int) {
+            tableView.scroll(NSPoint(x: scrollView.contentView.bounds.origin.x, y: tableView.rect(ofRow: row).minY))
+            scrollView.layoutSubtreeIfNeeded()
+            gutter.synchronizeGeometry()
+            gutter.displayIfNeeded()
         }
 
         func pointInScrollView(_ point: NSPoint) -> NSPoint {
@@ -128,7 +154,8 @@ struct DataGridRowNumberRenderingTests {
     private func makeGrid(
         titles: [String] = (0..<8).map { "column\($0)" },
         rows: Int = DataGridRowNumberRenderingTests.rowCount,
-        appearance: NSAppearance.Name = .darkAqua
+        appearance: NSAppearance.Name = .darkAqua,
+        stripAbove: CGFloat = 0
     ) -> Grid {
         let coordinator = TableViewCoordinator(
             changeManager: AnyChangeManager(DataChangeManager()),
@@ -176,7 +203,7 @@ struct DataGridRowNumberRenderingTests {
             widthCalculator: { _, _ in Self.columnWidth }
         )
 
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: stripAbove, width: 600, height: 300 - stripAbove))
         scrollView.hasHorizontalScroller = true
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
@@ -187,13 +214,28 @@ struct DataGridRowNumberRenderingTests {
             defer: false
         )
         window.appearance = NSAppearance(named: appearance)
-        window.contentView = scrollView
 
-        let gutter = DataGridRowGutterView(frame: .zero)
-        gutter.coordinator = coordinator
-        tableView.addSubview(gutter)
-        scrollView.addFloatingSubview(gutter, for: .horizontal)
-        coordinator.rowGutter = gutter
+        var host: StripHost?
+        if stripAbove > 0 {
+            let stripHost = StripHost(frame: NSRect(x: 0, y: 0, width: 600, height: 300))
+            stripHost.addSubview(scrollView)
+            window.contentView = stripHost
+            host = stripHost
+        } else {
+            window.contentView = scrollView
+        }
+
+        let gutter: DataGridRowGutterView
+        if stripAbove > 0 {
+            DataGridView.installRowGutter(scrollView: scrollView, tableView: tableView, coordinator: coordinator)
+            gutter = coordinator.rowGutter ?? DataGridRowGutterView(frame: .zero)
+        } else {
+            gutter = DataGridRowGutterView(frame: .zero)
+            gutter.coordinator = coordinator
+            tableView.addSubview(gutter)
+            scrollView.addFloatingSubview(gutter, for: .horizontal)
+            coordinator.rowGutter = gutter
+        }
 
         tableView.reloadData()
         tableView.layoutSubtreeIfNeeded()
@@ -205,6 +247,7 @@ struct DataGridRowNumberRenderingTests {
         }
         return Grid(
             window: window,
+            host: host,
             scrollView: scrollView,
             tableView: tableView,
             header: header,
@@ -456,16 +499,13 @@ struct DataGridRowNumberRenderingTests {
     @Test("Rows paint the theme's stripes, and the strip still matches them")
     func rowsPaintTheThemesStripes() throws {
         let engine = ThemeEngine.shared
-        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
-        defer { engine.adopt(restore) }
-        var theme = BuiltInThemes.light
+        let original = engine.activeTheme
+        defer { engine.activateTheme(original) }
+        var theme = ThemeDefinition.default
         theme.id = "test.grid-stripes"
-        theme.dataGrid.background = .hex("#282A36")
-        theme.dataGrid.alternateRow = .hex("#44475A")
-        engine.adopt(ThemeSelection(
-            pair: ThemePair(light: theme, dark: BuiltInThemes.dark),
-            effectiveAppearance: .light
-        ))
+        theme.dataGrid.background = "#282A36"
+        theme.dataGrid.alternateRow = "#44475A"
+        engine.activateTheme(theme)
 
         let grid = makeGrid(appearance: .aqua)
         let rows = grid.rowsUnderTheStrip
@@ -488,6 +528,39 @@ struct DataGridRowNumberRenderingTests {
         let even = try #require(rows.first(where: { $0.isMultiple(of: 2) }).flatMap { bodies[$0] })
         let odd = try #require(rows.first(where: { !$0.isMultiple(of: 2) }).flatMap { bodies[$0] })
         #expect(!matches(even, odd), "both stripes drew \(even)")
+    }
+
+    // MARK: - Staying inside the grid
+
+    private static let stripHeight: CGFloat = 40
+
+    /// The strip is document-tall, so without a clip it paints far past the viewport it pins. On
+    /// screen that put row numbers and the strip's column separator over the find bar, and over
+    /// every other sibling the window stacks above the grid.
+    @Test("The pinned strip paints nothing above the grid")
+    func stripPaintsNothingAboveTheGrid() throws {
+        let grid = makeGrid(appearance: .aqua, stripAbove: Self.stripHeight)
+        let host = try #require(grid.host)
+        grid.scrollVertically(toRow: 6)
+
+        let raster = try #require(Raster(of: host, in: host.bounds))
+        /// The band's own colour where the strip cannot reach, rather than `StripHost.color`: the
+        /// cached drawing lands in an HDR colour space that shifts the fill, so the only reliable
+        /// reference is the same band measured beside the part under test.
+        let untouched = try #require(raster.color(at: NSPoint(x: host.bounds.maxX - 40, y: 4)))
+        let leadingEdge = NSRect(x: 0, y: 0, width: 120, height: Self.stripHeight)
+        #expect(
+            raster.inkPixels(in: leadingEdge, unlike: untouched) == 0,
+            "the grid painted above itself"
+        )
+    }
+
+    /// What holds the strip in: nothing between a floating subview and the window frame clips on its
+    /// own, and the scroll view is the view the grid owns.
+    @Test("The grid's scroll view clips to its bounds")
+    func scrollViewClipsToBounds() {
+        let grid = makeGrid(appearance: .aqua, stripAbove: Self.stripHeight)
+        #expect(grid.scrollView.clipsToBounds)
     }
 
     private func rightClick(at point: NSPoint, in grid: Grid) -> NSEvent? {

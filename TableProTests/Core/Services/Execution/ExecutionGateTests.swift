@@ -11,15 +11,17 @@ import Testing
 final class StubConfirming: OperationConfirming, @unchecked Sendable {
     private(set) var callCount = 0
     private(set) var lastDestructive = false
+    private(set) var lastRequest: OperationConfirmationRequest?
     private let answer: Bool
 
     init(answer: Bool) {
         self.answer = answer
     }
 
-    func confirm(sql: String, operationDescription: String, connectionId: UUID, isDestructive: Bool) async -> Bool {
+    func confirm(_ request: OperationConfirmationRequest) async -> Bool {
         callCount += 1
-        lastDestructive = isDestructive
+        lastDestructive = request.isDestructive
+        lastRequest = request
         return answer
     }
 }

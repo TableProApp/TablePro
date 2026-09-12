@@ -175,14 +175,35 @@ struct MCPStatementGateConsentPolicyTests {
         #expect(!requiresConsent("DELETE FROM users WHERE id = 1", safeMode: .silent))
     }
 
-    @Test("The preview a user sees is one line and capped")
-    func previewIsOneCappedLine() {
+    @Test("The preview a user sees keeps its line breaks")
+    func previewKeepsLineBreaks() {
         let preview = MCPStatementGate.preview(of: "SELECT\n\t1\n")
-        #expect(preview == "SELECT  1")
-        #expect(!preview.contains("\n"))
+        #expect(preview == "SELECT\n\t1")
+    }
 
-        let long = MCPStatementGate.preview(of: String(repeating: "a", count: 900))
-        #expect((long as NSString).length == 401)
-        #expect(long.hasSuffix("…"))
+    @Test("A statement a user could read is shown whole")
+    func previewKeepsAReadableStatement() {
+        let statement = """
+        UPDATE accounts
+           SET balance = 0
+         WHERE customer_id = 42
+        """
+        #expect(MCPStatementGate.preview(of: statement) == statement)
+    }
+
+    /// The cut used to land at 400 characters, which is before the `WHERE` clause of any statement
+    /// worth confirming, so the user approved a filter they never saw.
+    @Test("A long statement keeps its filter and is marked as cut")
+    func previewCapsWellPastAFilter() {
+        let padding = String(repeating: "a", count: 600)
+        let statement = "UPDATE accounts SET note = '\(padding)' WHERE customer_id = 42"
+        let preview = MCPStatementGate.preview(of: statement)
+        #expect(preview == statement)
+        #expect(preview.contains("WHERE customer_id = 42"))
+
+        let overLimit = String(repeating: "a", count: MCPStatementGate.previewCharacterLimit + 500)
+        let cut = MCPStatementGate.preview(of: overLimit)
+        #expect((cut as NSString).length == MCPStatementGate.previewCharacterLimit + 1)
+        #expect(cut.hasSuffix("…"))
     }
 }

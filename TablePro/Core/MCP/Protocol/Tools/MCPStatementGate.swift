@@ -52,10 +52,12 @@ enum MCPStatementGate {
         capabilities.formUnion(consent.capabilities)
 
         try await services.authPolicy.checkSafeModeDialog(
+            principal: context.principal,
             sql: sql,
             connectionId: meta.connectionId,
             databaseType: meta.databaseType,
-            capabilities: capabilities
+            capabilities: capabilities,
+            operationLabel: operationLabel
         )
 
         return classification
@@ -114,12 +116,15 @@ enum MCPStatementGate {
         )
     }
 
+    /// The only text the client shows beside its Approve control, so it is the whole of what the
+    /// user reads before saying yes. It keeps its line breaks: a statement folded onto one line is
+    /// unreadable at the length that matters, and the cut used to land before the `WHERE` clause.
+    /// The cap is sized for a form field in someone else's interface, not for a view we draw.
+    static let previewCharacterLimit = 2_000
+
     static func preview(of sql: String) -> String {
-        let condensed = sql
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\t", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (condensed as NSString).length > 400 else { return condensed }
-        return (condensed as NSString).substring(to: 400) + "…"
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (trimmed as NSString).length > previewCharacterLimit else { return trimmed }
+        return (trimmed as NSString).substring(to: previewCharacterLimit) + "…"
     }
 }
