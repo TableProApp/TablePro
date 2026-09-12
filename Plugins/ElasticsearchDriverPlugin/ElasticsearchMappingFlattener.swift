@@ -17,6 +17,17 @@ struct ElasticsearchColumn: Equatable {
 
 enum ElasticsearchMappingFlattener {
     private static let maxNestedJsonLength = 10_000
+    /// A `geo_shape` polygon passes 10,000 characters without being unusual, and half a geometry is
+    /// not a geometry: the truncated text parses as nothing, so the map drew nothing for a shape the
+    /// grid was showing. A geometry is kept whole up to a ceiling that still protects the grid from
+    /// a value no reader would finish.
+    private static let maxGeometryJsonLength = 1_000_000
+
+    /// Elasticsearch accepts a `geo_shape` type name in any case, so the comparison is lowercased.
+    private static let geometryTypeNames: Set<String> = [
+        "point", "multipoint", "linestring", "multilinestring",
+        "polygon", "multipolygon", "geometrycollection", "envelope", "circle"
+    ]
 
     static let idColumn = "_id"
     static let indexColumn = "_index"
@@ -158,6 +169,13 @@ enum ElasticsearchMappingFlattener {
         guard let json = NumberText.json(from: value) else {
             return String(describing: value)
         }
-        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
+        let limit = isGeometry(value) ? maxGeometryJsonLength : maxNestedJsonLength
+        return JSONTruncation.truncate(json, maxLength: limit)
+    }
+
+    private static func isGeometry(_ value: Any) -> Bool {
+        guard let dict = value as? [String: Any], let type = dict["type"] as? String else { return false }
+        guard geometryTypeNames.contains(type.lowercased()) else { return false }
+        return dict["coordinates"] != nil || dict["geometries"] != nil
     }
 }

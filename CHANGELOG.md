@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL `GEOMETRYCOLLECTION` columns classified as text.
 - Empty `GEOMETRYCOLLECTION` from MySQL rendered as invalid WKT.
 - MySQL geometry with a Z or M ordinate read from the wrong offset.
+- Elasticsearch `geo_shape` values cut off at 10,000 characters.
 - A tab stranded in JSON or Chart mode, with no way back to Data, after a statement that returns no columns.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
