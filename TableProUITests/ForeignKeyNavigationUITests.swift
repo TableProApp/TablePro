@@ -39,8 +39,16 @@ final class ForeignKeyNavigationUITests: UITestCase {
             },
             "Following the reference must add a tab rather than retarget the one it came from"
         )
+        /// Addressed as the tab rather than as a static text: the strip combines each tab's
+        /// children into one accessibility element, so the drawn title is that element's label and
+        /// is never published as a text of its own.
         XCTAssertTrue(
-            waitForPredicate(timeout: 20) { window.staticTexts["Album"].exists },
+            waitForPredicate(timeout: 20) {
+                window.descendants(matching: .any)
+                    .matching(identifier: "editor-tab")
+                    .matching(NSPredicate(format: "label == %@", "Album"))
+                    .firstMatch.exists
+            },
             "The Album tab must still be in the strip after the reference opened"
         )
     }
