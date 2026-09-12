@@ -142,6 +142,11 @@ struct GridSelectionTests {
     }
 }
 
+@MainActor
+private final class OneRowTableSource: NSObject, NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+}
+
 @Suite("GridSelectionController gestures")
 @MainActor
 struct GridSelectionControllerTests {
@@ -239,12 +244,65 @@ struct GridSelectionControllerTests {
         #expect(controller.selection.activeCell == cmdTarget)
     }
 
-    @Test("selectAll covers every cell")
-    func selectAllSpansGrid() {
+    /// A block that happens to reach both ends of the page is not a column selection. Reading the
+    /// intent back out of the geometry tinted the heading of any column a drag swept end to end,
+    /// and in a one-row result of every column a single cell was clicked in.
+    @Test("only a heading click marks a column as picked")
+    func onlyHeadingClicksPickColumns() {
         let controller = GridSelectionController()
-        controller.selectAll(totalRows: 4, totalColumns: 3)
-        #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...2)])
-        #expect(controller.selection.activeCell == GridCoord(row: 0, displayColumn: 0))
+        let whole = GridCoord(row: 0, displayColumn: 1)
+
+        controller.update(.single(GridRect(rows: 0...3, columns: 1...1), anchor: whole, active: whole))
+        #expect(controller.selectedFullColumns().isEmpty)
+
+        controller.selectEntireColumn(1, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+    }
+
+    /// A one-row result is the sharpest case: every rectangle in it spans every row, so the old
+    /// predicate read one clicked cell as a picked column. The table view is real here because that
+    /// predicate consulted `numberOfRows`, and without one the check passes for the wrong reason.
+    @Test("a single cell in a one-row result picks no column")
+    func singleCellInOneRowResultPicksNoColumn() {
+        let controller = GridSelectionController()
+        let source = OneRowTableSource()
+        let tableView = NSTableView()
+        tableView.addTableColumn(NSTableColumn(identifier: .init("c")))
+        tableView.dataSource = source
+        tableView.reloadData()
+        controller.tableView = tableView
+        #expect(tableView.numberOfRows == 1)
+        let cell = GridCoord(row: 0, displayColumn: 0)
+
+        controller.update(.single(GridRect(cell: cell), anchor: cell, active: cell))
+
+        #expect(controller.selectedFullColumns().isEmpty)
+    }
+
+    @Test("Cmd+clicking a picked heading gives the column back")
+    func headingCmdClickToggles() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(0, totalRows: 4)
+
+        controller.addEntireColumn(2, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet([0, 2]))
+
+        controller.addEntireColumn(2, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 0))
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...0)])
+    }
+
+    /// `union` concatenates, so re-adding one heading used to leave a second identical rectangle
+    /// behind, and the overlay and the row fill walk every rectangle for every visible row.
+    @Test("re-picking a heading never duplicates its rectangle")
+    func headingPickNeverDuplicates() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        controller.addEntireColumn(1, totalRows: 4)
+        controller.addEntireColumn(1, totalRows: 4)
+
+        #expect(controller.selection.rectangles.count <= 1)
     }
 
     @Test("selectEntireColumn covers all rows in that column")

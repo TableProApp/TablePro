@@ -307,22 +307,30 @@ final class KeyHandlingTableView: NSTableView {
         coordinator.delegate?.dataGridCopyRows(coordinator.currentRowSelection())
     }
 
+    /// Select All selects the rows, which is what `NSTableView.selectAll(_:)` itself does: measured
+    /// on macOS 27 it reports every row and no column at all, and AppKit logs that column selection
+    /// is unsupported in a view-based table.
+    ///
+    /// It performs the same reset a row-gutter click does, so the two routes into a whole-row
+    /// selection leave the grid in one state. Building a cell rectangle over the whole grid instead
+    /// made every column indistinguishable from one picked by its heading, so the entire heading row
+    /// painted as selected, and `activeCell` left a cell cursor sitting on the first cell of a
+    /// selection that owns every row.
     @objc override func selectAll(_ sender: Any?) {
         let totalRows = totalRows()
-        let totalColumns = totalDataColumns()
-        guard totalRows > 0, totalColumns > 0 else {
+        guard totalRows > 0 else {
             super.selectAll(sender)
             return
         }
-        gridSelection?.selectAll(totalRows: totalRows, totalColumns: totalColumns)
-        /// Marked programmatic, exactly as `selectRowsIntersectingSelection` marks the same
-        /// build-then-write shape. An unmarked write reads back as a gesture, and
-        /// `tableViewSelectionDidChange` answers a gesture that arrives over a live cell selection
-        /// by clearing it, so Cmd+A used to destroy the rectangle it had just built: Copy then took
-        /// the row path instead of the cell path, and Escape had nothing to cancel.
+        gridSelection?.clear()
+        /// Marked programmatic, and the cursor cleared after the write rather than before it:
+        /// `tableViewSelectionDidChange` answers an unmarked write by seeding a cell cursor, so
+        /// clearing first left Cmd+A with a cursor on the last row it had just selected.
         withProgrammaticRowSelection {
             selectRowIndexes(IndexSet(integersIn: 0..<totalRows), byExtendingSelection: false)
         }
+        focusedRow = -1
+        focusedColumn = -1
     }
 
     private func focusedDataCell() -> (row: Int, columnIndex: Int)? {
@@ -470,6 +478,11 @@ final class KeyHandlingTableView: NSTableView {
         guard !rows.isEmpty else { return }
 
         controller.selectEntireRows(rows, totalColumns: totalColumns)
+        /// The selection now reaches both ends of every row it touches, so no single cell is the
+        /// current one. Leaving the cursor behind kept a cell ring inside a whole-row selection,
+        /// which is the one thing a whole-row selection is not allowed to share the grid with.
+        focusedRow = -1
+        focusedColumn = -1
         withProgrammaticRowSelection {
             selectRowIndexes(IndexSet(rows), byExtendingSelection: false)
         }
@@ -535,12 +548,22 @@ final class KeyHandlingTableView: NSTableView {
         coordinator.handleCellInteraction(row: row, tableColumn: focusedColumn, columnIndex: columnIndex, tableView: self)
     }
 
+    /// Escape gives the grid back, whichever kind of selection owns it.
+    ///
+    /// The row arm is not optional: Select All no longer leaves a cell rectangle behind, so without
+    /// it Escape would answer Cmd+A by falling through to `super` and doing nothing.
     @objc override func cancelOperation(_ sender: Any?) {
-        guard let controller = gridSelection, !controller.isEmpty else {
+        if let controller = gridSelection, !controller.isEmpty {
+            controller.clear()
+            return
+        }
+        guard !selectedRowIndexes.isEmpty else {
             super.cancelOperation(sender)
             return
         }
-        controller.clear()
+        deselectAll(nil)
+        focusedRow = -1
+        focusedColumn = -1
     }
 
     private func deleteSelectedRowsIfPossible() {

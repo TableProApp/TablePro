@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Select All painting the whole column header row as selected, and leaving a cell cursor on the first cell.
+- Column header shown as selected after a cell drag reached the first and last row of the page.
+- No outline around a swept cell block whose rows reached both ends of the page.
+- Cmd+clicking a selected column header never deselecting it.
+- Escape not clearing the selection after Select All.
+- Cell cursor left inside a whole-row selection by Shift+Space.
 - Row numbers and their divider painted over the find bar, the filter panel and the result tab bar.
 - Empty Columns tab and no autocomplete for PostgreSQL materialized views. (#2726)
 - Discard restoring a different row than the one edited under a column value filter.
