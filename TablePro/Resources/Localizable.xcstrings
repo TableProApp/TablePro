@@ -185,2221 +185,6 @@
     "-- Once the rows are in" : {
 
     },
-    "A single click opens each table in the same preview tab. Double-click a table, or press Return, to keep it open." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "한 번 클릭하면 각 테이블이 같은 미리보기 탭에서 열립니다. 테이블을 이중 클릭하거나 Return 키를 누르면 열린 상태로 유지됩니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tek tıklama her tabloyu aynı önizleme sekmesinde açar. Açık tutmak için tabloya çift tıklayın veya Return tuşuna basın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhấp một lần sẽ mở từng bảng trong cùng một tab xem trước. Nhấp đúp vào bảng hoặc nhấn Return để giữ nó mở."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单击会在同一个预览标签页中打开每个表格。双击表格或按 Return 键即可保持打开。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按一下會在同一個預覽標籤頁中開啟每個表格。按兩下表格或按 Return 鍵即可保持開啟。"
-          }
-        }
-      }
-    },
-    "ampersand" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "앰퍼샌드"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ve işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu và"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "和号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "和號"
-          }
-        }
-      }
-    },
-    "apostrophe" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "작은따옴표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "kesme işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu nháy đơn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "单引号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "單引號"
-          }
-        }
-      }
-    },
-    "Are you sure you want to delete the group \"%@\" and its subgroups? Their connections will be moved to the top level." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "\"%@\" 그룹과 하위 그룹을 삭제하시겠습니까? 그 안의 연결은 최상위 수준으로 이동됩니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "\"%@\" grubunu ve alt gruplarını silmek istediğinize emin misiniz? İçlerindeki bağlantılar üst seviyeye taşınacaktır."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bạn có chắc muốn xóa nhóm \"%@\" và các nhóm con của nó? Các kết nối bên trong sẽ được chuyển lên cấp cao nhất."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "确定要删除分组 \"%@\" 及其子分组吗？其中的连接将移至顶层。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "確定要刪除群組「%@」及其子群組嗎？其中的連線將移至頂層。"
-          }
-        }
-      }
-    },
-    "asterisk" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "별표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "yıldız işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu sao"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "星号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "星號"
-          }
-        }
-      }
-    },
-    "at sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "골뱅이표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "et işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ký hiệu a còng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "at 符号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "at 符號"
-          }
-        }
-      }
-    },
-    "Autocomplete from your schema, editor tabs, and a searchable query history." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "스키마 기반 자동 완성, 편집기 탭, 검색 가능한 쿼리 기록을 제공합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şemanızdan otomatik tamamlama, düzenleyici sekmeleri ve aranabilir sorgu geçmişi."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tự động hoàn thành theo lược đồ, các tab trình soạn thảo và lịch sử truy vấn có thể tìm kiếm."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基于架构的自动补全、编辑器标签页和可搜索的查询历史。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "依結構描述自動完成、編輯器標籤頁與可搜尋的查詢記錄。"
-          }
-        }
-      }
-    },
-    "backslash" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "백슬래시"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ters eğik çizgi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu gạch chéo ngược"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反斜杠"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反斜線"
-          }
-        }
-      }
-    },
-    "backtick" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "백틱"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ters tırnak"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu nháy ngược"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反引号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反引號"
-          }
-        }
-      }
-    },
-    "caret" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "캐럿"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "şapka işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu mũ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "脱字符"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "插入符號"
-          }
-        }
-      }
-    },
-    "Change cells in the grid and review the SQL before you save." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "그리드에서 셀을 바꾸고 저장하기 전에 SQL을 검토하세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tablodaki hücreleri değiştirin ve kaydetmeden önce SQL'i inceleyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sửa ô ngay trong bảng và xem lại SQL trước khi lưu."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在表格中修改单元格，保存前先检查 SQL。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在表格中修改儲存格，儲存前先檢查 SQL。"
-          }
-        }
-      }
-    },
-    "Choose File > Open Quickly… and type part of a name to open a table, database, or saved query." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "파일 > 빠르게 열기…를 선택하고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için Dosya > Hızlı Aç… öğesini seçin ve adının bir kısmını yazın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chọn Tệp > Mở nhanh… và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择“文件 > 快速打开…”并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選擇「檔案 > 快速開啟…」並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
-          }
-        }
-      }
-    },
-    "Cloud data warehouse, built in Rust" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rust로 만든 클라우드 데이터 웨어하우스"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rust ile yazılmış bulut veri ambarı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kho dữ liệu đám mây viết bằng Rust"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 Rust 构建的云数据仓库"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "以 Rust 打造的雲端資料倉儲"
-          }
-        }
-      }
-    },
-    "colon" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "콜론"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iki nokta üst üste"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu hai chấm"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "冒号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "冒號"
-          }
-        }
-      }
-    },
-    "comma" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "쉼표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "virgül"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu phẩy"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "逗号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "逗號"
-          }
-        }
-      }
-    },
-    "Compare & Sync With…" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "다음과 비교 및 동기화…"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Şununla Karşılaştır ve Eşitle…"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "So sánh & Đồng bộ với…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "与之比较与同步…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "與之比較與同步…"
-          }
-        }
-      }
-    },
-    "Connect Securely" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "안전하게 연결"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Güvenle Bağlanın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối an toàn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全连接"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安全連線"
-          }
-        }
-      }
-    },
-    "Connect to your own database, or open the sample database to look around." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "직접 사용하는 데이터베이스에 연결하거나, 샘플 데이터베이스를 열어 둘러보세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kendi veritabanınıza bağlanın veya göz atmak için örnek veritabanını açın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối tới cơ sở dữ liệu của bạn, hoặc mở cơ sở dữ liệu mẫu để khám phá."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接到你自己的数据库，或打开示例数据库看看。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連線到你自己的資料庫，或開啟範例資料庫看看。"
-          }
-        }
-      }
-    },
-    "Curly quote (%1$@). SQL needs the straight quote (%2$@)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "둥근 따옴표(%1$@). SQL은 곧은 따옴표(%2$@)만 인식합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kıvrık tırnak (%1$@). SQL düz tırnak (%2$@) bekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dấu nháy cong (%1$@). SQL cần dấu nháy thẳng (%2$@)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "弯引号（%1$@）。SQL 需要直引号（%2$@）。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "彎引號（%1$@）。SQL 需要直引號（%2$@）。"
-          }
-        }
-      }
-    },
-    "Distributed SQL, MySQL-compatible" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL 호환 분산 SQL"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dağıtık SQL, MySQL uyumlu"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL phân tán, tương thích MySQL"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分布式 SQL，兼容 MySQL"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分散式 SQL，相容 MySQL"
-          }
-        }
-      }
-    },
-    "dollar sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "달러 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dolar işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ký hiệu đô la"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "美元符号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "美元符號"
-          }
-        }
-      }
-    },
-    "Edit Data in Place" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "그 자리에서 데이터 편집"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verileri Yerinde Düzenleyin"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chỉnh sửa dữ liệu tại chỗ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "就地编辑数据"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "就地編輯資料"
-          }
-        }
-      }
-    },
-    "equals sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "등호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "eşittir işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu bằng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "等號"
-          }
-        }
-      }
-    },
-    "Every query you run is saved. Choose View > Show Query History to search them and load one back into the editor." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "실행한 모든 쿼리는 저장됩니다. 보기 > 쿼리 기록 보기를 선택하여 검색하고 편집기로 다시 불러오세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için Görünüm > Sorgu Geçmişini Göster öğesini seçin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mọi truy vấn bạn chạy đều được lưu. Chọn Xem > Hiện lịch sử truy vấn để tìm và nạp lại một truy vấn vào trình soạn thảo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你运行的每条查询都会被保存。选择“显示 > 显示查询历史”搜索它们，并将其中一条载回编辑器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你執行的每個查詢都會儲存。選擇「顯示方式 > 顯示查詢記錄」搜尋它們，並將其中一個載回編輯器。"
-          }
-        }
-      }
-    },
-    "Every query you run is saved. Press %@ to search them and load one back into the editor." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "실행한 모든 쿼리는 저장됩니다. %@을(를) 눌러 검색하고 편집기로 다시 불러오세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için %@ tuşlarına basın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mọi truy vấn bạn chạy đều được lưu. Nhấn %@ để tìm và nạp lại một truy vấn vào trình soạn thảo."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你运行的每条查询都会被保存。按 %@ 搜索它们，并将其中一条载回编辑器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你執行的每個查詢都會儲存。按 %@ 搜尋它們，並將其中一個載回編輯器。"
-          }
-        }
-      }
-    },
-    "exclamation mark" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "느낌표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ünlem işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu chấm than"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "感叹号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "驚嘆號"
-          }
-        }
-      }
-    },
-    "Find Past Queries" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지난 쿼리 찾기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geçmiş Sorguları Bulun"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tìm các truy vấn trước đây"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查找过去的查询"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尋找過去的查詢"
-          }
-        }
-      }
-    },
-    "Full-width %1$@ (%2$@). SQL needs the ASCII %1$@ (%3$@)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전각 %1$@(%2$@). SQL은 ASCII %1$@(%3$@)만 인식합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tam genişlikte %1$@ (%2$@). SQL, ASCII %1$@ (%3$@) bekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ký tự toàn độ rộng: %1$@ (%2$@). SQL cần %1$@ ASCII (%3$@)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全角%1$@（%2$@）。SQL 需要 ASCII %1$@（%3$@）。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全形%1$@（%2$@）。SQL 需要 ASCII %1$@（%3$@）。"
-          }
-        }
-      }
-    },
-    "Full-width letters or digits. SQL needs the ASCII %@." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전각 문자 또는 숫자. SQL은 ASCII %@만 인식합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tam genişlikte harf veya rakam. SQL, ASCII %@ bekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chữ hoặc số toàn độ rộng. SQL cần %@ ASCII."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全角字母或数字。SQL 需要 ASCII %@。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全形字母或數字。SQL 需要 ASCII %@。"
-          }
-        }
-      }
-    },
-    "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "전각 세미콜론(U+FF1B). SQL은 ;만 문장 구분자로 인식합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tam genişlikte noktalı virgül (U+FF1B). SQL yalnızca ; karakterini deyim ayırıcı olarak okur."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dấu chấm phẩy toàn độ rộng (U+FF1B). SQL chỉ đọc ; là dấu phân tách câu lệnh."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全角分号（U+FF1B）。SQL 只把 ; 当作语句分隔符。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "全形分號（U+FF1B）。SQL 只把 ; 當作陳述式分隔符號。"
-          }
-        }
-      }
-    },
-    "Getting Started" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "시작하기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başlarken"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bắt đầu"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "入门"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "入門"
-          }
-        }
-      }
-    },
-    "greater-than sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "보다 큼 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "büyüktür işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu lớn hơn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "大于号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "大於號"
-          }
-        }
-      }
-    },
-    "hyphen" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "하이픈"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "kısa çizgi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu gạch nối"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连字符"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "連字號"
-          }
-        }
-      }
-    },
-    "Keep a Table Open" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "테이블 열어 두기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir Tabloyu Açık Tutun"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Giữ bảng luôn mở"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保持表格打开"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保持表格開啟"
-          }
-        }
-      }
-    },
-    "left curly bracket" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여는 중괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sol süslü parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc nhọn mở"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左花括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左大括號"
-          }
-        }
-      }
-    },
-    "left parenthesis" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여는 괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sol parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc đơn mở"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左括號"
-          }
-        }
-      }
-    },
-    "left square bracket" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "여는 대괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sol köşeli parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc vuông mở"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左方括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "左方括號"
-          }
-        }
-      }
-    },
-    "less-than sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "보다 작음 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "küçüktür işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu nhỏ hơn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "小于号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "小於號"
-          }
-        }
-      }
-    },
-    "Many Databases, One App" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "하나의 앱, 다양한 데이터베이스"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tek Uygulamada Birçok Veritabanı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhiều cơ sở dữ liệu, một ứng dụng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一个应用，多种数据库"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "一個 App，多種資料庫"
-          }
-        }
-      }
-    },
-    "Move Group To" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "그룹 이동"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grubu Taşı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di chuyển nhóm đến"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移动分组到"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移動群組至"
-          }
-        }
-      }
-    },
-    "MySQL, PostgreSQL, SQLite, ClickHouse, and Redis are built in. Others install when you choose them." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse, Redis가 기본 포함되어 있습니다. 다른 데이터베이스는 선택할 때 설치됩니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse ve Redis yerleşik gelir. Diğerleri seçtiğinizde yüklenir."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse và Redis có sẵn. Các loại khác được cài khi bạn chọn chúng."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "内置 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他数据库在你选择时安装。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "內建 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他資料庫在你選擇時安裝。"
-          }
-        }
-      }
-    },
-    "New Subgroup…" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "새 하위 그룹…"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni Alt Grup…"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhóm con mới…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建子分组…"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新增子群組…"
-          }
-        }
-      }
-    },
-    "No connections have the selected tags." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택한 태그가 있는 연결이 없습니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seçili etiketlere sahip bağlantı yok."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không có kết nối nào mang các thẻ đã chọn."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有连接带有所选标签。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "沒有連線帶有所選標籤。"
-          }
-        }
-      }
-    },
-    "Non-ASCII space (%@). SQL needs an ASCII space (U+0020)." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ASCII가 아닌 공백(%@). SQL은 ASCII 공백(U+0020)만 인식합니다."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ASCII olmayan boşluk (%@). SQL, ASCII boşluk (U+0020) bekler."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Khoảng trắng không phải ASCII (%@). SQL cần khoảng trắng ASCII (U+0020)."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "非 ASCII 空格（%@）。SQL 需要 ASCII 空格（U+0020）。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "非 ASCII 空格（%@）。SQL 需要 ASCII 空格（U+0020）。"
-          }
-        }
-      }
-    },
-    "number sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "샵 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "diyez işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu thăng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "井号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "井字號"
-          }
-        }
-      }
-    },
-    "Open Any Table by Name" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이름으로 테이블 열기"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Herhangi Bir Tabloyu Adıyla Açın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mở bất kỳ bảng nào theo tên"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按名称打开任意表格"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "依名稱開啟任何表格"
-          }
-        }
-      }
-    },
-    "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "암호는 키체인에 보관됩니다. SSH 터널이나 SSL/TLS로 연결하세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parolalar Anahtar Zinciri'nizde kalır. SSH tüneli üzerinden ya da SSL/TLS ile bağlanın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mật khẩu được giữ trong Chuỗi khóa. Kết nối qua đường hầm SSH hoặc SSL/TLS."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "密码保存在你的钥匙串中。可通过 SSH 隧道或 SSL/TLS 连接。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 通道或 SSL/TLS 連線。"
-          }
-        }
-      }
-    },
-    "percent sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "퍼센트 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "yüzde işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu phần trăm"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "百分号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "百分比符號"
-          }
-        }
-      }
-    },
-    "period" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "마침표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "nokta"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu chấm"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "句点"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "句點"
-          }
-        }
-      }
-    },
-    "plus sign" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "더하기 기호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "artı işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu cộng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "加號"
-          }
-        }
-      }
-    },
-    "Press %@ and type part of a name to open a table, database, or saved query." : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@을(를) 누르고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için %@ tuşlarına basın ve adının bir kısmını yazın."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhấn %@ và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按 %@ 并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "按 %@ 並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
-          }
-        }
-      }
-    },
-    "Query Issues" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "쿼리 문제"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorgu Sorunları"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sự cố truy vấn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查询问题"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查詢問題"
-          }
-        }
-      }
-    },
-    "question mark" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "물음표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "soru işareti"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu chấm hỏi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "问号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "問號"
-          }
-        }
-      }
-    },
-    "quotation mark" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "큰따옴표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "çift tırnak"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc kép"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "双引号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "雙引號"
-          }
-        }
-      }
-    },
-    "Remove Invisible Characters" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "보이지 않는 문자 제거"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Görünmez Karakterleri Kaldır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Xóa ký tự ẩn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除不可见字符"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除不可見字元"
-          }
-        }
-      }
-    },
-    "right curly bracket" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "닫는 중괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sağ süslü parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc nhọn đóng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右花括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右大括號"
-          }
-        }
-      }
-    },
-    "right parenthesis" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "닫는 괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sağ parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc đơn đóng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右括號"
-          }
-        }
-      }
-    },
-    "right square bracket" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "닫는 대괄호"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "sağ köşeli parantez"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngoặc vuông đóng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右方括号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "右方括號"
-          }
-        }
-      }
-    },
-    "Show invisible characters" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "보이지 않는 문자 표시"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Görünmez karakterleri göster"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hiển thị ký tự ẩn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示不可见字符"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "顯示不可見字元"
-          }
-        }
-      }
-    },
-    "slash" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "슬래시"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "eğik çizgi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu gạch chéo"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "斜杠"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "斜線"
-          }
-        }
-      }
-    },
-    "The query contains a NUL character (U+0000) and was not run. Remove it and try again." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "쿼리에 NUL 문자(U+0000)가 있어 실행하지 않았습니다. 제거한 후 다시 시도하세요."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorgu bir NUL karakteri (U+0000) içerdiği için çalıştırılmadı. Karakteri kaldırıp yeniden deneyin."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Truy vấn chứa ký tự NUL (U+0000) nên chưa được chạy. Hãy xóa ký tự này rồi thử lại."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查询包含 NUL 字符 (U+0000)，未执行。请删除后重试。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查詢包含 NUL 字元 (U+0000)，未執行。請刪除後再試一次。"
-          }
-        }
-      }
-    },
-    "tilde" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "물결표"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "tilde"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu ngã"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "波浪号"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "波浪號"
-          }
-        }
-      }
-    },
-    "vertical bar" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "세로 막대"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dikey çizgi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "dấu gạch đứng"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "竖线"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "豎線"
-          }
-        }
-      }
-    },
-    "Write and Run SQL" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL 작성 및 실행"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "SQL Yazın ve Çalıştırın"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Viết và chạy SQL"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编写并运行 SQL"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "撰寫並執行 SQL"
-          }
-        }
-      }
-    },
     "—" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2436,6 +221,7 @@
       }
     },
     ", %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -2717,6 +503,9 @@
         }
       }
     },
+    "'%@' has no primary key, so the row is found by matching every column. Another client may have changed it, or a value in it cannot be compared. Your edit is still here." : {
+
+    },
     "'%@' is a reserved Windows device name" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2793,6 +582,9 @@
 
     },
     "“%@” is still in use" : {
+
+    },
+    "“%@” now holds the current result of its query." : {
 
     },
     "“%@” owns database objects" : {
@@ -4236,10 +2028,19 @@
     "%@ accepts null" : {
 
     },
+    "%@ acts on the whole database. Omit 'table'." : {
+
+    },
     "%@ cancelled" : {
 
     },
+    "%@ cannot add or remove a table's constraints." : {
+
+    },
     "%@ cannot add or remove a table's foreign keys." : {
+
+    },
+    "%@ cannot add or remove a table's indexes." : {
 
     },
     "%@ cannot be compared, because its driver does not expose metadata." : {
@@ -4387,6 +2188,15 @@
     "%@ cannot edit a table's structure." : {
 
     },
+    "%@ cannot have constraints." : {
+
+    },
+    "%@ cannot have indexes." : {
+
+    },
+    "%@ cannot make this change to a table's columns." : {
+
+    },
     "%@ cannot restore a deleted row with its original key." : {
       "localizations" : {
         "ko" : {
@@ -4525,6 +2335,9 @@
           }
         }
       }
+    },
+    "%@ does not accept this column change." : {
+
     },
     "%@ does not report structure metadata that can be compared." : {
       "localizations" : {
@@ -4777,6 +2590,9 @@
           }
         }
       }
+    },
+    "%@ has no column order of its own to change." : {
+
     },
     "%@ is a directory, not a database file." : {
       "localizations" : {
@@ -5206,6 +3022,9 @@
       }
     },
     "%@ names a connection that no longer exists." : {
+
+    },
+    "%@ needs a table. Pass 'table'." : {
 
     },
     "%@ object" : {
@@ -5811,6 +3630,9 @@
           }
         }
       }
+    },
+    "%@ wants to run this." : {
+
     },
     "%@ was not found on this system. Install it with `brew install libpq` and link it." : {
       "extractionState" : "stale",
@@ -6667,6 +4489,9 @@
         }
       }
     },
+    "%1$@ (%2$d)" : {
+
+    },
     "%1$@ (%2$lld of %3$lld still present)" : {
 
     },
@@ -6710,6 +4535,12 @@
           }
         }
       }
+    },
+    "%1$@ %2$@" : {
+
+    },
+    "%1$@ %2$@ “%3$@”" : {
+
     },
     "%1$@ %2$@ is dropped and recreated, so anything depending on it fails until it exists again." : {
       "localizations" : {
@@ -6895,6 +4726,9 @@
     "%1$@ becomes unique on the first %2$lld characters" : {
 
     },
+    "%1$@ between “%2$@” and “%3$@”" : {
+
+    },
     "%1$@ cannot be copied to %2$@. Choose a target that speaks SQL." : {
 
     },
@@ -7045,6 +4879,9 @@
           }
         }
       }
+    },
+    "%1$@ does not apply to a %2$@." : {
+
     },
     "%1$@ failed: %2$@" : {
 
@@ -7204,6 +5041,9 @@
 
     },
     "%1$@ wants to run a query on \"%2$@\"" : {
+
+    },
+    "%1$@ wants to run this on '%2$@'." : {
 
     },
     "%1$@ was not found on this system. %2$@" : {
@@ -7423,6 +5263,9 @@
       }
     },
     "%1$@: %2$@ had no column of that name on the destination." : {
+
+    },
+    "%1$@: only the first %2$lld rows were read, the most this database returns from one query." : {
 
     },
     "%1$@/%2$@ rows" : {
@@ -9235,6 +7078,9 @@
           }
         }
       }
+    },
+    "%d rules" : {
+
     },
     "%d selected" : {
       "extractionState" : "stale",
@@ -13748,6 +11594,9 @@
     "A foreign key needs as many referenced columns as it has columns." : {
 
     },
+    "A foreign table" : {
+
+    },
     "A group cannot be moved inside itself." : {
       "localizations" : {
         "ko" : {
@@ -13859,6 +11708,9 @@
     "A Kubernetes resource is required, such as service/postgres" : {
 
     },
+    "A materialized view" : {
+
+    },
     "A new database named %@ is created first." : {
 
     },
@@ -13963,6 +11815,9 @@
           }
         }
       }
+    },
+    "A partitioned table" : {
+
     },
     "a query" : {
       "localizations" : {
@@ -14205,6 +12060,40 @@
         }
       }
     },
+    "A single click opens each table in the same preview tab. Double-click a table, or press Return, to keep it open." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 번 클릭하면 각 테이블이 같은 미리보기 탭에서 열립니다. 테이블을 이중 클릭하거나 Return 키를 누르면 열린 상태로 유지됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek tıklama her tabloyu aynı önizleme sekmesinde açar. Açık tutmak için tabloya çift tıklayın veya Return tuşuna basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấp một lần sẽ mở từng bảng trong cùng một tab xem trước. Nhấp đúp vào bảng hoặc nhấn Return để giữ nó mở."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单击会在同一个预览标签页中打开每个表格。双击表格或按 Return 键即可保持打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按一下會在同一個預覽標籤頁中開啟每個表格。按兩下表格或按 Return 鍵即可保持開啟。"
+          }
+        }
+      }
+    },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
         "ko" : {
@@ -14376,6 +12265,12 @@
         }
       }
     },
+    "A system table" : {
+
+    },
+    "A table" : {
+
+    },
     "A table named %@ already exists." : {
 
     },
@@ -14515,10 +12410,7 @@
         }
       }
     },
-    "A view has no foreign keys. Edit the tables its query reads." : {
-
-    },
-    "A view's column order comes from its query. Edit the view to change it." : {
+    "A view" : {
 
     },
     "about %@ row" : {
@@ -14629,6 +12521,9 @@
           }
         }
       }
+    },
+    "Accepted values, or null for a true/false flag" : {
+
     },
     "Access" : {
       "localizations" : {
@@ -16748,6 +14643,7 @@
       }
     },
     "Add from Existing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -17138,6 +15034,9 @@
       }
     },
     "Add rows to it" : {
+
+    },
+    "Add Rule" : {
 
     },
     "Add tags" : {
@@ -19471,6 +17370,9 @@
         }
       }
     },
+    "Allow %@?" : {
+
+    },
     "Allow AI Access" : {
       "localizations" : {
         "ko" : {
@@ -20339,6 +18241,41 @@
         }
       }
     },
+    "ampersand" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앰퍼샌드"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ve işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu và"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "和号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "和號"
+          }
+        }
+      }
+    },
     "An enum's labels in declaration order" : {
 
     },
@@ -20640,6 +18577,9 @@
         }
       }
     },
+    "An external table" : {
+
+    },
     "An HTML table. Open in a browser or paste into a page." : {
 
     },
@@ -20790,6 +18730,7 @@
       }
     },
     "ANALYZE (update statistics after vacuum)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -20960,6 +18901,9 @@
           }
         }
       }
+    },
+    "Another app" : {
+
     },
     "Another column is already named %@." : {
 
@@ -21418,6 +19362,41 @@
         }
       }
     },
+    "apostrophe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작은따옴표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kesme işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu nháy đơn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单引号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單引號"
+          }
+        }
+      }
+    },
     "App" : {
       "localizations" : {
         "ko" : {
@@ -21560,9 +19539,6 @@
           }
         }
       }
-    },
-    "Application default credentials not found. Run gcloud auth application-default login." : {
-
     },
     "Applied" : {
       "extractionState" : "stale",
@@ -22306,6 +20282,12 @@
         }
       }
     },
+    "Apply this rule" : {
+
+    },
+    "Apply To" : {
+
+    },
     "Apply to %@" : {
       "localizations" : {
         "ko" : {
@@ -22822,7 +20804,42 @@
         }
       }
     },
+    "Are you sure you want to delete the group \"%@\" and its subgroups? Their connections will be moved to the top level." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" 그룹과 하위 그룹을 삭제하시겠습니까? 그 안의 연결은 최상위 수준으로 이동됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"%@\" grubunu ve alt gruplarını silmek istediğinize emin misiniz? İçlerindeki bağlantılar üst seviyeye taşınacaktır."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bạn có chắc muốn xóa nhóm \"%@\" và các nhóm con của nó? Các kết nối bên trong sẽ được chuyển lên cấp cao nhất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定要删除分组 \"%@\" 及其子分组吗？其中的连接将移至顶层。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確定要刪除群組「%@」及其子群組嗎？其中的連線將移至頂層。"
+          }
+        }
+      }
+    },
     "Are you sure you want to delete the group \"%@\"? Connections in this group will be moved to the top level." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -22926,6 +20943,7 @@
       }
     },
     "Are you sure you want to execute this query?\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -23582,6 +21600,76 @@
     },
     "Assistant" : {
 
+    },
+    "asterisk" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "별표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "yıldız işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu sao"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "星号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "星號"
+          }
+        }
+      }
+    },
+    "at sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "골뱅이표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "et işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ký hiệu a còng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "at 符号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "at 符號"
+          }
+        }
+      }
     },
     "Attach context" : {
       "localizations" : {
@@ -24683,6 +22771,40 @@
         }
       }
     },
+    "Autocomplete from your schema, editor tabs, and a searchable query history." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스키마 기반 자동 완성, 편집기 탭, 검색 가능한 쿼리 기록을 제공합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şemanızdan otomatik tamamlama, düzenleyici sekmeleri ve aranabilir sorgu geçmişi."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tự động hoàn thành theo lược đồ, các tab trình soạn thảo và lịch sử truy vấn có thể tìm kiếm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于架构的自动补全、编辑器标签页和可搜索的查询历史。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依結構描述自動完成、編輯器標籤頁與可搜尋的查詢記錄。"
+          }
+        }
+      }
+    },
     "Automatic" : {
       "localizations" : {
         "ko" : {
@@ -24818,6 +22940,9 @@
           }
         }
       }
+    },
+    "Available once the view holds rows. Refresh it once without this option first." : {
+
     },
     "Average" : {
       "localizations" : {
@@ -25253,6 +23378,41 @@
         }
       }
     },
+    "backslash" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "백슬래시"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ters eğik çizgi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu gạch chéo ngược"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反斜杠"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反斜線"
+          }
+        }
+      }
+    },
     "Backslash  \\" : {
       "localizations" : {
         "ko" : {
@@ -25283,6 +23443,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "反斜線  \\"
+          }
+        }
+      }
+    },
+    "backtick" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "백틱"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ters tırnak"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu nháy ngược"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反引号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "反引號"
           }
         }
       }
@@ -26535,6 +24730,9 @@
         }
       }
     },
+    "Bucket" : {
+
+    },
     "Build the SQL that brings the target in line" : {
       "localizations" : {
         "ko" : {
@@ -27289,9 +25487,6 @@
         }
       }
     },
-    "Can't reach Google's sign-in service: %@" : {
-
-    },
     "Cancel" : {
       "localizations" : {
         "ko" : {
@@ -27841,6 +26036,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法連線到 %@ 上的 Ollama。Ollama 是否正在執行？"
+          }
+        }
+      }
+    },
+    "Cannot create table %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Cannot create table %1$@: %2$@"
           }
         }
       }
@@ -28651,6 +26856,41 @@
         }
       }
     },
+    "caret" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캐럿"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "şapka işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu mũ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脱字符"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入符號"
+          }
+        }
+      }
+    },
     "Cascade" : {
       "localizations" : {
         "ko" : {
@@ -28786,6 +27026,9 @@
           }
         }
       }
+    },
+    "Cell" : {
+
     },
     "Cell Renderer" : {
       "extractionState" : "stale",
@@ -28925,6 +27168,9 @@
         }
       }
     },
+    "Cells Where %@" : {
+
+    },
     "Certificate" : {
       "localizations" : {
         "ko" : {
@@ -29057,6 +27303,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "變更屬性"
+          }
+        }
+      }
+    },
+    "Change cells in the grid and review the SQL before you save." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그리드에서 셀을 바꾸고 저장하기 전에 SQL을 검토하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablodaki hücreleri değiştirin ve kaydetmeden önce SQL'i inceleyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sửa ô ngay trong bảng và xem lại SQL trước khi lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改单元格，保存前先检查 SQL。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在表格中修改儲存格，儲存前先檢查 SQL。"
           }
         }
       }
@@ -29445,6 +27725,7 @@
       }
     },
     "CHANGED" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -30204,6 +28485,9 @@
         }
       }
     },
+    "Check connections:" : {
+
+    },
     "Check constraint must have a name and an expression" : {
 
     },
@@ -30242,6 +28526,7 @@
       }
     },
     "Check mode:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -31494,6 +29779,40 @@
         }
       }
     },
+    "Choose File > Open Quickly… and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일 > 빠르게 열기…를 선택하고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için Dosya > Hızlı Aç… öğesini seçin ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn Tệp > Mở nhanh… và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择“文件 > 快速打开…”并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇「檔案 > 快速開啟…」並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
+          }
+        }
+      }
+    },
     "Choose Folder" : {
       "localizations" : {
         "ko" : {
@@ -32327,6 +30646,9 @@
           }
         }
       }
+    },
+    "Clear Filter" : {
+
     },
     "Clear Filters" : {
       "localizations" : {
@@ -34636,6 +32958,40 @@
         }
       }
     },
+    "Cloud data warehouse, built in Rust" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rust로 만든 클라우드 데이터 웨어하우스"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rust ile yazılmış bulut veri ambarı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kho dữ liệu đám mây viết bằng Rust"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用 Rust 构建的云数据仓库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以 Rust 打造的雲端資料倉儲"
+          }
+        }
+      }
+    },
     "Cloud Native" : {
       "localizations" : {
         "ko" : {
@@ -35636,6 +33992,41 @@
     "collections" : {
 
     },
+    "colon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "콜론"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iki nokta üst üste"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu hai chấm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冒号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "冒號"
+          }
+        }
+      }
+    },
     "Colon  :" : {
       "localizations" : {
         "ko" : {
@@ -35771,6 +34162,9 @@
           }
         }
       }
+    },
+    "Color the whole row, or only the matching cell" : {
+
     },
     "Color: %@" : {
       "localizations" : {
@@ -36787,6 +35181,41 @@
         }
       }
     },
+    "comma" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쉼표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "virgül"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu phẩy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逗号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "逗號"
+          }
+        }
+      }
+    },
     "Comma  ," : {
       "localizations" : {
         "ko" : {
@@ -37064,6 +35493,9 @@
         }
       }
     },
+    "Comment Unavailable" : {
+
+    },
     "Comments" : {
       "localizations" : {
         "ko" : {
@@ -37336,6 +35768,40 @@
         }
       }
     },
+    "Compare & Sync With…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음과 비교 및 동기화…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şununla Karşılaştır ve Eşitle…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "So sánh & Đồng bộ với…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与之比较与同步…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與之比較與同步…"
+          }
+        }
+      }
+    },
     "Compare %@ and write changes to %@." : {
       "localizations" : {
         "en" : {
@@ -37582,6 +36048,7 @@
       }
     },
     "Compare/Sync with…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -38567,6 +37034,40 @@
         }
       }
     },
+    "Connect Securely" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안전하게 연결"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Güvenle Bağlanın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối an toàn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全連線"
+          }
+        }
+      }
+    },
     "Connect Timeout (seconds)" : {
       "localizations" : {
         "ko" : {
@@ -38740,6 +37241,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "請連線到網際網路以驗證你的授權。"
+          }
+        }
+      }
+    },
+    "Connect to your own database, or open the sample database to look around." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 사용하는 데이터베이스에 연결하거나, 샘플 데이터베이스를 열어 둘러보세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi veritabanınıza bağlanın veya göz atmak için örnek veritabanını açın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối tới cơ sở dữ liệu của bạn, hoặc mở cơ sở dữ liệu mẫu để khám phá."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接到你自己的数据库，或打开示例数据库看看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線到你自己的資料庫，或開啟範例資料庫看看。"
           }
         }
       }
@@ -41717,6 +40252,9 @@
         }
       }
     },
+    "Copy DDL" : {
+
+    },
     "Copy Definition" : {
       "localizations" : {
         "ko" : {
@@ -43587,6 +42125,9 @@
         }
       }
     },
+    "Could not fetch the view definition:" : {
+
+    },
     "Could not find %@ data files" : {
       "localizations" : {
         "ko" : {
@@ -44494,6 +43035,12 @@
         }
       }
     },
+    "Couldn't check whether this view can be refreshed concurrently." : {
+
+    },
+    "Couldn't Copy DDL" : {
+
+    },
     "Couldn't publish to the team catalog" : {
       "localizations" : {
         "ko" : {
@@ -44595,6 +43142,9 @@
           }
         }
       }
+    },
+    "Couldn't Refresh Materialized View" : {
+
     },
     "Count all rows" : {
       "localizations" : {
@@ -45179,6 +43729,7 @@
       }
     },
     "Create Connection…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -46016,9 +44567,6 @@
         }
       }
     },
-    "Credentials of type %@ are not supported." : {
-
-    },
     "Critical" : {
       "localizations" : {
         "ko" : {
@@ -46291,6 +44839,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CURDATE()"
+          }
+        }
+      }
+    },
+    "Curly quote (%1$@). SQL needs the straight quote (%2$@)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "둥근 따옴표(%1$@). SQL은 곧은 따옴표(%2$@)만 인식합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kıvrık tırnak (%1$@). SQL düz tırnak (%2$@) bekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dấu nháy cong (%1$@). SQL cần dấu nháy thẳng (%2$@)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "弯引号（%1$@）。SQL 需要直引号（%2$@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "彎引號（%1$@）。SQL 需要直引號（%2$@）。"
           }
         }
       }
@@ -54488,6 +53071,40 @@
         }
       }
     },
+    "Distributed SQL, MySQL-compatible" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 호환 분산 SQL"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dağıtık SQL, MySQL uyumlu"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL phân tán, tương thích MySQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分布式 SQL，兼容 MySQL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分散式 SQL，相容 MySQL"
+          }
+        }
+      }
+    },
     "Distributed SQL, PostgreSQL-compatible" : {
       "localizations" : {
         "ko" : {
@@ -54826,6 +53443,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不等於"
+          }
+        }
+      }
+    },
+    "dollar sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "달러 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dolar işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ký hiệu đô la"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "美元符号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "美元符號"
           }
         }
       }
@@ -57864,6 +56516,12 @@
         }
       }
     },
+    "Edit Comment" : {
+
+    },
+    "Edit Comment…" : {
+
+    },
     "Edit Connection" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -57895,6 +56553,43 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編輯連線"
+          }
+        }
+      }
+    },
+    "Edit Connection…" : {
+
+    },
+    "Edit Data in Place" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 자리에서 데이터 편집"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verileri Yerinde Düzenleyin"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉnh sửa dữ liệu tại chỗ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地编辑数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "就地編輯資料"
           }
         }
       }
@@ -58320,6 +57015,9 @@
         }
       }
     },
+    "Edit the connection and choose its database type." : {
+
+    },
     "Edit Trigger" : {
       "localizations" : {
         "ko" : {
@@ -58592,6 +57290,9 @@
           }
         }
       }
+    },
+    "edited" : {
+
     },
     "Editing" : {
       "localizations" : {
@@ -59461,6 +58162,9 @@
         }
       }
     },
+    "Enable Plugin" : {
+
+    },
     "Enable preview tabs" : {
       "localizations" : {
         "ko" : {
@@ -59494,6 +58198,9 @@
           }
         }
       }
+    },
+    "Enable rule" : {
+
     },
     "Enable SOCKS Proxy" : {
       "extractionState" : "stale",
@@ -60777,6 +59484,41 @@
         }
       }
     },
+    "equals sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "등호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "eşittir işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu bằng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等號"
+          }
+        }
+      }
+    },
     "ER Diagram" : {
       "localizations" : {
         "ko" : {
@@ -61536,6 +60278,15 @@
     "Events" : {
 
     },
+    "Every 5 minutes" : {
+
+    },
+    "Every 15 minutes" : {
+
+    },
+    "Every 30 seconds" : {
+
+    },
     "Every call that reaches a connection asks first." : {
 
     },
@@ -61609,6 +60360,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所有被比較的物件都相同。"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Choose View > Show Query History to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. 보기 > 쿼리 기록 보기를 선택하여 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için Görünüm > Sorgu Geçmişini Göster öğesini seçin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Chọn Xem > Hiện lịch sử truy vấn để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。选择“显示 > 显示查询历史”搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。選擇「顯示方式 > 顯示查詢記錄」搜尋它們，並將其中一個載回編輯器。"
+          }
+        }
+      }
+    },
+    "Every query you run is saved. Press %@ to search them and load one back into the editor." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행한 모든 쿼리는 저장됩니다. %@을(를) 눌러 검색하고 편집기로 다시 불러오세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çalıştırdığınız her sorgu kaydedilir. Aramak ve birini düzenleyiciye geri yüklemek için %@ tuşlarına basın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi truy vấn bạn chạy đều được lưu. Nhấn %@ để tìm và nạp lại một truy vấn vào trình soạn thảo."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你运行的每条查询都会被保存。按 %@ 搜索它们，并将其中一条载回编辑器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你執行的每個查詢都會儲存。按 %@ 搜尋它們，並將其中一個載回編輯器。"
           }
         }
       }
@@ -61960,6 +60779,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支援格式設定的 Excel 試算表。"
+          }
+        }
+      }
+    },
+    "exclamation mark" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "느낌표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ünlem işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu chấm than"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "感叹号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "驚嘆號"
           }
         }
       }
@@ -65533,6 +64387,7 @@
       }
     },
     "EXTENDED" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -67824,6 +66679,7 @@
       }
     },
     "FAST" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -70171,6 +69027,40 @@
         }
       }
     },
+    "Find Past Queries" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지난 쿼리 찾기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geçmiş Sorguları Bulun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tìm các truy vấn trước đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找过去的查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找過去的查詢"
+          }
+        }
+      }
+    },
     "Find Previous" : {
       "localizations" : {
         "ko" : {
@@ -70690,6 +69580,7 @@
       }
     },
     "Focus Border" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -71899,6 +70790,9 @@
     "Forwards a port from a Kubernetes resource with kubectl port-forward." : {
 
     },
+    "Found %1$@ %2$@." : {
+
+    },
     "From %@…" : {
       "localizations" : {
         "ko" : {
@@ -71934,6 +70828,7 @@
       }
     },
     "FULL (rewrites entire table, blocks access)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -72065,6 +70960,111 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完整的 CREATE TRIGGER 陳述式"
+          }
+        }
+      }
+    },
+    "Full-width %1$@ (%2$@). SQL needs the ASCII %1$@ (%3$@)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전각 %1$@(%2$@). SQL은 ASCII %1$@(%3$@)만 인식합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tam genişlikte %1$@ (%2$@). SQL, ASCII %1$@ (%3$@) bekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ký tự toàn độ rộng: %1$@ (%2$@). SQL cần %1$@ ASCII (%3$@)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全角%1$@（%2$@）。SQL 需要 ASCII %1$@（%3$@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全形%1$@（%2$@）。SQL 需要 ASCII %1$@（%3$@）。"
+          }
+        }
+      }
+    },
+    "Full-width letters or digits. SQL needs the ASCII %@." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전각 문자 또는 숫자. SQL은 ASCII %@만 인식합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tam genişlikte harf veya rakam. SQL, ASCII %@ bekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chữ hoặc số toàn độ rộng. SQL cần %@ ASCII."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全角字母或数字。SQL 需要 ASCII %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全形字母或數字。SQL 需要 ASCII %@。"
+          }
+        }
+      }
+    },
+    "Full-width semicolon (U+FF1B). SQL reads only ; as a statement separator." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전각 세미콜론(U+FF1B). SQL은 ;만 문장 구분자로 인식합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tam genişlikte noktalı virgül (U+FF1B). SQL yalnızca ; karakterini deyim ayırıcı olarak okur."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dấu chấm phẩy toàn độ rộng (U+FF1B). SQL chỉ đọc ; là dấu phân tách câu lệnh."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全角分号（U+FF1B）。SQL 只把 ; 当作语句分隔符。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全形分號（U+FF1B）。SQL 只把 ; 當作陳述式分隔符號。"
           }
         }
       }
@@ -72958,6 +71958,40 @@
         }
       }
     },
+    "Getting Started" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작하기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlarken"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bắt đầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入门"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入門"
+          }
+        }
+      }
+    },
     "GitHub Repository" : {
       "localizations" : {
         "ko" : {
@@ -73240,21 +72274,6 @@
     "Google did not return a refresh token. Remove TablePro's access in your Google Account settings, then sign in again." : {
 
     },
-    "Google no longer accepts these credentials. Sign in again, or renew the key or the gcloud login." : {
-
-    },
-    "Google rejected the OAuth client ID or secret." : {
-
-    },
-    "Google rejected the token request (%@)." : {
-
-    },
-    "Google rejected the token request (HTTP %lld)." : {
-
-    },
-    "Google returned a token response that can't be read." : {
-
-    },
     "Google Sign-In Failed" : {
 
     },
@@ -73262,18 +72281,6 @@
 
     },
     "Google Sign-In Required" : {
-
-    },
-    "Google sign-in returned an unexpected response. Try again." : {
-
-    },
-    "Google sign-in timed out. Try again." : {
-
-    },
-    "Google sign-in was cancelled." : {
-
-    },
-    "Google sign-in was denied: %@" : {
 
     },
     "Got Slower" : {
@@ -73681,6 +72688,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "大於"
+          }
+        }
+      }
+    },
+    "greater-than sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보다 큼 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "büyüktür işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu lớn hơn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大于号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大於號"
           }
         }
       }
@@ -74826,6 +73868,12 @@
         }
       }
     },
+    "Highlight" : {
+
+    },
+    "Highlight color" : {
+
+    },
     "Highlight current line" : {
       "localizations" : {
         "ko" : {
@@ -74893,6 +73941,15 @@
           }
         }
       }
+    },
+    "Highlight Rules" : {
+
+    },
+    "Highlight Rules…" : {
+
+    },
+    "Highlight Values…" : {
+
     },
     "History" : {
       "localizations" : {
@@ -75686,6 +74743,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "供人閱讀的標籤"
+          }
+        }
+      }
+    },
+    "hyphen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하이픈"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "kısa çizgi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu gạch nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连字符"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連字號"
           }
         }
       }
@@ -80156,6 +79248,9 @@
     "Install it with `brew install libpq` and link it." : {
 
     },
+    "Install it with `brew install libpq`." : {
+
+    },
     "Install it with `brew install mongodb-database-tools`." : {
 
     },
@@ -80163,6 +79258,12 @@
 
     },
     "Install it with `brew install sqlite` and link it." : {
+
+    },
+    "Install one from PostgreSQL %@ or earlier." : {
+
+    },
+    "Install one with `brew install postgresql@%@`." : {
 
     },
     "Install Plugin" : {
@@ -82368,6 +81469,40 @@
         }
       }
     },
+    "Keep a Table Open" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블 열어 두기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir Tabloyu Açık Tutun"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ bảng luôn mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保持表格開啟"
+          }
+        }
+      }
+    },
     "Keep Backing Up" : {
       "localizations" : {
         "ko" : {
@@ -83187,6 +82322,9 @@
           }
         }
       }
+    },
+    "Key to send in 'options'" : {
+
     },
     "Key-Value" : {
       "localizations" : {
@@ -84674,6 +83812,9 @@
     "Leave blank to find it on your PATH. Apps launched from the Dock do not inherit your shell's PATH, so a tool installed somewhere unusual needs its full path here." : {
 
     },
+    "Leave the comment empty to remove it." : {
+
+    },
     "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one." : {
       "localizations" : {
         "ko" : {
@@ -84708,8 +83849,113 @@
         }
       }
     },
+    "left curly bracket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여는 중괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sol süslü parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc nhọn mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左花括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左大括號"
+          }
+        }
+      }
+    },
     "Left out" : {
 
+    },
+    "left parenthesis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여는 괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sol parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc đơn mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左括號"
+          }
+        }
+      }
+    },
+    "left square bracket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여는 대괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sol köşeli parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc vuông mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左方括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "左方括號"
+          }
+        }
+      }
     },
     "Legacy UUID Encoding" : {
       "localizations" : {
@@ -84879,6 +84125,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "小於"
+          }
+        }
+      }
+    },
+    "less-than sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보다 작음 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "küçüktür işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu nhỏ hơn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小于号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小於號"
           }
         }
       }
@@ -86072,6 +85353,7 @@
       }
     },
     "Linked" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -89928,6 +89210,40 @@
         }
       }
     },
+    "Many Databases, One App" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하나의 앱, 다양한 데이터베이스"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tek Uygulamada Birçok Veritabanı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhiều cơ sở dữ liệu, một ứng dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个应用，多种数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個 App，多種資料庫"
+          }
+        }
+      }
+    },
     "Markdown" : {
       "localizations" : {
         "ko" : {
@@ -89963,6 +89279,9 @@
       }
     },
     "Markdown tables. Paste into a README, an issue or a wiki." : {
+
+    },
+    "marked for deletion" : {
 
     },
     "Massive" : {
@@ -90585,6 +89904,12 @@
           }
         }
       }
+    },
+    "Materialized View Refreshed" : {
+
+    },
+    "Materialized View: %@" : {
+
     },
     "Materialized Views" : {
       "localizations" : {
@@ -91826,6 +91151,7 @@
       }
     },
     "MEDIUM" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -93588,7 +92914,42 @@
         }
       }
     },
+    "Move Group To" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 이동"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grubu Taşı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển nhóm đến"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动分组到"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動群組至"
+          }
+        }
+      }
+    },
     "Move Group to…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -93689,6 +93050,12 @@
           }
         }
       }
+    },
+    "Move Rule Down" : {
+
+    },
+    "Move Rule Up" : {
+
     },
     "Move Tab Left" : {
       "localizations" : {
@@ -94657,6 +94024,40 @@
         }
       }
     },
+    "MySQL, PostgreSQL, SQLite, ClickHouse, and Redis are built in. Others install when you choose them." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse, Redis가 기본 포함되어 있습니다. 다른 데이터베이스는 선택할 때 설치됩니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse ve Redis yerleşik gelir. Diğerleri seçtiğinizde yüklenir."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQLite, ClickHouse và Redis có sẵn. Các loại khác được cài khi bạn chọn chúng."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他数据库在你选择时安装。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "內建 MySQL、PostgreSQL、SQLite、ClickHouse 和 Redis。其他資料庫在你選擇時安裝。"
+          }
+        }
+      }
+    },
     "name" : {
       "localizations" : {
         "ko" : {
@@ -95147,6 +94548,9 @@
           }
         }
       }
+    },
+    "Needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
+
     },
     "Negotiating encryption" : {
       "localizations" : {
@@ -96323,6 +95727,9 @@
         }
       }
     },
+    "new row" : {
+
+    },
     "New Subfolder" : {
       "localizations" : {
         "ko" : {
@@ -96358,6 +95765,7 @@
       }
     },
     "New Subgroup" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -96387,6 +95795,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增子群組"
+          }
+        }
+      }
+    },
+    "New Subgroup…" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 하위 그룹…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni Alt Grup…"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm con mới…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子分组…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增子群組…"
           }
         }
       }
@@ -97857,6 +97299,40 @@
         }
       }
     },
+    "No connections have the selected tags." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택한 태그가 있는 연결이 없습니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seçili etiketlere sahip bağlantı yok."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có kết nối nào mang các thẻ đã chọn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有连接带有所选标签。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有連線帶有所選標籤。"
+          }
+        }
+      }
+    },
     "No Connections Imported" : {
       "localizations" : {
         "ko" : {
@@ -98405,6 +97881,7 @@
       }
     },
     "No Datasets" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -98892,6 +98369,12 @@
           }
         }
       }
+    },
+    "No highlight rules" : {
+
+    },
+    "No Highlight Rules" : {
+
     },
     "No iCloud" : {
       "localizations" : {
@@ -100005,6 +99488,9 @@
           }
         }
       }
+    },
+    "No object named %@ in this schema." : {
+
     },
     "No Object Selected" : {
       "localizations" : {
@@ -102638,6 +102124,41 @@
         }
       }
     },
+    "Non-ASCII space (%@). SQL needs an ASCII space (U+0020)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ASCII가 아닌 공백(%@). SQL은 ASCII 공백(U+0020)만 인식합니다."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ASCII olmayan boşluk (%@). SQL, ASCII boşluk (U+0020) bekler."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khoảng trắng không phải ASCII (%@). SQL cần khoảng trắng ASCII (U+0020)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非 ASCII 空格（%@）。SQL 需要 ASCII 空格（U+0020）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非 ASCII 空格（%@）。SQL 需要 ASCII 空格（U+0020）。"
+          }
+        }
+      }
+    },
     "Non-UTF-8 file (%@). Saving may change the encoding." : {
       "localizations" : {
         "ko" : {
@@ -103056,6 +102577,9 @@
         }
       }
     },
+    "Not Connected" : {
+
+    },
     "Not connected to %@" : {
       "localizations" : {
         "ko" : {
@@ -103368,6 +102892,9 @@
           }
         }
       }
+    },
+    "Not in this result" : {
+
     },
     "Not installed" : {
       "localizations" : {
@@ -105034,6 +104561,41 @@
         }
       }
     },
+    "number sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샵 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "diyez işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu thăng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "井号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "井字號"
+          }
+        }
+      }
+    },
     "Numeric tolerance" : {
       "localizations" : {
         "ko" : {
@@ -105208,6 +104770,9 @@
       }
     },
     "Object copies" : {
+
+    },
+    "Object kinds this operation may name, as list_tables reports them. Empty when it acts on the whole database only." : {
 
     },
     "Object Type" : {
@@ -106179,6 +105744,9 @@
         }
       }
     },
+    "Only the first %lld rows were exported, the most this database returns from one query." : {
+
+    },
     "Only use the bootstrap address" : {
       "localizations" : {
         "ko" : {
@@ -106212,6 +105780,9 @@
           }
         }
       }
+    },
+    "Only when I use the connection" : {
+
     },
     "Open" : {
       "localizations" : {
@@ -106689,6 +106260,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟 AI 設定以變更工具呼叫上限。"
+          }
+        }
+      }
+    },
+    "Open Any Table by Name" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름으로 테이블 열기"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Herhangi Bir Tabloyu Adıyla Açın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở bất kỳ bảng nào theo tên"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按名称打开任意表格"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依名稱開啟任何表格"
           }
         }
       }
@@ -108318,6 +107923,9 @@
         }
       }
     },
+    "Open-source vector database" : {
+
+    },
     "Opening the connection" : {
       "localizations" : {
         "ko" : {
@@ -108353,6 +107961,7 @@
       }
     },
     "Opening the tunnel" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -108387,6 +107996,7 @@
       }
     },
     "Opening the tunnel through %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -108666,7 +108276,11 @@
         }
       }
     },
+    "Operation name to pass to run_maintenance" : {
+
+    },
     "Operation names, sorted" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -108767,6 +108381,9 @@
           }
         }
       }
+    },
+    "Operations, sorted by name" : {
+
     },
     "Operator" : {
       "localizations" : {
@@ -109285,6 +108902,9 @@
         }
       }
     },
+    "Options this operation reads, by key" : {
+
+    },
     "OR" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -109491,6 +109111,9 @@
           }
         }
       }
+    },
+    "Other sessions keep reading the view. Slower, because the new rows are compared with the old ones." : {
+
     },
     "Other…" : {
       "localizations" : {
@@ -111594,6 +111217,40 @@
         }
       }
     },
+    "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 키체인에 보관됩니다. SSH 터널이나 SSL/TLS로 연결하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parolalar Anahtar Zinciri'nizde kalır. SSH tüneli üzerinden ya da SSL/TLS ile bağlanın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu được giữ trong Chuỗi khóa. Kết nối qua đường hầm SSH hoặc SSL/TLS."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码保存在你的钥匙串中。可通过 SSH 隧道或 SSL/TLS 连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 通道或 SSL/TLS 連線。"
+          }
+        }
+      }
+    },
     "Passwords will be encrypted with the passphrase you provide." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -111874,9 +111531,6 @@
           }
         }
       }
-    },
-    "Paste the whole service account JSON key or its file path, not the private key alone." : {
-
     },
     "Paste your CREATE TABLE statement below:" : {
       "extractionState" : "stale",
@@ -112224,6 +111878,76 @@
     },
     "per second" : {
 
+    },
+    "percent sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "퍼센트 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "yüzde işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu phần trăm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "百分号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "百分比符號"
+          }
+        }
+      }
+    },
+    "period" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마침표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nokta"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu chấm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "句点"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "句點"
+          }
+        }
+      }
     },
     "Period" : {
       "localizations" : {
@@ -113879,6 +113603,41 @@
         }
       }
     },
+    "plus sign" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "더하기 기호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "artı işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu cộng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加號"
+          }
+        }
+      }
+    },
     "Point at the socket file itself, not the directory holding it." : {
       "localizations" : {
         "ko" : {
@@ -114014,6 +113773,12 @@
           }
         }
       }
+    },
+    "PostgreSQL %1$@ needs %2$@ %3$@ or later." : {
+
+    },
+    "PostgreSQL %1$@ needs %2$@ %3$@ to %4$@." : {
+
     },
     "PostgreSQL custom archive" : {
 
@@ -114779,6 +114544,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "預設集名稱"
+          }
+        }
+      }
+    },
+    "Press %@ and type part of a name to open a table, database, or saved query." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 누르고 이름의 일부를 입력하여 테이블, 데이터베이스 또는 저장된 쿼리를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir tabloyu, veritabanını veya kayıtlı sorguyu açmak için %@ tuşlarına basın ve adının bir kısmını yazın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấn %@ và gõ một phần tên để mở bảng, cơ sở dữ liệu hoặc truy vấn đã lưu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 并输入名称的一部分，即可打开表格、数据库或已保存的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按 %@ 並輸入名稱的一部分，即可開啟表格、資料庫或已儲存的查詢。"
           }
         }
       }
@@ -118703,6 +118502,41 @@
         }
       }
     },
+    "Query Issues" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리 문제"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorgu Sorunları"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sự cố truy vấn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询问题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢問題"
+          }
+        }
+      }
+    },
     "Query parameters (:name syntax)" : {
       "localizations" : {
         "ko" : {
@@ -119270,7 +119104,43 @@
         }
       }
     },
+    "question mark" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물음표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "soru işareti"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu chấm hỏi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "問號"
+          }
+        }
+      }
+    },
     "QUICK" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -119611,6 +119481,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "結束會停止對 %@ 的執行。已經執行的陳述式仍保持已套用。"
+          }
+        }
+      }
+    },
+    "quotation mark" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "큰따옴표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "çift tırnak"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc kép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "双引号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "雙引號"
           }
         }
       }
@@ -120918,6 +120823,9 @@
         }
       }
     },
+    "Read-only SQL over Iceberg tables in R2" : {
+
+    },
     "Read-Only. Choose a different connection to write changes to." : {
       "localizations" : {
         "ko" : {
@@ -121730,6 +121638,9 @@
         }
       }
     },
+    "Reconnect to try again." : {
+
+    },
     "Reconnecting failed after %d attempts." : {
       "localizations" : {
         "ko" : {
@@ -122491,6 +122402,9 @@
         }
       }
     },
+    "Refresh concurrently" : {
+
+    },
     "Refresh data" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -122602,6 +122516,12 @@
         }
       }
     },
+    "Refresh Materialized View" : {
+
+    },
+    "Refresh Materialized View…" : {
+
+    },
     "Refresh Now" : {
       "localizations" : {
         "ko" : {
@@ -122669,6 +122589,9 @@
           }
         }
       }
+    },
+    "Refresh the materialized view “%@”?" : {
+
     },
     "Refresh the table to see what was written. Saving again would write those rows a second time." : {
       "localizations" : {
@@ -123782,6 +123705,9 @@
         }
       }
     },
+    "Remove Comment" : {
+
+    },
     "Remove Element" : {
       "comment" : "A button that removes an element from an array.",
       "isCommentAutoGenerated" : true,
@@ -124194,6 +124120,9 @@
         }
       }
     },
+    "Remove Highlight" : {
+
+    },
     "Remove Host" : {
       "comment" : "Label for a button that removes the selected host from a list.",
       "isCommentAutoGenerated" : true,
@@ -124294,6 +124223,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "移除索引"
+          }
+        }
+      }
+    },
+    "Remove Invisible Characters" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보이지 않는 문자 제거"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Görünmez Karakterleri Kaldır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa ký tự ẩn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除不可见字符"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除不可見字元"
           }
         }
       }
@@ -124504,6 +124468,9 @@
         }
       }
     },
+    "Remove Rule" : {
+
+    },
     "Remove tag %@" : {
       "comment" : "A label for a button that removes a tag from a list of selected tags. The argument is the name of the tag to be removed.",
       "isCommentAutoGenerated" : true,
@@ -124573,6 +124540,9 @@
           }
         }
       }
+    },
+    "Remove this rule" : {
+
     },
     "Removed" : {
       "localizations" : {
@@ -128116,6 +128086,9 @@
         }
       }
     },
+    "Review this before it runs." : {
+
+    },
     "Revoke" : {
       "localizations" : {
         "ko" : {
@@ -128285,6 +128258,114 @@
           }
         }
       }
+    },
+    "right curly bracket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "닫는 중괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sağ süslü parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc nhọn đóng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右花括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右大括號"
+          }
+        }
+      }
+    },
+    "right parenthesis" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "닫는 괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sağ parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc đơn đóng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右括號"
+          }
+        }
+      }
+    },
+    "right square bracket" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "닫는 대괄호"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sağ köşeli parantez"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngoặc vuông đóng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右方括号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右方括號"
+          }
+        }
+      }
+    },
+    "Right-click a cell and choose Highlight to color rows by value." : {
+
     },
     "Right-click to show all %@" : {
       "extractionState" : "stale",
@@ -128822,6 +128903,36 @@
         }
       }
     },
+    "Row %d, column %d: %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$d, column %2$d: %3$@, %4$@"
+          }
+        }
+      }
+    },
+    "Row %d, column %d: %@, %@, highlighted where %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$d, column %2$d: %3$@, %4$@, highlighted where %5$@"
+          }
+        }
+      }
+    },
+    "Row %d, column %d: %@, highlighted where %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Row %1$d, column %2$d: %3$@, highlighted where %4$@"
+          }
+        }
+      }
+    },
     "Row %lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -129139,6 +129250,9 @@
           }
         }
       }
+    },
+    "Row fields appear once the connection is up" : {
+
     },
     "Row height:" : {
       "localizations" : {
@@ -129940,6 +130054,9 @@
         }
       }
     },
+    "Rows Where %@" : {
+
+    },
     "Rows, each an array aligned with columns" : {
       "localizations" : {
         "ko" : {
@@ -129973,6 +130090,15 @@
           }
         }
       }
+    },
+    "Rule column" : {
+
+    },
+    "Rule operator" : {
+
+    },
+    "Rule value" : {
+
     },
     "Rules" : {
       "extractionState" : "stale",
@@ -130008,6 +130134,12 @@
           }
         }
       }
+    },
+    "Rules are checked in order. The first match sets the color." : {
+
+    },
+    "Rules for this query result are not saved." : {
+
     },
     "Run" : {
       "localizations" : {
@@ -130767,6 +130899,7 @@
       }
     },
     "Running the pre-connect script" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -130838,6 +130971,9 @@
 
     },
     "Runs cloudflared against a Cloudflare Access application." : {
+
+    },
+    "Runs on '%@'." : {
 
     },
     "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations." : {
@@ -134466,6 +134602,7 @@
       }
     },
     "Search for connection…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -135123,6 +135260,9 @@
           }
         }
       }
+    },
+    "Second rule value" : {
+
     },
     "Second value is required for BETWEEN" : {
       "localizations" : {
@@ -139736,6 +139876,41 @@
         }
       }
     },
+    "Show invisible characters" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보이지 않는 문자 표시"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Görünmez karakterleri göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiển thị ký tự ẩn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示不可见字符"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示不可見字元"
+          }
+        }
+      }
+    },
     "Show line numbers" : {
       "localizations" : {
         "ko" : {
@@ -141642,9 +141817,6 @@
         }
       }
     },
-    "Sign in with your Google account to use this connection." : {
-
-    },
     "Sign Out" : {
       "localizations" : {
         "ko" : {
@@ -142126,9 +142298,6 @@
           }
         }
       }
-    },
-    "Signing the service account token failed." : {
-
     },
     "Signs in to Cloudflare Access once and caches the token, so connecting doesn't open a browser." : {
       "localizations" : {
@@ -142642,6 +142811,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此操作會跳過外鍵約束檢查"
+          }
+        }
+      }
+    },
+    "slash" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "슬래시"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "eğik çizgi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu gạch chéo"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "斜杠"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "斜線"
           }
         }
       }
@@ -152981,6 +153185,9 @@
         }
       }
     },
+    "TablePro doesn't recognize the database type “%@”." : {
+
+    },
     "TablePro doesn't support “%@” connections" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -153289,6 +153496,9 @@
       }
     },
     "TablePro reads this file with a driver it downloads from the plugin registry." : {
+
+    },
+    "TablePro runs a small query on each open connection so it can notice a dropped one and reconnect before you hit it. Only when I use the connection stops that background traffic, which is what a database that sleeps when idle, or bills per query, needs; TablePro then checks the connection the first time you use it after a pause." : {
 
     },
     "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
@@ -155672,6 +155882,9 @@
         }
       }
     },
+    "The %@ plugin could not be loaded." : {
+
+    },
     "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?" : {
       "localizations" : {
         "ko" : {
@@ -155739,6 +155952,12 @@
           }
         }
       }
+    },
+    "The %@ plugin is turned off." : {
+
+    },
+    "The %1$@ plugin could not be installed: %2$@" : {
+
     },
     "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value." : {
       "localizations" : {
@@ -155845,6 +156064,9 @@
     "the Agent Socket setting" : {
 
     },
+    "The AI assistant" : {
+
+    },
     "The API key will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -155912,6 +156134,9 @@
           }
         }
       }
+    },
+    "The assistant answers once the connection is up" : {
+
     },
     "The authenticity of host '%@' can't be established.\n\n%@ key fingerprint is:\n%@\n\nAre you sure you want to continue connecting?" : {
       "localizations" : {
@@ -156693,15 +156918,6 @@
         }
       }
     },
-    "The credentials file can't be read." : {
-
-    },
-    "The credentials file has no %@ field." : {
-
-    },
-    "The credentials point at %@, which is not a Google endpoint." : {
-
-    },
     "The Cursor CLI is not installed." : {
       "localizations" : {
         "ko" : {
@@ -156803,6 +157019,9 @@
           }
         }
       }
+    },
+    "The database is a copy of a file on the SSH server, and changes are never written back, so the connection is always Read-Only." : {
+
     },
     "The database server enforced this, not TablePro's Safe Mode. You are most likely connected to a read replica, or the server sets new transactions to read-only. Connect to the primary server to write.\n\nServer response: %@" : {
       "localizations" : {
@@ -158751,6 +158970,41 @@
         }
       }
     },
+    "The query contains a NUL character (U+0000) and was not run. Remove it and try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리에 NUL 문자(U+0000)가 있어 실행하지 않았습니다. 제거한 후 다시 시도하세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorgu bir NUL karakteri (U+0000) içerdiği için çalıştırılmadı. Karakteri kaldırıp yeniden deneyin."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn chứa ký tự NUL (U+0000) nên chưa được chạy. Hãy xóa ký tự này rồi thử lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询包含 NUL 字符 (U+0000)，未执行。请删除后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢包含 NUL 字元 (U+0000)，未執行。請刪除後再試一次。"
+          }
+        }
+      }
+    },
     "The query did not finish within the configured timeout, so the connection was reset. Run the query again." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -159367,6 +159621,9 @@
         }
       }
     },
+    "The server did not answer the %@ panel." : {
+
+    },
     "The server figure is the engine's own report, so it excludes network time." : {
 
     },
@@ -159481,12 +159738,6 @@
 
     },
     "The server wrote %1$@ to %2$@." : {
-
-    },
-    "The service account key is not valid JSON." : {
-
-    },
-    "The service account private key can't be read." : {
 
     },
     "The session forwards to this connection's host and port from the target instance, so the target is the bastion rather than the database." : {
@@ -160894,6 +161145,9 @@
         }
       }
     },
+    "The view's query runs again and replaces its stored rows. A plain refresh stops other sessions from reading the view until it finishes." : {
+
+    },
     "Theme" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -161347,6 +161601,7 @@
       }
     },
     "This %1$@ has no %2$@ yet." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -161597,6 +161852,9 @@
           }
         }
       }
+    },
+    "This connection has no %@ yet." : {
+
     },
     "This connection has no tunnel command to run." : {
 
@@ -161927,6 +162185,12 @@
         }
       }
     },
+    "This database cannot run this command on this object" : {
+
+    },
+    "This database cannot skip rows, so offset must be 0. Narrow the rows with filters or a sort instead." : {
+
+    },
     "This database did not return a query plan for the statement." : {
       "comment" : "Text displayed in a description when the database did not return a query plan for the statement.",
       "isCommentAutoGenerated" : true,
@@ -162046,6 +162310,9 @@
       }
     },
     "This database keeps names beginning with %@ for itself." : {
+
+    },
+    "This database only runs read queries, so the connection is always Read-Only." : {
 
     },
     "This database reports no objects." : {
@@ -163804,6 +164071,9 @@
         }
       }
     },
+    "This may permanently modify or delete data and cannot be undone." : {
+
+    },
     "This Month" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -164257,6 +164527,7 @@
       }
     },
     "This project has no datasets yet." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -164361,6 +164632,7 @@
       }
     },
     "This query may permanently modify or delete data and cannot be undone.\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -164428,6 +164700,9 @@
           }
         }
       }
+    },
+    "This result has no column named %@" : {
+
     },
     "This row's key cannot be matched, so it cannot be checked before writing." : {
       "localizations" : {
@@ -165098,6 +165373,9 @@
         }
       }
     },
+    "This view can't be refreshed concurrently." : {
+
+    },
     "This Week" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -165593,6 +165871,41 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "等級："
+          }
+        }
+      }
+    },
+    "tilde" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물결표"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tilde"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu ngã"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "波浪号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "波浪號"
           }
         }
       }
@@ -169091,6 +169404,9 @@
         }
       }
     },
+    "Try again, or install the plugin from Settings > Plugins." : {
+
+    },
     "Tunnel Command" : {
 
     },
@@ -169229,6 +169545,9 @@
           }
         }
       }
+    },
+    "Turn the plugin on to connect." : {
+
     },
     "Two-Factor Authentication" : {
       "localizations" : {
@@ -171507,6 +171826,9 @@
         }
       }
     },
+    "Update or reinstall the plugin in Settings > Plugins." : {
+
+    },
     "Update Plugin" : {
       "localizations" : {
         "ko" : {
@@ -173398,6 +173720,9 @@
         }
       }
     },
+    "UTF-8 via Latin 1" : {
+
+    },
     "UUID" : {
       "localizations" : {
         "ko" : {
@@ -174159,6 +174484,9 @@
         }
       }
     },
+    "Value used when omitted" : {
+
+    },
     "Values from %d loaded rows" : {
       "localizations" : {
         "ko" : {
@@ -174262,6 +174590,7 @@
       }
     },
     "VERBOSE (print progress)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -174782,6 +175111,41 @@
         }
       }
     },
+    "vertical bar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세로 막대"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dikey çizgi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dấu gạch đứng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "竖线"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "豎線"
+          }
+        }
+      }
+    },
     "via %@" : {
       "localizations" : {
         "ko" : {
@@ -175193,7 +175557,6 @@
       }
     },
     "View: %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -175301,6 +175664,12 @@
         }
       }
     },
+    "Waiting for %@" : {
+
+    },
+    "Waiting for the tunnel" : {
+
+    },
     "Waiting for your password" : {
       "localizations" : {
         "ko" : {
@@ -175334,6 +175703,12 @@
           }
         }
       }
+    },
+    "Waiting for your pre-connect script" : {
+
+    },
+    "Waiting for your startup commands" : {
+
     },
     "Warehouse" : {
       "localizations" : {
@@ -175888,6 +176263,9 @@
         }
       }
     },
+    "What the option does" : {
+
+    },
     "What to Compare" : {
       "localizations" : {
         "ko" : {
@@ -176057,6 +176435,9 @@
           }
         }
       }
+    },
+    "What's New" : {
+
     },
     "When enabled, clicking a new table replaces the current clean table tab instead of opening a new tab" : {
       "extractionState" : "stale",
@@ -176918,6 +177299,9 @@
         }
       }
     },
+    "Whether the statement names an object, the database, or either" : {
+
+    },
     "Whether the tab is selected in its window" : {
       "localizations" : {
         "ko" : {
@@ -177225,6 +177609,15 @@
       }
     },
     "Whole database" : {
+
+    },
+    "Why the metrics panel could not be read" : {
+
+    },
+    "Why the sessions panel could not be read" : {
+
+    },
+    "Why the slow queries panel could not be read" : {
 
     },
     "Wide-Column" : {
@@ -177918,6 +178311,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用所指定資料表的真實欄位，寫出一個回答該問題的查詢"
+          }
+        }
+      }
+    },
+    "Write and Run SQL" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL 작성 및 실행"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL Yazın ve Çalıştırın"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viết và chạy SQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编写并运行 SQL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撰寫並執行 SQL"
           }
         }
       }
@@ -178729,6 +179156,9 @@
           }
         }
       }
+    },
+    "Your organization requires Safe Mode to be at least %@ on every connection." : {
+
     },
     "Your prompts, schema, and query text reach Anthropic under your consumer plan and its privacy settings, not the API's commercial terms." : {
       "localizations" : {
