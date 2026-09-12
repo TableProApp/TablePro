@@ -11,6 +11,9 @@ import Foundation
 /// a property of the target: `orders.user_id` and `comments.user_id` both want `users.name`, and
 /// setting it once for `users` is what a user means by remembering it. Device-local, so this needs
 /// no CloudKit record type.
+///
+/// Three states, not two: a table nobody has chosen for, one the reader has chosen **None** for,
+/// and one with a named column. `ForeignKeyLabelChoice` owns the encoding.
 @MainActor
 internal final class ForeignKeyLabelColumnStore: TableScopedSettingsStore {
     static let shared = ForeignKeyLabelColumnStore()
@@ -23,20 +26,14 @@ internal final class ForeignKeyLabelColumnStore: TableScopedSettingsStore {
         store = defaults
     }
 
-    func labelColumn(for scope: TableScope) -> String? {
-        guard let data = store.dataValue(forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name) else {
-            return nil
-        }
-        guard let name = String(bytes: data, encoding: .utf8), !name.isEmpty else { return nil }
-        return name
+    func labelChoice(for scope: TableScope) -> ForeignKeyLabelChoice {
+        ForeignKeyLabelChoice(
+            storedData: store.dataValue(forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
+        )
     }
 
-    func setLabelColumn(_ name: String?, for scope: TableScope) {
-        guard let name, !name.isEmpty else {
-            store.setDataValue(nil, forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
-            return
-        }
-        store.setDataValue(Data(name.utf8), forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
+    func setLabelChoice(_ choice: ForeignKeyLabelChoice, for scope: TableScope) {
+        store.setDataValue(choice.storedData, forKey: PreferenceKeys.foreignKeyLabelColumn(scope).name)
     }
 
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
