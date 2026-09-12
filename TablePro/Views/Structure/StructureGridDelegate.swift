@@ -757,9 +757,22 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
     }
 
+    /// The row names its target in whatever the engine's catalog calls a schema, which on an engine
+    /// with no schema layer is a database. Resolving it against the tab's own scope is what keeps
+    /// the tab this opens identical to the one the sidebar opens for the same table.
     private func handleNavigateToFK(_ row: Int) {
         guard row < structureChangeManager.workingForeignKeys.count else { return }
+        guard let coordinator else { return }
         let fk = structureChangeManager.workingForeignKeys[row]
-        coordinator?.openTableTab(fk.referencedTable, schema: fk.referencedSchema)
+        guard let origin = coordinator.selectedTabScope else {
+            coordinator.openTableTab(fk.referencedTable, schema: fk.referencedSchema)
+            return
+        }
+        let target = ForeignKeyTargetScope.resolve(
+            origin: origin, referencedSchema: fk.referencedSchema, databaseType: connection.type
+        )
+        coordinator.openTableTab(
+            fk.referencedTable, schema: target.schema, database: target.database
+        )
     }
 }

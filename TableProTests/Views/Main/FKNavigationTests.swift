@@ -921,4 +921,134 @@ struct FKNavigationTests {
         let cachedAfter = coordinator.queryExecutionCoordinator.isMetadataCached(tabId: tabId, tableName: "orders")
         #expect(cachedAfter)
     }
+
+    // MARK: - The referenced namespace
+
+    /// MySQL reports `REFERENCED_TABLE_SCHEMA`, which names the referenced DATABASE, so carrying it
+    /// into `schemaName` gave the table a second identity: its own filters, column layout, highlight
+    /// rules and Display As, a title reading `db_a.users`, and no tab for the sidebar to reuse.
+    @Test("A schema-less engine keeps the referenced database out of the tab's schema")
+    @MainActor
+    func schemaLessReferenceLeavesSchemaEmpty() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .mysql)
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(
+            referencedTable: "users", referencedColumn: "id", referencedSchema: "db_a"
+        )
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        let context = try #require(tabManager.selectedTab?.tableContext)
+        #expect(context.tableName == "users")
+        #expect(context.schemaName == nil)
+        #expect(context.databaseName == "db_a")
+    }
+
+    @Test("A schema-less engine follows a reference into another database")
+    @MainActor
+    func schemaLessReferenceCrossesDatabases() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .mysql)
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(
+            referencedTable: "tenants", referencedColumn: "id", referencedSchema: "billing"
+        )
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        let context = try #require(tabManager.selectedTab?.tableContext)
+        #expect(context.tableName == "tenants")
+        #expect(context.databaseName == "billing")
+        #expect(context.schemaName == nil)
+    }
+
+    @Test("An engine with schemas still carries the referenced schema")
+    @MainActor
+    func schemaEngineKeepsTheReferencedSchema() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .postgresql)
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName,
+            schemaName: "public"
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(
+            referencedTable: "users", referencedColumn: "id", referencedSchema: "audit"
+        )
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        let context = try #require(tabManager.selectedTab?.tableContext)
+        #expect(context.tableName == "users")
+        #expect(context.schemaName == "audit")
+        #expect(context.databaseName == "db_a")
+    }
+
+    /// A tab persisted before the referenced database stopped being read as a schema still carries
+    /// one. Coalescing the resolved schema with the source's put that stale value straight back on
+    /// the next hop, so the identity the resolver had just cleared returned one navigation later.
+    @Test("A stale schema on the source tab does not reach the table a key opens")
+    @MainActor
+    func staleSourceSchemaIsNotCarriedForward() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a", type: .mysql)
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(
+            tableName: "orders",
+            databaseType: connection.type,
+            databaseName: coordinator.browseDatabaseName,
+            schemaName: "db_a"
+        )
+
+        let fkInfo = TestFixtures.makeForeignKeyInfo(
+            referencedTable: "tenants", referencedColumn: "id", referencedSchema: "billing"
+        )
+        coordinator.navigateToFKReference(value: "42", fkInfo: fkInfo, openInNewTab: false)
+
+        let context = try #require(tabManager.selectedTab?.tableContext)
+        #expect(context.tableName == "tenants")
+        #expect(context.databaseName == "billing")
+        #expect(context.schemaName == nil)
+    }
 }

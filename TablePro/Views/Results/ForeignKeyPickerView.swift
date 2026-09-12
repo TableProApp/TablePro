@@ -52,9 +52,27 @@ struct ForeignKeyPickerView: View {
 
     // MARK: - Header
 
+    /// An engine with schemas qualifies by schema as it always has. One without has no schema to
+    /// show, and naming the referenced database only says something when it is not the database the
+    /// reader is already looking at: every MySQL reference carries one, so spelling it out
+    /// unconditionally put `shop.users` in front of someone browsing `shop`.
     private var referencedTableDisplay: String {
-        guard let schema = fkInfo.referencedSchema, !schema.isEmpty else { return fkInfo.referencedTable }
-        return "\(schema).\(fkInfo.referencedTable)"
+        let target = targetScope
+        if let schema = target.schema {
+            return "\(schema).\(fkInfo.referencedTable)"
+        }
+        guard target.database != scope.database, !target.database.isEmpty else {
+            return fkInfo.referencedTable
+        }
+        return "\(target.database).\(fkInfo.referencedTable)"
+    }
+
+    private var targetScope: DatabaseScope {
+        ForeignKeyLookupService.targetScope(from: scope, databaseType: databaseType, reference: fkInfo)
+    }
+
+    private var referencedTableScope: TableScope {
+        ForeignKeyLookupService.tableScope(from: scope, databaseType: databaseType, reference: fkInfo)
     }
 
     private var header: some View {
@@ -218,10 +236,7 @@ struct ForeignKeyPickerView: View {
             get: { labelColumnName },
             set: { newValue in
                 labelColumnName = newValue
-                ForeignKeyLabelColumnStore.shared.setLabelColumn(
-                    newValue,
-                    for: ForeignKeyLookupService.tableScope(from: scope, reference: fkInfo)
-                )
+                ForeignKeyLabelColumnStore.shared.setLabelColumn(newValue, for: referencedTableScope)
             }
         )
     }
@@ -276,11 +291,11 @@ struct ForeignKeyPickerView: View {
 
     private func loadColumns() async {
         do {
-            let fetched = try await ForeignKeyLookupService.referencedColumns(in: scope, reference: fkInfo)
-            guard !Task.isCancelled else { return }
-            let stored = ForeignKeyLabelColumnStore.shared.labelColumn(
-                for: ForeignKeyLookupService.tableScope(from: scope, reference: fkInfo)
+            let fetched = try await ForeignKeyLookupService.referencedColumns(
+                in: scope, databaseType: databaseType, reference: fkInfo
             )
+            guard !Task.isCancelled else { return }
+            let stored = ForeignKeyLabelColumnStore.shared.labelColumn(for: referencedTableScope)
             labelColumnName = ForeignKeyLabelColumn.resolve(
                 columns: fetched,
                 keyColumn: fkInfo.referencedColumn,

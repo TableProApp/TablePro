@@ -28,11 +28,12 @@ enum ForeignKeyLookupService {
     /// A metadata read, so it goes through `withMetadataDriver` like every other one.
     static func referencedColumns(
         in origin: DatabaseScope,
+        databaseType: DatabaseType,
         reference: ForeignKeyInfo
     ) async throws -> [ForeignKeyLookupColumn] {
-        let scope = targetScope(from: origin, reference: reference)
+        let scope = targetScope(from: origin, databaseType: databaseType, reference: reference)
         let table = reference.referencedTable
-        let schema = reference.referencedSchema
+        let schema = scope.schema
         let columns = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             try await driver.fetchColumns(table: table, schema: schema)
         }
@@ -61,8 +62,12 @@ enum ForeignKeyLookupService {
         guard let dialect = PluginManager.shared.sqlDialect(for: databaseType) else {
             throw LookupFailure.noDialect
         }
-        let scope = targetScope(from: origin, reference: reference)
+        let scope = targetScope(from: origin, databaseType: databaseType, reference: reference)
         let table = reference.referencedTable
+        /// Routed to the referenced table's own container and named in full as well. The qualifier
+        /// costs nothing and a pooled session can still be moved out from under the read: startup
+        /// commands run after the pool connects, so a connection carrying `USE other` answers from
+        /// `other` however the scope was resolved.
         let schema = reference.referencedSchema
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
@@ -99,18 +104,31 @@ enum ForeignKeyLookupService {
     /// ambient browse state: a tab stays on the database it opened, while the sidebar and other
     /// windows move, and resolving the database from session state is how a tab's read lands on
     /// another database.
-    nonisolated static func targetScope(from origin: DatabaseScope, reference: ForeignKeyInfo) -> DatabaseScope {
-        guard let schema = reference.referencedSchema, !schema.isEmpty else { return origin }
-        return DatabaseScope(connectionId: origin.connectionId, database: origin.database, schema: schema)
+    ///
+    /// The read is routed to the referenced table's own container rather than left to a qualifier
+    /// alone, because `fetchColumns` reaches the catalog through helpers of its own that take no
+    /// schema: MySQL's generated-column read names `activeDatabaseName` directly, so a qualified
+    /// `SHOW FULL COLUMNS` would still collect generation expressions from the wrong database.
+    static func targetScope(
+        from origin: DatabaseScope,
+        databaseType: DatabaseType,
+        reference: ForeignKeyInfo
+    ) -> DatabaseScope {
+        ForeignKeyTargetScope.resolve(
+            origin: origin, referencedSchema: reference.referencedSchema, databaseType: databaseType
+        )
     }
 
-    nonisolated static func tableScope(from origin: DatabaseScope, reference: ForeignKeyInfo) -> TableScope {
-        let scope = targetScope(from: origin, reference: reference)
-        return TableScope(
-            connectionId: scope.connectionId,
-            database: scope.database,
-            schema: scope.schema,
-            table: reference.referencedTable
+    static func tableScope(
+        from origin: DatabaseScope,
+        databaseType: DatabaseType,
+        reference: ForeignKeyInfo
+    ) -> TableScope {
+        ForeignKeyTargetScope.tableScope(
+            origin: origin,
+            referencedSchema: reference.referencedSchema,
+            referencedTable: reference.referencedTable,
+            databaseType: databaseType
         )
     }
 
