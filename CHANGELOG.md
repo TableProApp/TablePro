@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
 - UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
+- Map view for a result holding a geometry column, drawn with MapKit over Apple's own tiles. (#2532)
 - **Max INSERT size** for SQL export, 1 MB by default. (#2533)
 - Largest INSERT written, in the SQL export summary. (#2533)
 
@@ -78,6 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Snowflake foreign keys into another database opening the current database's same-named table.
 - Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **None** in the foreign key picker's Label menu forgotten on reopen.
+- Elasticsearch `geo_point` columns classified as integers.
+- MySQL and MariaDB geometry values losing their SRID.
+- MySQL `GEOMETRYCOLLECTION` columns classified as text.
+- Empty `GEOMETRYCOLLECTION` from MySQL rendered as invalid WKT.
+- MySQL geometry with a Z or M ordinate read from the wrong offset.
+- Elasticsearch `geo_shape` values cut off at 10,000 characters.
+- A tab stranded in JSON or Chart mode, with no way back to Data, after a statement that returns no columns.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
 - TablePlus import reading the CA certificate and client key paths the wrong way round.

@@ -36,8 +36,10 @@ internal extension SQLTypeParser {
         case "DATETIME", "TIMESTAMP": return .timestamp(precision: length(params), hasTimeZone: false)
         case "ENUM": return .enumeration(values: labels(in: params))
         case "JSON": return .json
+        /// MySQL 8.0.11 renamed GEOMETRYCOLLECTION and its catalog now reports `geomcollection`,
+        /// so the old spelling alone left every collection column classified as text.
         case "GEOMETRY", "POINT", "LINESTRING", "POLYGON", "MULTIPOINT",
-             "MULTILINESTRING", "MULTIPOLYGON", "GEOMETRYCOLLECTION": return .spatial
+             "MULTILINESTRING", "MULTIPOLYGON", "GEOMETRYCOLLECTION", "GEOMCOLLECTION": return .spatial
         default: return .unsupported
         }
     }

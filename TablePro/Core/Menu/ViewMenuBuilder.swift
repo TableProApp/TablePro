@@ -184,7 +184,9 @@ enum ViewMenuBuilder {
         })
     }
 
-    private static let allModes: [ResultsViewMode] = [.data, .structure, .json, .chart]
+    /// Driven from the enum rather than from a hand copy of its cases, so a mode cannot reach the
+    /// status-bar switcher while having no menu item and therefore no keyboard route.
+    private static let allModes: [ResultsViewMode] = ResultsViewMode.allCases
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Sidebar Layout"), items: [

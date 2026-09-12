@@ -93,3 +93,19 @@ nonisolated internal enum MySQLMaintenance {
         return "\(quote(schema)).\(quote(table))"
     }
 }
+
+/// Which operations a flavor offers, kept beside the operations themselves rather than on the flavor.
+///
+/// `MySQLServerFlavor` is compiled into the iOS app as well as into this plugin, for the server
+/// identity it carries, and the app runs no maintenance at all. Naming `MySQLMaintenance` from there
+/// made the flavor unbuildable without this file and the two identifier-quoting files behind it.
+internal extension MySQLServerFlavor {
+    var maintenanceOperations: [PluginMaintenanceOperation] {
+        switch self {
+        case .mysql, .mariadb:
+            return MySQLMaintenance.operations
+        case .tidb, .databend:
+            return [MySQLMaintenance.analyzeOperation]
+        }
+    }
+}

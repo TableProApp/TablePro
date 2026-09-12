@@ -3,15 +3,20 @@ import Observation
 import os
 import TableProPluginKit
 
-enum ResultsViewMode: String, Equatable {
+/// `CaseIterable` so the View menu builds its Result View submenu from the case list rather than
+/// from a hand copy of it. Availability per tab is a different question and stays with
+/// `ResultsModeAvailability`, which `CaseIterable` cannot answer.
+enum ResultsViewMode: String, CaseIterable, Equatable {
     case data
     case structure
     case json
     case chart
+    case map
 
     /// How much of the loaded result the mode is showing, and how to load more. A chart draws the
     /// same buffer the grid does, so it needs the same scope controls: a warning that the chart is
-    /// incomplete is only useful next to the control that completes it.
+    /// incomplete is only useful next to the control that completes it. A map draws that same
+    /// buffer, so the same argument puts it here.
     var showsResultScope: Bool {
         self != .structure
     }
@@ -20,6 +25,9 @@ enum ResultsViewMode: String, Equatable {
         self == .data || self == .json
     }
 
+    /// Map is deliberately out. A value filter set in Data mode still narrows the map, because the
+    /// map draws the display order rather than the whole buffer, but the filter chrome belongs
+    /// beside the grid it filters.
     var showsRowFilters: Bool {
         self == .data || self == .json
     }
@@ -29,6 +37,17 @@ enum ResultsViewMode: String, Equatable {
     /// its own search inside the tree view.
     var showsFindBar: Bool {
         self == .data
+    }
+
+    /// Whether a row selection means anything in this mode, and so whether the status bar should
+    /// report one.
+    ///
+    /// Deliberately its own question rather than a reuse of `showsColumnControls`, which is about
+    /// column chrome. Map both reads the selection, to highlight the chosen shape, and writes it,
+    /// when a shape is clicked, so a count the bar refuses to print is a count the reader cannot
+    /// see anywhere.
+    var reportsRowSelection: Bool {
+        self == .data || self == .json || self == .map
     }
 }
 
@@ -77,6 +96,7 @@ struct QueryTab: Identifiable, Equatable {
     var sessionHighlightRules: [HighlightRule] = []
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
+    var mapConfiguration: ResultMapConfiguration
     var hasUserInteraction: Bool
     var schemaVersion: Int
     var metadataVersion: Int
@@ -174,6 +194,7 @@ struct QueryTab: Identifiable, Equatable {
         self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState()
         self.chartConfiguration = ResultChartConfiguration()
+        self.mapConfiguration = ResultMapConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -228,6 +249,7 @@ struct QueryTab: Identifiable, Equatable {
         self.valueFilter = GridValueFilterState()
         self.pagination = PaginationState(pageSize: defaultPageSize)
         self.chartConfiguration = ResultChartConfiguration()
+        self.mapConfiguration = ResultMapConfiguration()
         self.hasUserInteraction = false
         self.schemaVersion = 0
         self.metadataVersion = 0
@@ -412,6 +434,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.valueFilter == rhs.valueFilter
             && lhs.sessionHighlightRules == rhs.sessionHighlightRules
             && lhs.chartConfiguration == rhs.chartConfiguration
+            && lhs.mapConfiguration == rhs.mapConfiguration
             && lhs.display == rhs.display
             && lhs.tableContext.isEditable == rhs.tableContext.isEditable
             && lhs.tableContext.isView == rhs.tableContext.isView

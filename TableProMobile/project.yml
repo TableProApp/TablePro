@@ -86,6 +86,7 @@ targets:
         products:
           - TableProAnalytics
           - TableProDatabase
+          - TableProGeometry
           - TableProImport
           - TableProModels
           - TableProMSSQLCore

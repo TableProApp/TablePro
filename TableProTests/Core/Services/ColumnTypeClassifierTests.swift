@@ -1058,4 +1058,60 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "boolean[]").arrayElement == .boolean(rawType: "boolean"))
         }
     }
+
+    // MARK: - Spatial
+
+    @Suite("Spatial Types")
+    struct SpatialTests {
+        private let classifier = ColumnTypeClassifier()
+
+        private func isSpatial(_ type: ColumnType) -> Bool {
+            if case .spatial = type { return true }
+            return false
+        }
+
+        /// `GEO_POINT` ends in `INT`, and `classifyByPattern` tests `hasSuffix("INT")` before any
+        /// spatial arm, so an Elasticsearch `geo_point` column classified as an integer. That drove
+        /// its cell alignment, its sort comparator and its filter operators, all wrong, with or
+        /// without a map.
+        @Test("geo_point is spatial, not an integer")
+        func geoPointIsNotAnInteger() {
+            for raw in ["geo_point", "GEO_POINT", "Geo_Point"] {
+                #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+                #expect(classifier.classify(rawTypeName: raw) != .integer(rawType: raw), "\(raw)")
+            }
+        }
+
+        /// MySQL 8.0.11 renamed GEOMETRYCOLLECTION, and its catalog reports `geomcollection` for a
+        /// column declared with either spelling. Measured on MySQL 8.4.11.
+        @Test("MySQL's own GEOMCOLLECTION spelling is spatial")
+        func geomCollectionSpelling() {
+            for raw in ["geomcollection", "GEOMCOLLECTION", "GEOMETRYCOLLECTION"] {
+                #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+            }
+        }
+
+        @Test("Per-engine spatial spellings classify as spatial", arguments: [
+            "geo_shape", "SDO_GEOMETRY", "ST_GEOMETRY", "Ring",
+            "geometry", "geography", "POINT", "linestring", "polygon",
+            "multipoint", "multilinestring", "multipolygon",
+        ])
+        func engineSpellings(raw: String) {
+            #expect(isSpatial(classifier.classify(rawTypeName: raw)), "\(raw)")
+        }
+
+        @Test("A parameterised or wrapped spatial type keeps its family")
+        func parameterisedSpatial() {
+            #expect(isSpatial(classifier.classify(rawTypeName: "geometry(MultiPolygon,4326)")))
+            #expect(isSpatial(classifier.classify(rawTypeName: "Nullable(Point)")))
+        }
+
+        /// The new entries must not drag neighbouring names into the spatial family.
+        @Test("Neighbouring names keep their classification")
+        func neighboursUnchanged() {
+            #expect(classifier.classify(rawTypeName: "INT") == .integer(rawType: "INT"))
+            #expect(classifier.classify(rawTypeName: "BIGINT") == .integer(rawType: "BIGINT"))
+            #expect(classifier.classify(rawTypeName: "POINTER") == .text(rawType: "POINTER"))
+        }
+    }
 }

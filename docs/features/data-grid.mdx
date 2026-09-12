@@ -1,6 +1,6 @@
 ---
 title: Data Grid
-description: Sort, size, hide, highlight, chart and copy the rows a table or a query puts in the grid
+description: Sort, size, hide, highlight, chart, map and copy the rows a table or a query puts in the grid
 ---
 
 Most of the grid's controls sit in the status bar beneath it. The view switcher is at the leading edge, the row count in the middle, then the columns, highlight, filter and page buttons at the trailing edge.
@@ -155,7 +155,7 @@ Every copy follows the grid as shown: hidden columns are left out, columns keep 
 
 ## View modes
 
-Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switcher at the leading edge of the status bar, or from **View > Result View**. Query tabs have no Structure mode, the mode is remembered per tab, and [Cell and Row Viewers](/features/json-viewer) covers JSON mode.
+Switch between **Data**, **Structure**, **JSON**, **Chart**, and **Map** with the switcher at the leading edge of the status bar, or from **View > Result View**. Query tabs have no Structure mode, Map appears only while the result holds a column of drawable geometry, the mode is remembered per tab, and [Cell and Row Viewers](/features/json-viewer) covers JSON mode.
 
 ### Chart mode
 
@@ -164,6 +164,24 @@ Switch between **Data**, **Structure**, **JSON**, and **Chart** with the switche
 Pick a bar, line, area, or scatter chart, then a numeric Y column. X takes row numbers, another numeric column, a date or timestamp column, or a categorical column; an optional text, boolean, enum, or set column splits the result into series. Date and timestamp columns plot on a real time axis, whatever order the rows arrive in. Hover the plot for exact values.
 
 A chart draws the loaded rows, up to 2,000 points, 20 series, and 50,000 inspected rows, and the toolbar says when it hit one: "Showing the first 2,000 points of 8,431 loaded rows". Null, binary, and unrepresentable axis values are skipped and counted. Grid selection, Find, hidden columns, and value filters do not narrow a chart, and the page controls and **Fetch All** stay in the status bar. Chart type and axes belong to the tab and follow the column names, so they survive a page turn, a sort, and a re-run.
+
+### Map mode
+
+**Map** appears when a column of the result holds values the map can read. A `geometry`, `geography` or `geo_shape` column usually does, and so does a MongoDB field holding GeoJSON, which arrives typed as JSON. A result of plain columns never carries the segment, and neither does a spatial column whose values are in a format the reader does not cover.
+
+Points, lines and polygons draw over Apple's own tiles. Nothing about the result reaches a third-party tile server. Click a shape to select its row, then switch to **Data** to see that row selected in the grid; select rows in the grid and their shapes come back highlighted. **Fit to Result** frames every drawn shape. A result with more than one geometry column gets a picker to choose between them.
+
+Values are read as WKT, EWKT, WKB and EWKB hex, GeoJSON, ClickHouse point and ring tuples, and all six spellings of an Elasticsearch `geo_point`, so PostGIS, MySQL, MariaDB, MongoDB, Snowflake, Elasticsearch and ClickHouse draw without any setup. The map draws the rows the grid is showing, so a value filter narrows it and the page controls and **Fetch All** stay in the status bar.
+
+The toolbar says what was drawn and what was not: `Drawing 4,102 shapes in SRID 4326. 88 rows in other coordinate systems are not drawn.` One coordinate system is drawn at a time, whichever most of the column uses.
+
+<Info>Maps place longitude and latitude. SRID 4326, 4269 and 4979 draw directly, Web Mercator (3857, 900913, 3785, 102100, 102113) is converted, and a column carrying no SRID draws when every coordinate falls inside the range of longitude and latitude.</Info>
+
+A projected coordinate system such as SRID 27700 or 32633 draws nothing: the pane names the SRID and asks for `ST_Transform(geom, 4326)`, which produces a result the map draws. Curved and polyhedral geometry (`CIRCULARSTRING`, `CURVEPOLYGON`, `COMPOUNDCURVE`, `MULTICURVE`, `MULTISURFACE`, `POLYHEDRALSURFACE`, `TIN`, `TRIANGLE`) is counted and named rather than drawn; `ST_CurveToLine` converts it. Latitude past 85.05 degrees flattens to that value, so Arctic and Antarctic shapes land in the wrong place.
+
+The map is one element to VoiceOver and does not publish its shapes, so the grid stays the readable representation of spatial rows.
+
+SQL Server, Oracle, DuckDB, SpatiaLite, Teradata, Trino, Spanner, Cassandra and BigQuery hand geometry over in formats the reader does not cover yet. Their spatial columns show text and carry no Map segment, because the segment follows what the values are rather than what the column is called.
 
 ## Editing and display
 

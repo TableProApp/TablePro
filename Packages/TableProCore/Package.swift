@@ -10,6 +10,7 @@ let package = Package(
     ],
     products: [
         .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
+        .library(name: "TableProGeometry", targets: ["TableProGeometry"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProImport", targets: ["TableProImport"]),
@@ -37,6 +38,11 @@ let package = Package(
             name: "TableProCoreTypes",
             dependencies: [],
             path: "Sources/TableProCoreTypes"
+        ),
+        .target(
+            name: "TableProGeometry",
+            dependencies: [],
+            path: "Sources/TableProGeometry"
         ),
         .target(
             name: "TableProPluginKit",
@@ -112,6 +118,11 @@ let package = Package(
             name: "TableProR2SQLCore",
             dependencies: [],
             path: "Sources/TableProR2SQLCore"
+        ),
+        .testTarget(
+            name: "TableProGeometryTests",
+            dependencies: ["TableProGeometry"],
+            path: "Tests/TableProGeometryTests"
         ),
         .testTarget(
             name: "TableProNumberFormattingTests",
