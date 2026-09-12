@@ -20,6 +20,17 @@ extension TableViewCoordinator {
         visualIndex.updateRow(rowID, from: changeManager)
     }
 
+    /// The row's marks when the caller has only its display position, which is what AppKit hands a
+    /// delegate callback.
+    func visualState(for row: Int) -> RowVisualState {
+        if let delegateState = delegate?.dataGridVisualState(forRow: row) {
+            return delegateState
+        }
+        guard !visualIndex.isEmpty || !highlightRuleSet.isEmpty,
+              let displayed = displayRow(at: row) else { return .empty }
+        return visualState(of: displayed, atDisplayRow: row)
+    }
+
     /// The row's marks for a caller that has already resolved it, which every drawn cell has:
     /// resolving it again costs a `TableRows` copy per cell.
     func visualState(of displayed: Row, atDisplayRow row: Int) -> RowVisualState {

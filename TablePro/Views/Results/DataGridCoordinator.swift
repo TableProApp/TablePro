@@ -1419,17 +1419,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         fkColumns = fkSet
     }
 
-    // MARK: - Row Visual State
-
-    func visualState(for row: Int) -> RowVisualState {
-        if let delegateState = delegate?.dataGridVisualState(forRow: row) {
-            return delegateState
-        }
-        guard !visualIndex.isEmpty || !highlightRuleSet.isEmpty,
-              let displayed = displayRow(at: row) else { return .empty }
-        return visualState(of: displayed, atDisplayRow: row)
-    }
-
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
