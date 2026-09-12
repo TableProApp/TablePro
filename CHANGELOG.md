@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Show DDL** and **Copy DDL** for views and materialized views. (#2726)
 - **Edit Comment…** for PostgreSQL tables, views, materialized views and foreign tables. (#2726)
 - UTF-16 LE, UTF-16 BE and Windows-1252 in the SQL import encoding menu.
+- **Max INSERT size** for SQL export, 1 MB by default. (#2533)
+- Largest INSERT written, in the SQL export summary. (#2533)
 
 ### Changed
 
@@ -51,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `bytea` values written as a bit string in a PostgreSQL SQL export, which no restore accepts. (#2533)
+- Multi-row INSERT statements Oracle cannot parse in a SQL export. (#2533)
+- Minutes spent rendering hex literals when a SQL export reached a binary column. (#2533)
 - **None** in the foreign key picker's Label menu forgotten on reopen.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.

@@ -21,6 +21,14 @@ public struct SQLExportOptions: Equatable, Codable {
     /// Zero writes one file however large it gets.
     public var splitSizeMegabytes: Int = 0
 
+    /// Closes an `INSERT` once it would pass this many bytes, whichever of this and `batchSize` comes
+    /// first. Zero bounds a statement by `batchSize` alone, which is what the export used to do.
+    ///
+    /// A mebibyte by default, which is under every `max_allowed_packet` a MySQL or MariaDB server has
+    /// shipped with this decade and is what `mysqldump` and HeidiSQL both settle on. Stored as bytes
+    /// because that is the unit the budget compares against, so no factor is applied at the use site.
+    public var maxStatementBytes: Int = 1_048_576
+
     public init() {}
 
     /// A synthesized `init(from:)` throws `keyNotFound` for a key the saved payload predates, and
@@ -42,6 +50,8 @@ public struct SQLExportOptions: Equatable, Codable {
             ?? defaults.consistentSnapshot
         splitSizeMegabytes = try container.decodeIfPresent(Int.self, forKey: .splitSizeMegabytes)
             ?? defaults.splitSizeMegabytes
+        maxStatementBytes = try container.decodeIfPresent(Int.self, forKey: .maxStatementBytes)
+            ?? defaults.maxStatementBytes
     }
 }
 
