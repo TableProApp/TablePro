@@ -88,15 +88,6 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         }
     }
 
-    var maintenanceOperations: [PluginMaintenanceOperation] {
-        switch self {
-        case .mysql, .mariadb:
-            return MySQLMaintenance.operations
-        case .tidb, .databend:
-            return [MySQLMaintenance.analyzeOperation]
-        }
-    }
-
     var listsSequencesAsTables: Bool { !isTiDB }
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }
