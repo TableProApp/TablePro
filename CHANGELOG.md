@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- ClickHouse **Drop Partition** and **Detach Partition** acting on the sidebar's database instead of the table on screen, and running without the connection's destructive-statement confirmation.
+- Import listing one database's tables and mapping their columns while the rows went to another.
+- **New Table** created in the database the sidebar moved to rather than the one its own tab names.
+- **Show All Tables** listing whichever database a cross-database tab last left the connection on.
+- Sidebar **Refresh** reloading the object list from a container the user is not browsing.
+- Wrong export row total where the objects picked span more than one database.
 - Snowflake foreign keys into another database opening the current database's same-named table.
 - Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **None** in the foreign key picker's Label menu forgotten on reopen.

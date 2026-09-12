@@ -138,10 +138,10 @@ final class ExportService {
             throw ExportError.notConnected
         }
 
-        state.totalRows = await fetchTotalRowCount(
-            for: objects.filter { $0.kind.carriesRows }, driver: driver)
-
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
+
+        state.totalRows = await fetchTotalRowCount(
+            for: objects.filter { $0.kind.carriesRows }, driver: driver, dataSource: dataSource)
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -381,7 +381,15 @@ final class ExportService {
         )
     }
 
-    private func fetchTotalRowCount(for tables: [ExportObjectItem], driver: DatabaseDriver) async -> Int {
+    /// The non-SQL count goes through the data source, which knows the container each object was
+    /// listed under. Asking the driver directly answers about whichever one it is leased to, so an
+    /// export spanning two databases counted one of them twice and reported a total no progress bar
+    /// could reach.
+    private func fetchTotalRowCount(
+        for tables: [ExportObjectItem],
+        driver: DatabaseDriver,
+        dataSource: ExportDataSourceAdapter
+    ) async -> Int {
         guard !tables.isEmpty else { return 0 }
 
         var total = 0
@@ -390,7 +398,10 @@ final class ExportService {
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
             for table in tables {
                 do {
-                    if let count = try await driver.fetchApproximateRowCount(table: table.name) {
+                    let count = try await dataSource.fetchApproximateRowCount(
+                        table: table.name, databaseName: table.databaseName
+                    )
+                    if let count {
                         total += count
                     }
                 } catch {
