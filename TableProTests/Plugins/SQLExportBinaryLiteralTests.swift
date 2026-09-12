@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
@@ -40,20 +41,75 @@ struct SQLExportBinaryLiteralTests {
         #expect(SQLExportBinaryLiteral.render(Data(), databaseTypeId: "SQL Server") == "0x")
     }
 
-    /// Oracle stays on the literal it rejects rather than moving to `HEXTORAW`, which carries 2,000
-    /// binary bytes at most and would export clean and fail the restore above that.
-    @Test("Oracle is left on the literal it rejects rather than one that fails silently")
-    func oracleIsLeftAlone() {
-        #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: "Oracle") == "X'414243'")
+    /// Measured on Oracle AI Database 26ai Free: `X'414243'` is `ORA-00917: missing comma`, and
+    /// `HEXTORAW('414243')` is accepted into `BLOB`, `RAW(2000)` and `LONG RAW` alike, so one
+    /// spelling serves every binary type and the column's own type need not be consulted.
+    @Test("Oracle takes HEXTORAW, which it accepts for every binary type")
+    func oracleUsesHextoraw() {
+        #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: "Oracle") == "HEXTORAW('414243')")
+    }
+
+    /// `HEXTORAW('')` stores NULL, and into a `BLOB NOT NULL` it is `ORA-01400: cannot insert NULL`.
+    /// An empty BLOB is not a null one, so the empty case is its own spelling. Measured:
+    /// `EMPTY_BLOB()` stores length 0 and is accepted by `BLOB`, `BLOB NOT NULL` and `RAW(2000)`.
+    @Test("An empty Oracle value is EMPTY_BLOB, which stores nothing rather than NULL")
+    func oracleEmptyValueIsNotNull() {
+        #expect(SQLExportBinaryLiteral.render(Data(), databaseTypeId: "Oracle") == "EMPTY_BLOB()")
+    }
+
+    /// Hex doubles the payload and Oracle caps a string literal at 4,000 characters, so `HEXTORAW`
+    /// carries 2,000 binary bytes: measured, 2,000 stored 2,000 and 2,001 is `ORA-01704: string
+    /// literal too long`. Nothing can express one past that in a single statement, so it is written
+    /// anyway and counted, and the export names how many rather than reporting a clean dump.
+    @Test("A value past Oracle's literal ceiling is flagged, and only on Oracle")
+    func oracleLiteralCeilingIsReported() {
+        let atCeiling = Data(repeating: 0xAB, count: SQLExportBinaryLiteral.oracleLiteralByteCeiling)
+        let overCeiling = Data(repeating: 0xAB, count: SQLExportBinaryLiteral.oracleLiteralByteCeiling + 1)
+
+        #expect(SQLExportBinaryLiteral.oracleLiteralByteCeiling == 2_000)
+        #expect(!SQLExportBinaryLiteral.exceedsLiteralCeiling(atCeiling, databaseTypeId: "Oracle"))
+        #expect(SQLExportBinaryLiteral.exceedsLiteralCeiling(overCeiling, databaseTypeId: "Oracle"))
+        #expect(!SQLExportBinaryLiteral.exceedsLiteralCeiling(Data(), databaseTypeId: "Oracle"))
+
+        /// No other engine has this ceiling, so none of them may be counted against it.
+        for typeId in ["MySQL", "PostgreSQL", "SQLite", "SQL Server", "Dameng"] {
+            #expect(!SQLExportBinaryLiteral.exceedsLiteralCeiling(overCeiling, databaseTypeId: typeId))
+        }
     }
 
     /// An engine whose spelling has not been verified keeps what the export already wrote, so this
     /// change cannot regress one.
     @Test("An unlisted engine keeps the hex literal")
     func unlistedEnginesFallBackToHex() {
-        for typeId in ["Snowflake", "Trino", "ClickHouse", "Dameng", "Teradata", "SomeFuturePlugin"] {
+        for typeId in ["Snowflake", "Trino", "ClickHouse", "Teradata", "SomeFuturePlugin"] {
             #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: typeId) == "X'414243'")
         }
+    }
+
+    /// The encoder is rebuilt whenever a stream emits another header, and only the last one used to
+    /// reach the export's tally, so a value over the ceiling in an earlier segment was dropped from
+    /// the count and an export whose last segment held none reported clean.
+    @Test("Each segment's unrepresentable values are counted, not just the last one's")
+    func everySegmentsCountIsKept() {
+        let over = Data(repeating: 0xAB, count: SQLExportBinaryLiteral.oracleLiteralByteCeiling + 1)
+        func encoder() -> SQLExportRowValueEncoder {
+            SQLExportRowValueEncoder(
+                columns: ["payload"], columnTypeNames: ["BLOB"], excludedColumnNames: [],
+                databaseTypeId: "Oracle", escapeStringLiteral: { $0 })
+        }
+
+        let first = encoder()
+        _ = first.render([.bytes(over)])
+        let second = encoder()
+        _ = second.render([.text("small")])
+
+        #expect(first.unrepresentableValues.total == 1)
+        #expect(second.unrepresentableValues.total == 0, "a fresh segment starts its own count")
+
+        var tally = SQLExportStatementTally()
+        tally.unrepresentableValues += first.unrepresentableValues.total
+        tally.unrepresentableValues += second.unrepresentableValues.total
+        #expect(tally.unrepresentableValues == 1, "the earlier segment's value must survive")
     }
 
     @Test("The hex is uppercase, two characters per byte, for every byte value")

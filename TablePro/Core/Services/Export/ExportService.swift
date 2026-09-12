@@ -105,14 +105,25 @@ final class ExportService {
 
     // MARK: - Cancellation
 
-    var isCancelled: Bool = false
-
     func cancelExport() {
-        isCancelled = true
         currentProgress?.cancel()
     }
 
     private var currentProgress: PluginExportProgress?
+
+    /// The status line a plugin writes with `PluginExportProgress.setStatus`. Nothing observed it,
+    /// so "Compressing..." never reached a user in any export. The empty guard sits outside the hop
+    /// deliberately: the channel is seeded empty and `fetchTotalRowCount` may already have put its
+    /// own message in `statusMessage`.
+    private func observeStatus(on nsProgress: Progress) -> NSKeyValueObservation {
+        nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
+            let status = observed.localizedAdditionalDescription ?? ""
+            guard !status.isEmpty else { return }
+            Task { @MainActor [weak self] in
+                self?.state.statusMessage = status
+            }
+        }
+    }
 
     // MARK: - Public API
 
@@ -130,12 +141,10 @@ final class ExportService {
         }
 
         state = ExportState(isExporting: true, totalTables: objects.count)
-        isCancelled = false
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
@@ -171,6 +180,9 @@ final class ExportService {
             }
         }
         defer { descObservation.invalidate() }
+
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
 
         let pluginTables = objects.map { object in
             PluginExportTable(
@@ -240,12 +252,10 @@ final class ExportService {
 
         let totalRows = tableRows.count
         state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
-        isCancelled = false
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
@@ -277,6 +287,9 @@ final class ExportService {
             }
         }
         defer { descObservation.invalidate() }
+
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
 
         let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 
@@ -313,12 +326,10 @@ final class ExportService {
 
         let estimatedRows = 0
         state = ExportState(isExporting: true, totalTables: 1, totalRows: estimatedRows)
-        isCancelled = false
 
         defer {
             state.isExporting = false
-            isCancelled = false
-            state.statusMessage = ""
+                state.statusMessage = ""
             currentProgress = nil
         }
 
@@ -339,6 +350,9 @@ final class ExportService {
             }
         }
         defer { observation.invalidate() }
+
+        let statusObservation = observeStatus(on: nsProgress)
+        defer { statusObservation.invalidate() }
 
         let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
 

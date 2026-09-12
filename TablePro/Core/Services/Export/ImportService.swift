@@ -220,7 +220,8 @@ final class ImportService {
             driver: driver,
             databaseType: connection.type,
             targetTable: targetTable,
-            columnMapping: columnMapping
+            columnMapping: columnMapping,
+            isCancelled: { progress.isCancelled }
         )
         return try await plugin.performImport(source: source, sink: sink, progress: progress)
     }

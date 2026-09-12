@@ -18,6 +18,28 @@ import TableProPluginKit
 internal struct SQLExportRowValueEncoder {
     internal let includedColumnIndices: [Int]
 
+    /// The values this encoder rendered that the engine cannot carry in one statement whatever
+    /// spelling is used. A class because rendering a row is not supposed to look like a mutation,
+    /// and the count has to survive the `let` the stream loop holds the encoder in.
+    internal final class UnrepresentableValueCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        internal func record() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+
+        internal var total: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+    }
+
+    internal let unrepresentableValues = UnrepresentableValueCount()
+
     private let numericIndices: Set<Int>
     private let databaseTypeId: String
     private let escapeStringLiteral: (String) -> String
@@ -53,6 +75,9 @@ internal struct SQLExportRowValueEncoder {
             case .null:
                 return "NULL"
             case .bytes(let data):
+                if SQLExportBinaryLiteral.exceedsLiteralCeiling(data, databaseTypeId: databaseTypeId) {
+                    unrepresentableValues.record()
+                }
                 return SQLExportBinaryLiteral.render(data, databaseTypeId: databaseTypeId)
             case .text(let value):
                 if numericIndices.contains(columnIndex), PluginNumericLiteral.isValid(value) {

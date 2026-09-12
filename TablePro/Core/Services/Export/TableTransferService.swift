@@ -61,13 +61,28 @@ struct TableTransferState {
 final class TableTransferService {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableTransfer")
 
-    /// The batch a transfer accumulates before writing. The sink chunks again by bind-parameter
-    /// count, so this only bounds how many rows are held at once.
-    static let batchSize = 500
+    /// What a transfer holds before it hands rows to the sink, bounded in bytes as well as rows: a
+    /// row count says nothing about size, and 500 rows of three 1 MB values is a gigabyte and a half
+    /// resident before the first statement is written.
+    ///
+    /// The byte half is a residency bound, not a statement bound, so it is far larger than one
+    /// statement: the sink applies `SQLWriteBatchBudget` again and is what keeps a statement under
+    /// the server's packet limit. Sized as a statement instead, a row carrying a wide column the
+    /// mapping discards would close the batch on bytes the sink never sends, turning one round trip
+    /// into one per row.
+    static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
 
     var state = TableTransferState()
 
-    private var isCancelled = false
+    /// The same stop, in a form a `@Sendable` closure may read. `isCancelled` is main-actor
+    /// isolated, and the sink splits one hand-off into many statements off that actor, so it needs
+    /// its own view of the flag rather than a hop per statement.
+    private let cancellationFlag = TransferCancellationFlag()
+
+    private var isCancelled: Bool {
+        get { cancellationFlag.isCancelled }
+        set { cancellationFlag.isCancelled = newValue }
+    }
 
     /// Cleared once, before the run's first cancellable step. The sheet reads both sides' columns
     /// before `transfer()` is reached, and a Stop pressed during that read has to survive into it.
@@ -146,7 +161,8 @@ final class TableTransferService {
                 driver: destinationDriver,
                 databaseType: request.destinationType,
                 targetTable: object.name,
-                columnMapping: mapping
+                columnMapping: mapping,
+                isCancelled: { [flag = cancellationFlag] in flag.isCancelled }
             )
             try await transferOne(object: object, from: source, into: sink, request: request)
         }
@@ -213,7 +229,7 @@ final class TableTransferService {
         )
 
         var columns: [String] = []
-        var batch: [[String: PluginCellValue]] = []
+        var filler = SQLWriteBatchFiller<[String: PluginCellValue]>(budget: Self.batchBudget)
         var wroteAnything = false
 
         if request.wrapInTransaction {
@@ -230,16 +246,16 @@ final class TableTransferService {
                     columns = header.columns
                 case .rows(let rows):
                     for row in rows {
-                        batch.append(Self.dictionary(columns: columns, row: row))
-                        guard batch.count >= Self.batchSize else { continue }
+                        let keyed = Self.dictionary(columns: columns, row: row)
+                        let bytes = SQLWriteBatchBudget.byteCount(of: keyed.values)
+                        guard let batch = filler.append(keyed, bytes: bytes) else { continue }
                         try await sink.insertRows(batch)
                         state.transferredRows += batch.count
                         wroteAnything = true
-                        batch.removeAll(keepingCapacity: true)
                     }
                 }
             }
-            if !batch.isEmpty {
+            if let batch = filler.take() {
                 try await sink.insertRows(batch)
                 state.transferredRows += batch.count
                 wroteAnything = true
@@ -280,5 +296,26 @@ final class TableTransferService {
     private func checkCancellation() throws {
         guard isCancelled else { return }
         throw PluginImportCancellationError()
+    }
+}
+
+/// A stop the sink can see from off the main actor. `TableTransferService` is `@MainActor`, and the
+/// sink now sends several statements per hand-off, so without this a Stop was followed by every
+/// remaining INSERT of the batch.
+internal final class TransferCancellationFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    internal var isCancelled: Bool {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+        set {
+            lock.lock()
+            cancelled = newValue
+            lock.unlock()
+        }
     }
 }

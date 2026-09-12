@@ -138,7 +138,7 @@ As SQL, a results export writes `INSERT` statements only. A result set is the ou
 
     Insert mode is spelled differently on each engine: `INSERT IGNORE` and `REPLACE INTO` on MySQL and MariaDB, `INSERT OR IGNORE` and `INSERT OR REPLACE` on SQLite, `ON CONFLICT` on PostgreSQL. Updating needs a primary key to name as the conflict target. An engine with no spelling for the mode writes plain inserts, and the export summary says which tables that happened to.
 
-    Splitting writes `dump.part1.sql`, `dump.part2.sql` and so on, rotating between statements so no part ends mid-`INSERT`. Restore the parts in order. A gzipped export is one file, so the two settings do not combine and the summary says so.
+    Splitting writes `dump.part1.sql`, `dump.part2.sql` and so on, rotating between statements so no part ends mid-`INSERT`. The summary names the first and last part; restore them in order. Each part re-opens the session state its own statements need, so a part restores on its own: on SQL Server that means `SET IDENTITY_INSERT`, which a part boundary used to leave behind. A part that cannot be written stops the export, and the error names the parts already on disk, because a rename cannot be taken back. A gzipped export is one file, so the two settings do not combine and the summary says so.
 
     A dump is UTF-8 and says so in every part, the way the engine's own dump tool does:
 
