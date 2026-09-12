@@ -83,7 +83,7 @@ struct AppearanceSettingsView: View {
                 ThemeListView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
                     .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
 
-                ThemeEditorView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
+                ThemeEditorView(selectedThemeId: slotThemeBinding)
                     .frame(minWidth: 400)
             }
         }

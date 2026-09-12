@@ -1,35 +1,57 @@
-import os
+//
+//  ThemeEditorView.swift
+//  TablePro
+//
+//  Right panel of the appearance HSplitView: theme header, accent color, and tabbed editor sections.
+//
+
 import SwiftUI
 
-/// Edits the theme the slot holds, not the theme in effect. Reading `activeTheme` here meant that
-/// with the Mac in light mode and the pane set to Editing: Dark, every edit, duplicate and delete
-/// landed on the light theme, and the dark slot was then pointed at it.
 internal struct ThemeEditorView: View {
-    @Binding internal var selectedThemeId: String
-    internal let slotAppearance: ThemeAppearance
+    @Binding var selectedThemeId: String
+
+    private var engine: ThemeEngine { ThemeEngine.shared }
+    private var theme: ThemeDefinition { engine.activeTheme }
+    private var isEditable: Bool { theme.isEditable }
+
+    @State private var activeTab: EditorTab = .fonts
 
     @State private var errorMessage: String?
     @State private var showError = false
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorView")
+    private enum EditorTab: String, CaseIterable {
+        case fonts = "Fonts"
+        case colors = "Colors"
 
-    private var catalog: ThemeCatalog { ThemeCatalog.shared }
-
-    private var theme: ThemeDefinition {
-        catalog.theme(id: selectedThemeId) ?? BuiltInThemes.default(for: slotAppearance)
+        var localizedName: String {
+            switch self {
+            case .fonts: return String(localized: "Fonts")
+            case .colors: return String(localized: "Colors")
+            }
+        }
     }
 
-    internal var body: some View {
+    var body: some View {
         VStack(spacing: 0) {
-            header
+            Text(theme.name)
+                .font(.title3.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Picker("", selection: $activeTab) {
+                ForEach(EditorTab.allCases, id: \.self) { tab in
+                    Text(tab.localizedName).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
 
             Divider()
 
-            if theme.isEditable {
-                ThemeEditorColorsSection(theme: theme)
-            } else {
-                duplicatePrompt
-            }
+            tabContent
         }
         .alert(String(localized: "Error"), isPresented: $showError) {
             Button(String(localized: "OK")) {}
@@ -40,19 +62,20 @@ internal struct ThemeEditorView: View {
         }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(theme.name)
-                .font(.title3.weight(.semibold))
-
-            Text(theme.author.isEmpty ? String(localized: "Custom theme") : theme.author)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    @ViewBuilder
+    private var tabContent: some View {
+        switch activeTab {
+        case .fonts:
+            ThemeEditorFontsSection(onThemeDuplicated: { newTheme in
+                selectedThemeId = newTheme.id
+            })
+        case .colors:
+            if isEditable {
+                ThemeEditorColorsSection()
+            } else {
+                duplicatePrompt
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
     }
 
     private var duplicatePrompt: some View {
@@ -69,11 +92,11 @@ internal struct ThemeEditorView: View {
                 .font(.body)
                 .foregroundStyle(.secondary)
 
-            Text("Duplicate it to change its colors.")
+            Text(String(localized: "Duplicate it to customize colors."))
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
 
-            Button("Duplicate Theme") {
+            Button(String(localized: "Duplicate Theme")) {
                 duplicateAndSelect()
             }
             .controlSize(.large)
@@ -84,15 +107,12 @@ internal struct ThemeEditorView: View {
     }
 
     private func duplicateAndSelect() {
-        var copy = theme
-        copy.id = ThemeIdentifier.generated()
-        copy.name = String(format: String(localized: "%@ (Copy)"), theme.name)
-
+        let copy = engine.duplicateTheme(theme, newName: theme.name + " (Copy)")
         do {
-            try catalog.save(copy)
+            try engine.saveUserTheme(copy)
+            engine.activateTheme(copy)
             selectedThemeId = copy.id
         } catch {
-            Self.logger.error("Could not duplicate theme: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
             showError = true
         }

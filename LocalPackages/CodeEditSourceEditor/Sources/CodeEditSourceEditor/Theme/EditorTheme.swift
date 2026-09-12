@@ -35,10 +35,6 @@ public struct EditorTheme: Equatable {
     public var statementHighlight: NSColor
 
     public var selection: NSColor
-
-    /// The gutter's line numbers. `nil` keeps the derived look: the text colour at 35% alpha.
-    public var lineNumber: NSColor?
-
     public var keywords: Attribute
     public var commands: Attribute
     public var types: Attribute
@@ -60,7 +56,6 @@ public struct EditorTheme: Equatable {
         lineHighlight: NSColor,
         statementHighlight: NSColor = .clear,
         selection: NSColor,
-        lineNumber: NSColor? = nil,
         keywords: Attribute,
         commands: Attribute,
         types: Attribute,
@@ -81,7 +76,6 @@ public struct EditorTheme: Equatable {
         self.lineHighlight = lineHighlight
         self.statementHighlight = statementHighlight
         self.selection = selection
-        self.lineNumber = lineNumber
         self.keywords = keywords
         self.commands = commands
         self.types = types

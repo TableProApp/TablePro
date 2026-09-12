@@ -138,7 +138,7 @@ final class DataGridCellRenderer {
     private func drawFocusRing(in rect: NSRect) {
         let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
         path.lineWidth = 2
-        ThemeEngine.shared.palette[.gridFocusBorder].setStroke()
+        NSColor.keyboardFocusIndicatorColor.setStroke()
         path.stroke()
     }
 }

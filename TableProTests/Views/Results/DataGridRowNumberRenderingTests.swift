@@ -499,16 +499,13 @@ struct DataGridRowNumberRenderingTests {
     @Test("Rows paint the theme's stripes, and the strip still matches them")
     func rowsPaintTheThemesStripes() throws {
         let engine = ThemeEngine.shared
-        let restore = ThemeSelection(pair: engine.pair, effectiveAppearance: engine.effectiveAppearance)
-        defer { engine.adopt(restore) }
-        var theme = BuiltInThemes.light
+        let original = engine.activeTheme
+        defer { engine.activateTheme(original) }
+        var theme = ThemeDefinition.default
         theme.id = "test.grid-stripes"
-        theme.dataGrid.background = .hex("#282A36")
-        theme.dataGrid.alternateRow = .hex("#44475A")
-        engine.adopt(ThemeSelection(
-            pair: ThemePair(light: theme, dark: BuiltInThemes.dark),
-            effectiveAppearance: .light
-        ))
+        theme.dataGrid.background = "#282A36"
+        theme.dataGrid.alternateRow = "#44475A"
+        engine.activateTheme(theme)
 
         let grid = makeGrid(appearance: .aqua)
         let rows = grid.rowsUnderTheStrip

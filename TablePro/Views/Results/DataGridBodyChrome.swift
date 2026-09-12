@@ -67,7 +67,7 @@ enum DataGridBodyChrome {
     ) {
         let separators = separatorRects(in: rect, of: view, tableView: tableView, presentsColumn: presentsColumn)
         guard !separators.isEmpty else { return }
-        ThemeEngine.shared.palette[.gridLine].setFill()
+        tableView.gridColor.setFill()
         separators.forEach { $0.fill() }
     }
 
@@ -119,7 +119,7 @@ enum DataGridBodyChrome {
     /// Set on the table rather than read from the theme at each draw, because AppKit reads the
     /// table's own `backgroundColor` too, for the area an elastic scroll uncovers.
     static func applyBackground(to tableView: NSTableView) {
-        let background = ThemeEngine.shared.palette[.gridBackground]
+        let background = ThemeEngine.shared.colors.dataGrid.background
         guard tableView.backgroundColor != background else { return }
         tableView.backgroundColor = background
     }
@@ -132,8 +132,8 @@ enum DataGridBodyChrome {
     static func stripeColor(forRow row: Int, of tableView: NSTableView) -> NSColor? {
         guard tableView.usesAlternatingRowBackgroundColors else { return nil }
         return row.isMultiple(of: 2)
-            ? ThemeEngine.shared.palette[.gridBackground]
-            : ThemeEngine.shared.palette[.gridAlternateRow]
+            ? ThemeEngine.shared.colors.dataGrid.background
+            : ThemeEngine.shared.colors.dataGrid.alternateRow
     }
 
     /// What a row view lays down before its tint and selection: its stripe, or the table's own

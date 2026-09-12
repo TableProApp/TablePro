@@ -13,11 +13,7 @@ final class AppEvents {
 
     // MARK: - Theme & Accessibility
 
-    /// Carries the palette revision and the effective appearance. A consumer that snapshots
-    /// colours or fonts needs both: a forced Light/Dark switch never changes the theme, and a
-    /// theme switch never changes the appearance. Subscribing reaches a view that is alive but
-    /// detached from every window, which a walk of the window tree would miss.
-    let themeChanged = PassthroughSubject<ThemeChange, Never>()
+    let themeChanged = PassthroughSubject<Void, Never>()
 
     let accessibilityTextSizeChanged = PassthroughSubject<Void, Never>()
 

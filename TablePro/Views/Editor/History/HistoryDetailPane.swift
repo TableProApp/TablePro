@@ -37,7 +37,7 @@ struct HistoryDetailPane: View {
                 databaseType: entry.databaseType,
                 accessibilityIdentifier: "query-history-detail-query"
             )
-            .background(ThemeEngine.shared.palette.color(.editorBackground))
+            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()

@@ -66,7 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
         if let screenshotMode = ScreenshotEnvironment.appearanceMode {
             let appearanceSettings = AppSettingsManager.shared.appearance
-            ThemeEngine.shared.apply(
+            ThemeEngine.shared.updateAppearanceAndTheme(
                 mode: screenshotMode,
                 lightThemeId: appearanceSettings.preferredLightThemeId,
                 darkThemeId: appearanceSettings.preferredDarkThemeId

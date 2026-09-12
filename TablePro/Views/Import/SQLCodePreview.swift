@@ -31,9 +31,6 @@ struct SQLCodePreview: View {
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration()
             }
-            .onReceive(AppEvents.shared.themeChanged) { _ in
-                editorConfiguration = Self.makeConfiguration()
-            }
         }
     }
 
