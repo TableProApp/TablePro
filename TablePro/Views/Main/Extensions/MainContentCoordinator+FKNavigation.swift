@@ -51,12 +51,20 @@ extension MainContentCoordinator {
             return
         }
 
-        let currentDatabase = sourceScope.database
-        let targetSchema = fkInfo.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? sourceScope.schema
+        /// The referenced table's own database and schema, not the raw catalog value. An engine
+        /// with no schema layer names the referenced database in the slot its catalog calls a
+        /// schema, and carrying that through gave a table reached by a key a different identity
+        /// from the same table opened from the sidebar: its own filters, its own column layout, no
+        /// tab to reuse, and a rename that never found it.
+        let target = ForeignKeyTargetScope.resolve(
+            origin: sourceScope, referencedSchema: fkInfo.referencedSchema, databaseType: connection.type
+        )
+        let targetDatabase = target.database
+        let targetSchema = target.schema
 
         if !openInNewTab,
            let current = tabManager.selectedTab,
-           matchesFKTarget(current, table: referencedTable, database: currentDatabase, schema: targetSchema) {
+           matchesFKTarget(current, table: referencedTable, database: targetDatabase, schema: targetSchema) {
             /// Re-filtering the tab in place is a jump like any other, so it goes on the history.
             /// Clicking the reference the tab is already showing is not, and recording it would
             /// stack identical entries a reader has to press Back through.
@@ -70,7 +78,7 @@ extension MainContentCoordinator {
             replaceSelectedTabWithFKTarget(
                 referencedTable: referencedTable,
                 filter: filter,
-                databaseName: currentDatabase,
+                databaseName: targetDatabase,
                 schemaName: targetSchema
             )
             return
@@ -79,7 +87,7 @@ extension MainContentCoordinator {
         if !openInNewTab,
            let existing = openFKTargetTab(
                table: referencedTable,
-               database: currentDatabase,
+               database: targetDatabase,
                schema: targetSchema,
                filter: filter
            ) {
@@ -91,7 +99,7 @@ extension MainContentCoordinator {
         let payload = makeFKReferencePayload(
             filter: filter,
             referencedTable: referencedTable,
-            databaseName: currentDatabase,
+            databaseName: targetDatabase,
             schemaName: targetSchema
         )
         openTabInNewWindow(payload)

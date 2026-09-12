@@ -41,10 +41,14 @@ extension MainContentCoordinator {
         )
     }
 
+    /// `database` names the target when the caller knows it, which a foreign key does and the
+    /// sidebar does not: a reference can point into another database, and taking the browse cursor
+    /// there opens a tab on whichever one the sidebar happens to be showing.
     @discardableResult
     func openTableTab(
         _ tableName: String,
         schema: String? = nil,
+        database: String? = nil,
         showStructure: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
@@ -63,7 +67,7 @@ extension MainContentCoordinator {
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
-            currentDatabase = browseDatabaseName
+            currentDatabase = database?.nilIfEmpty ?? browseDatabaseName
         }
 
         let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
