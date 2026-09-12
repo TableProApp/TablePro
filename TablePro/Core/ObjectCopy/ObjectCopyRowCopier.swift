@@ -36,11 +36,15 @@ internal struct ObjectCopyRowCopier: Sendable {
     /// part-way, and the round-trip saving past a thousand rows is not measurable.
     internal static let maximumBatchRows = 1_000
 
-    /// Oracle before 23c has no `INSERT … VALUES (…), (…)`, and the generic generator emits
-    /// exactly that. One row per statement is slower and is the only form those releases accept;
-    /// `INSERT ALL` and array binding both need work the driver does not expose today.
+    /// The flat cap above, clamped by what the engine can parse. `SQLMultiRowInsert` owns the second
+    /// half so the SQL export reads the same rule from the same place; Oracle takes one row per
+    /// statement because it has no `INSERT … VALUES (…), (…)` and the generic generator emits
+    /// exactly that. The two are deliberately separate numbers: this one is a round-trip cap that
+    /// stops measuring above a thousand rows, and that one is the point an engine stops parsing.
     internal static func maximumBatchRows(for databaseType: DatabaseType) -> Int {
-        databaseType == .oracle ? 1 : maximumBatchRows
+        min(
+            maximumBatchRows,
+            SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: databaseType.rawValue))
     }
 
     internal struct Outcome: Sendable {

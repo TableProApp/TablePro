@@ -51,6 +51,11 @@ struct ExportState {
     var statusMessage: String = ""
     var errorMessage: String?
     var warnings: [String] = []
+
+    /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
+    /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
+    /// takes the caution icon, and drops its "Do not show this again" checkbox.
+    var notes: [String] = []
 }
 
 // MARK: - Export Service
@@ -200,6 +205,7 @@ final class ExportService {
         state.processedRows = progress.processedRows
 
         state.warnings = result.warnings + dataSource.cappedTableWarnings
+        state.notes = result.notes
     }
 
     // MARK: - Statement Timeout
@@ -290,6 +296,7 @@ final class ExportService {
         state.processedRows = progress.processedRows
 
         state.warnings = result.warnings
+        state.notes = result.notes
     }
 
     func exportStreamingQuery(
@@ -358,6 +365,7 @@ final class ExportService {
             pagination: PaginationCapability.of(databaseType)
         )
         state.warnings = result.warnings + [capWarning].compactMap { $0 }
+        state.notes = result.notes
     }
 
     /// A query result exported from an engine that returns only its leading rows stops at the

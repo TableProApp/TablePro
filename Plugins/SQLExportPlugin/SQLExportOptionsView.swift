@@ -12,6 +12,27 @@ struct SQLExportOptionsView: View {
 
     private static let splitSizeOptions = [0, 8, 32, 128, 512]
 
+    /// Every value but the first is a `max_allowed_packet` default some MySQL or MariaDB release has
+    /// shipped with, so a dump restores into an untuned server of that generation.
+    private static let statementSizeOptions = [0, 262_144, 1_048_576, 4_194_304, 16_777_216, 67_108_864]
+
+    private static let statementSizeHelp = String(
+        localized: """
+            Closes the INSERT at this size or the row count, whichever comes first. MySQL and MariaDB \
+            reject a statement larger than max_allowed_packet, and a table of wide rows reaches that \
+            long before it reaches the row count.
+            """,
+        bundle: .main
+    )
+
+    private static func statementSizeLabel(_ bytes: Int) -> String {
+        guard bytes > 0 else { return String(localized: "No limit", bundle: .main) }
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        formatter.allowedUnits = [.useKB, .useMB]
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
     private static let insertModeHelp = String(
         localized: """
             What an INSERT does when the row already exists. MySQL, MariaDB, PostgreSQL and SQLite \
@@ -70,6 +91,26 @@ struct SQLExportOptionsView: View {
                 .frame(width: 130)
             }
             .help("Higher values create fewer INSERT statements, resulting in smaller files and faster imports")
+
+            HStack {
+                Text("Max INSERT size")
+                    .font(.system(size: 13))
+
+                Spacer()
+
+                Picker(
+                    String(localized: "Max INSERT size", bundle: .main),
+                    selection: $plugin.settings.maxStatementBytes
+                ) {
+                    ForEach(Self.statementSizeOptions, id: \.self) { size in
+                        Text(Self.statementSizeLabel(size)).tag(size)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 130)
+            }
+            .help(Self.statementSizeHelp)
 
             HStack {
                 Text("On existing rows")

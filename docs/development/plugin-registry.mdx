@@ -68,13 +68,13 @@ Themes carry no native code, so they match on architecture alone.
   "binaries": [
     {
       "architecture": "arm64",
-      "pluginKitVersion": 29,
+      "pluginKitVersion": 30,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-arm64.zip",
       "sha256": "<sha256>"
     },
     {
       "architecture": "x86_64",
-      "pluginKitVersion": 29,
+      "pluginKitVersion": 30,
       "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.26/OracleDriver-x86_64.zip",
       "sha256": "<sha256>"
     }
@@ -125,7 +125,7 @@ Most bundled plugins never appear in the registry at all, because their binaries
 
 A plugin built against any PluginKit version inside the app's `[minimum, current]` range loads, and the runtime fills newer requirements from their defaults. What that means for releases:
 
-- **Additive change** (a new requirement with a default, a new field on a non-frozen type): no bump, no re-publish. The binaries already out there keep serving.
+- **Additive change** (a new requirement with a default, a new field on a non-frozen type): raise `currentPluginKitVersion` and the `TableProPluginKitVersion` of every plugin rebuilt against it, leave `minimumCompatiblePluginKitVersion` alone, and re-publish nothing. The binaries already out there keep serving, because the runtime fills a requirement they predate from its default. The bump is for the other direction: a plugin rebuilt against the new SDK references symbols an older app does not carry, and a manifest left at the old number passes that app's version check and then fails to load at all. Leaving the manifest behind is the one mistake this rule exists to stop.
 - **Breaking change** (a removed or changed requirement, a frozen-layout change, a requirement without a default): raise `currentPluginKitVersion` and `minimumCompatiblePluginKitVersion` together, then run `scripts/release-all-plugins.sh <newVersion>`. It reads the registry-only plugins out of `.github/plugin-registry.json`, bumps each one's patch version, and fires a single `workflow_dispatch` so they all build as one matrix.
 - **Retention**: `update-registry.py` keeps binaries for the two newest PluginKit versions per plugin. Older ones are pruned, so a user two or more versions behind hits `noCompatibleBinary` and has to update the app.
 
