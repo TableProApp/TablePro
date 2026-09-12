@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Wrong database read, and written, by a connection whose startup commands select one of their own.
 - **Prompt for password** lost when importing a TablePlus connection set to **Ask everytime**.
 - TablePlus import saving a password for a connection TablePlus was set never to store one for.
 - TablePlus import reading the CA certificate and client key paths the wrong way round.
