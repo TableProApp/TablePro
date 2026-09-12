@@ -167,5 +167,4 @@ internal struct ObjectCopyRowCopier: Sendable {
         guard let coercer = step.coercer else { return row }
         return coercer.coerce(row)
     }
-
 }
