@@ -127,7 +127,7 @@ struct WeaviateFieldParityTests {
 
 @Suite("Weaviate plugin manifest")
 struct WeaviatePluginManifestTests {
-    @Test("Info.plist declares PluginKit 25 and the Weaviate type id")
+    @Test("Info.plist declares the current PluginKit ABI and the Weaviate type id")
     func plistDeclaresType() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -135,7 +135,7 @@ struct WeaviatePluginManifestTests {
             .deletingLastPathComponent()
             .appendingPathComponent("Plugins/WeaviateDriverPlugin/Info.plist")
         let plist = try #require(NSDictionary(contentsOf: url) as? [String: Any])
-        #expect(plist["TableProPluginKitVersion"] as? Int == 25)
+        #expect(plist["TableProPluginKitVersion"] as? Int == PluginManager.currentPluginKitVersion)
         #expect(plist["TableProProvidesDatabaseTypeIds"] as? [String] == ["Weaviate"])
     }
 }
