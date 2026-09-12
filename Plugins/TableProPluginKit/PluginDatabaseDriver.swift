@@ -112,6 +112,19 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// here must not also declare the same indexes in `fetchTableDDL`, or the dump creates each
     /// one twice.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String]
+
+    /// The `COMMENT` statements that reattach this relation's own comment and its column comments,
+    /// ready to run. A dump writes them directly after the object's `CREATE`, which is where every
+    /// engine's own tool puts them.
+    ///
+    /// This is statement text rather than the comment strings, because only the driver knows the
+    /// keyword its engine demands: PostgreSQL checks `COMMENT ON TABLE` against the relation's
+    /// `relkind` and refuses it on a view with "is not a table".
+    ///
+    /// Returning nothing is the right answer for an engine whose `CREATE TABLE` carries its comments
+    /// inline. A driver that answers here must not also declare the same comments in
+    /// `fetchTableDDL`, or the dump sets each one twice.
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String]
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo]
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo]
@@ -636,6 +649,11 @@ public extension PluginDatabaseDriver {
     /// its indexes and for one that has none. A driver that overrides this must drop the same
     /// statements from `fetchTableDDL` in the same change.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] { [] }
+
+    /// Defaults to nothing, which is correct for an engine whose `CREATE TABLE` already carries its
+    /// comments and for one that stores none. A driver that overrides this must drop the same
+    /// statements from `fetchTableDDL` in the same change.
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] { [] }
 
     /// Answers whether `fetchAllIndexes` is a single query rather than the N+1 default below.
     var providesBulkIndexFetch: Bool { false }

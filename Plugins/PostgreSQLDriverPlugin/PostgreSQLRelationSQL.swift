@@ -28,6 +28,23 @@ public enum PostgreSQLRelationSQL {
         }
     }
 
+    /// The same keyword read from `pg_class.relkind`, which is what a catalog read has to hand. A
+    /// partitioned table takes `TABLE`, the keyword `COMMENT ON PARTITIONED TABLE` does not exist.
+    public static func commentKeyword(forRelkind relkind: String) -> String? {
+        switch relkind {
+        case "r", "p":
+            return "TABLE"
+        case "f":
+            return "FOREIGN TABLE"
+        case "v":
+            return "VIEW"
+        case "m":
+            return "MATERIALIZED VIEW"
+        default:
+            return nil
+        }
+    }
+
     /// `COMMENT` takes a literal and nothing else, so the value is quoted here rather than bound. The
     /// quoting reads the same whatever `standard_conforming_strings` is set to.
     public static func commentStatement(

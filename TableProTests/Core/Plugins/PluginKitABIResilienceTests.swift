@@ -47,6 +47,8 @@ struct PluginKitABIResilienceTests {
         #expect(try await driver.fetchSchemas().isEmpty)
         #expect(try await driver.fetchExternalSchemaNames().isEmpty)
         #expect(try await driver.fetchApproximateRowCount(table: "users", schema: nil) == nil)
+        #expect(try await driver.fetchIndexDDL(table: "users", schema: nil).isEmpty)
+        #expect(try await driver.fetchCommentDDL(table: "users", schema: nil).isEmpty)
         let base = QueryCompletionProfile(
             resolvedDialect: nil,
             statementCompletions: [CompletionEntry(label: "SELECT", insertText: "SELECT")],

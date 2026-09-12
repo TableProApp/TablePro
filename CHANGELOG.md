@@ -81,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default PostgreSQL schema taken from the schema list rather than the search path.
 - Safe Mode minimum from a configuration profile missing from the toolbar, the Database menu and the connection form. (#2030)
 - PostgreSQL connection hanging after running `COPY FROM STDIN` or `COPY TO STDOUT` in the query editor and on iOS.
+- Table, view and column comments missing from a PostgreSQL SQL export. (#2726)
 - Stop not ending queries on MySQL and MariaDB servers without TLS.
 - Wrong results after MySQL retakes a dropped connection, on a session that had set a variable, a session setting or a database.
 - Session state set by the `/*! ... */` statements a MySQL dump writes counting as a comment.

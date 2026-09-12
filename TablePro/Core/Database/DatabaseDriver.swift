@@ -164,6 +164,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Empty on an engine whose CREATE TABLE carries them inline. Default returns empty.
     func fetchIndexDDL(table: String) async throws -> [String]
 
+    /// The COMMENT statements that reattach this relation's comment and its column comments. Empty
+    /// on an engine whose CREATE TABLE carries them inline. Default returns empty.
+    func fetchCommentDDL(table: String) async throws -> [String]
+
     /// Fetch dependent type definitions (e.g., PostgreSQL enum types) for a table.
     /// Returns array of (typeName, labels) pairs. Default returns empty.
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])]
@@ -346,6 +350,8 @@ extension DatabaseDriver {
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? { nil }
 
     func fetchIndexDDL(table: String) async throws -> [String] { [] }
+
+    func fetchCommentDDL(table: String) async throws -> [String] { [] }
 
     func resolveQueryCompletionProfile(
         databaseTypeId: String,

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>27</integer>
+	<integer>28</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>Beancount</string>

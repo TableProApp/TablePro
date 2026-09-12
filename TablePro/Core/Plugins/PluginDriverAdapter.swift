@@ -432,6 +432,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchIndexDDL(table: table, schema: pluginDriver.currentSchema)
     }
 
+    func fetchCommentDDL(table: String) async throws -> [String] {
+        try await pluginDriver.fetchCommentDDL(table: table, schema: pluginDriver.currentSchema)
+    }
+
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {
         try await pluginDriver.fetchDependentTypes(table: table, schema: pluginDriver.currentSchema)
     }
