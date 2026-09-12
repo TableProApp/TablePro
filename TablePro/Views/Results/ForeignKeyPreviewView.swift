@@ -28,7 +28,7 @@ private struct FKPreviewTaskKey: Equatable {
 
 struct ForeignKeyPreviewView: View {
     let model: FKPreviewModel
-    let connectionId: UUID
+    let scope: DatabaseScope
     let databaseType: DatabaseType
     let onNavigate: () -> Void
     let onDismiss: () -> Void
@@ -178,7 +178,7 @@ struct ForeignKeyPreviewView: View {
 
         do {
             let fetched = try await ForeignKeyRowFetcher.fetch(
-                connectionId: connectionId,
+                origin: scope,
                 databaseType: databaseType,
                 reference: JSONForeignKeyRef(fkInfo),
                 value: value

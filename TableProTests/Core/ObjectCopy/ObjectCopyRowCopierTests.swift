@@ -248,6 +248,26 @@ final class ObjectCopyRowCopierTests: XCTestCase {
         XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 2, generator: oracle), 1)
     }
 
+    /// The row cap and the engine's syntax ceiling are two different numbers, and the copier takes
+    /// the smaller. `SQLMultiRowInsert` owns the second half so the SQL export reads the same rule,
+    /// and an engine it says nothing about has to keep the flat thousand: a five-column PostgreSQL
+    /// table would otherwise jump to 13,107 rows a batch on the strength of its parameter ceiling.
+    func testAnEngineWithNoSyntaxCeilingKeepsTheFlatRowCap() throws {
+        let postgres = try SQLStatementGenerator(
+            tableName: "t", columns: [], primaryKeyColumns: [], databaseType: .postgresql
+        )
+
+        XCTAssertEqual(SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: "PostgreSQL"), .max)
+        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .postgresql), 1_000)
+        XCTAssertEqual(ObjectCopyRowCopier.batchSize(columnCount: 5, generator: postgres), 1_000)
+    }
+
+    func testTheSyntaxCeilingIsTakenWhenItIsTheSmallerOfTheTwo() {
+        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .oracle), 1)
+        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .mssql), 1_000)
+        XCTAssertEqual(ObjectCopyRowCopier.maximumBatchRows(for: .mysql), 1_000)
+    }
+
     /// A table wider than the ceiling still writes one row at a time rather than none.
     func testAVeryWideTableStillWritesOneRowPerStatement() throws {
         let mssql = try SQLStatementGenerator(

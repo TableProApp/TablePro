@@ -32,6 +32,11 @@ struct CreateTableView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CreateTableView")
 
     let connection: DatabaseConnection
+
+    /// The tab's own scope, which is where the table is created. The browse cursor moves when the
+    /// user clicks another database in the sidebar and the open Create Table tab does not follow it,
+    /// so taking the cursor created the table somewhere the tab never named.
+    let scope: DatabaseScope?
     var coordinator: MainContentCoordinator?
     let selectionState: GridSelectionState
 
@@ -60,11 +65,13 @@ struct CreateTableView: View {
 
     init(
         connection: DatabaseConnection,
+        scope: DatabaseScope?,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
         draft: CreateTableDraft
     ) {
         self.connection = connection
+        self.scope = scope
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.draft = draft
@@ -405,9 +412,15 @@ struct CreateTableView: View {
     }
 
     private func currentStatements() -> CreateTableStatements {
+        statements(composedWith: DatabaseManager.shared.driver(for: connection.id))
+    }
+
+    /// Several visual-editor drivers write their own current schema or catalog into the statement as
+    /// an explicit qualifier, so the driver the SQL is composed on decides where the table lands.
+    /// Composing on the session driver and executing on the tab's scope pinned only half of it.
+    private func statements(composedWith driver: DatabaseDriver?) -> CreateTableStatements {
         let plan = currentPlan
-        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?
-            .schemaPluginDriver else {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
             return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
         }
         return CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver)
@@ -433,13 +446,12 @@ struct CreateTableView: View {
     /// keep the app's own DDL off the user's connection.
     private func createTable() {
         guard !isCreating else { return }
-        let composed = currentStatements()
-        guard composed.issues.isEmpty, !composed.statements.isEmpty else {
-            errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+        guard currentStatements().issues.isEmpty else {
+            errorMessage = currentStatements().issues.map(\.qualifiedMessage).joined(separator: "\n")
             showError = true
             return
         }
-        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+        guard let scope else {
             errorMessage = String(localized: "Not connected to database")
             showError = true
             return
@@ -449,17 +461,26 @@ struct CreateTableView: View {
         errorMessage = nil
         updateCreateTablePendingState()
 
-        let statements = composed.statements
-        let createdName = composed.tableName ?? draft.tableName
         Task {
             defer { isCreating = false }
             do {
+                let composed = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                    await MainActor.run { statements(composedWith: driver) }
+                }
+                guard composed.issues.isEmpty, !composed.statements.isEmpty else {
+                    errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+                    showError = true
+                    return
+                }
+                let createdName = composed.tableName ?? draft.tableName
                 try await DatabaseManager.shared.executeCreateTable(
-                    statements: statements,
+                    statements: composed.statements,
                     databaseType: connection.type,
                     scope: scope
                 )
-                coordinator?.openTableTab(createdName)
+                coordinator?.openTableTab(
+                    createdName, schema: scope.schema, database: scope.database.nilIfEmpty
+                )
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")

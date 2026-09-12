@@ -12,7 +12,7 @@ import os
 /// The referenced-row lookup a foreign key expansion runs, held as a value so a test can drive the
 /// model's cancellation and generation rules without a database behind it.
 typealias JSONForeignKeyRowFetch = @MainActor (
-    _ connectionId: UUID,
+    _ origin: DatabaseScope,
     _ databaseType: DatabaseType,
     _ reference: JSONForeignKeyRef,
     _ value: String
@@ -36,7 +36,7 @@ final class JSONRowInspectorViewModel {
     /// Bumped by every rebuild and every reset. A fetch that returns after one discards itself,
     /// because `Task.cancel()` cannot interrupt a query already in flight.
     private var generation = 0
-    private var connectionId: UUID?
+    private var scope: DatabaseScope?
     private var databaseType: DatabaseType?
     @ObservationIgnored private let fetchRow: JSONForeignKeyRowFetch
 
@@ -47,13 +47,13 @@ final class JSONRowInspectorViewModel {
     }
 
     private static func fetchThroughDatabase(
-        connectionId: UUID,
+        origin: DatabaseScope,
         databaseType: DatabaseType,
         reference: JSONForeignKeyRef,
         value: String
     ) async throws -> ForeignKeyRowFetcher.FetchedRow? {
         try await ForeignKeyRowFetcher.fetch(
-            connectionId: connectionId,
+            origin: origin,
             databaseType: databaseType,
             reference: reference,
             value: value,
@@ -77,7 +77,7 @@ final class JSONRowInspectorViewModel {
             reset()
             return
         }
-        connectionId = snapshot.connectionId
+        scope = snapshot.scope
         databaseType = snapshot.databaseType
 
         guard snapshot != lastSnapshot else { return }
@@ -217,7 +217,7 @@ final class JSONRowInspectorViewModel {
 
     private func expandForeignKey(at path: JSONNodePath, in root: JSONRowNode) {
         guard fetches[path] == nil,
-              let connectionId,
+              let scope,
               let databaseType,
               let node = node(at: path, from: root),
               let reference = node.foreignKey,
@@ -228,7 +228,7 @@ final class JSONRowInspectorViewModel {
             path: path,
             reference: reference,
             value: JSONScalarText.unquoted(scalar),
-            connectionId: connectionId,
+            origin: scope,
             databaseType: databaseType
         )
     }
@@ -237,7 +237,7 @@ final class JSONRowInspectorViewModel {
         path: JSONNodePath,
         reference: JSONForeignKeyRef,
         value: String,
-        connectionId: UUID,
+        origin: DatabaseScope,
         databaseType: DatabaseType
     ) {
         let visit = JSONForeignKeyVisit(ref: reference, value: value)
@@ -262,7 +262,7 @@ final class JSONRowInspectorViewModel {
             defer { self?.finishFetch(at: path, generation: generation) }
             do {
                 guard let fetch = self?.fetchRow else { return }
-                let fetched = try await fetch(connectionId, databaseType, reference, value)
+                let fetched = try await fetch(origin, databaseType, reference, value)
                 guard let self, !Task.isCancelled, generation == self.generation else { return }
                 guard let fetched else {
                     self.states.failures[path] = .notFound

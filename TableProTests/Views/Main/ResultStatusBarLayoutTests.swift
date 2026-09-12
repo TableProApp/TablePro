@@ -10,6 +10,17 @@ import Testing
 
 @testable import TablePro
 
+/// Every width from a wide window down well past the narrowest pane the window can produce.
+///
+/// The pane's floor is `defaultDetailMinThickness`, 400pt, and it cannot go below that:
+/// `NSSplitViewItem.minimumThickness` is a required constraint, measured to hold against both a
+/// window resize and a divider drag. The ladder's narrowest tier holds its shape down to 280pt, so
+/// the widths below 380 are the recorded margin rather than states the window can reach.
+///
+/// File scope rather than a member: `@Test(arguments:)` reads its arguments from a nonisolated
+/// context, which cannot touch a static on a `@MainActor` suite.
+private let statusBarHostWidths: [CGFloat] = [1_400, 1_200, 900, 720, 600, 500, 440, 400, 380, 320, 300]
+
 @Suite("ResultStatusBar Layout")
 @MainActor
 struct ResultStatusBarLayoutTests {
@@ -18,7 +29,9 @@ struct ResultStatusBarLayoutTests {
         hasColumns: Bool,
         tabType: TabType?,
         viewMode: ResultsViewMode,
-        pagination: PaginationState = PaginationState()
+        pagination: PaginationState = PaginationState(),
+        statusMessage: String? = nil,
+        structureFooter: StructureFooterCapability = StructureFooterCapability()
     ) -> ResultStatusBar {
         let snapshot = StatusBarSnapshot(
             tabId: UUID(),
@@ -32,8 +45,9 @@ struct ResultStatusBarLayoutTests {
                 hasTableName: tabType == .table,
                 hasColumns: hasColumns
             ),
+            hasStructureActions: structureFooter.isActive,
             pagination: pagination,
-            statusMessage: nil
+            statusMessage: statusMessage
         )
         return ResultStatusBar(
             model: ResultStatusModel(snapshot: snapshot, viewMode: viewMode, selectedRowCount: 0),
@@ -69,7 +83,7 @@ struct ResultStatusBarLayoutTests {
                 onGoToPage: { _ in },
                 onRequestExactCount: {}
             ),
-            structureFooter: StructureFooterCapability(),
+            structureFooter: structureFooter,
             execution: ExecutionReadout(
                 tabId: UUID(),
                 execution: TabExecutionRegistry(),
@@ -192,6 +206,138 @@ struct ResultStatusBarLayoutTests {
         #expect(!ResultsViewMode.structure.showsRowFilters)
     }
 
+    // MARK: - Width
+
+    private static let wordyDriverMessage = """
+    ERROR: relation "public.some_extremely_long_table_name_nobody_would_choose" does not exist \
+    at character 15
+    """
+
+    /// The bar must never report a width larger than the pane hosting it.
+    ///
+    /// This is the defect in one assertion. Both of the bar's clusters were pinned with
+    /// `.fixedSize()`, so on a table tab in Data mode it wanted 766pt. The tab content column
+    /// adopted that width, `sizingOptions = []` kept the need invisible to Auto Layout, and SwiftUI
+    /// centred the oversized column inside the 440pt pane the window's own 720pt minimum leaves:
+    /// 163pt was unreachable at each edge, taking the grid's row numbers, its whole first column and
+    /// the entire pagination cluster with it.
+    @Test("The bar is never wider than its host", arguments: statusBarHostWidths)
+    func barNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        expectFills(bar, at: width)
+    }
+
+    @Test("The structure editor's bar is never wider than its host", arguments: statusBarHostWidths)
+    func structureBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .structure,
+            structureFooter: StructureFooterCapability(
+                canAdd: true,
+                canRemove: true,
+                addLabel: "Add Column",
+                removeLabel: "Remove Column"
+            )
+        )
+        expectFills(bar, at: width)
+    }
+
+    @Test("A query tab's bar is never wider than its host", arguments: statusBarHostWidths)
+    func queryBarNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .query,
+            viewMode: .data,
+            pagination: PaginationState(pageSize: 1_000)
+        )
+        expectFills(bar, at: width)
+    }
+
+    /// A wordy driver message must truncate rather than widen the bar. It is also why the readout
+    /// reports a constant ideal width: `ViewThatFits` chooses on a candidate's ideal size, so a width
+    /// read off the sentence would drop the whole bar a tier by itself.
+    @Test("A wordy driver message does not widen the bar", arguments: statusBarHostWidths)
+    func wordyStatusMessageDoesNotWidenTheBar(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000),
+            statusMessage: Self.wordyDriverMessage
+        )
+        expectFills(bar, at: width)
+    }
+
+    /// The narrowest tier has to fit the narrowest pane the window can produce, or `ViewThatFits`
+    /// falls through to a row that overflows anyway. `resolveDetailMinimumThickness` sets that
+    /// floor, so the two are checked against each other rather than against a literal that could
+    /// drift away from either.
+    @Test("The narrowest tier fits the narrowest pane the window allows")
+    func narrowestTierFitsTheNarrowestPane() {
+        let pane = MainSplitViewController.defaultDetailMinThickness
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        expectFills(bar, at: pane)
+    }
+
+    /// The grid shares a `VStack` with the bar, closed by a `.frame(maxWidth: .infinity)` that can
+    /// never report less than its widest child, which is how the bar's width reached the grid at
+    /// all. Measuring the column rather than the bar alone is what pins that path.
+    @Test("The content column around the bar is never wider than its host", arguments: statusBarHostWidths)
+    func contentColumnNeverExceedsItsHost(width: CGFloat) {
+        let bar = makeBar(
+            rowCount: 1_000,
+            hasColumns: true,
+            tabType: .table,
+            viewMode: .data,
+            pagination: PaginationState(totalRowCount: 5_000, pageSize: 1_000)
+        )
+        let column = VStack(spacing: 0) {
+            Color.clear
+            bar
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        expectFills(column, at: width)
+    }
+
+    private func expectFills(_ content: some View, at width: CGFloat, sourceLocation: SourceLocation = #_sourceLocation) {
+        let measured = measureFrame(of: content, at: width)
+        #expect(measured.width == width, "the bar reported \(measured.width)pt inside a \(width)pt host", sourceLocation: sourceLocation)
+        #expect(measured.minX == 0, "the bar was placed at \(measured.minX) instead of the host's leading edge", sourceLocation: sourceLocation)
+    }
+
+    /// Where the content actually landed inside its host.
+    ///
+    /// A marker view rather than a rasterised image: SwiftUI draws these controls with no child
+    /// `NSView`s of their own, so walking the view tree finds nothing, and an offscreen bitmap of an
+    /// AppKit container reports its own artefacts. `sizingOptions = []` mirrors `WorkspacePanes`,
+    /// and it is the reason the defect is visible here at all: without it the host would simply grow
+    /// to whatever the bar asked for.
+    private func measureFrame(of content: some View, at width: CGFloat) -> CGRect {
+        let box = StatusBarFrameBox()
+        let host = NSHostingView(rootView: AnyView(content.overlay(StatusBarFrameProbe(box: box))))
+        host.sizingOptions = []
+        host.frame = NSRect(x: 0, y: 0, width: width, height: 240)
+        host.layoutSubtreeIfNeeded()
+        #expect(box.hostWidth == width, "the probe did not run inside a \(width)pt host")
+        return box.frame ?? CGRect(x: CGFloat.nan, y: CGFloat.nan, width: CGFloat.nan, height: CGFloat.nan)
+    }
+
     @Test("The find bar belongs to the grid it searches, unlike the filter panel")
     func findBarVisibilityByMode() {
         #expect(ResultsViewMode.data.showsFindBar)
@@ -201,6 +347,54 @@ struct ResultStatusBarLayoutTests {
 
         for mode in [ResultsViewMode.data, .json, .chart, .structure] where mode.showsFindBar {
             #expect(mode.showsRowFilters, "a mode that finds must also filter")
+        }
+    }
+}
+
+@MainActor
+private final class StatusBarFrameBox {
+    var frame: CGRect?
+    var hostWidth: CGFloat?
+}
+
+private struct StatusBarFrameProbe: NSViewRepresentable {
+    let box: StatusBarFrameBox
+
+    func makeNSView(context: Context) -> NSView { ProbeView(box: box) }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class ProbeView: NSView {
+        private let box: StatusBarFrameBox
+
+        init(box: StatusBarFrameBox) {
+            self.box = box
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("StatusBarFrameProbe does not support NSCoder init")
+        }
+
+        override func layout() {
+            super.layout()
+            guard let host = enclosingHostingView() else { return }
+            let measured = convert(bounds, to: host)
+            let hostWidth = host.bounds.width
+            MainActor.assumeIsolated {
+                box.frame = measured
+                box.hostWidth = hostWidth
+            }
+        }
+
+        private func enclosingHostingView() -> NSView? {
+            var candidate: NSView? = self
+            while let current = candidate {
+                if String(describing: type(of: current)).contains("NSHostingView") { return current }
+                candidate = current.superview
+            }
+            return nil
         }
     }
 }

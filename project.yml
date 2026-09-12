@@ -594,6 +594,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
       - Plugins/SQLExportPlugin/SQLExportDDLRewriter.swift
       - Plugins/SQLExportPlugin/SQLExportEncodingDeclaration.swift
       - Plugins/SQLExportPlugin/SQLExportFileWriter.swift
@@ -601,7 +602,9 @@ targets:
       - Plugins/SQLExportPlugin/SQLExportModels.swift
       - Plugins/SQLExportPlugin/SQLExportOptionsView.swift
       - Plugins/SQLExportPlugin/SQLExportPlugin.swift
+      - Plugins/SQLExportPlugin/SQLExportRowValueEncoder.swift
       - Plugins/SQLExportPlugin/SQLExportSnapshot.swift
+      - Plugins/SQLExportPlugin/SQLExportStatementBudget.swift
       - Plugins/SQLImportPlugin/SQLImportFailure.swift
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift

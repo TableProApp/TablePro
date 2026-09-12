@@ -33,6 +33,22 @@ extension TableViewCoordinator {
         showForeignKeyPreview(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
     }
 
+    /// The grid's own scope, which every foreign key affordance on it has to start from.
+    ///
+    /// The picker and the preview are two reads of one cell, so they resolve their target from one
+    /// expression rather than two: built separately they drift, and a preview that resolves its
+    /// target differently from the picker beside it reads one table while offering another's rows.
+    /// The tab's own database comes first, because a tab stays where it opened while the sidebar
+    /// moves; the browse cursor is the fallback for a grid that never carried one.
+    var gridOriginScope: DatabaseScope? {
+        guard let connectionId else { return nil }
+        return DatabaseScope(
+            connectionId: connectionId,
+            database: databaseName ?? DatabaseManager.shared.browseScope(for: connectionId)?.database ?? "",
+            schema: schemaName
+        )
+    }
+
     func showForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
@@ -41,6 +57,8 @@ extension TableViewCoordinator {
         let cellValue = cellValue(at: row, column: columnIndex)
         guard let databaseType, let connectionId else { return }
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
+
+        guard let scope = gridOriginScope else { return }
 
         let model = FKPreviewModel(cellValue: cellValue, fkInfo: fkInfo)
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
@@ -51,7 +69,7 @@ extension TableViewCoordinator {
         ) { [weak self] dismiss in
             ForeignKeyPreviewView(
                 model: model,
-                connectionId: connectionId,
+                scope: scope,
                 databaseType: databaseType,
                 onNavigate: { [weak self, model] in
                     dismiss()
@@ -284,11 +302,10 @@ extension TableViewCoordinator {
             return
         }
 
-        let scope = DatabaseScope(
-            connectionId: connectionId,
-            database: databaseName ?? DatabaseManager.shared.browseScope(for: connectionId)?.database ?? "",
-            schema: schemaName
-        )
+        guard let scope = gridOriginScope else {
+            beginCellEdit(row: row, tableColumnIndex: column)
+            return
+        }
 
         let currentValue = cellValue(at: row, column: columnIndex)
         let isNullable = tableRows.columnNullable[columnName] ?? true

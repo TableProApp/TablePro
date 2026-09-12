@@ -47,7 +47,9 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
         self.structureChangeManager = structureChangeManager
         self.structureTab = structureTab
         self.connection = connection
-        self.referenceMenus = ForeignKeyReferenceMenus(connectionId: connection.id)
+        self.referenceMenus = ForeignKeyReferenceMenus(
+            connectionId: connection.id, databaseType: connection.type
+        )
     }
 
     // MARK: - DataGridViewDelegate
