@@ -5,7 +5,7 @@
 
 import Foundation
 
-struct PostgreSQLCapabilities: Sendable, Equatable {
+nonisolated struct PostgreSQLCapabilities: Sendable, Equatable {
     let serverVersion: Int32
 
     /// libpq answers 0 for a handle it has not connected. A catalog query built for that has to

@@ -17,7 +17,7 @@ import TableProMSSQLCore
 
 nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
-private struct FreeTDSErrorState {
+nonisolated private struct FreeTDSErrorState {
     var perConnection: [UInt: String] = [:]
     var global = ""
 }
