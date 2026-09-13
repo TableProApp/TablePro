@@ -135,7 +135,6 @@ final class PaginationCoordinator {
                 mutate(&tab.pagination)
                 tab.paginationVersion += 1
             }) else { return }
-            parent.pendingScrollToTopAfterReplace.insert(tabId)
             reloadCurrentPage()
         }
     }
@@ -145,7 +144,7 @@ final class PaginationCoordinator {
               tabIndex < parent.tabManager.tabs.count else { return }
 
         parent.rebuildTableQuery(at: tabIndex)
-        parent.runQuery()
+        parent.runQuery(viewport: .firstRow)
     }
 
     // MARK: - Cancel Current Query

@@ -322,7 +322,7 @@ extension RowEditingCoordinator {
         /// retiring it the reload's automatic count refuses to replace it, and the bar
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-        parent.runQuery()
+        parent.runQuery(viewport: .keepPlace)
     }
 
     /// A tab is closed only when the object it is showing is one of the objects that went.

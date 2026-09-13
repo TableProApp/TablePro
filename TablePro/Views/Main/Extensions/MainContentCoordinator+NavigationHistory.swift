@@ -197,14 +197,12 @@ extension MainContentCoordinator {
             }
             tab.restoredPage = max(1, entry.page)
             tab.restoredPageSize = entry.pageSize
+            tab.restoredRowAnchor = entry.anchorRowKey
         }
 
         restoreLastHiddenColumnsForTable()
         filterCoordinator.rebuildTableQuery(at: tabIndex)
         cancelTableLoad(for: tabId)
-        /// Keyed by tab because one `TableViewCoordinator` serves every tab in the window. An
-        /// anchor with no tab attached would be spent by whichever tab's rows landed next.
-        pendingRowAnchors[tabId] = entry.anchorRowKey
         lazyLoadCurrentTabIfNeeded()
         return true
     }

@@ -1195,11 +1195,11 @@ final class MainContentCommandActions {
     }
 
     func runQuery() {
-        coordinator?.runQuery()
+        coordinator?.runQuery(viewport: .keepPlace)
     }
 
     func runQueryWithoutLimit() {
-        coordinator?.runQuery(bypassRowLimit: true)
+        coordinator?.runQuery(viewport: .keepPlace, bypassRowLimit: true)
     }
 
     func runAllStatements() {

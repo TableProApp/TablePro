@@ -53,7 +53,7 @@ extension MainContentCoordinator {
     /// well as the edits. Only the first change in a run prompts: confirming clears the changes, so
     /// every later toggle finds nothing to lose and passes straight through.
     private func changeColumnScope(_ mutate: @escaping (inout Set<String>) -> Void) {
-        confirmDiscardChangesIfNeeded(action: .columnVisibility) { [weak self] confirmed in
+        confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
             self.mutateSelectedTabHiddenColumns(mutate)
             self.requeryWithColumnScope(debounced: true)
@@ -110,7 +110,7 @@ extension MainContentCoordinator {
     /// confirmation. The width half is not undone by declining, because nothing about a width can
     /// invalidate an edit; only the refetch can.
     func resetColumns() {
-        confirmDiscardChangesIfNeeded(action: .columnVisibility) { [weak self] confirmed in
+        confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
             self.applyColumnReset()
         }

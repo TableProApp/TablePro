@@ -19,11 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
 - The update window shows the release highlights, with the full changelog one click away.
+- Data grid top row held across a refresh, matched by primary key.
+- Data grid scroll reset to the first row on sort, filter and page change.
 
 ### Fixed
 
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
+- Inline cell editor left open over a different row after a refresh.
+- Row selected by Back or Forward dropped once the table finished loading.
+- Data grid jumping to the top on a later reload after a page change failed.
 
 ## [0.74.0] - 2026-09-13
 

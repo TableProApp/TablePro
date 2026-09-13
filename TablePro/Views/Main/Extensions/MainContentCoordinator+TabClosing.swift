@@ -39,7 +39,6 @@ extension MainContentCoordinator {
         prune(&tableMetadataCache, keeping: openTabIds)
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&navigationHistories, keeping: openTabIds)
-        prune(&pendingRowAnchors, keeping: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -61,7 +60,6 @@ extension MainContentCoordinator {
     /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
     /// retargeted at all; this is what keeps the caches honest once one without work has been.
     func releaseRetargetedTabState(for tabId: UUID) {
-        pendingRowAnchors.removeValue(forKey: tabId)
         displayStateCache.removeValue(forKey: tabId)
         tableMetadataCache.removeValue(forKey: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
@@ -89,7 +87,6 @@ extension MainContentCoordinator {
         structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tab.id)
         navigationHistories.removeValue(forKey: tab.id)
-        pendingRowAnchors.removeValue(forKey: tab.id)
         displayStateCache.removeValue(forKey: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }

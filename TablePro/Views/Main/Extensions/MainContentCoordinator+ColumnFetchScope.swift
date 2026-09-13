@@ -32,7 +32,7 @@ extension MainContentCoordinator {
                 guard !Task.isCancelled else { return }
             }
             guard await self.rebuildSelectedTableColumnScopedQuery() else { return }
-            self.runQuery()
+            self.runQuery(viewport: .keepPlace)
         }
     }
 
