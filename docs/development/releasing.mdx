@@ -109,6 +109,29 @@ commits `appcast.xml`. A tag containing `-alpha`, `-beta` or `-rc` publishes as 
 published are moved byte for byte rather than regenerated, because Sparkle rewrites the download URL
 and drops the release notes of any existing item a staged archive happens to match.
 
+## Staged rollout and critical releases
+
+Every release carries `<sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>`. Sparkle
+spreads a release over seven cohorts keyed on a per-install random identifier, so six intervals is
+the tail: the last cohort is offered the build 36 hours after the first. A user who runs **Check for
+Updates…** is never phased and always gets the newest build.
+
+`.github/release-flags.json` decides whether a release may interrupt anyone:
+
+```json
+{ "criticalUpdate": false }
+```
+
+Setting it `true` passes `--critical-update-version ""` to `generate_appcast`, which writes
+`<sparkle:criticalUpdate/>` with no version attribute, making the item critical for every host.
+Sparkle then bypasses phasing, hides Skip and Remind Me Later, retitles the alert, and shows the
+update even under automatic downloads.
+
+The bar is data loss, an exposed security issue, a crash or hang on a common path, or a regression
+with no workaround. Set it in the release commit and set it back in the next one. The release job
+fails when the flag is `true` and the file has not changed since the previous tag, which is what a
+leftover flag looks like.
+
 ## Withdrawing a release
 
 Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.

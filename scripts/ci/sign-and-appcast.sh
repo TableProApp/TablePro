@@ -16,8 +16,10 @@ set -euo pipefail
 #
 # Usage: sign-and-appcast.sh <version>
 # Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' ZIPs.
+# Optional: CRITICAL_UPDATE=1 to mark the release critical.
 
 BASE_APPCAST="${BASE_APPCAST:-appcast.xml}"
+CRITICAL_UPDATE="${CRITICAL_UPDATE:-0}"
 VERSION="${1:?Usage: sign-and-appcast.sh <version>}"
 
 if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
@@ -87,12 +89,29 @@ for arch in arm64 x86_64; do
     printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
   } > "${STAGING}/TablePro-${VERSION}-${arch}.md"
 
+  # Sparkle bypasses phasing for a critical item anyway, but passing both would be a contradiction
+  # in the feed rather than a belt and braces.
+  GENERATE_FLAGS=()
+  if [ "$CRITICAL_UPDATE" = "1" ]; then
+    # An empty --critical-update-version writes <sparkle:criticalUpdate/> with no version
+    # attribute, which SPUAppcastItemStateResolver treats as critical for every host.
+    GENERATE_FLAGS+=(--critical-update-version "")
+  else
+    # Seven cohorts, so the interval times six is the tail: 21600 puts the last one 36 hours
+    # behind, which fits inside the median gap between releases. A user-initiated check is never
+    # phased, so Check for Updates always offers the newest build.
+    GENERATE_FLAGS+=(--phased-rollout-interval 21600)
+  fi
+
+  # --maximum-versions 1 states the invariant merge-appcast.py checks rather than leaving it as a
+  # consequence of the directory holding one archive.
   "$SPARKLE_BIN/generate_appcast" \
     --ed-key-file "$KEY_FILE" \
     --download-url-prefix "$DOWNLOAD_PREFIX" \
     --embed-release-notes \
     --full-release-notes-url "https://docs.tablepro.app/changelog" \
-    --maximum-versions 0 \
+    --maximum-versions 1 \
+    "${GENERATE_FLAGS[@]}" \
     "$STAGING"
 
   if [ ! -f "$STAGING/appcast.xml" ]; then
