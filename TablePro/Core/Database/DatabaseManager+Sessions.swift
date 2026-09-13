@@ -335,7 +335,12 @@ extension DatabaseManager {
             try await reconnectOntoDatabase(database, for: connectionId)
         } else if let adapter = driver as? PluginDriverAdapter {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            let sessionStartedAt = session(for: connectionId)?.connectedAt
             try await sessionDriverGate.withExclusiveAccess(connectionId) {
+                try Task.checkCancellation()
+                guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                    throw CancellationError()
+                }
                 try await adapter.switchDatabase(to: database)
                 if grouping == .bySchema {
                     await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
@@ -376,10 +381,10 @@ extension DatabaseManager {
     /// one the reconnect was about to disconnect. Counting it as an operation keeps the monitor's
     /// ping and a waiting lease's verification off the driver while it is being replaced.
     ///
-    /// A switch can now wait for its turn, and a disconnect does not fail what is waiting, so the
-    /// session it was asked on is checked once the turn comes. A connection closed and opened again
-    /// in between is a new session, and moving it would switch, or disconnect, a session nobody
-    /// asked this of.
+    /// A switch can now wait for its turn. A disconnect fails what is still queued, but a turn
+    /// handed over just before the session went away has already left the queue, so the session it
+    /// was asked on is checked once the turn comes. A connection closed and opened again in between
+    /// is a new session, and moving it would switch, or disconnect, a session nobody asked this of.
     private func reconnectOntoDatabase(_ database: String, for connectionId: UUID) async throws {
         let sessionStartedAt = session(for: connectionId)?.connectedAt
         try await sessionDriverGate.withExclusiveAccess(connectionId) {
@@ -756,8 +761,11 @@ extension DatabaseManager {
         userRequestedDisconnects.contains(connectionId)
     }
 
+    /// Drains the driver gate in the same step the entry goes, so nothing still queued for this
+    /// session wakes to find a reopened one under the same id and runs there.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
         AppEvents.shared.connectionStatusChanged.send(

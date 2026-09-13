@@ -233,8 +233,8 @@ struct DatabaseSwitchLeaseOrderingTests {
         #expect(original.switchSchemaCallCount == 0)
     }
 
-    /// A disconnect does not fail what is waiting for the driver, so a switch still queued when the
-    /// connection is closed and opened again would otherwise move the session that replaced it.
+    /// A switch still queued when the connection is closed and opened again would otherwise move the
+    /// session that replaced it.
     @Test("A switch queued behind the driver is dropped when the session it was asked on has gone")
     func queuedSwitchIsDroppedForAReplacedSession() async throws {
         let connection = makeSession()
@@ -272,4 +272,47 @@ struct DatabaseSwitchLeaseOrderingTests {
         #expect(reopened.disconnectCallCount == 0)
         #expect(reopened.switchSchemaCallCount == 0)
     }
+
+    /// A lease that waited behind a holder stuck on the old session used to wake when that holder
+    /// returned, find a live session under the same id, and run the old tab's work there.
+    @Test("A lease queued when its session ends never runs on the session opened after it")
+    func queuedLeaseNeverRunsOnAReopenedSession() async throws {
+        let connection = makeSession()
+        defer { cleanUp(connection.id) }
+        let release = Latch()
+        let holder = await holdDriver(connection.id, until: release)
+
+        let ran = LeaseRecord()
+        let app = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+        let lease = Task { @MainActor in
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: app,
+                route: .sessionDriver,
+                cancellation: .cancellableRead
+            ) { _ in
+                await MainActor.run { ran.didRun = true }
+            }
+        }
+        await waitForQueuedCallers(1, on: connection.id)
+        #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
+
+        DatabaseManager.shared.finalizeConnectionFailure(for: connection.id, cancelled: false)
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        session.browseDatabase = "app"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+
+        release.open()
+        try await holder.value
+
+        await #expect(throws: CancellationError.self) {
+            try await lease.value
+        }
+        #expect(!ran.didRun)
+    }
+}
+
+@MainActor
+private final class LeaseRecord {
+    var didRun = false
 }
