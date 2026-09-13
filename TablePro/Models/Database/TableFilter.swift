@@ -298,6 +298,15 @@ struct TabFilterState: Equatable, Hashable, Codable {
         return Self.resolve(commit, in: filters)
     }
 
+    /// What a table's saved filters hold: every valid row with its own enabled flag, and the logic mode.
+    ///
+    /// Never `appliedFilters`, which is the query's reading of the same rows: no commit resolves to
+    /// nothing, `.all` drops unchecked rows and `.solo` keeps one row forced on. Saving that loses
+    /// rows the reader only switched off, and a Clear deletes the whole saved set.
+    var persistedState: PersistedFilterState {
+        PersistedFilterState(filters: filters.filter(\.isValid), logicMode: filterLogicMode)
+    }
+
     static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {
         switch commit {
         case .all:

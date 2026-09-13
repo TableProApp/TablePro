@@ -53,8 +53,8 @@ extension RowEditingCoordinator {
     ) {
         restoreRowBufferToOriginals()
 
-        if let tableName = parent.tabManager.selectedTab?.tableContext.tableName {
-            parent.saveLastFilters(for: tableName)
+        if let tab = parent.tabManager.selectedTab {
+            parent.saveLastFilters(of: tab)
         }
 
         pendingTruncates.removeAll()

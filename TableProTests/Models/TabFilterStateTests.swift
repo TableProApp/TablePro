@@ -61,6 +61,30 @@ struct TabFilterStateTests {
         #expect(state.appliedFilters == [first])
     }
 
+    @Test("persistedState keeps every valid row with its own enabled flag whatever is committed")
+    func persistedStateKeepsWorkingSetForEveryCommit() {
+        let checked = TestFixtures.makeTableFilter(column: "id", value: "1")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
+        let invalid = TestFixtures.makeTableFilter(column: "", value: "")
+        var state = TabFilterState()
+        state.filters = [checked, unchecked, invalid]
+
+        let commits: [FilterCommit?] = [nil, .all, .solo(unchecked.id)]
+        for commit in commits {
+            state.commit = commit
+            #expect(state.persistedState.filters == [checked, unchecked])
+        }
+    }
+
+    @Test("persistedState carries the filter logic mode")
+    func persistedStateCarriesLogicMode() {
+        var state = TabFilterState()
+        state.filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+        state.filterLogicMode = .or
+
+        #expect(state.persistedState.logicMode == .or)
+    }
+
     @Test("TabFilterState round-trips through Codable including the solo commit")
     func codableRoundTrip() throws {
         let filter = TestFixtures.makeTableFilter(column: "id", value: "1")
