@@ -177,6 +177,13 @@ actor SQLSchemaProvider {
         ColumnCacheKey(schema: (schema ?? eagerLoadSchema)?.lowercased(), name: table.lowercased())
     }
 
+    /// A table outside the eager-load schema keeps its schema, so two cached tables of one name never
+    /// offer the same `orders.id` for columns of two different tables.
+    private func fallbackTableLabel(for key: ColumnCacheKey, canonicalName: String) -> String {
+        guard let schema = key.schema, schema != eagerLoadSchema?.lowercased() else { return canonicalName }
+        return "\(schema).\(canonicalName)"
+    }
+
     /// The schema a table can be named in without its schema: the engine's implicit schema when it
     /// has one, otherwise the schema the driver was on when this scope loaded.
     func getDefaultSchema() -> String? {
@@ -595,7 +602,7 @@ actor SQLSchemaProvider {
         var nameCount: [String: Int] = [:]
 
         for (key, columns) in columnCache {
-            let tableName = canonicalNames[key.name] ?? key.name
+            let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
             for col in columns {
                 allEntries.append((table: tableName, col: col))
                 nameCount[col.name.lowercased(), default: 0] += 1

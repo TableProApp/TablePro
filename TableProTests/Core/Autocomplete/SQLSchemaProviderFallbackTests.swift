@@ -7,8 +7,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // MARK: - Mock Driver
@@ -355,6 +355,30 @@ struct SQLSchemaProviderFallbackTests {
         #expect(item.detail?.contains("PK") == true)
         #expect(item.detail?.contains("NOT NULL") == true)
         #expect(item.detail?.contains("INT") == true)
+    }
+
+    @Test("A cached table outside the current schema keeps its schema in the fallback label")
+    func fallbackLabelKeepsSchemaOutsideCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        driver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "id")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db",
+            tables: [
+                TestFixtures.makeTableInfo(name: "orders", schema: "public"),
+                TestFixtures.makeTableInfo(name: "orders", schema: "hr")
+            ],
+            driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "hr")
+
+        let items = await provider.allColumnsFromCachedTables()
+
+        #expect(Set(items.map(\.label)) == ["orders.id", "hr.orders.id"])
+        #expect(Set(items.map(\.insertText)) == ["orders.id", "hr.orders.id"])
     }
 
     // MARK: - Eager Column Loading
