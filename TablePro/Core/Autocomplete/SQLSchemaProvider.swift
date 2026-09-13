@@ -177,10 +177,10 @@ actor SQLSchemaProvider {
         ColumnCacheKey(schema: (schema ?? eagerLoadSchema)?.lowercased(), name: table.lowercased())
     }
 
-    /// A table outside the eager-load schema keeps its schema, so two cached tables of one name never
+    /// A table outside the default schema keeps its schema, so two cached tables of one name never
     /// offer the same `orders.id` for columns of two different tables.
     private func fallbackTableLabel(for key: ColumnCacheKey, canonicalName: String) -> String {
-        guard let schema = key.schema, schema != eagerLoadSchema?.lowercased() else { return canonicalName }
+        guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return canonicalName }
         return "\(schema).\(canonicalName)"
     }
 
