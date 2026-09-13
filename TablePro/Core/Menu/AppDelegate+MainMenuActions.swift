@@ -101,8 +101,10 @@ extension AppDelegate: NSMenuItemValidation {
         open(MainMenuLink.documentation)
     }
 
+    /// Opens the in-app notes rather than the browser. The window's own button reaches the full
+    /// changelog for anyone who wants every entry.
     @objc func openChangelog(_ sender: Any?) {
-        open(MainMenuLink.changelog)
+        WhatsNewWindowController.present()
     }
 
     @objc func openGitHubRepository(_ sender: Any?) {

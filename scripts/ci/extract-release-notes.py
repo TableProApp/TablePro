@@ -74,11 +74,19 @@ def extract_notes(changelog, version):
     return notes + "\n"
 
 
-def extract_highlights(changelog, version):
-    """The lead block, capped at MAX_HIGHLIGHT_LINES, or the full notes when there is none."""
+def extract_highlights(changelog, version, require_lead=False):
+    """The lead block, capped at MAX_HIGHLIGHT_LINES.
+
+    Falls back to the full notes when a version has none, unless `require_lead`. The feed wants
+    the fallback, because failing a release forty minutes in over a missing heading is worse than
+    a long dialog. A file shipped inside the app bundle wants the opposite: 270 entries is not
+    something to compile into the product.
+    """
     sections = extract_sections(changelog, version)
     lead = [line for line in sections[0][1] if line.strip()]
     if not lead:
+        if require_lead:
+            raise ValueError(f"Version {version} has no lead block in CHANGELOG.md")
         return extract_notes(changelog, version)
     return "".join(lead[:MAX_HIGHLIGHT_LINES])
 
@@ -91,13 +99,18 @@ def main(argv=None):
         action="store_true",
         help="emit the lead block instead of every section, falling back to the full notes",
     )
+    parser.add_argument(
+        "--require-lead-block",
+        action="store_true",
+        help="with --highlights-only, fail instead of falling back to the full notes",
+    )
     parser.add_argument("--out", default="release_notes.md", help="where to write (default: release_notes.md)")
     args = parser.parse_args(argv)
 
     try:
         changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
-        notes = extract_highlights(changelog, args.version) if args.highlights_only \
-            else extract_notes(changelog, args.version)
+        notes = extract_highlights(changelog, args.version, require_lead=args.require_lead_block) \
+            if args.highlights_only else extract_notes(changelog, args.version)
         Path(args.out).write_text(notes, encoding="utf-8")
     except (OSError, ValueError) as error:
         sys.exit(f"ERROR: {error}")
