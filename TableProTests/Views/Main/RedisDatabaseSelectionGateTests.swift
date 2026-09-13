@@ -132,6 +132,35 @@ struct RedisDatabaseSelectionGateTests {
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "3")
     }
 
+    /// Only a newer selection owns the tab's load. A selection that fails for any other reason,
+    /// including one drained by a disconnect, has to give the load back or the tab keeps its spinner.
+    @Test("A selection drained while it waits gives the tab's load back")
+    func drainedSelectionDeclinesTheLoad() async throws {
+        let (connection, recorder) = makeSession()
+        defer { cleanUp(connection.id) }
+        let coordinator = makeCoordinator(for: connection)
+        defer { coordinator.teardown() }
+        let release = Latch()
+        let holder = await holdDriver(connection.id, until: release)
+
+        coordinator.openTableTab("db2")
+        await waitForQueuedCallers(1, on: connection.id)
+        let superseded = coordinator.redisDatabaseSwitchTask
+        coordinator.openTableTab("db3")
+        await superseded?.value
+        await waitForQueuedCallers(1, on: connection.id)
+        #expect(coordinator.tabManager.selectedTab?.pagination.isLoading == true)
+
+        DatabaseManager.shared.removeSession(for: connection.id)
+        await coordinator.redisDatabaseSwitchTask?.value
+
+        #expect(coordinator.tabManager.selectedTab?.pagination.isLoading == false)
+        #expect(recorder.switchedDatabases.isEmpty)
+
+        release.open()
+        try await holder.value
+    }
+
     /// A reconnect replaces the driver on the same session, so the session check alone cannot tell
     /// that the handle the selection was asked on is gone.
     @Test("A selection queued behind the driver switches the driver installed when its turn comes")

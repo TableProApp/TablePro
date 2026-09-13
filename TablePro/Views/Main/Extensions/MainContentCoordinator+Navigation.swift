@@ -724,10 +724,8 @@ extension MainContentCoordinator {
             do {
                 try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
-                guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return }
-                if !Task.isCancelled {
-                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
-                }
+                guard !Task.isCancelled else { return }
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
                 if let tabId = tabManager.selectedTab?.id {
                     declineTableLoad(for: tabId)
                 }
