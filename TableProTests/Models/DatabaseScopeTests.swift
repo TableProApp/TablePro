@@ -72,6 +72,7 @@ struct DatabaseManagerScopeResolutionTests {
     ) -> DatabaseConnection {
         let connection = TestFixtures.makeConnection(database: savedDatabase)
         var session = ConnectionSession(connection: connection)
+        session.status = .connected
         session.browseDatabase = browseDatabase
         session.browseSchema = browseSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
@@ -151,6 +152,61 @@ struct DatabaseManagerScopeResolutionTests {
             DatabaseManager.shared.resolvedScope(database: "orders", schema: "", for: connection.id)
         )
         #expect(inherited.schema == "dbo")
+    }
+
+    @Test("An explicit schema passes through in every database")
+    func explicitSchemaPassesThroughEveryDatabase() {
+        let connection = Self.makeSession(browseDatabase: "app", browseSchema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = DatabaseManager.shared
+
+        #expect(manager.resolvedSchemaName("staging", inDatabase: "app", for: connection.id) == "staging")
+        #expect(manager.resolvedSchemaName("staging", inDatabase: "analytics", for: connection.id) == "staging")
+        #expect(manager.resolvedSchemaName("staging", inDatabase: nil, for: connection.id) == "staging")
+    }
+
+    @Test("The browsed database, or none named, falls back to the browse schema")
+    func browsedDatabaseFallsBackToBrowseSchema() {
+        let connection = Self.makeSession(browseDatabase: "app", browseSchema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = DatabaseManager.shared
+
+        #expect(manager.resolvedSchemaName(nil, inDatabase: "app", for: connection.id) == "sales")
+        #expect(manager.resolvedSchemaName("", inDatabase: "app", for: connection.id) == "sales")
+        #expect(manager.resolvedSchemaName(nil, inDatabase: "", for: connection.id) == "sales")
+        #expect(manager.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == "sales")
+    }
+
+    /// A schema name only means something inside the database that holds it. A table opened in
+    /// another database from a link took the browsed schema and queried a relation that database
+    /// did not have.
+    @Test("Another database gets no schema from the browsed one")
+    func foreignDatabaseGetsNoSchema() {
+        let connection = Self.makeSession(browseDatabase: "app", browseSchema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = DatabaseManager.shared
+
+        #expect(manager.resolvedSchemaName(nil, inDatabase: "analytics", for: connection.id) == nil)
+        #expect(manager.resolvedSchemaName("", inDatabase: "analytics", for: connection.id) == nil)
+    }
+
+    @Test("A resolved scope takes the schema the schema resolver gives")
+    func resolvedScopeAgreesWithSchemaResolver() {
+        let connection = Self.makeSession(browseDatabase: "app", browseSchema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = DatabaseManager.shared
+        let cases: [(database: String?, schema: String?)] = [
+            ("app", nil), ("", nil), (nil, nil), ("analytics", nil),
+            ("analytics", ""), ("analytics", "staging"), ("app", "staging")
+        ]
+
+        for (database, schema) in cases {
+            #expect(
+                manager.resolvedScope(database: database, schema: schema, for: connection.id)?.schema
+                    == manager.resolvedSchemaName(schema, inDatabase: database, for: connection.id),
+                "database \(database ?? "nil"), schema \(schema ?? "nil")"
+            )
+        }
     }
 
     @Test("Without a session there is neither a browse scope nor an inferred scope")

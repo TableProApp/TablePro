@@ -40,7 +40,7 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName("audit", for: connection.id) == "audit")
+        #expect(DatabaseManager.shared.resolvedSchemaName("audit", inDatabase: nil, for: connection.id) == "audit")
     }
 
     @Test("resolvedSchemaName falls back to the session's current schema")
@@ -51,12 +51,12 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == "sales")
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == "sales")
     }
 
     @Test("resolvedSchemaName stays nil without a session")
     func resolvedSchemaNameStaysNilWithoutSession() {
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: UUID()) == nil)
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: UUID()) == nil)
     }
 
     @Test("resolvedSchemaName stays nil for a schema-less session")
@@ -65,7 +65,7 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(ConnectionSession(connection: connection), for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == nil)
     }
 
     @Test("resolvedSchemaName treats a blank explicit schema as absent")
@@ -76,7 +76,7 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName("", for: connection.id) == "custom")
+        #expect(DatabaseManager.shared.resolvedSchemaName("", inDatabase: nil, for: connection.id) == "custom")
     }
 
     @Test("resolvedSchemaName returns nil rather than a blank session schema")
@@ -87,7 +87,7 @@ struct DatabaseManagerSessionTests {
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
 
-        #expect(DatabaseManager.shared.resolvedSchemaName(nil, for: connection.id) == nil)
+        #expect(DatabaseManager.shared.resolvedSchemaName(nil, inDatabase: nil, for: connection.id) == nil)
     }
 }
 

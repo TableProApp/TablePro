@@ -81,6 +81,43 @@ struct RecentTablesStoreTests {
         #expect(store.entries(connectionId: conn).count == 2)
     }
 
+    @Test("A qualified open replaces the same table recorded without a schema")
+    func qualifiedOpenReplacesUnqualified() throws {
+        let store = try makeStore()
+        let conn = UUID()
+        store.record(connectionId: conn, database: "db", schema: nil, name: "users", isView: false)
+        store.record(connectionId: conn, database: "db", schema: "public", name: "users", isView: false)
+        let entries = store.entries(connectionId: conn)
+        #expect(entries.count == 1)
+        #expect(entries.first?.schema == "public")
+    }
+
+    @Test("Resolving a schema rewrites the entry in place and keeps its open time")
+    func resolveSchemaRewritesInPlace() throws {
+        let store = try makeStore()
+        let conn = UUID()
+        let firstOpened = Date(timeIntervalSince1970: 3_000)
+        store.record(
+            connectionId: conn, database: "db", schema: "public", name: "users", isView: false,
+            at: Date(timeIntervalSince1970: 1_000)
+        )
+        store.record(
+            connectionId: conn, database: "db", schema: nil, name: "orders", isView: false,
+            at: Date(timeIntervalSince1970: 2_000)
+        )
+        store.record(
+            connectionId: conn, database: "db", schema: nil, name: "users", isView: false, at: firstOpened
+        )
+        #expect(store.entries(connectionId: conn).map(\.name) == ["users", "orders", "users"])
+
+        let resolved = store.resolveSchema(connectionId: conn, database: "db", name: "users", to: "public")
+
+        #expect(resolved.map(\.name) == ["users", "orders"])
+        #expect(resolved.map(\.schema) == ["public", nil])
+        #expect(resolved.first?.openedAt == firstOpened)
+        #expect(store.entries(connectionId: conn) == resolved)
+    }
+
     @Test("Same name in different databases stays distinct")
     func databaseDistinct() throws {
         let store = try makeStore()

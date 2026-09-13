@@ -78,16 +78,7 @@ extension MainContentCoordinator {
             if let live = mountedGridSelection() {
                 storeGridSelection(rows: live.rows, cells: live.cells, forTab: oldId)
             }
-            if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
-                FilterSettingsStorage.shared.saveLastFilters(
-                    tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
-                    for: tableName,
-                    connectionId: connectionId,
-                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
-                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
-                )
-            }
+            filterCoordinator.saveLastFilters(of: tabManager.tabs[oldIndex])
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
