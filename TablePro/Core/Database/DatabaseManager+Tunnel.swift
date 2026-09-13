@@ -157,12 +157,6 @@ extension DatabaseManager {
             Self.logger.info("\(kind, privacy: .public) reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
-            /// Held for the attempt, never across the wait before it. The tunnel every pooled connection
-            /// dialed is gone and the attempt binds a new one on another port, so pooled work waits for
-            /// it rather than dialing a port another tunnel may since own. Held across the backoff, which
-            /// reaches two minutes, a sidebar read would spin with no error for the whole recovery.
-            MetadataConnectionPool.shared.beginTransportReplacement(connectionId: connectionId)
-            defer { MetadataConnectionPool.shared.endTransportReplacement(connectionId: connectionId) }
             do {
                 try await connectToSession(session.connection)
                 Self.logger.info("Successfully reconnected \(kind, privacy: .public) tunnel for: \(session.connection.name)")
