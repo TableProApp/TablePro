@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dropped tables left staged after a save that failed part way, and drops staged in another database unstaged on refresh.
 - Table tab showing another database's rows after a database switch on PostgreSQL, Redshift and CockroachDB.
 - Wrong approximate row count for a PostgreSQL or PGlite table outside the current schema.
+- Table opened in another database from a link, MCP or AppleScript bound to the current schema.
+- Recent table opened before connecting reopening a same-named table in another schema, and listed twice.
 
 ## [0.74.0] - 2026-09-13
 
