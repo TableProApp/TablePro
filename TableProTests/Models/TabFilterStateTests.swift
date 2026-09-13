@@ -61,7 +61,7 @@ struct TabFilterStateTests {
         #expect(state.appliedFilters == [first])
     }
 
-    @Test("persistedState keeps every valid row with its own enabled flag whatever is committed")
+    @Test("persistedState keeps every valid row with its own enabled flag for .all and .solo")
     func persistedStateKeepsWorkingSetForEveryCommit() {
         let checked = TestFixtures.makeTableFilter(column: "id", value: "1")
         let unchecked = TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
@@ -69,11 +69,23 @@ struct TabFilterStateTests {
         var state = TabFilterState()
         state.filters = [checked, unchecked, invalid]
 
-        let commits: [FilterCommit?] = [nil, .all, .solo(unchecked.id)]
+        let commits: [FilterCommit] = [.all, .solo(unchecked.id), .solo(checked.id)]
         for commit in commits {
             state.commit = commit
             #expect(state.persistedState.filters == [checked, unchecked])
         }
+    }
+
+    @Test("persistedState saves no rows when nothing is committed")
+    func persistedStateIsEmptyWithNothingCommitted() {
+        var state = TabFilterState()
+        state.filters = [
+            TestFixtures.makeTableFilter(column: "id", value: "1"),
+            TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
+        ]
+        state.commit = nil
+
+        #expect(state.persistedState.filters.isEmpty)
     }
 
     @Test("persistedState carries the filter logic mode")

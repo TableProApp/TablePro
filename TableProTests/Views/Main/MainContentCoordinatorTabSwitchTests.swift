@@ -949,8 +949,8 @@ struct MainContentCoordinatorTabSwitchTests {
         #expect(saved.map(\.isEnabled) == [true, false])
     }
 
-    @Test("Switching away after Clear keeps the table's saved filters")
-    func tabSwitchAfterClearKeepsSavedFilters() {
+    @Test("Switching away after Clear does not write the cleared filters back")
+    func tabSwitchAfterClearKeepsSavedFiltersCleared() {
         let (coordinator, tabManager) = makeCoordinator()
         let tableId = addTableTab(to: tabManager, tableName: "users")
         seedRows(coordinator, for: tableId)
@@ -965,11 +965,14 @@ struct MainContentCoordinatorTabSwitchTests {
         tabManager.tabs[index].filterState.filters = [first, second]
         coordinator.applyAllFilters()
         coordinator.clearAppliedFilters()
+        coordinator.filterCoordinator.clearLastFilters(for: "users")
+        #expect(savedUsersFilters(coordinator).isEmpty)
 
         let queryId = addQueryTab(to: tabManager)
         coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
 
-        #expect(savedUsersFilters(coordinator).map(\.id) == [first.id, second.id])
+        #expect(savedUsersFilters(coordinator).isEmpty)
+        #expect(tabManager.tabs[index].filterState.filters.map(\.id) == [first.id, second.id])
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")
