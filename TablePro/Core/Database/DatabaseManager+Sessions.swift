@@ -369,7 +369,31 @@ extension DatabaseManager {
     /// builds its connection from those very fields. A failed attempt therefore has to put them
     /// back: leaving them on a database the connection never reached aims the next reconnect, and
     /// the next launch, at a database the user only tried once and could not open.
+    ///
+    /// The whole move holds the session driver gate, as the in-place switch does. Those fields name
+    /// the target from the first line while the old driver stays installed until the reconnect
+    /// replaces it, so a lease that ran in between took a driver still on the previous database, or
+    /// one the reconnect was about to disconnect. Counting it as an operation keeps the monitor's
+    /// ping and a waiting lease's verification off the driver while it is being replaced.
+    ///
+    /// A switch can now wait for its turn, and a disconnect does not fail what is waiting, so the
+    /// session it was asked on is checked once the turn comes. A connection closed and opened again
+    /// in between is a new session, and moving it would switch, or disconnect, a session nobody
+    /// asked this of.
     private func reconnectOntoDatabase(_ database: String, for connectionId: UUID) async throws {
+        let sessionStartedAt = session(for: connectionId)?.connectedAt
+        try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try Task.checkCancellation()
+            guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                throw CancellationError()
+            }
+            try await trackOperation(sessionId: connectionId) {
+                try await moveSessionOntoDatabase(database, for: connectionId)
+            }
+        }
+    }
+
+    private func moveSessionOntoDatabase(_ database: String, for connectionId: UUID) async throws {
         guard let previous = session(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -416,12 +440,19 @@ extension DatabaseManager {
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {
         await verifyBeforeUse(connectionId)
-        guard let driver = driver(for: connectionId),
-              let schemaDriver = driver as? SchemaSwitchable else {
+        guard let sessionStartedAt = session(for: connectionId)?.connectedAt,
+              driver(for: connectionId) is SchemaSwitchable else {
             throw DatabaseError.unsupportedOperation
         }
 
         try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try Task.checkCancellation()
+            guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                throw CancellationError()
+            }
+            guard let schemaDriver = driver(for: connectionId) as? SchemaSwitchable else {
+                throw DatabaseError.notConnected
+            }
             try await schemaDriver.switchSchema(to: schema)
         }
         updateSession(connectionId) { session in

@@ -32,6 +32,14 @@ final class SessionDriverGate {
         return try await body()
     }
 
+    #if DEBUG
+    /// How many callers are queued behind the holder, so a test can wait for one to reach the
+    /// gate instead of guessing how many scheduler turns that takes.
+    internal func waiterCount(for connectionId: UUID) -> Int {
+        waiters[connectionId]?.count ?? 0
+    }
+    #endif
+
     /// Releases a connection that is going away, failing everyone still queued for it.
     func drain(connectionId: UUID) {
         holders.remove(connectionId)

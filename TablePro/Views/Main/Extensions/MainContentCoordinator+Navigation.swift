@@ -622,6 +622,14 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
             syncSidebarObjectSelection()
         } catch {
+            /// A switch that waited for the driver is dropped when the connection was closed and
+            /// opened again before its turn. The toolbar now belongs to that new session, so it is
+            /// read back from it rather than restored to what the old one showed, and nothing failed
+            /// that the user needs telling about.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+                return
+            }
             toolbarState.currentSchema = previousSchema
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")

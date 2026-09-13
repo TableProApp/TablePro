@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
+- Table tab showing another database's rows after a database switch on PostgreSQL, Redshift and CockroachDB.
 
 ## [0.74.0] - 2026-09-13
 
