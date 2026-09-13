@@ -169,6 +169,37 @@ TableProPluginKit pin `MARKETING_VERSION = 1.0` in `project.yml`; the iOS app re
    awk '/^## \[<version>\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -c '^- '
    ```
 
+### Write the release highlights
+
+A version section may open with a **lead block**: at most six lines before its first `###`
+heading, naming what a reader would notice. That block is what the update window and the
+Sparkle feed show. Without one they fall back to the whole section, which for 0.73.0 meant
+22,443 bytes and 231 list items inside a dialog.
+
+```
+## [0.75.0] - 2026-01-01
+
+Map view for results holding a geometry column.
+Row-number gutter held at the left edge when the grid scrolls sideways.
+
+### Added
+...
+```
+
+Two or three lines is right. Write them from the `### Added` entries a reader would change
+their behaviour over, in their words rather than the changelog's. A release of pure fixes can
+skip the block and take the fallback.
+
+Then regenerate the in-app notes from that block, so **Help > What's New** and the update
+window cannot disagree:
+
+```bash
+scripts/generate-whats-new.sh <version>
+```
+
+A release with no lead block gets a short pointer to the changelog instead of 270 entries
+compiled into the app bundle.
+
 ### Update the docs changelog
 
 `docs/changelog.mdx` needs a new `<Update>` block at the top, right after the
@@ -232,7 +263,8 @@ carrying the flag; that is the only rollback path there is.
 ### Commit, tag, push
 
 ```bash
-git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx .github/release-flags.json
+git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx .github/release-flags.json \
+    TablePro/Resources/WhatsNew.md
 git commit -m "release: v<version>"
 git tag -a v<version> -m "v<version>"
 git push origin main && git push origin v<version>

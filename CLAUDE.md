@@ -318,6 +318,12 @@ These are **non-negotiable**, never skip them:
     - **Fixed** names the **bug**, not the fix: `Empty context menu when right-clicking a read-only inspector field.` Never `X now does Y instead of Z`, and never a trailing `so ...` clause explaining the consequence.
     - **Removed** and **Deprecated** name what went: `Section about "changelog" vs "CHANGELOG".`
 
+    **A version section may open with a lead block**: at most six lines before its first `###`
+    heading, naming what a reader would notice. That block, and only that block, is what the
+    update window and the Sparkle feed show; `scripts/ci/extract-release-notes.py --highlights-only`
+    reads it and falls back to the whole section when a version has none. It is optional, and it is
+    not a seventh canonical section: the `###` list stays closed.
+
     No file paths, class names, or method signatures; reference IDs go in parens at the end: `(#1234)`. Backticked type or column names are fine when they are what the user sees. Two entries describing one change get merged, not listed twice. 0.67.0 arrived with 211 entries averaging 300 characters, one of them 1,685, and had to be rewritten wholesale at release time.
 
 2. **Localization**: Use `String(localized:)` for new user-facing strings in computed properties, AppKit code, alerts, and error descriptions. SwiftUI view literals (`Text("literal")`, `Button("literal")`) auto-localize. Do NOT localize technical terms (font names, database types, SQL keywords, encoding names). Never use `String(localized:)` with string interpolation, `String(localized: "Preview \(name)")` creates a dynamic key that never matches the strings catalog. Use `String(format: String(localized: "Preview %@"), name)`.

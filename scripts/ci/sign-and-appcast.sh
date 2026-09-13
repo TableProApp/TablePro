@@ -33,9 +33,17 @@ if [ ! -f "$BASE_APPCAST" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Extract the same version-specific notes used by the GitHub release
+# 1. Extract the notes
 # ---------------------------------------------------------------------------
+# Two files, for two audiences. release_notes.md is the whole section and becomes the GitHub
+# release body, where a reader has scrolled to it on purpose. release_highlights.md is the lead
+# block and is what goes in the feed, because an appcast item is downloaded by every install on
+# every check and read inside a dialog. 0.73.0's ran 22,443 bytes and 231 list items.
+#
+# A version with no lead block falls back to the full notes, so this changes nothing until the
+# convention is used.
 bash "$(dirname "$0")/extract-release-notes.sh" "$VERSION"
+bash "$(dirname "$0")/extract-release-notes.sh" "$VERSION" --highlights-only --out release_highlights.md
 
 # ---------------------------------------------------------------------------
 # 2. Locate Sparkle tools
@@ -85,7 +93,7 @@ for arch in arm64 x86_64; do
   # Without the pairing the item ships with no description at all.
   {
     printf "# What's New in TablePro %s\n\n" "$VERSION"
-    cat release_notes.md
+    cat release_highlights.md
     printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
   } > "${STAGING}/TablePro-${VERSION}-${arch}.md"
 
