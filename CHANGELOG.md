@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
+- Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
+- Saving a staged Drop or Truncate running the selected query tab's statement again.
+- Dropped tables left staged after a save that failed part way, and drops staged in another database unstaged on refresh.
 
 ## [0.74.0] - 2026-09-13
 

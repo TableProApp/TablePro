@@ -656,23 +656,13 @@ extension MainContentCoordinator {
         for target in request.targets {
             do {
                 try await dropContainer(target)
+                services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
                     "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
-        }
-
-        await DatabaseTreeMetadataService.shared.refreshDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
-            await DatabaseTreeMetadataService.shared.refreshSchemas(
-                connectionId: connectionId,
-                database: database
-            )
         }
 
         guard !failures.isEmpty else { return }

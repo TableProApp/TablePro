@@ -33,7 +33,7 @@ extension MainContentCoordinator {
 
     private func fireRefresh(hasPendingTableOps: Bool, onDiscard: @escaping () -> Void) {
         handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
-        Task { await refreshTables() }
+        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .everything)))
     }
 
     func handleRefresh(

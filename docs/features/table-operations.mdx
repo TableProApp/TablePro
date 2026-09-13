@@ -18,7 +18,7 @@ Right-click a table and choose **Delete** to drop it, or **Truncate** to empty i
 | Ignore foreign key checks | Skips constraint checks. Dimmed where the engine has no equivalent, and PostgreSQL's dialog points at Cascade instead |
 | Cascade | On a drop, takes every table that depends on this one. On a truncate, takes every table linked by a foreign key. Dimmed where the engine has no CASCADE |
 
-Confirming with **Drop** or **Truncate** stages the operation. The row picks up a red minus badge for a pending drop, an orange exclamation badge for a pending truncate. **Preview SQL** (`Cmd+Shift+P`) shows the statements, **Save Changes** (`Cmd+S`) runs them alongside any pending cell edits, and choosing the same menu item again takes the table back out of the queue.
+Confirming with **Drop** or **Truncate** stages the operation. The row picks up a red minus badge for a pending drop, an orange exclamation badge for a pending truncate. **Preview SQL** (`Cmd+Shift+P`) shows the statements, **Save Changes** (`Cmd+S`) runs them alongside any pending cell edits, and choosing the same menu item again takes the table back out of the queue. Once a drop reaches the server, the table leaves the sidebar and completion, and every tab showing it closes, in every window on the connection.
 
 <Frame caption="Drop table confirmation with options">
   <img className="block dark:hidden" src="/images/drop-table-dialog.png" alt="Drop table dialog" />

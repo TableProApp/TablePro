@@ -83,6 +83,15 @@ extension TableStructureView {
                     )
                     await finishColumnReorder(prepared, clearTarget: clearTarget)
                 } catch {
+                    CatalogChangeService.post(
+                        .changed(
+                            CatalogChange(
+                                connectionId: prepared.scope.connectionId,
+                                database: prepared.scope.database,
+                                kinds: .tables
+                            )
+                        )
+                    )
                     reportColumnReorderFailure(error)
                 }
             }
@@ -116,6 +125,9 @@ extension TableStructureView {
             coordinator?.clearColumnLayout(clearTarget)
         }
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
+        )
     }
 
     private func reportColumnReorderFailure(_ error: any Error) {

@@ -896,31 +896,6 @@ final class MainContentCoordinator {
 
     /// Drop sidebar state for tables that no longer exist. The selection lives in this
     /// window's sidebar, so it is pruned per window.
-    internal func pruneStaleSidebarState() {
-        guard case .loaded = services.schemaService.state(for: connectionId) else { return }
-        let tables = services.schemaService.allLoadedTables(for: connectionId)
-        guard let vm = sidebarViewModel else { return }
-        let validNames = Set(tables.map(\.name))
-        let staleSelections = vm.selectedTables.filter { !validNames.contains($0.table.name) }
-        if !staleSelections.isEmpty {
-            vm.selectedTables.subtract(staleSelections)
-        }
-        let stalePendingDeletes = vm.pendingDeletes.filter { !validNames.contains($0.table.name) }
-        if !stalePendingDeletes.isEmpty {
-            vm.pendingDeletes.subtract(stalePendingDeletes)
-            for ref in stalePendingDeletes {
-                vm.tableOperationOptions.removeValue(forKey: ref)
-            }
-        }
-        let stalePendingTruncates = vm.pendingTruncates.filter { !validNames.contains($0.table.name) }
-        if !stalePendingTruncates.isEmpty {
-            vm.pendingTruncates.subtract(stalePendingTruncates)
-            for ref in stalePendingTruncates {
-                vm.tableOperationOptions.removeValue(forKey: ref)
-            }
-        }
-    }
-
     /// Explicit cleanup, called when the connection or the window that hosts it goes away, never
     /// from a view's `onDisappear`: a workspace switch unparents a connection's panes, which is a
     /// disappearance the connection is expected to come back from. Releases the schema provider
@@ -1386,6 +1361,7 @@ final class MainContentCoordinator {
                     )
                 }
                 let fetchEndedAt = ContinuousClock.now
+                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -1473,6 +1449,7 @@ final class MainContentCoordinator {
                 }
             } catch {
                 schemaTask?.cancel()
+                if !isAutoLoad { Self.postStatementRan(statement.sql, on: conn) }
                 finishFailedQuery(
                     error,
                     tabId: tabId,

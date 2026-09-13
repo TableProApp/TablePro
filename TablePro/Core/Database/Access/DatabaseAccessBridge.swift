@@ -206,8 +206,48 @@ internal actor DatabaseAccessBridge {
 
         let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
         let startTime = CFAbsoluteTimeGetCurrent()
+        let statementRan = CatalogEvent.statementsRan(
+            connectionId: connectionId, statements: [normalizedQuery], databaseType: databaseType
+        )
 
-        let result = try await withThrowingTaskGroup(of: QueryResult.self) { group in
+        /// A write that timed out or failed may still have committed: a group only returns once
+        /// every child has, so by the time the error arrives the driver call has finished one way or
+        /// the other, and a catalog that might have changed is refreshed rather than trusted.
+        let result: QueryResult
+        do {
+            result = try await runRacingTimeout(
+                scope: scope,
+                route: route,
+                policy: policy,
+                statement: statement,
+                shouldCap: shouldCap,
+                maxRows: maxRows,
+                normalizedQuery: normalizedQuery,
+                timeoutSeconds: timeoutSeconds
+            )
+        } catch {
+            if classification.tier != .safe {
+                CatalogChangeService.post(statementRan)
+            }
+            throw error
+        }
+
+        CatalogChangeService.post(statementRan)
+        return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    private func runRacingTimeout(
+        scope: DatabaseScope,
+        route: ScopedDriverRoute,
+        policy: DriverCancellationPolicy,
+        statement: LeadingRowsStatement,
+        shouldCap: Bool,
+        maxRows: Int,
+        normalizedQuery: String,
+        timeoutSeconds: Int
+    ) async throws -> QueryResult {
+        let connectionId = scope.connectionId
+        return try await withThrowingTaskGroup(of: QueryResult.self) { group in
             group.addTask {
                 try await DatabaseManager.shared.withScopedDriver(
                     scope: scope,
@@ -242,8 +282,6 @@ internal actor DatabaseAccessBridge {
             group.cancelAll()
             return first
         }
-
-        return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
     }
 
     internal static func stripTrailingSemicolons(_ query: String) -> String {

@@ -302,9 +302,13 @@ final class SchemaService {
     /// Re-fetches every schema the user has already expanded, in place. Without this a
     /// non-destructive refresh would leave those lists showing pre-refresh contents.
     func refreshLoadedSchemaObjects(connectionId: UUID, driver: DatabaseDriver) async {
+        /// A schema still loading is reloaded too. Its fetch may have begun before the change this
+        /// refresh answers, and reloading moves its generation so that fetch cannot commit.
         let loadedSchemas = (perSchemaStates[connectionId] ?? [:]).compactMap { schema, state -> String? in
-            guard case .loaded = state else { return nil }
-            return schema
+            switch state {
+            case .loaded, .loading: return schema
+            case .idle, .failed: return nil
+            }
         }
         for schema in loadedSchemas {
             await reloadSchemaObjects(connectionId: connectionId, schema: schema, driver: driver)
