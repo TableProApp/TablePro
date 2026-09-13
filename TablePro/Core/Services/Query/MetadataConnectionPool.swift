@@ -80,6 +80,7 @@ final class MetadataConnectionPool {
 
     private struct TransportWaiter {
         let ticket: UUID
+        let scope: DatabaseScope
         let continuation: CheckedContinuation<Void, Error>
     }
 
@@ -145,10 +146,11 @@ final class MetadataConnectionPool {
     ///
     /// A pooled entry stands on the session's effective connection plus its own database, so it only
     /// has to go when that endpoint does: a tunnel rebuilt on a new local port, or a reconnect
-    /// recovering a connection that stopped answering. An open already dialing is withdrawn, and the
-    /// callers waiting on it take a connection again after `endTransportReplacement` rather than
-    /// failing a load nobody cancelled. A new caller waits for the same moment instead of dialing an
-    /// endpoint about to close. Replacements nest, and pooled work resumes when the last one ends.
+    /// recovering a connection that stopped answering. An open already dialing is withdrawn, and once
+    /// it has returned the callers waiting on it take a connection again after `endTransportReplacement`
+    /// rather than failing a load nobody cancelled. A new caller waits for the same moment instead of
+    /// dialing an endpoint about to close. Replacements nest, and pooled work resumes when the last one
+    /// ends. Closing the connection, or one of its databases, fails the callers waiting for it.
     func beginTransportReplacement(connectionId: UUID) {
         transportReplacements[connectionId, default: 0] += 1
         closeEntries(withdrawingOpensAs: .transportReplaced) { $0.connectionId == connectionId }
@@ -243,16 +245,34 @@ final class MetadataConnectionPool {
             open.withdrawal = withdrawal
             open.task.cancel()
         }
+        if withdrawal == .closed {
+            failTransportWaiters(where: matches)
+        }
         for key in entries.keys where matches(key.scope) {
             closeOrDeferEntry(forKey: key)
         }
         stopSweeperIfEmpty()
     }
 
+    /// A caller parked for a replacement is waiting on its connection as much as one waiting on a
+    /// pending open, so closing what it waits for fails it too. Left parked, it would wake when the
+    /// replacement ends and open a connection for a session, or a database, that has gone.
+    private func failTransportWaiters(where matches: (DatabaseScope) -> Bool) {
+        for (connectionId, waiters) in transportWaiters {
+            let failing = waiters.filter { matches($0.scope) }
+            guard !failing.isEmpty else { continue }
+            let remaining = waiters.filter { !matches($0.scope) }
+            transportWaiters[connectionId] = remaining.isEmpty ? nil : remaining
+            for waiter in failing {
+                waiter.continuation.resume(throwing: CancellationError())
+            }
+        }
+    }
+
     private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
         let key = Key(scope: scope, workload: workload)
         while true {
-            try await waitForTransport(of: scope.connectionId)
+            try await waitForTransport(for: scope)
             if let entry = reusableEntry(forKey: key) {
                 return entry
             }
@@ -323,11 +343,12 @@ final class MetadataConnectionPool {
 
     /// Parks a caller for as long as the connection's transport is being replaced. A caller that is
     /// cancelled while parked stops waiting at once rather than when the replacement ends.
-    private func waitForTransport(of connectionId: UUID) async throws {
+    private func waitForTransport(for scope: DatabaseScope) async throws {
+        let connectionId = scope.connectionId
         while transportReplacements[connectionId] != nil {
             let ticket = UUID()
             try await withTaskCancellationHandler(
-                operation: { try await parkForTransport(ticket: ticket, connectionId: connectionId) },
+                operation: { try await parkForTransport(ticket: ticket, scope: scope) },
                 onCancel: { [weak self] in
                     Task { @MainActor in
                         self?.failTransportWaiter(ticket: ticket, connectionId: connectionId)
@@ -337,14 +358,14 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func parkForTransport(ticket: UUID, connectionId: UUID) async throws {
+    private func parkForTransport(ticket: UUID, scope: DatabaseScope) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             guard !Task.isCancelled else {
                 continuation.resume(throwing: CancellationError())
                 return
             }
-            transportWaiters[connectionId, default: []].append(
-                TransportWaiter(ticket: ticket, continuation: continuation)
+            transportWaiters[scope.connectionId, default: []].append(
+                TransportWaiter(ticket: ticket, scope: scope, continuation: continuation)
             )
         }
     }

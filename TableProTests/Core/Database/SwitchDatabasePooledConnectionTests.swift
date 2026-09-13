@@ -82,6 +82,14 @@ struct SwitchDatabasePooledConnectionTests {
         PluginMetadataRegistry.shared.unregister(typeId: Self.typeId)
     }
 
+    /// Bounded, so a recovery that never reaches the point being waited for fails the assertions
+    /// after it rather than hanging the suite.
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<2_000 where !condition() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     @Test("A switch over a direct connection leaves the pooled connection to another database open")
     func switchLeavesOtherDatabasesPooled() async {
         let connection = makeSession()
@@ -144,5 +152,40 @@ struct SwitchDatabasePooledConnectionTests {
 
         #expect(MetadataConnectionPool.shared.pooledDriverCount(for: connectionId) == 1)
         #expect(pooled.disconnectCallCount == 0)
+    }
+
+    /// A tunnel recovery waits out a backoff before every attempt, reaching two minutes. Holding the
+    /// pool across those waits left every pooled read on the connection spinning with no error for the
+    /// whole recovery. The recovery clears the driver immediately before its first two-second wait,
+    /// which is the handshake this reads.
+    @Test("A tunnel recovery holds the pool only while an attempt connects")
+    func tunnelRecoveryHoldsThePoolOnlyWhileItConnects() async {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        var connection = TestFixtures.makeConnection(name: "Tunneled")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let pooled = seedPooledConnection(for: connection.id)
+
+        let recovery = Task { @MainActor in
+            await DatabaseManager.shared.recoverDeadTunnel(
+                connectionId: connection.id, kind: "SSH", disconnectedMessage: "The tunnel closed."
+            )
+        }
+        await waitUntil { DatabaseManager.shared.session(for: connection.id)?.driver == nil }
+        #expect(DatabaseManager.shared.session(for: connection.id)?.driver == nil)
+        #expect(!MetadataConnectionPool.shared.isReplacingTransport(for: connection.id))
+
+        await recovery.value
+
+        #expect(DatabaseManager.shared.session(for: connection.id)?.driver != nil)
+        #expect(MetadataConnectionPool.shared.pooledDriverCount(for: connection.id) == 0)
+        #expect(pooled.disconnectCallCount == 1)
+        #expect(!MetadataConnectionPool.shared.isReplacingTransport(for: connection.id))
+        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
+        MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+        await SchemaService.shared.invalidate(connectionId: connection.id)
     }
 }

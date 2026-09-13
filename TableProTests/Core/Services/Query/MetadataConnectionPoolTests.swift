@@ -317,6 +317,63 @@ struct MetadataConnectionPoolTransportReplacementTests {
         }
         #expect(opener.opened.count == 1)
     }
+
+    /// Ordered so that a parked lease the close failed to reach opens a connection once the
+    /// replacement ends, and fails the expectations, rather than hanging the suite.
+    @Test("Closing a connection fails the leases parked for its replacement at once")
+    func closingAConnectionFailsParkedLeases() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+
+        pool.closeAll(connectionId: connection.id)
+        #expect(pool.transportWaiterCount(for: connection.id) == 0)
+        pool.endTransportReplacement(connectionId: connection.id)
+
+        await #expect(throws: CancellationError.self) {
+            try await lease.value
+        }
+        #expect(opener.opened.isEmpty)
+    }
+
+    @Test("Closing one database fails only the leases parked for that database")
+    func closingADatabaseFailsOnlyItsParkedLeases() async throws {
+        let (connection, shop) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let reports = DatabaseScope(connectionId: connection.id, database: "reports", schema: nil)
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let shopLease = Task { @MainActor in
+            try await pool.withDriver(scope: shop) { _ in }
+        }
+        let reportsLease = Task { @MainActor in
+            try await pool.withDriver(scope: reports) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 2 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 2)
+
+        pool.closeAll(connectionId: connection.id, database: "shop")
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+        pool.endTransportReplacement(connectionId: connection.id)
+
+        await #expect(throws: CancellationError.self) {
+            try await shopLease.value
+        }
+        try await reportsLease.value
+        #expect(opener.opened.count == 1)
+    }
 }
 
 @Suite("MetadataConnectionPool idle eviction", .serialized)
