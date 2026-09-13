@@ -143,3 +143,86 @@ struct RegistryBinarySelectionTests {
         #expect(plugin.binaries.contains { $0.architecture == .x86_64 && $0.pluginKitVersion == 11 })
     }
 }
+
+@Suite("RegistryPlugin.resolvedBinary reports a stale app truthfully")
+struct RegistryStaleAppTests {
+
+    private func makePlugin(kits: [Int]) -> RegistryPlugin {
+        let payload: [String: Any] = [
+            "id": "com.example.driver",
+            "name": "Example",
+            "version": "1.0.0",
+            "summary": "test",
+            "author": ["name": "Tester"],
+            "category": "database-driver",
+            "binaries": kits.map { kit -> [String: Any] in
+                [
+                    "architecture": PluginArchitecture.arm64.rawValue,
+                    "downloadURL": "https://a/\(kit)",
+                    "sha256": "sha\(kit)",
+                    "pluginKitVersion": kit
+                ]
+            }
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: payload)
+        return try! JSONDecoder().decode(RegistryPlugin.self, from: data)
+    }
+
+    /// Measured on 2026-09-13: the oldest kit published anywhere in the registry was 21, while
+    /// v0.65.0 to v0.70.0 ship kit 19 and v0.71.0 ships kit 20. Every user on those six releases
+    /// resolved no binary for any of the 23 registry plugins, and was told their architecture was
+    /// unsupported.
+    @Test("An app below every published binary is named as the stale side, not the architecture")
+    func staleAppIsReportedAsStale() {
+        let plugin = makePlugin(kits: [21, 25, 30])
+
+        #expect {
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 19, minimumKitVersion: 19)
+        } throws: { error in
+            guard case PluginError.appTooOldForPlugin(let oldest, let appKit) = error else { return false }
+            return oldest == 21 && appKit == 19
+        }
+    }
+
+    @Test("A binary above the app's kit is skipped for a lower one that fits")
+    func picksTheHighestBinaryTheAppCanLoad() throws {
+        let plugin = makePlugin(kits: [21, 25, 30])
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 25, minimumKitVersion: 19)
+
+        #expect(resolved.downloadURL == "https://a/25")
+    }
+
+    @Test("A plugin the app is new enough for still resolves")
+    func newestAppResolvesNewestBinary() throws {
+        let plugin = makePlugin(kits: [21, 25, 30])
+        let resolved = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 30, minimumKitVersion: 19)
+
+        #expect(resolved.downloadURL == "https://a/30")
+    }
+
+    /// A binary below `minimumKitVersion` is a genuinely incompatible build rather than a stale
+    /// app, so it keeps the original error.
+    @Test("A binary too old for the app is not reported as a stale app")
+    func binaryBelowTheMinimumKeepsTheOriginalError() {
+        let plugin = makePlugin(kits: [12])
+
+        #expect {
+            _ = try plugin.resolvedBinary(for: .arm64, currentKitVersion: 30, minimumKitVersion: 19)
+        } throws: { error in
+            guard case PluginError.noCompatibleBinary = error else { return false }
+            return true
+        }
+    }
+
+    @Test("A missing architecture is still an architecture problem")
+    func missingArchitectureKeepsTheOriginalError() {
+        let plugin = makePlugin(kits: [30])
+
+        #expect {
+            _ = try plugin.resolvedBinary(for: .x86_64, currentKitVersion: 30, minimumKitVersion: 19)
+        } throws: { error in
+            guard case PluginError.noCompatibleBinary = error else { return false }
+            return true
+        }
+    }
+}

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Update preferences overwritten by the app at every launch instead of following the setting.
+- Architecture error shown when a plugin actually needs a newer version of TablePro.
 
 ## [0.74.0] - 2026-09-13
 
