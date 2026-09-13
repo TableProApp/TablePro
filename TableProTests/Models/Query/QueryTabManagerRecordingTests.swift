@@ -52,6 +52,27 @@ struct QueryTabManagerRecordingTests {
         #expect(opened().count == 2)
     }
 
+    @Test("adoptResolvedSchema reports the schema once and never a second open")
+    func adoptResolvedSchemaReportsOnce() throws {
+        struct Resolved: Equatable {
+            let name: String
+            let database: String
+            let schema: String
+        }
+        let (manager, opened) = recorder()
+        var resolved: [Resolved] = []
+        manager.onTableSchemaResolved = { name, database, schema in
+            resolved.append(Resolved(name: name, database: database, schema: schema))
+        }
+        try manager.addTableTab(tableName: "orders", databaseName: "shop")
+
+        manager.adoptResolvedSchema("sales", at: 0)
+
+        #expect(resolved == [Resolved(name: "orders", database: "shop", schema: "sales")])
+        #expect(manager.tabs.first?.tableContext.schemaName == "sales")
+        #expect(opened().count == 1)
+    }
+
     @Test("replaceTabContent reports its preview flag")
     func replaceReportsPreviewFlag() throws {
         let manager = QueryTabManager()
