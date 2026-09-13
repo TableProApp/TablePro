@@ -292,10 +292,38 @@ jobs:
           mkdir -p appcast
           git show origin/main:appcast.xml > appcast/base.xml
 
+      # A flag left true from the previous release would mark an ordinary build critical and
+      # interrupt every user, so it has to have been touched in this release's own diff.
+      - name: Read the release flags
+        id: flags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CRITICAL=$(python3 -c "
+          import json
+          print('1' if json.load(open('.github/release-flags.json')).get('criticalUpdate') is True else '0')
+          ")
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          if [ "$CRITICAL" != "1" ]; then
+            echo "Ordinary release, staged over 36 hours"
+            exit 0
+          fi
+
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName' || true)
+          if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "null" ] \
+             && git diff --quiet "$PREVIOUS_TAG" HEAD -- .github/release-flags.json; then
+            echo "::error::criticalUpdate is true but .github/release-flags.json has not changed since $PREVIOUS_TAG, which is what a flag left over from the previous release looks like"
+            exit 1
+          fi
+          echo "::warning::This release is marked critical and will interrupt every user"
+
       - name: Sign update archives with Sparkle
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           BASE_APPCAST: appcast/base.xml
+          CRITICAL_UPDATE: ${{ steps.flags.outputs.critical }}
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact
