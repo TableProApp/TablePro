@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Architecture error shown when a plugin actually needs a newer version of TablePro.
+
 ## [0.74.0] - 2026-09-13
 
 ### Added

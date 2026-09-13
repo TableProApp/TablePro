@@ -237,13 +237,31 @@ before republishing anything:
 scripts/check-pluginkit-abi.sh v<previous-version>
 ```
 
-It reports a diff and leaves the call to you. Additive needs no bump. Breaking means
-bumping `currentPluginKitVersion` plus every plugin `Info.plist`, then
-`release-all-plugins.sh` before or with the app release. The trap is a *removed or
-renamed* symbol: a shipped plugin hard-references the default implementation it
-relied on, and losing that symbol makes it fail to load. Adding a parameter to an
-existing public init is the same hazard unless the old signature stays as an
-`@_disfavoredOverload`.
+It reports a diff and leaves the call to you. Any diff at all, additive included,
+bumps `currentPluginKitVersion` plus every plugin `Info.plist`; see the PluginKit ABI
+section of `CLAUDE.md` for why an additive change still needs it. Breaking adds
+raising `minimumCompatiblePluginKitVersion` and running `release-all-plugins.sh`
+before or with the app release. The trap is a *removed or renamed* symbol: a shipped
+plugin hard-references the default implementation it relied on, and losing that
+symbol makes it fail to load. Adding a parameter to an existing public init is the
+same hazard unless the old signature stays as an `@_disfavoredOverload`.
+
+**Bump the number at most once per release cycle.** The first ABI change after a
+release takes the next number and every later change in the same cycle reuses it,
+because only the value at release time ever reaches a user. Between 2026-09-02 and
+2026-09-12 the kit went from 20 to 30, five of those bumps on one day, which is what
+closed the registry's retention window: by 2026-09-13 the oldest binary published
+anywhere was kit 21, and every user on v0.65.0 to v0.71.0 could install none of the
+23 registry plugins.
+
+**Run `release-all-plugins.sh` only for a breaking bump.** An additive bump does not
+invalidate a published binary, `check-registry-readiness.py` says so in its own
+docstring, and a bulk re-release burns a retention slot for every plugin. To get one
+driver fix to users who have not updated, build it against their release instead:
+
+```bash
+scripts/release-plugin-for-shipped-app.sh plugin-<name>-v<version> v<appVersion>
+```
 
 ## Stage 4: Blog post (big releases only)
 

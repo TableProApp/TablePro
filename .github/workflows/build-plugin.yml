@@ -12,6 +12,14 @@ on:
           Examples: plugin-mongodb-v1.0.25, plugin-mongodb-v1.0.25:13
         required: true
         type: string
+      baseRef:
+        description: >
+          Build the plugin from this ref instead of the default branch, so its binary links against
+          that release's PluginKit and declares that release's TableProPluginKitVersion. Use a
+          shipped app tag (v0.73.0) to publish a driver fix users on that release can install.
+          Leave empty to build from the branch the workflow runs on.
+        required: false
+        type: string
 
 # Declared per job rather than here. resolve-tags reads two integers out of a Swift file and needs
 # nothing, and a workflow-level grant hands it a write token it has no use for.
@@ -112,10 +120,15 @@ jobs:
       fail-fast: false
 
     steps:
+      # A plugin's declared TableProPluginKitVersion and the symbols it links against both come
+      # from the tree it is built in, so they can only agree by building at the ref whose kit the
+      # binary should carry. Relabelling a binary built from main to an older kit would make an
+      # older app accept it and then fail Bundle.loadAndReturnError, which is #1917 and 0.49.0.
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: true
+          ref: ${{ inputs.baseRef || github.ref }}
 
       - name: Pull LFS files
         run: git lfs pull
@@ -415,7 +428,7 @@ jobs:
               --homepage "$HOMEPAGE" \
               --category "$CATEGORY" \
               --plugin-kit-version "$PKV" \
-              --keep-kit-versions 2
+              --keep-kit-versions 3
 
             git add plugins.json
             git commit -m "Update $DISPLAY_NAME to v$VERSION (PluginKit $PKV)"
