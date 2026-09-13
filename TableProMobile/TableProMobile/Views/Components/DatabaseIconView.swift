@@ -30,6 +30,7 @@ struct DatabaseIconView: View {
         case .mysql, .mariadb: return .orange
         case .tidb: return .red
         case .databend: return .blue
+        case .oceanbase: return .blue
         case .postgresql, .redshift: return .blue
         case .sqlite: return .green
         case .redis: return .red

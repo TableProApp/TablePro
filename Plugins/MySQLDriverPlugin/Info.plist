@@ -10,6 +10,7 @@
 		<string>MariaDB</string>
 		<string>TiDB</string>
 		<string>Databend</string>
+		<string>OceanBase</string>
 	</array>
 </dict>
 </plist>

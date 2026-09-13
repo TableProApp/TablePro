@@ -623,9 +623,13 @@ final class DatabaseTreeMetadataService: CatalogChangeTarget {
     /// A fetch still running on the driver the reconnect replaced answers for the old session, so
     /// every key of the connection is superseded before anything suspends and none of those fetches
     /// may commit. What is already on screen stays until the new session's own loads replace it.
+    ///
+    /// The pooled connections are not this service's to close. They stand on the transport rather
+    /// than on the session driver, and `DatabaseManager`, which rebuilds the transport, holds them
+    /// back while it does. Closing them on every reconnect withdrew an open a table tab on another
+    /// database was waiting on, and that tab then showed nothing and no error.
     func handleReconnect(connectionId: UUID) async {
         supersedeEveryKey(of: connectionId)
-        MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         await resetPending(connectionId: connectionId)
     }

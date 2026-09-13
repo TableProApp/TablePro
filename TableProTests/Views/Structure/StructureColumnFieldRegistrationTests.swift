@@ -20,11 +20,13 @@ struct StructureColumnFieldRegistrationTests {
         let mysql = PluginManager.shared.structureColumnFields(for: .mysql)
         let mariadb = PluginManager.shared.structureColumnFields(for: .mariadb)
         let tidb = PluginManager.shared.structureColumnFields(for: .tidb)
+        let oceanbase = PluginManager.shared.structureColumnFields(for: .oceanbase)
         #expect(Set(mysql) == Set(mariadb))
         #expect(Set(mysql) == Set(tidb))
+        #expect(Set(mysql) == Set(oceanbase))
     }
 
-    @Test("MySQL-protocol engines with on update offer it", arguments: [DatabaseType.mysql, .mariadb, .tidb])
+    @Test("MySQL-protocol engines with on update offer it", arguments: [DatabaseType.mysql, .mariadb, .tidb, .oceanbase])
     func onUpdateIsOffered(databaseType: DatabaseType) {
         #expect(PluginManager.shared.structureColumnFields(for: databaseType).contains(.onUpdate))
     }

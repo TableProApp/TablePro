@@ -18,7 +18,7 @@ struct SQLExportEncodingTests {
 
     @Test("A MySQL dump declares utf8mb4 the way mysqldump does, and puts the session back")
     func mysqlDeclaresUTF8MB4() {
-        for typeId in ["MySQL", "MariaDB", "TiDB"] {
+        for typeId in ["MySQL", "MariaDB", "TiDB", "OceanBase"] {
             let declaration = SQLExportEncodingDeclaration.forDatabaseType(typeId)
             #expect(declaration.prologue.contains("/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;"))
             #expect(declaration.prologue.contains("/*!40101 SET NAMES utf8 */;"))

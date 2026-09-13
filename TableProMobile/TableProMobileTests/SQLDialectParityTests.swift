@@ -42,6 +42,7 @@ struct SQLDialectParityTests {
             (.mysql, .collationDefined),
             (.mariadb, .collationDefined),
             (.tidb, .collationDefined),
+            (.oceanbase, .collationDefined),
             (.mssql, .collationDefined),
             (.postgresql, .ilikeOperator),
             (.duckdb, .ilikeOperator),

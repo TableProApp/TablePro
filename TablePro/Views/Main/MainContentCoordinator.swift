@@ -1314,6 +1314,7 @@ final class MainContentCoordinator {
             }
             return
         }
+        let isTableTab = tab.tabType == .table
 
         let queryTask = Task { [weak self] in
             guard let self else { return }
@@ -1342,10 +1343,9 @@ final class MainContentCoordinator {
 
             let fetchBeganAt = ContinuousClock.now
             do {
-                let fetchResult = try await services.databaseManager.withScopedDriver(
+                let fetchResult = try await withExecutionDriver(
                     scope: scope,
-                    route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead
+                    isTableTab: isTableTab
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,

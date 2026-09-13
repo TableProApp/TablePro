@@ -724,22 +724,16 @@ extension MainContentCoordinator {
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
-                if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {
-                    try await adapter.switchDatabase(to: String(dbIndex))
-                }
+                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
-                if !Task.isCancelled {
-                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
-                }
+                guard !Task.isCancelled else { return }
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
                 if let tabId = tabManager.selectedTab?.id {
                     declineTableLoad(for: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
-            DatabaseManager.shared.updateSession(connId) { session in
-                session.browseDatabase = database
-            }
             toolbarState.currentDatabase = database
             executeTableTabQueryDirectly(viewport: .firstRow)
 

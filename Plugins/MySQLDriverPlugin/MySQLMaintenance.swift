@@ -100,11 +100,16 @@ nonisolated internal enum MySQLMaintenance {
 /// identity it carries, and the app runs no maintenance at all. Naming `MySQLMaintenance` from there
 /// made the flavor unbuildable without this file and the two identifier-quoting files behind it.
 internal extension MySQLServerFlavor {
+    static let oceanbaseBareAnalyzeFloor = MySQLEngineVersion(major: 4, minor: 2, patch: 2)
+
     var maintenanceOperations: [PluginMaintenanceOperation] {
         switch self {
         case .mysql, .mariadb:
             return MySQLMaintenance.operations
         case .tidb, .databend:
+            return [MySQLMaintenance.analyzeOperation]
+        case .oceanbase(let version):
+            guard let version, version >= Self.oceanbaseBareAnalyzeFloor else { return [] }
             return [MySQLMaintenance.analyzeOperation]
         }
     }

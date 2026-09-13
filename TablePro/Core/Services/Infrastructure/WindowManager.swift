@@ -49,6 +49,99 @@ internal final class WindowManager {
         openInNewWindow(payload: payload, activate: activate, autoConnect: autoConnect)
     }
 
+    // MARK: - Reopen
+
+    /// Brings a closed tab back into the window showing its connection.
+    ///
+    /// The connection is selected before the tab is adopted, so the tab lands in the pane on screen
+    /// and its load runs there, and `onAdopted` is how the caller learns the tab is in a list.
+    ///
+    /// A connection no workspace hosts gets the tab through a pre-built session state, the way
+    /// `openTabInNewWindow` hands one over, under `.openContent` so the window does not refill
+    /// itself from the saved tab set.
+    internal func reopen(
+        _ tab: QueryTab,
+        connectionId: UUID,
+        isStillClosed: @escaping () -> Bool,
+        onAdopted: @escaping () -> Void
+    ) {
+        AppActivationPolicyController.shared.enterForeground()
+        let host = host(for: connectionId)
+        if let host, let workspace = host.workspaces.workspace(for: connectionId) {
+            host.workspaces.select(connectionId)
+            workspace.adoptRestoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted)
+            bringToFront(host.view.window)
+            return
+        }
+
+        guard isStillClosed(),
+              let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
+        else {
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
+        let payload = EditorTabPayload(
+            connectionId: connectionId,
+            tabType: tab.tabType,
+            tableName: tab.tableContext.tableName,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            isView: tab.tableContext.isView,
+            objectType: tab.tableContext.objectType,
+            sourceFileURL: tab.content.sourceFileURL,
+            erDiagramSchemaKey: tab.display.erDiagramSchemaKey,
+            tabTitle: tab.title,
+            intent: .openContent
+        )
+        let state = SessionStateFactory.create(connection: connection, payload: nil)
+        state.tabManager.tabs = [tab]
+        state.tabManager.selectedTabId = tab.id
+        /// Selected before anything observes the manager, so the switch that prepares an incoming
+        /// tab has to be run by hand, as `openTabInNewWindow` does for the tab it moves.
+        state.coordinator.handleTabChange(from: nil, to: tab.id, tabs: [tab])
+        SessionStateFactory.registerPending(state, for: payload.id)
+
+        let window: NSWindow?
+        if let host {
+            host.adoptWorkspace(payload: payload, autoConnect: false)
+            window = host.view.window
+        } else {
+            window = buildWindow(payload: payload, sessionState: state, autoConnect: false)
+        }
+        /// The entry is let go only for a tab that reached a workspace, since a discarded entry
+        /// would take the closed tab with it. A state that reached none leaves the coordinator
+        /// registry the way an expired pending entry does: `SessionStateFactory.create` registers
+        /// it eagerly, and the aggregated save would write its tab into the saved tab set. Not
+        /// `teardown()`, which releases a schema provider hold only an activated coordinator takes.
+        guard Self.coordinator(in: window, for: connectionId) === state.coordinator else {
+            Self.lifecycleLogger.error(
+                "[open] WindowManager.reopen tab reached no workspace connId=\(connectionId, privacy: .public)"
+            )
+            SessionStateFactory.removePending(for: payload.id)
+            MainContentCoordinator.activeCoordinators.removeValue(forKey: state.coordinator.instanceId)
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
+        onAdopted()
+        bringToFront(window)
+    }
+
+    private static func coordinator(in window: NSWindow?, for connectionId: UUID) -> MainContentCoordinator? {
+        (window?.contentViewController as? MainSplitViewController)?
+            .workspaces.workspace(for: connectionId)?.sessionState?.coordinator
+    }
+
+    /// A window that is a background member of a native tab group is made key without being
+    /// brought to the front of its group, so it is selected in the group first.
+    private func bringToFront(_ window: NSWindow?) {
+        guard let window else { return }
+        if let group = window.tabGroup, group.selectedWindow !== window {
+            group.selectedWindow = window
+        }
+        window.makeKeyAndOrderFront(nil)
+        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+    }
+
     /// A host is any visible window whose content controller can hold workspaces. Selecting by the
     /// `main-` identifier prefix also matched the inspector window, whose controller is a different
     /// type, so the cast failed and an inspector in front made every open create a second window.
