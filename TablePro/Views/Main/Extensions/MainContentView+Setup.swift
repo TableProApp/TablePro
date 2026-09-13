@@ -9,6 +9,11 @@
 import os
 import SwiftUI
 
+private enum RestoreLoadTiming {
+    case immediate
+    case deferred
+}
+
 extension MainContentView {
     // MARK: - Initialization
 
@@ -87,8 +92,7 @@ extension MainContentView {
         for selected: QueryTab,
         activeDatabase: String?,
         activeSchema: String?,
-        loadTiming: RestoreLoadTiming,
-        consumeDeferredWhenKey: Bool
+        loadTiming: RestoreLoadTiming
     ) {
         let isTableTab = selected.tabType == .table
             && !selected.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -96,9 +100,6 @@ extension MainContentView {
         guard loadTiming == .immediate else {
             if isTableTab {
                 coordinator.deferredRestoreLoadTabId = selected.id
-                if consumeDeferredWhenKey {
-                    coordinator.consumeDeferredRestoreLoadIfNeeded()
-                }
             }
             return
         }
@@ -121,8 +122,7 @@ extension MainContentView {
         selectedTabId: UUID?,
         activeDatabase: String? = nil,
         activeSchema: String? = nil,
-        loadTiming: RestoreLoadTiming = .immediate,
-        consumeDeferredWhenKey: Bool = false
+        loadTiming: RestoreLoadTiming = .immediate
     ) {
         guard let firstTab = tabs.first else { return }
         tabManager.tabs = tabs
@@ -141,22 +141,11 @@ extension MainContentView {
             for: selected,
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
-            loadTiming: loadTiming,
-            consumeDeferredWhenKey: consumeDeferredWhenKey
+            loadTiming: loadTiming
         )
     }
 
     private func handleRestoreOrDefault() async {
-        if let group = RestorationGroupRegistry.consume(for: payload?.id) {
-            applyRestoredGroup(
-                group.tabs,
-                selectedTabId: group.selectedTabId,
-                loadTiming: group.loadTiming,
-                consumeDeferredWhenKey: true
-            )
-            return
-        }
-
         /// The split view controller owns the window and is wired up before this view is built, unlike
         /// `viewWindow`, which arrives from `configureWindow` and can still be nil here.
         guard let window = coordinator.splitViewController?.view.window else {
