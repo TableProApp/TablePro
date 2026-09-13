@@ -105,11 +105,16 @@ internal final class WindowManager {
         } else {
             window = buildWindow(payload: payload, sessionState: state, autoConnect: false)
         }
-        /// The entry is let go only for a tab that reached a workspace. A session that ended
-        /// between the check above and the adoption leaves the state pending instead, and a
-        /// discarded entry would take the closed tab with it.
+        /// The entry is let go only for a tab that reached a workspace, since a discarded entry
+        /// would take the closed tab with it. A state that reached none is torn down rather than
+        /// left to expire: `SessionStateFactory.create` registers its coordinator eagerly, and the
+        /// aggregated save would write the tab it holds into the connection's saved tab set.
         guard Self.coordinator(in: window, for: connectionId) === state.coordinator else {
+            Self.lifecycleLogger.error(
+                "[open] WindowManager.reopen tab reached no workspace connId=\(connectionId, privacy: .public)"
+            )
             SessionStateFactory.removePending(for: payload.id)
+            state.coordinator.teardown()
             return
         }
         onAdopted()
