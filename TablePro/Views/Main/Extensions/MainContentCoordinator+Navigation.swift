@@ -622,6 +622,14 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
             syncSidebarObjectSelection()
         } catch {
+            /// A switch that waited for the driver is dropped when the connection was closed and
+            /// opened again before its turn. The toolbar now belongs to that new session, so it is
+            /// read back from it rather than restored to what the old one showed, and nothing failed
+            /// that the user needs telling about.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+                return
+            }
             toolbarState.currentSchema = previousSchema
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
@@ -656,23 +664,13 @@ extension MainContentCoordinator {
         for target in request.targets {
             do {
                 try await dropContainer(target)
+                services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
                     "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
-        }
-
-        await DatabaseTreeMetadataService.shared.refreshDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
-            await DatabaseTreeMetadataService.shared.refreshSchemas(
-                connectionId: connectionId,
-                database: database
-            )
         }
 
         guard !failures.isEmpty else { return }

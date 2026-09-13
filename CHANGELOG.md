@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline cell editor left open over a different row after a refresh.
 - Row selected by Back or Forward dropped once the table finished loading.
 - Data grid jumping to the top on a later reload after a page change failed.
+- Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
+- Saving a staged Drop or Truncate running the selected query tab's statement again.
+- Dropped tables left staged after a save that failed part way, and drops staged in another database unstaged on refresh.
+- Table tab showing another database's rows after a database switch on PostgreSQL, Redshift and CockroachDB.
+- Wrong approximate row count for a PostgreSQL or PGlite table outside the current schema.
 
 ## [0.74.0] - 2026-09-13
 

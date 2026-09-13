@@ -1468,9 +1468,6 @@ final class MainContentCommandActions {
                         onDiscard: { [weak self] in self?.clearPendingTableOps() }
                     )
                 }
-                if request.reachesBrowsedDatabase(coordinator.browseDatabaseName) {
-                    Task { await coordinator.refreshTables() }
-                }
             }
             .store(in: &eventCancellables)
 
@@ -1484,6 +1481,22 @@ final class MainContentCommandActions {
                     hasPendingTableOps: self.hasPendingTableOps,
                     onDiscard: { [weak self] in self?.clearPendingTableOps() }
                 )
+            }
+            .store(in: &eventCancellables)
+
+        AppCommands.shared.containerChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyContainerChange(change)
+            }
+            .store(in: &eventCancellables)
+
+        AppCommands.shared.catalogChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyCatalogChange(change)
             }
             .store(in: &eventCancellables)
     }

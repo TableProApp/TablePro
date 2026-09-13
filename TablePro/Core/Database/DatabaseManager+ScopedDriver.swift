@@ -196,7 +196,9 @@ extension DatabaseManager {
         return try await sessionDriverGate.withExclusiveAccess(scope.connectionId) {
             try await trackOperation(sessionId: scope.connectionId) {
                 try Task.checkCancellation()
-                guard let driver = driver(for: scope.connectionId) else {
+                /// Asked again once the lease has its turn, because a database switch that held the
+                /// gate can have left the driver the same way while this lease waited.
+                guard isUsable(scope.connectionId), let driver = driver(for: scope.connectionId) else {
                     throw DatabaseError.notConnected
                 }
                 try await pin(driver, to: scope)

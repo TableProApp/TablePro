@@ -74,6 +74,11 @@ enum TriggerEditing {
         }
 
         let startedAt = Date()
+        defer {
+            CatalogChangeService.shared.record(
+                .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+            )
+        }
         try await withSchemaChangeDriver(scope: scope) { driver in
             let strategy = TriggerApplyStrategy.resolve(
                 isEdit: isEdit,
@@ -135,6 +140,9 @@ enum TriggerEditing {
         }
         await recordHistory(dropSQL, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        CatalogChangeService.shared.record(
+            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+        )
     }
 
     private static func withSchemaChangeDriver(

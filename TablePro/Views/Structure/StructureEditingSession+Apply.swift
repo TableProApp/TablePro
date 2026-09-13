@@ -202,6 +202,9 @@ internal extension StructureEditingSession {
             )
         } catch {
             isApplying = false
+            CatalogChangeService.post(
+                .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
+            )
             report(.failed(reason: error.localizedDescription), startedAt: startedAt, coordinator: coordinator)
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
@@ -236,6 +239,9 @@ internal extension StructureEditingSession {
             coordinator?.clearColumnLayout(clearTarget)
         }
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: connection.id, database: prepared.scope.database, kinds: .tables))
+        )
         report(.succeeded(OperationSummary()), startedAt: startedAt, coordinator: coordinator)
     }
 

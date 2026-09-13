@@ -944,6 +944,7 @@ struct RowImportSheet: View {
             sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
         )
         try await runOnLeasedDriver(sql)
+        CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .tables)))
     }
 
     /// The sheet's own statements take the same lease the import does, one at a time and always

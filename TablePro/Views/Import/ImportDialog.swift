@@ -505,6 +505,9 @@ struct ImportDialog: View {
                     showErrorDialog = true
                 }
             }
+            /// A SQL file can create, alter or drop anything, and one that failed or was cancelled
+            /// part way has already run every statement before that point.
+            CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         }
     }
 

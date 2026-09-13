@@ -70,36 +70,42 @@ extension DatabaseManager {
             )
         }
 
-        let executionTimes: [TimeInterval] = try await withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .protectedWrite
-        ) { driver in
-            let useTransaction = driver.supportsTransactions
-            if useTransaction {
-                try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
-            }
-            do {
-                var measured: [TimeInterval] = []
-                for stmt in statements {
-                    let startedAt = Date()
-                    _ = try await driver.execute(query: stmt.sql)
-                    measured.append(Date().timeIntervalSince(startedAt))
-                }
+        let executionTimes: [TimeInterval]
+        do {
+            executionTimes = try await withScopedDriver(
+                scope: scope,
+                route: route,
+                cancellation: .protectedWrite
+            ) { driver in
+                let useTransaction = driver.supportsTransactions
                 if useTransaction {
-                    try await driver.commitTransaction()
+                    try await driver.beginTransaction(mode: schemaKind.declaresWrite ? .readWrite : .serverDefault)
                 }
-                return measured
-            } catch {
-                if useTransaction {
-                    do {
-                        try await driver.rollbackTransaction()
-                    } catch {
-                        Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                do {
+                    var measured: [TimeInterval] = []
+                    for stmt in statements {
+                        let startedAt = Date()
+                        _ = try await driver.execute(query: stmt.sql)
+                        measured.append(Date().timeIntervalSince(startedAt))
                     }
+                    if useTransaction {
+                        try await driver.commitTransaction()
+                    }
+                    return measured
+                } catch {
+                    if useTransaction {
+                        do {
+                            try await driver.rollbackTransaction()
+                        } catch {
+                            Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                        }
+                    }
+                    throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
                 }
-                throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
             }
+        } catch {
+            Self.reportCatalogChangeAfterFailure(in: scope)
+            throw error
         }
 
         let databaseTypeForHistory = databaseType
@@ -120,6 +126,9 @@ extension DatabaseManager {
         }
 
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: scope.connectionId, scope: scope))
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+        )
     }
 
     /// Run a Create Table draft's statements, on the same isolated route and in the same shape as
@@ -155,36 +164,42 @@ extension DatabaseManager {
             )
         }
 
-        let executionTimes: [TimeInterval] = try await withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .protectedWrite
-        ) { driver in
-            let useTransaction = driver.supportsTransactions && statements.count > 1
-            if useTransaction {
-                try await driver.beginTransaction(mode: .readWrite)
-            }
-            do {
-                var measured: [TimeInterval] = []
-                for statement in statements {
-                    let startedAt = Date()
-                    _ = try await driver.execute(query: statement)
-                    measured.append(Date().timeIntervalSince(startedAt))
-                }
+        let executionTimes: [TimeInterval]
+        do {
+            executionTimes = try await withScopedDriver(
+                scope: scope,
+                route: route,
+                cancellation: .protectedWrite
+            ) { driver in
+                let useTransaction = driver.supportsTransactions && statements.count > 1
                 if useTransaction {
-                    try await driver.commitTransaction()
+                    try await driver.beginTransaction(mode: .readWrite)
                 }
-                return measured
-            } catch {
-                if useTransaction {
-                    do {
-                        try await driver.rollbackTransaction()
-                    } catch {
-                        Self.logger.error("Rollback failed after create table error: \(error.localizedDescription)")
+                do {
+                    var measured: [TimeInterval] = []
+                    for statement in statements {
+                        let startedAt = Date()
+                        _ = try await driver.execute(query: statement)
+                        measured.append(Date().timeIntervalSince(startedAt))
                     }
+                    if useTransaction {
+                        try await driver.commitTransaction()
+                    }
+                    return measured
+                } catch {
+                    if useTransaction {
+                        do {
+                            try await driver.rollbackTransaction()
+                        } catch {
+                            Self.logger.error("Rollback failed after create table error: \(error.localizedDescription)")
+                        }
+                    }
+                    throw error
                 }
-                throw error
             }
+        } catch {
+            Self.reportCatalogChangeAfterFailure(in: scope)
+            throw error
         }
 
         for (index, statement) in statements.enumerated() {
@@ -202,6 +217,17 @@ extension DatabaseManager {
                 )
             )
         }
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+        )
+    }
+
+    /// A failed batch is not proof that nothing changed: MySQL, MariaDB and Oracle commit each DDL
+    /// statement as it runs, so the statements before the failure stay applied after the rollback.
+    private static func reportCatalogChangeAfterFailure(in scope: DatabaseScope) {
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+        )
     }
 
     /// Query the actual primary key constraint name for PostgreSQL.
