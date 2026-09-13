@@ -282,6 +282,7 @@
             "icon": "shield",
             "pages": [
               "security/privacy",
+              "security/managed-updates",
               "features/safe-mode",
               "features/acknowledgements"
             ]

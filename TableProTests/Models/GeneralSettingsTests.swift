@@ -106,3 +106,24 @@ struct GeneralSettingsWorkspaceRailTests {
         #expect(!decoded.showWorkspaceRail)
     }
 }
+
+@Suite("GeneralSettings update-preference removal")
+struct GeneralSettingsUpdatePreferenceTests {
+    @Test("A settings blob still carrying automaticallyCheckForUpdates decodes without it")
+    func decodesBlobCarryingTheRemovedKey() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome","automaticallyCheckForUpdates":false,"showRecentTables":true,"queryTimeoutSeconds":90}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+
+        #expect(decoded.showRecentTables == true)
+        #expect(decoded.queryTimeoutSeconds == 90)
+    }
+
+    @Test("The encoded blob no longer carries the key Sparkle owns")
+    func doesNotEncodeTheUpdatePreference() throws {
+        let data = try JSONEncoder().encode(GeneralSettings.default)
+        let deserialized = try JSONSerialization.jsonObject(with: data)
+        let object = try #require(deserialized as? [String: Any])
+
+        #expect(object["automaticallyCheckForUpdates"] == nil)
+    }
+}

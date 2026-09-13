@@ -14,6 +14,10 @@
 	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>EongGFyuahKlYPZwgmnFx8nW3s1CqWlSSU5BDqY6n6Q=</string>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUScheduledImpatientCheckInterval</key>
+	<integer>1209600</integer>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

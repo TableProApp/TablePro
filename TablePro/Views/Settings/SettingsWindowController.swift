@@ -135,7 +135,13 @@ private struct SettingsPaneContent: View {
                 settings: $settingsManager.general,
                 tabSettings: $settingsManager.tabs,
                 updaterBridge: UpdaterBridge.shared,
-                onResetAll: { settingsManager.resetToDefaults() }
+                onResetAll: {
+                    settingsManager.resetToDefaults()
+                    // The update preferences belong to Sparkle, not to the settings structs
+                    // resetToDefaults() reassigns, so they have to be cleared separately for the
+                    // alert's promise about every section to hold.
+                    UpdaterBridge.shared.resetUpdatePreferences()
+                }
             )
         case .appearance:
             AppearanceSettingsView(settings: $settingsManager.appearance)

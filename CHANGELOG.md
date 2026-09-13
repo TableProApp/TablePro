@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
+
+### Changed
+
+- Updates download in the background and install when you quit, instead of asking each time.
+
+### Fixed
+
+- Update preferences overwritten by the app at every launch instead of following the setting.
+
 ## [0.74.0] - 2026-09-13
 
 ### Added

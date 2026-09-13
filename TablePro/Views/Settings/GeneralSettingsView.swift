@@ -18,6 +18,30 @@ struct GeneralSettingsView: View {
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
+    /// Bindings straight onto Sparkle's own properties. Nothing about the update section is stored
+    /// in `GeneralSettings`, so there is no second copy to fall out of step and nothing for a
+    /// synced settings blob to overwrite on another Mac.
+    private var automaticallyChecksForUpdates: Binding<Bool> {
+        Binding(
+            get: { updaterBridge.automaticallyChecksForUpdates },
+            set: { updaterBridge.setAutomaticallyChecksForUpdates($0) }
+        )
+    }
+
+    private var automaticallyDownloadsUpdates: Binding<Bool> {
+        Binding(
+            get: { updaterBridge.automaticallyDownloadsUpdates },
+            set: { updaterBridge.setAutomaticallyDownloadsUpdates($0) }
+        )
+    }
+
+    private var updateCheckFrequency: Binding<UpdateCheckFrequency> {
+        Binding(
+            get: { UpdateCheckFrequency.closest(to: updaterBridge.updateCheckInterval) },
+            set: { updaterBridge.setUpdateCheckInterval($0.seconds) }
+        )
+    }
+
     private var queryTimeoutOptions: [Int] {
         let current = settings.queryTimeoutSeconds
         if current > 0, !Self.standardTimeouts.contains(current) {
@@ -120,11 +144,21 @@ struct GeneralSettingsView: View {
 
             TrustedExternalConnectionsSection()
 
-            Section("Software Update") {
-                Toggle("Automatically check for updates", isOn: $settings.automaticallyCheckForUpdates)
-                    .onChange(of: settings.automaticallyCheckForUpdates) { _, newValue in
-                        updaterBridge.updater.automaticallyChecksForUpdates = newValue
+            Section {
+                Toggle("Automatically check for updates", isOn: automaticallyChecksForUpdates)
+                    .accessibilityIdentifier("automatic-update-check-toggle")
+
+                Toggle("Download and install updates automatically", isOn: automaticallyDownloadsUpdates)
+                    .disabled(!updaterBridge.allowsAutomaticUpdates)
+                    .accessibilityIdentifier("automatic-update-install-toggle")
+
+                Picker("Check for updates:", selection: updateCheckFrequency) {
+                    ForEach(UpdateCheckFrequency.allCases) { frequency in
+                        Text(frequency.title).tag(frequency)
                     }
+                }
+                .disabled(!updaterBridge.automaticallyChecksForUpdates)
+                .accessibilityIdentifier("update-check-frequency-picker")
 
                 Button("Check for Updates…") {
                     updaterBridge.checkForUpdates()
@@ -134,6 +168,10 @@ struct GeneralSettingsView: View {
                 if let changelogURL = URL(string: MainMenuLink.changelog) {
                     Link("What's New", destination: changelogURL)
                 }
+            } header: {
+                Text("Software Update")
+            } footer: {
+                Text("Updates install when you quit TablePro. Checking weekly means a security fix can reach you up to a week later.")
             }
 
             Section {
@@ -160,7 +198,6 @@ struct GeneralSettingsView: View {
         }
         .onAppear {
             if initialLanguage == nil { initialLanguage = settings.language }
-            updaterBridge.updater.automaticallyChecksForUpdates = settings.automaticallyCheckForUpdates
         }
     }
 }
