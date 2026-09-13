@@ -15,6 +15,9 @@ enum PreferenceKeys {
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
     static let queryPlanBarMetric = DefaultsKey<String>("com.TablePro.queryPlan.barMetric")
     static let lastBackupDirectory = DefaultsKey<String>("com.TablePro.backup.lastDirectory")
+    /// The app version this Mac last showed the welcome window for. Device-local: it records what
+    /// has been shown here, not a preference, so it must not sync to another Mac that has not.
+    static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
 
     static let registeredKeyNames: [String] = [
         linkedFolders.name,
@@ -26,6 +29,7 @@ enum PreferenceKeys {
         queryPlanRawFontSize.name,
         queryPlanBarMetric.name,
         lastBackupDirectory.name,
+        lastSeenAppVersion.name,
     ]
 
     static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."

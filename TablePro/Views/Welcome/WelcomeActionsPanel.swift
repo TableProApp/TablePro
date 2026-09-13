@@ -15,6 +15,10 @@ struct WelcomeActionsPanel: View {
 
     private let updaterBridge = UpdaterBridge.shared
 
+    /// Captured once, because the stored value is overwritten on the same appearance that reads
+    /// it. Without the capture the line would replace itself with nothing on the next redraw.
+    @State private var lastSeenAppVersion = ""
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -30,6 +34,10 @@ struct WelcomeActionsPanel: View {
                         .font(.title2.weight(.semibold))
 
                     versionLine
+
+                    if showsUpdatedLine {
+                        updatedLine
+                    }
 
                     licenseLine
                 }
@@ -65,6 +73,42 @@ struct WelcomeActionsPanel: View {
             .padding(.bottom, 20)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear(perform: recordAppVersion)
+    }
+
+    private func recordAppVersion() {
+        let defaults = AppStorageEnvironment.shared.defaults
+        let key = PreferenceKeys.lastSeenAppVersion.name
+        let current = Bundle.main.appVersion
+        guard lastSeenAppVersion.isEmpty else { return }
+        lastSeenAppVersion = defaults.string(forKey: key) ?? current
+        defaults.set(current, forKey: key)
+    }
+
+    /// Updates install on quit with no dialog, so the release notes stop passing in front of
+    /// anyone. This is the replacement, and it is deliberately pull-shaped: a window that appeared
+    /// after every silent install would be more than a hundred interruptions a year spent on
+    /// exactly the thing background installs exist to remove. The welcome window is the exception
+    /// because the user chose to open it.
+    private var showsUpdatedLine: Bool {
+        !lastSeenAppVersion.isEmpty && lastSeenAppVersion != Bundle.main.appVersion
+    }
+
+    private var updatedLine: some View {
+        HStack(spacing: 6) {
+            Text(String(format: String(localized: "Updated from %@"), lastSeenAppVersion))
+                .foregroundStyle(.secondary)
+            Text(verbatim: "·")
+                .foregroundStyle(.tertiary)
+            Button {
+                NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
+            } label: {
+                Text(String(localized: "What's New"))
+            }
+            .buttonStyle(.link)
+        }
+        .font(.callout)
+        .accessibilityIdentifier("welcome-updated-line")
     }
 
     private var versionLine: some View {

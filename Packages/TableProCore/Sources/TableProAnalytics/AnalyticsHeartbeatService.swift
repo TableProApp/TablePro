@@ -136,7 +136,9 @@ public final class AnalyticsHeartbeatService {
             hasLicense: provider.hasLicense,
             connectionAttemptedAt: provider.connectionAttemptedAt,
             connectionSucceededAt: provider.connectionSucceededAt,
-            firstQueryExecutedAt: provider.firstQueryExecutedAt
+            firstQueryExecutedAt: provider.firstQueryExecutedAt,
+            updateInstallMode: provider.updateInstallMode,
+            updateCheckInterval: provider.updateCheckInterval
         )
     }
 

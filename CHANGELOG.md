@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
+- A line on the welcome window naming the version TablePro updated from, with a link to what changed.
+- Update install mode and check frequency in the anonymous usage heartbeat.
 
 ### Changed
 

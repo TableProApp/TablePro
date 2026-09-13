@@ -33,6 +33,8 @@ The JSON body holds these fields and no others:
 | `connection_count` | how many connections are open |
 | `has_license` | whether a license key is stored |
 | `connection_attempted_at`, `connection_succeeded_at` | when you first tried to connect on this Mac, and when a connection first succeeded |
+| `update_install_mode` | how updates install: `automatic`, `notify`, or `off` |
+| `update_check_interval` | seconds between update checks, absent when checks are off |
 
 No query text. No hostnames, ports, database names, or usernames. No email address, no file paths, no connection names.
 
