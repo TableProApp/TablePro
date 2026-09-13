@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
+- What's New window, from Help > What's New.
 
 ### Changed
 
