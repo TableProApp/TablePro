@@ -102,6 +102,25 @@ Verify all of these first. If any fails, stop and say what is wrong.
 7. **On `main`**: warn, do not block.
 8. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
    own commit.
+9. **Report the last full-suite verdict on `main`**: warn, do not block.
+
+   ```bash
+   gh run list --workflow=macos-tests.yml --branch main --limit 1 \
+     --json conclusion,headSha,createdAt -q '.[] | "\(.conclusion // "in progress") \(.headSha[0:9]) \(.createdAt)"'
+   ```
+
+   Say the verdict and the commit it belongs to, then carry on. This reports rather
+   than blocks on purpose: `main` is red or cancelled far more often than green, on
+   merge skew rather than on real defects, and a hard gate with no merge queue behind
+   it would stop releases instead of improving them. The release tag is currently the
+   only unconditional full-suite run, so knowing what the last one said is worth the
+   one command. Eight of the last seventeen releases had their tag moved onto extra
+   commits before going green.
+
+The release job re-checks what it can once the tag is pushed. It fails if the tag
+disagrees with `MARKETING_VERSION`, and it fails if `CURRENT_PROJECT_VERSION` did not
+rise above the newest published release's, because that number is what Sparkle
+compares and a flat one means no install is ever offered the update.
 
 ### Bump the version
 
@@ -181,17 +200,40 @@ the change, the docs entry can name the feature and say what the reader does wit
 ```bash
 git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx
 git commit -m "release: v<version>"
-git tag v<version>
+git tag -a v<version> -m "v<version>"
 git push origin main && git push origin v<version>
 ```
 
-Push the commit and the tag separately: `--follow-tags` only pushes annotated tags
-and `git tag` creates lightweight ones. Keep unrelated work out of the release
-commit; a lint fix made along the way gets its own conventional commit first.
+Always `-a`. The history mixes both kinds (`v0.72.0` is lightweight, `v0.73.0` and
+`v0.74.0` are annotated), and a lightweight tag answers `git tag -l --format='%(contents)'`
+with the commit message, so anything read back off a tag is silently wrong depending
+on which kind it happens to be. Push the commit and the tag separately anyway; keep
+unrelated work out of the release commit, and give a lint fix made along the way its
+own conventional commit first.
 
 This triggers `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP,
 Sparkle signatures, `appcast.xml`, and the GitHub Release with notes from
 `CHANGELOG.md`.
+
+### Withdrawing a release
+
+Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.
+Do this when a build turns out to lose data, fail to launch, or break connecting, and
+the corrective release is more than a few minutes away.
+
+```bash
+python3 scripts/ci/pull-release.py <version> --dry-run   # says what it would remove
+python3 scripts/ci/pull-release.py <version>             # edits, commits, pushes
+```
+
+Leave the GitHub Release in place. People who downloaded the DMG directly still need
+their link to resolve, and it is the corrective release that supersedes the build, not
+the deletion of the old one. Anyone who already installed the bad version is reached
+by shipping the fix with the critical flag set, not by the withdrawal.
+
+Nothing else needs unwinding. The rewind guard in `build.yml` compares the generated
+feed against `origin/main`, so once `main` no longer advertises the withdrawn version
+the next release's feed does not either and the guard passes on its own.
 
 ## Stage 3: Plugins
 

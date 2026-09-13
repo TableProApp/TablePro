@@ -204,6 +204,8 @@ jobs:
           ls -lh artifacts/
 
       - name: Verify the tag matches the declared version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           XCCONFIG_VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
@@ -212,6 +214,35 @@ jobs:
             exit 1
           fi
           echo "tag and MARKETING_VERSION agree on $TAG_VERSION"
+
+          # CURRENT_PROJECT_VERSION is what Sparkle compares, as <sparkle:version>. A build number
+          # that did not increase means no installed app is offered the release, and until now only
+          # a sentence in the release runbook stopped that. Compared against the newest PUBLISHED
+          # release rather than the newest tag, because re-cutting a release that failed leaves a
+          # tag at the same build and that is a legitimate state to be in.
+          BUILD=$(sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
+          case "$BUILD" in
+            ''|*[!0-9]*)
+              echo "::error::CURRENT_PROJECT_VERSION '$BUILD' is not a plain integer"
+              exit 1
+              ;;
+          esac
+
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName' || true)
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "null" ] || [ "$PREVIOUS_TAG" = "v$TAG_VERSION" ]; then
+            echo "no earlier published release to compare the build number against"
+            exit 0
+          fi
+
+          PREVIOUS_BUILD=$(git show "${PREVIOUS_TAG}:Configs/Version.xcconfig" \
+            | sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' | tr -d ' ')
+          if [ -n "$PREVIOUS_BUILD" ] && [ "$BUILD" -le "$PREVIOUS_BUILD" ]; then
+            echo "::error::CURRENT_PROJECT_VERSION $BUILD is not above $PREVIOUS_BUILD from $PREVIOUS_TAG; no install would be offered this update"
+            exit 1
+          fi
+          echo "build $BUILD is above $PREVIOUS_BUILD from $PREVIOUS_TAG"
 
       - name: Verify and organize artifacts for release
         run: |
@@ -253,19 +284,18 @@ jobs:
       # so the key is always meant to be present, and gating on it meant a missing or rotated
       # secret published a release that no existing install could ever see. A signing key that
       # is not there is now a red job, not a silent skip.
-      # The tag's own appcast.xml is the feed as of that commit. Seeding from it drops every
-      # version published since, and generate_appcast keeps only what it is handed, so the
-      # committed feed would silently rewind and those releases would stop being offered.
-      - name: Seed the appcast from the published feed
+      # The tag's own appcast.xml is the feed as of that commit, which is missing every version
+      # published since. The merge base has to be the feed that is actually live.
+      - name: Fetch the published feed to merge into
         run: |
           git fetch origin main
           mkdir -p appcast
-          git show origin/main:appcast.xml > appcast/seed.xml
+          git show origin/main:appcast.xml > appcast/base.xml
 
       - name: Sign update archives with Sparkle
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          SEED_APPCAST: appcast/seed.xml
+          BASE_APPCAST: appcast/base.xml
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact

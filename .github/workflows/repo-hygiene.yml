@@ -100,6 +100,15 @@ jobs:
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
 
+      # Only a real release runs sign-and-appcast.sh, so nothing on a pull request ever exercised
+      # the code that edits the file every install polls. These two cover the parts that can be
+      # tested without a signing key: which bytes move, and which releases are refused.
+      - name: Validate the appcast merge
+        run: python3 scripts/ci/test_merge_appcast.py
+
+      - name: Validate release withdrawal
+        run: python3 scripts/ci/test_pull_release.py
+
       # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
       # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was
       # orphaned, but it compiles a C probe against Libs/libbson, so it lives in the macOS build

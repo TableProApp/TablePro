@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Signs release archives and generates appcast.xml using Sparkle's
-# generate_appcast — the official tool for building Sparkle update feeds.
+# Signs release archives and publishes them into appcast.xml using Sparkle's generate_appcast,
+# the official tool for building Sparkle update feeds.
 #
-# Sparkle 2.9+ rejects multiple archives with the same bundle version in
-# a single directory, so we run generate_appcast once per architecture
-# and merge the resulting appcast entries.
+# generate_appcast only ever sees the release being published. It is never handed the existing
+# feed, and it never rewrites an item it did not create. Everything already published is merged
+# in afterwards by scripts/ci/merge-appcast.py, which splices text rather than re-serializing.
+# The reason is in that script's docstring: two writes in Sparkle's FeedXML.swift run outside its
+# `if createNewItem` guard, so a previously published item that a staged archive happens to match
+# has its download URL rewritten and its release notes dropped.
+#
+# Sparkle 2.9+ rejects two archives sharing a bundle version in one directory, so each
+# architecture gets its own staging directory and its own generate_appcast run.
 #
 # Usage: sign-and-appcast.sh <version>
-# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with ZIPs.
+# Requires: SPARKLE_PRIVATE_KEY env var, artifacts/ directory with both architectures' ZIPs.
 
-SEED_APPCAST="${SEED_APPCAST:-appcast.xml}"
+BASE_APPCAST="${BASE_APPCAST:-appcast.xml}"
 VERSION="${1:?Usage: sign-and-appcast.sh <version>}"
 
 if [ -z "${SPARKLE_PRIVATE_KEY:-}" ]; then
-  echo "❌ ERROR: SPARKLE_PRIVATE_KEY environment variable is not set"
+  echo "::error::SPARKLE_PRIVATE_KEY environment variable is not set"
+  exit 1
+fi
+
+if [ ! -f "$BASE_APPCAST" ]; then
+  echo "::error::base appcast $BASE_APPCAST does not exist"
   exit 1
 fi
 
@@ -48,40 +59,33 @@ trap 'rm -rf "$KEY_FILE"' EXIT
 echo "$SPARKLE_PRIVATE_KEY" > "$KEY_FILE"
 
 # ---------------------------------------------------------------------------
-# 3. Generate appcast per architecture
+# 3. Generate one item per architecture, each from an otherwise empty directory
 # ---------------------------------------------------------------------------
-# Sparkle 2.9+ does not allow two archives with the same bundle version
-# in one directory. Process each architecture separately and merge.
+# Two plain variables rather than an associative array: the macOS runners still ship bash 3.2,
+# where `declare -A` is a syntax error.
+ARM64_APPCAST=""
+X86_64_APPCAST=""
 
-ARCHS=("arm64" "x86_64")
-APPCAST_XMLS=()
-
-for arch in "${ARCHS[@]}"; do
+for arch in arm64 x86_64; do
   ZIP="artifacts/TablePro-${VERSION}-${arch}.zip"
   if [ ! -f "$ZIP" ]; then
-    echo "⚠️  Skipping $arch — $ZIP not found"
-    continue
+    echo "::error::$ZIP is missing, so the $arch build produced no update archive"
+    exit 1
   fi
 
   STAGING=$(mktemp -d)
-
   cp "$ZIP" "$STAGING/"
 
   # Sparkle 2.9 renders Markdown natively, including code and links. Feeding hand-built HTML
   # left Markdown visible and interpreted literal SQL/XML angle brackets as HTML tags.
-  basename="${STAGING}/TablePro-${VERSION}-${arch}"
+  #
+  # The name matches the archive's, which is how generate_appcast pairs notes to an archive.
+  # Without the pairing the item ships with no description at all.
   {
     printf "# What's New in TablePro %s\n\n" "$VERSION"
     cat release_notes.md
     printf '\n[View full changelog](https://docs.tablepro.app/changelog)\n'
-  } > "${basename}.md"
-
-  # Seed the generator with the feed that is actually published, so every version already in it
-  # survives. The default is the checkout's own appcast.xml, which is the file as of the tag
-  # rather than the state of main, and generate_appcast only keeps what it is given.
-  if [ "${#APPCAST_XMLS[@]}" -eq 0 ] && [ -f "$SEED_APPCAST" ]; then
-    cp "$SEED_APPCAST" "$STAGING/appcast.xml"
-  fi
+  } > "${STAGING}/TablePro-${VERSION}-${arch}.md"
 
   "$SPARKLE_BIN/generate_appcast" \
     --ed-key-file "$KEY_FILE" \
@@ -91,68 +95,31 @@ for arch in "${ARCHS[@]}"; do
     --maximum-versions 0 \
     "$STAGING"
 
-  APPCAST_XMLS+=("$STAGING/appcast.xml")
+  if [ ! -f "$STAGING/appcast.xml" ]; then
+    echo "::error::generate_appcast produced no feed for $arch"
+    exit 1
+  fi
+  if [ "$arch" = "arm64" ]; then
+    ARM64_APPCAST="$STAGING/appcast.xml"
+  else
+    X86_64_APPCAST="$STAGING/appcast.xml"
+  fi
 done
 
 # ---------------------------------------------------------------------------
-# 4. Merge appcast files
+# 4. Splice both items into the published feed
 # ---------------------------------------------------------------------------
-if [ "${#APPCAST_XMLS[@]}" -eq 0 ]; then
-  echo "❌ ERROR: No archives found to process"
-  exit 1
-fi
-
-if [ "${#APPCAST_XMLS[@]}" -eq 1 ]; then
-  # Single arch — use as-is
-  FINAL_APPCAST="${APPCAST_XMLS[0]}"
-else
-  # Merge: take the first appcast (has history + arm64 entry), then
-  # extract only the NEW item(s) from the second appcast and insert them.
-  FINAL_APPCAST="${APPCAST_XMLS[0]}"
-  SECOND_APPCAST="${APPCAST_XMLS[1]}"
-
-  # Extract <item>...</item> blocks for the current version from second appcast
-  ITEMS_FILE=$(mktemp)
-  awk "
-    /<item>/ { capture=1; buf=\"\" }
-    capture { buf = buf \$0 \"\\n\" }
-    /<\\/item>/ {
-      capture=0
-      if (buf ~ /<sparkle:shortVersionString>${VERSION}</) {
-        printf \"%s\", buf
-      }
-    }
-  " "$SECOND_APPCAST" > "$ITEMS_FILE"
-
-  if [ -s "$ITEMS_FILE" ]; then
-    # Find the line number of the first </item> in the base appcast and
-    # insert the second arch's item block right after it.
-    FIRST_CLOSE=$(grep -n '</item>' "$FINAL_APPCAST" | head -1 | cut -d: -f1)
-    if [ -n "$FIRST_CLOSE" ]; then
-      {
-        head -n "$FIRST_CLOSE" "$FINAL_APPCAST"
-        cat "$ITEMS_FILE"
-        tail -n +"$((FIRST_CLOSE + 1))" "$FINAL_APPCAST"
-      } > "${FINAL_APPCAST}.merged"
-      mv "${FINAL_APPCAST}.merged" "$FINAL_APPCAST"
-    fi
-  fi
-  rm -f "$ITEMS_FILE"
-fi
-
-# ---------------------------------------------------------------------------
-# 5. Fix download URLs
-# ---------------------------------------------------------------------------
-# Sparkle 2.9+ may ignore --download-url-prefix for new entries.
-# Ensure all archive URLs for this version point to the correct GitHub
-# Release download path: .../releases/download/v<VERSION>/<filename>
-sed -i '' -E "s|releases/download/(TablePro-${VERSION}-)|releases/download/v${VERSION}/\1|g" "$FINAL_APPCAST"
-
-# ---------------------------------------------------------------------------
-# 6. Copy result
-# ---------------------------------------------------------------------------
+# Every invariant worth checking lives in merge-appcast.py, which is covered by
+# scripts/ci/test_merge_appcast.py on the Linux runner. This script is only ever exercised by a
+# real release, so the checks belong somewhere a pull request can run them.
 mkdir -p appcast
-cp "$FINAL_APPCAST" appcast/appcast.xml
+python3 "$(dirname "$0")/merge-appcast.py" \
+  --base "$BASE_APPCAST" \
+  --version "$VERSION" \
+  --arm64 "$ARM64_APPCAST" \
+  --x86-64 "$X86_64_APPCAST" \
+  --download-prefix "$DOWNLOAD_PREFIX" \
+  --out appcast/appcast.xml
 
-echo "✅ Appcast generated by generate_appcast:"
-cat appcast/appcast.xml
+echo "✅ Appcast published for $VERSION:"
+head -c 4000 appcast/appcast.xml

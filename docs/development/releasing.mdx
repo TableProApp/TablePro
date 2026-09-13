@@ -92,7 +92,9 @@ fails from the other side: 299 MB published with no baseline behind it, and the 
 
 `.github/workflows/build.yml` fires on a `v*` tag push, and otherwise only on a manual dispatch. Bump
 `Configs/Version.xcconfig` first: the release job compares the tag against `MARKETING_VERSION` and
-fails with `tag v… does not match MARKETING_VERSION …` when they disagree.
+fails with `tag v… does not match MARKETING_VERSION …` when they disagree. It also fails when
+`CURRENT_PROJECT_VERSION` is not above the newest published release's. That number is what Sparkle
+compares as `<sparkle:version>`, so a flat build number ships a release no installed app is offered.
 
 Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64` and `x86_64`) and
 Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
@@ -101,6 +103,23 @@ app blocks the tag.
 The release job then verifies the artifacts, signs both update archives with the Sparkle key,
 extracts the release notes from `CHANGELOG.md`, publishes the GitHub release, and only afterwards
 commits `appcast.xml`. A tag containing `-alpha`, `-beta` or `-rc` publishes as a prerelease.
+
+`generate_appcast` sees only the release being published, never the existing feed, and
+`scripts/ci/merge-appcast.py` splices its two items into `appcast.xml` afterwards. Items already
+published are moved byte for byte rather than regenerated, because Sparkle rewrites the download URL
+and drops the release notes of any existing item a staged archive happens to match.
+
+## Withdrawing a release
+
+Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.
+
+```bash
+python3 scripts/ci/pull-release.py 0.75.0 --dry-run   # reports what it would remove
+python3 scripts/ci/pull-release.py 0.75.0             # edits, commits and pushes
+```
+
+The GitHub release stays up, so a direct download link still resolves. Anyone already on the bad
+build is reached by shipping the fix, not by the withdrawal.
 
 ## Plugins
 
