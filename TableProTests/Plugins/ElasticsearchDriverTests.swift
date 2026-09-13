@@ -190,6 +190,133 @@ struct ElasticsearchQueryDSLTests {
         #expect((regexp?["status"] as? [String: Any])?["value"] as? String == "a.*")
     }
 
+    @Test("A nested leaf filter wraps in a nested query")
+    func nestedLeafFilterWraps() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [ElasticsearchFilterSpec(column: "identifiers.type", op: "=", value: "CPF")],
+            logicMode: "AND",
+            fields: fields
+        )
+        let nested = clause["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        let term = (nested?["query"] as? [String: Any])?["term"] as? [String: Any]
+        #expect(term?["identifiers.type"] as? String == "CPF")
+    }
+
+    @Test("Same-element nested filters share one nested query")
+    func nestedSameElementGroups() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+            "identifiers.value": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "=", value: "CPF", elementScope: "identifiers"
+                ),
+                ElasticsearchFilterSpec(
+                    column: "identifiers.value", op: "=", value: "318.578.388-31", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        let nested = clause["nested"] as? [String: Any]
+        #expect(nested?["path"] as? String == "identifiers")
+        let bool = (nested?["query"] as? [String: Any])?["bool"] as? [String: Any]
+        let must = bool?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+    }
+
+    @Test("Independent nested filters stay separate nested queries")
+    func nestedAnyElementStaysSeparate() {
+        let fields = [
+            "identifiers.type": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+            "identifiers.issuer": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+        ]
+        let clause = ElasticsearchQueryBuilder.queryClause(
+            filters: [
+                ElasticsearchFilterSpec(column: "identifiers.type", op: "=", value: "CPF"),
+                ElasticsearchFilterSpec(column: "identifiers.issuer", op: "=", value: "EPACS"),
+            ],
+            logicMode: "AND",
+            fields: fields
+        )
+        let must = (clause["bool"] as? [String: Any])?["must"] as? [[String: Any]]
+        #expect(must?.count == 2)
+        #expect(must?.allSatisfy { $0["nested"] != nil } == true)
+    }
+
+    @Test("A nested parent column is not sortable")
+    func nestedParentNotSortable() {
+        let fields = ["identifiers": ElasticsearchFieldInfo(type: "nested", hasKeywordSubfield: false)]
+        #expect(ElasticsearchQueryBuilder.sortableField("identifiers", fields: fields) == nil)
+    }
+
+    @Test("Sorting a nested leaf names the nested path")
+    func nestedLeafSort() {
+        let fields = [
+            "identifiers.issuer": ElasticsearchFieldInfo(
+                type: "keyword", hasKeywordSubfield: false, nestedPath: "identifiers"
+            ),
+        ]
+        let parsed = ElasticsearchParsedSearch(
+            index: "i", from: 0, size: 10,
+            sorts: [ElasticsearchSortSpec(column: "identifiers.issuer", ascending: true)],
+            filters: [], logicMode: "AND"
+        )
+        let body = ElasticsearchQueryBuilder.searchBody(for: parsed, fields: fields, size: 10)
+        let sort = body["sort"] as? [[String: Any]]
+        let options = sort?.first?["identifiers.issuer"] as? [String: Any]
+        #expect(options?["order"] as? String == "asc")
+        #expect((options?["nested"] as? [String: Any])?["path"] as? String == "identifiers")
+    }
+
+    @Test("Tagged search round-trips elementScope")
+    func elementScopeRoundTrip() {
+        let tagged = ElasticsearchQueryBuilder.encodeSearch(
+            index: "persons", from: 0, size: 50,
+            sorts: [],
+            filters: [
+                ElasticsearchFilterSpec(
+                    column: "identifiers.type", op: "=", value: "CPF", elementScope: "identifiers"
+                ),
+            ],
+            logicMode: "AND"
+        )
+        let parsed = ElasticsearchQueryBuilder.parseSearch(tagged)
+        #expect(parsed?.filters.first?.elementScope == "identifiers")
+        #expect(parsed?.filters.first?.column == "identifiers.type")
+    }
+
+    @Test("specs copies elementScope from the plugin filter")
+    func specsCopyElementScope() {
+        let filters = [
+            PluginQueryFilter(
+                column: "identifiers.type",
+                op: "=",
+                value: "CPF",
+                isCaseSensitive: true,
+                secondValue: nil,
+                elementScope: "identifiers"
+            ),
+        ]
+        #expect(ElasticsearchQueryBuilder.specs(from: filters).first?.elementScope == "identifiers")
+    }
+
     @Test("case_insensitive is omitted when unsupported (pre-7.10)")
     func caseInsensitiveGated() {
         let on = ElasticsearchQueryBuilder.clause(
@@ -251,6 +378,32 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(byName["name"]?.hasKeywordSubfield == true)
         #expect(byName["age"]?.type == "long")
         #expect(byName["address.city"]?.type == "keyword")
+        #expect(byName["address"] == nil)
+        #expect(byName["address.city"]?.nestedPath == nil)
+    }
+
+    @Test("Keeps a nested parent column and marks its leaves with the nested path")
+    func nestedMappingKeepsParentAndMarksLeaves() {
+        let properties: [String: Any] = [
+            "personId": ["type": "keyword"],
+            "identifiers": [
+                "type": "nested",
+                "properties": [
+                    "issuer": ["type": "keyword"],
+                    "system": ["type": "keyword"],
+                    "type": ["type": "keyword"],
+                    "value": ["type": "keyword"],
+                ],
+            ],
+        ]
+        let columns = ElasticsearchMappingFlattener.flattenMapping(properties: properties)
+        let byName = Dictionary(uniqueKeysWithValues: columns.map { ($0.name, $0) })
+        #expect(byName["identifiers"]?.type == "nested")
+        #expect(byName["identifiers"]?.nestedPath == nil)
+        #expect(byName["identifiers.issuer"]?.type == "keyword")
+        #expect(byName["identifiers.issuer"]?.nestedPath == "identifiers")
+        #expect(byName["identifiers.type"]?.nestedPath == "identifiers")
+        #expect(byName["personId"]?.nestedPath == nil)
     }
 
     @Test("Columns include meta columns first")
@@ -321,6 +474,77 @@ struct ElasticsearchMappingFlattenerTests {
         let hits: [[String: Any]] = [["_source": ["labels": ["env": "prod", "tier": "1"]]]]
         let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels"])
         #expect(rows.first?[0].asText?.contains("env") == true)
+    }
+
+    @Test("A nested identifier array fills the parent and each leaf, never null")
+    func nestedIdentifierArrayRenders() {
+        let source: [String: Any] = [
+            "personId": "03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13",
+            "identifiers": [[
+                "issuer": "EPACS",
+                "system": "urn:epacs:patient:600003399",
+                "type": "PATIENT_ID",
+                "value": "8930",
+            ]],
+        ]
+        let hits: [[String: Any]] = [["_id": "03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13", "_source": source]]
+        let columns = ["identifiers", "identifiers.issuer", "identifiers.system", "identifiers.type", "identifiers.value", "personId"]
+        let row = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns).first
+        #expect(row?[0].asText?.contains("8930") == true)
+        #expect(row?[0].asText?.contains("identifiers.issuer") == false)
+        #expect(row?[1].asText?.contains("EPACS") == true)
+        #expect(row?[3].asText?.contains("PATIENT_ID") == true)
+        #expect(row?[4].asText?.contains("8930") == true)
+        #expect(row?[5] == .text("03c47c6d-2cf6-4e3b-9d2c-0d762f77ae13"))
+    }
+
+    @Test("Two nested identifiers keep both objects rather than the first only")
+    func nestedIdentifierPairKeepsBoth() {
+        let source: [String: Any] = [
+            "personId": "0ff4afbe-7b2f-40f6-acf9-fbb6403c6250",
+            "identifiers": [
+                ["system": "urn:br:cpf", "type": "CPF", "value": "318.578.388-31"],
+                [
+                    "issuer": "EPACS",
+                    "system": "urn:epacs:patient:600003399",
+                    "type": "PATIENT_ID",
+                    "value": "3533",
+                ],
+            ],
+        ]
+        let hits: [[String: Any]] = [["_source": source]]
+        let row = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers", "identifiers.type", "identifiers.value", "identifiers.issuer"]
+        ).first
+        #expect(row?[0].asText?.contains("318.578.388-31") == true)
+        #expect(row?[0].asText?.contains("3533") == true)
+        #expect(row?[1].asText?.contains("CPF") == true)
+        #expect(row?[1].asText?.contains("PATIENT_ID") == true)
+        #expect(row?[2].asText?.contains("318.578.388-31") == true)
+        #expect(row?[2].asText?.contains("3533") == true)
+        #expect(row?[3].asText?.contains("EPACS") == true)
+    }
+
+    @Test("A missing nested field is an empty cell, not a crash")
+    func missingNestedFieldIsNull() {
+        let hits: [[String: Any]] = [["_source": ["personId": "1"]]]
+        let rows = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: ["identifiers", "identifiers.value", "personId"]
+        )
+        #expect(rows.first?[0] == .null)
+        #expect(rows.first?[1] == .null)
+        #expect(rows.first?[2] == .text("1"))
+    }
+
+    @Test("An object array still fills dotted leaves")
+    func objectArrayFillsDottedLeaves() {
+        let hits: [[String: Any]] = [["_source": ["labels": [["env": "prod"], ["env": "dev"]]]]]
+        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: ["labels.env"])
+        let text = rows.first?[0].asText
+        #expect(text?.contains("prod") == true)
+        #expect(text?.contains("dev") == true)
     }
 }
 

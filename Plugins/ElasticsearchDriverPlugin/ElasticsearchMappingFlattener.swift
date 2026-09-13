@@ -13,6 +13,14 @@ struct ElasticsearchColumn: Equatable {
     let name: String
     let type: String
     let hasKeywordSubfield: Bool
+    let nestedPath: String?
+
+    init(name: String, type: String, hasKeywordSubfield: Bool, nestedPath: String? = nil) {
+        self.name = name
+        self.type = type
+        self.hasKeywordSubfield = hasKeywordSubfield
+        self.nestedPath = nestedPath
+    }
 }
 
 enum ElasticsearchMappingFlattener {
@@ -38,25 +46,46 @@ enum ElasticsearchMappingFlattener {
 
     static func flattenMapping(properties: [String: Any]) -> [ElasticsearchColumn] {
         var columns: [ElasticsearchColumn] = []
-        collect(properties: properties, prefix: "", into: &columns)
+        collect(properties: properties, prefix: "", nestedPath: nil, into: &columns)
         return columns.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private static func collect(properties: [String: Any], prefix: String, into columns: inout [ElasticsearchColumn]) {
+    private static func collect(
+        properties: [String: Any],
+        prefix: String,
+        nestedPath: String?,
+        into columns: inout [ElasticsearchColumn]
+    ) {
         for (key, raw) in properties {
             guard let field = raw as? [String: Any] else { continue }
             let path = prefix.isEmpty ? key : "\(prefix).\(key)"
+            let type = field["type"] as? String
+            let isNested = type == "nested"
+            let nextNestedPath = isNested ? path : nestedPath
 
-            if let nested = field["properties"] as? [String: Any] {
-                collect(properties: nested, prefix: path, into: &columns)
+            if let children = field["properties"] as? [String: Any] {
+                if isNested {
+                    columns.append(ElasticsearchColumn(
+                        name: path,
+                        type: "nested",
+                        hasKeywordSubfield: false,
+                        nestedPath: nestedPath
+                    ))
+                }
+                collect(properties: children, prefix: path, nestedPath: nextNestedPath, into: &columns)
                 continue
             }
 
-            let type = field["type"] as? String ?? "object"
+            let resolvedType = type ?? "object"
             let hasKeyword = (field["fields"] as? [String: Any]).map { subfields in
                 subfields.values.contains { ($0 as? [String: Any])?["type"] as? String == "keyword" }
             } ?? false
-            columns.append(ElasticsearchColumn(name: path, type: type, hasKeywordSubfield: hasKeyword))
+            columns.append(ElasticsearchColumn(
+                name: path,
+                type: resolvedType,
+                hasKeywordSubfield: hasKeyword,
+                nestedPath: nestedPath
+            ))
         }
     }
 
@@ -69,7 +98,11 @@ enum ElasticsearchMappingFlattener {
     static func fieldInfo(from columns: [ElasticsearchColumn]) -> [String: ElasticsearchFieldInfo] {
         var result: [String: ElasticsearchFieldInfo] = [:]
         for column in columns {
-            result[column.name] = ElasticsearchFieldInfo(type: column.type, hasKeywordSubfield: column.hasKeywordSubfield)
+            result[column.name] = ElasticsearchFieldInfo(
+                type: column.type,
+                hasKeywordSubfield: column.hasKeywordSubfield,
+                nestedPath: column.nestedPath
+            )
         }
         return result
     }
@@ -118,12 +151,20 @@ enum ElasticsearchMappingFlattener {
     }
 
     static func rawValue(in source: [String: Any], atPath path: String) -> Any? {
-        var current: Any = source
-        for key in path.split(separator: ".") {
-            guard let dict = current as? [String: Any], let next = dict[String(key)] else { return nil }
-            current = next
+        value(in: source, keys: path.split(separator: ".").map(String.init)[...])
+    }
+
+    private static func value(in current: Any, keys: ArraySlice<String>) -> Any? {
+        guard let key = keys.first else { return current }
+        if let dictionary = current as? [String: Any] {
+            guard let next = dictionary[key] else { return nil }
+            return value(in: next, keys: keys.dropFirst())
         }
-        return current
+        if let array = current as? [Any] {
+            let collected = array.compactMap { value(in: $0, keys: keys) }
+            return collected.isEmpty ? nil : collected
+        }
+        return nil
     }
 
     static func flattenSource(_ source: [String: Any]) -> [String: PluginCellValue] {

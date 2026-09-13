@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Nested Elasticsearch fields showing as null in the grid, and filters on those leaves matching nothing.
+
 ## [0.74.0] - 2026-09-13
 
 ### Added

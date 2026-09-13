@@ -13,6 +13,7 @@ struct ElasticsearchFilterSpec: Codable, Equatable {
     let op: String
     let value: String
     var caseSensitive: Bool?
+    var elementScope: String?
 
     /// Operators that matched without regard to case before a filter row could say otherwise.
     private static let ignoreCaseByDefault: Set<String> = [
@@ -33,6 +34,13 @@ struct ElasticsearchSortSpec: Codable, Equatable {
 struct ElasticsearchFieldInfo: Equatable {
     let type: String
     let hasKeywordSubfield: Bool
+    let nestedPath: String?
+
+    init(type: String, hasKeywordSubfield: Bool, nestedPath: String? = nil) {
+        self.type = type
+        self.hasKeywordSubfield = hasKeywordSubfield
+        self.nestedPath = nestedPath
+    }
 }
 
 struct ElasticsearchParsedSearch: Equatable {
@@ -80,7 +88,13 @@ struct ElasticsearchQueryBuilder {
 
     static func specs(from filters: [PluginQueryFilter]) -> [ElasticsearchFilterSpec] {
         filters.map {
-            ElasticsearchFilterSpec(column: $0.column, op: $0.op, value: $0.value, caseSensitive: $0.isCaseSensitive)
+            ElasticsearchFilterSpec(
+                column: $0.column,
+                op: $0.op,
+                value: $0.value,
+                caseSensitive: $0.isCaseSensitive,
+                elementScope: $0.elementScope
+            )
         }
     }
 
@@ -211,13 +225,66 @@ struct ElasticsearchQueryBuilder {
         let active = filters.filter { !($0.column == rawColumn && $0.value.trimmingCharacters(in: .whitespaces).isEmpty) }
         guard !active.isEmpty else { return ["match_all": [String: Any]()] }
 
-        let clauses = active.map { clause(for: $0, fields: fields, supportsCaseInsensitive: supportsCaseInsensitive) }
-        let occur = logicMode.uppercased() == "OR" ? "should" : "must"
-        var bool: [String: Any] = [occur: clauses]
-        if occur == "should" {
-            bool["minimum_should_match"] = 1
+        let clauses = groupedClauses(
+            filters: active, logicMode: logicMode, fields: fields,
+            supportsCaseInsensitive: supportsCaseInsensitive
+        )
+        return combine(clauses, logicMode: logicMode)
+    }
+
+    private static func groupedClauses(
+        filters: [ElasticsearchFilterSpec],
+        logicMode: String,
+        fields: [String: ElasticsearchFieldInfo],
+        supportsCaseInsensitive: Bool
+    ) -> [[String: Any]] {
+        var clauses: [[String: Any]] = []
+        var scopeOrder: [String] = []
+        var scoped: [String: [ElasticsearchFilterSpec]] = [:]
+
+        for filter in filters {
+            if filter.column == rawColumn {
+                clauses.append(clause(for: filter, fields: fields, supportsCaseInsensitive: supportsCaseInsensitive))
+                continue
+            }
+            let nestedPath = fields[filter.column]?.nestedPath
+            if let scope = filter.elementScope, !scope.isEmpty, nestedPath != nil {
+                if scoped[scope] == nil {
+                    scopeOrder.append(scope)
+                }
+                scoped[scope, default: []].append(filter)
+                continue
+            }
+            let inner = clause(for: filter, fields: fields, supportsCaseInsensitive: supportsCaseInsensitive)
+            clauses.append(wrapNested(inner, path: nestedPath))
         }
-        return ["bool": bool]
+
+        for scope in scopeOrder {
+            let group = scoped[scope] ?? []
+            let inners = group.map {
+                clause(for: $0, fields: fields, supportsCaseInsensitive: supportsCaseInsensitive)
+            }
+            let path = group.first.flatMap { fields[$0.column]?.nestedPath } ?? scope
+            clauses.append(wrapNested(combine(inners, logicMode: logicMode), path: path))
+        }
+        return clauses
+    }
+
+    private static func combine(_ clauses: [[String: Any]], logicMode: String) -> [String: Any] {
+        guard let only = clauses.count == 1 ? clauses.first : nil else {
+            let occur = logicMode.uppercased() == "OR" ? "should" : "must"
+            var bool: [String: Any] = [occur: clauses]
+            if occur == "should" {
+                bool["minimum_should_match"] = 1
+            }
+            return ["bool": bool]
+        }
+        return only
+    }
+
+    private static func wrapNested(_ query: [String: Any], path: String?) -> [String: Any] {
+        guard let path, !path.isEmpty else { return query }
+        return ["nested": ["path": path, "query": query]]
     }
 
     static func sortClause(
@@ -227,7 +294,11 @@ struct ElasticsearchQueryBuilder {
     ) -> [[String: Any]] {
         var result: [[String: Any]] = sorts.compactMap { sort in
             guard let field = sortableField(sort.column, fields: fields) else { return nil }
-            return [field: ["order": sort.ascending ? "asc" : "desc"]]
+            var options: [String: Any] = ["order": sort.ascending ? "asc" : "desc"]
+            if let nestedPath = fields[sort.column]?.nestedPath, !nestedPath.isEmpty {
+                options["nested"] = ["path": nestedPath]
+            }
+            return [field: options]
         }
         if tiebreaker {
             result.append(["_shard_doc": ["order": "asc"]])
@@ -244,6 +315,7 @@ struct ElasticsearchQueryBuilder {
         if column == "_id" { return nil }
         if column == "_score" || column == "_index" { return column }
         guard let info = fields[column] else { return nil }
+        if info.type == "nested" { return nil }
         if textTypes.contains(info.type) {
             return info.hasKeywordSubfield ? "\(column).keyword" : nil
         }
