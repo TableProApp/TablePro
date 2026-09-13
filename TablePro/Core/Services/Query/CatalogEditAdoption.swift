@@ -52,10 +52,11 @@ struct CatalogEditAdoption {
     /// schema resolves the way a tab stores it.
     func objectScope(for ref: DatabaseTreeTableRef, connectionId: UUID) -> DatabaseScope? {
         guard let session = databaseManager.session(for: connectionId) else { return nil }
+        let database = ref.database ?? databaseManager.browseDatabaseName(for: session.connection)
         return DatabaseScope(
             connectionId: connectionId,
-            database: ref.database ?? databaseManager.browseDatabaseName(for: session.connection),
-            schema: databaseManager.resolvedSchemaName(ref.qualifyingSchema, for: connectionId)
+            database: database,
+            schema: databaseManager.resolvedSchemaName(ref.qualifyingSchema, inDatabase: database, for: connectionId)
         )
     }
 

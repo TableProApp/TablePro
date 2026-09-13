@@ -61,6 +61,42 @@ struct TabFilterStateTests {
         #expect(state.appliedFilters == [first])
     }
 
+    @Test("persistedState keeps every valid row with its own enabled flag for .all and .solo")
+    func persistedStateKeepsWorkingSetForEveryCommit() {
+        let checked = TestFixtures.makeTableFilter(column: "id", value: "1")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
+        let invalid = TestFixtures.makeTableFilter(column: "", value: "")
+        var state = TabFilterState()
+        state.filters = [checked, unchecked, invalid]
+
+        let commits: [FilterCommit] = [.all, .solo(unchecked.id), .solo(checked.id)]
+        for commit in commits {
+            state.commit = commit
+            #expect(state.persistedState.filters == [checked, unchecked])
+        }
+    }
+
+    @Test("persistedState saves no rows when nothing is committed")
+    func persistedStateIsEmptyWithNothingCommitted() {
+        var state = TabFilterState()
+        state.filters = [
+            TestFixtures.makeTableFilter(column: "id", value: "1"),
+            TestFixtures.makeTableFilter(column: "name", value: "a", isEnabled: false)
+        ]
+        state.commit = nil
+
+        #expect(state.persistedState.filters.isEmpty)
+    }
+
+    @Test("persistedState carries the filter logic mode")
+    func persistedStateCarriesLogicMode() {
+        var state = TabFilterState()
+        state.filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+        state.filterLogicMode = .or
+
+        #expect(state.persistedState.logicMode == .or)
+    }
+
     @Test("TabFilterState round-trips through Codable including the solo commit")
     func codableRoundTrip() throws {
         let filter = TestFixtures.makeTableFilter(column: "id", value: "1")

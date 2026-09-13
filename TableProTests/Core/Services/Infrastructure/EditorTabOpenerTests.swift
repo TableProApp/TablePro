@@ -9,14 +9,62 @@ struct EditorTabOpenerTests {
         DatabaseConnection(name: "Opener", type: .mysql)
     }
 
-    private func tablePayload(_ connectionId: UUID, table: String) -> EditorTabPayload {
+    private func tablePayload(_ connectionId: UUID, table: String, database: String = "shop") -> EditorTabPayload {
         EditorTabPayload(
             connectionId: connectionId,
             tabType: .table,
             tableName: table,
-            databaseName: "shop",
+            databaseName: database,
             isView: false
         )
+    }
+
+    private func injectBrowsingSession(for connection: DatabaseConnection, schema: String) {
+        var session = ConnectionSession(connection: connection)
+        session.status = .connected
+        session.browseSchema = schema
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+    }
+
+    /// A link, MCP or AppleScript naming another database and no schema bound the table to the
+    /// schema browsed in this one, so its first query named a relation that database may not have.
+    @Test("A table payload naming another database takes no schema from the browsed one")
+    func foreignDatabasePayloadTakesNoBrowsedSchema() throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        injectBrowsingSession(for: connection, schema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = QueryTabManager()
+
+        EditorTabOpener.apply(
+            tablePayload(connection.id, table: "events", database: "analytics"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        let tab = try #require(manager.selectedTab)
+        #expect(tab.tableContext.databaseName == "analytics")
+        #expect(tab.tableContext.schemaName == nil)
+        #expect(!tab.content.query.contains("sales"))
+    }
+
+    @Test("A table payload naming the browsed database takes the browsed schema")
+    func browsedDatabasePayloadTakesBrowsedSchema() throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        injectBrowsingSession(for: connection, schema: "sales")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let manager = QueryTabManager()
+
+        EditorTabOpener.apply(
+            tablePayload(connection.id, table: "events", database: "app"),
+            to: manager,
+            connection: connection,
+            toolbarState: nil
+        )
+
+        let tab = try #require(manager.selectedTab)
+        #expect(tab.tableContext.schemaName == "sales")
+        #expect(tab.content.query.contains("sales"))
     }
 
     /// The regression this guards: a payload naming a table used to open a tab only while a

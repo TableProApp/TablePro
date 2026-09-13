@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redis keys read from the wrong database when switching databases while a load was running.
 - "This tab is on" error on a table tab for the previous database when it reloads during a database switch.
 - Table on another database opening empty with no error while the connection switches database.
+- Reopen Closed Tab removing the closed tab without reopening it when its connection's window already had tabs.
+- Unchecked and soloed filter rows dropped from a table's saved filters after switching tabs.
+- Table opened in another database from a link, MCP or AppleScript bound to the current schema.
+- Recent table opened before connecting reopening a same-named table in another schema, and listed twice.
 
 ## [0.74.0] - 2026-09-13
 
