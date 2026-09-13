@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unchecked and soloed filter rows dropped from a table's saved filters after switching tabs.
 - Table opened in another database from a link, MCP or AppleScript bound to the current schema.
 - Recent table opened before connecting reopening a same-named table in another schema, and listed twice.
+- AI and Copilot schema context listing a table with the columns of a same-named table in another schema.
 
 ## [0.74.0] - 2026-09-13
 

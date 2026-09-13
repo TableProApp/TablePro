@@ -744,6 +744,52 @@ struct SQLSchemaProviderTests {
         #expect(hr.first?.name == "hr_col")
         #expect(recorder.calls == ["sales.orders", "hr.orders"])
     }
+
+    /// PostgreSQL tags every table with its schema, so the AI context asks for `public.orders`.
+    /// The preload filed the same columns under `orders`, and the lookup missed it.
+    @Test("the eager preload answers a lookup that names the current schema")
+    func eagerPreloadAnswersLookupNamingCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "eager_column")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "orders", schema: "public")
+
+        #expect(driver.fetchColumnsCallCount == 0)
+        #expect(columns.first?.name == "eager_column")
+    }
+
+    @Test("allowed values are found for a table outside the current schema")
+    func allowedValuesForTableOutsideCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.columnsToReturn = [
+            "orders": [
+                ColumnInfo(
+                    name: "status",
+                    dataType: "order_status",
+                    isNullable: false,
+                    isPrimaryKey: false,
+                    allowedValues: ["open", "closed"]
+                )
+            ]
+        ]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "hr")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "hr")
+
+        let values = await provider.allowedValues(forColumn: "status", in: [])
+
+        #expect(values == ["open", "closed"])
+    }
 }
 
 private final class CallRecorder: @unchecked Sendable {
