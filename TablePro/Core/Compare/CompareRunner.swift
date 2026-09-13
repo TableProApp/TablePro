@@ -171,11 +171,28 @@ internal struct CompareRunner {
                 /// armed left Apply enabled on a stale plan, one click from running the same
                 /// CREATE/ALTER/DELETE a second time.
                 session.markAppliedAndStale()
+                Self.announceCatalogChange(in: target)
             } catch is CancellationError {
+                Self.announceCatalogChange(in: target)
             } catch {
                 session.errorMessage = error.localizedDescription
+                Self.announceCatalogChange(in: target)
             }
         }
+    }
+
+    /// A sync script runs DDL against the target, and one that failed or was stopped part way may
+    /// already have changed it, so every way out of a run reports the target's catalog as changed.
+    private static func announceCatalogChange(in target: DatabaseEndpoint) {
+        CatalogChangeService.post(
+            .changed(
+                CatalogChange(
+                    connectionId: target.scope.connectionId,
+                    database: target.scope.database,
+                    kinds: .everything
+                )
+            )
+        )
     }
 
     // MARK: - Context

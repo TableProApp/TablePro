@@ -147,6 +147,7 @@ final class DatabaseSwitcherViewModel {
         }
         let request = CreateDatabaseRequest(name: name, values: values)
         try await driver.createDatabase(request)
+        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
     }
 
     /// The selected row the keyboard acts from, in the order the list shows them.

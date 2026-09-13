@@ -69,6 +69,9 @@ enum ObjectCommentEditing {
             gate: gate
         )
         AppCommands.shared.objectChanged.send(target.change(.comment))
+        CatalogChangeService.post(
+            .changed(CatalogChange(connectionId: connection.id, database: target.scope.database, kinds: .tables))
+        )
     }
 }
 

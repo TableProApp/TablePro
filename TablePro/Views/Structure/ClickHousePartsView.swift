@@ -214,6 +214,11 @@ struct ClickHousePartsView: View {
             ) { driver in
                 try await driver.execute(query: sql)
             }
+            if kind != .maintenance {
+                CatalogChangeService.post(
+                    .changed(CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: .tables))
+                )
+            }
             await loadParts()
             return true
         } catch {

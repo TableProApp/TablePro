@@ -5,8 +5,8 @@
 
 import Foundation
 
-struct DatabaseContainerRef: Hashable, Identifiable {
-    enum Kind: Hashable {
+struct DatabaseContainerRef: Hashable, Identifiable, Sendable {
+    enum Kind: Hashable, Sendable {
         case database
         case schema
     }

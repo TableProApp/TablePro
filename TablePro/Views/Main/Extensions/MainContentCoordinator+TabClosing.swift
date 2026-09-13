@@ -29,6 +29,19 @@ extension MainContentCoordinator {
         persistence.clearForUserClosedAllTabs()
     }
 
+    /// The object these tabs show is gone, which is not the user closing them. Nothing goes to Reopen
+    /// Closed Tab, which could only reopen onto an error, and the saved tab set is never cleared,
+    /// because an emptied tab list is not consent to forget it.
+    func closeTabsForRemovedObjects(ids: [UUID]) {
+        for id in ids {
+            guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
+            releaseResources(of: tab)
+            releaseExecution(of: tab)
+            tabSessionRegistry.removeTableRows(for: id)
+            tabManager.closeTab(id: id)
+        }
+    }
+
     /// Drops the per-tab caches of tabs that are no longer open. Every one of these is keyed by
     /// tab id, so a stale entry does not merely waste memory: the next tab to be handed that id
     /// would read another tab's state.

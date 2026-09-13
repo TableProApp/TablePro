@@ -81,7 +81,7 @@ final class FilterCoordinator {
             $0.content.query = newQuery
             $0.filterState.executedFilters = filters
         }
-        saveLastFilters(for: tableName)
+        saveLastFilters(of: parent.tabManager.tabs[tabIndex])
         parent.runQuery(viewport: .firstRow)
     }
 
@@ -544,23 +544,20 @@ final class FilterCoordinator {
     // MARK: - Persistence
 
     func saveLastFiltersForActiveTable() {
-        guard let tab = parent.tabManager.selectedTab,
-              let tableName = tab.tableContext.tableName else { return }
-        FilterSettingsStorage.shared.saveLastFilters(
-            tab.filterState.filters.filter(\.isValid),
-            logicMode: tab.filterState.filterLogicMode,
-            for: tableName,
-            connectionId: parent.connectionId,
-            databaseName: tab.tableContext.databaseName,
-            schemaName: tab.tableContext.schemaName
-        )
+        guard let tab = parent.tabManager.selectedTab else { return }
+        saveLastFilters(of: tab)
     }
 
-    func saveLastFilters(for tableName: String) {
-        guard let tab = parent.tabManager.selectedTab else { return }
+    /// The one writer of a table's saved filters, so every path saves the same shape.
+    ///
+    /// Takes the tab rather than reading the selection: a tab switch saves the outgoing tab after
+    /// the selection has already moved to the incoming one.
+    func saveLastFilters(of tab: QueryTab) {
+        guard let tableName = tab.tableContext.tableName else { return }
+        let persisted = tab.filterState.persistedState
         FilterSettingsStorage.shared.saveLastFilters(
-            tab.filterState.filters.filter(\.isValid),
-            logicMode: tab.filterState.filterLogicMode,
+            persisted.filters,
+            logicMode: persisted.logicMode,
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,

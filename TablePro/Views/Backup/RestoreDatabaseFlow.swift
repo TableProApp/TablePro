@@ -155,10 +155,17 @@ struct RestoreDatabaseFlow: View {
             phase = .running(database: database)
         case .finished(let database, _, _, let skippedSettings):
             phase = .finished(database: database, skippedSettings: skippedSettings)
+            CatalogChangeService.post(
+                .changed(CatalogChange(connectionId: connection.id, database: database, kinds: .everything))
+            )
         case .failed(let message, let targetMayBeModified):
             phase = .failed(message: message, targetMayBeModified: targetMayBeModified)
+            if targetMayBeModified {
+                CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
+            }
         case .cancelled:
             phase = .cancelled
+            CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         case .idle, .cancelling:
             break
         }

@@ -96,12 +96,13 @@ internal enum EditorTabOpener {
         connection: DatabaseConnection,
         browseDatabaseName: String
     ) {
+        let databaseName = payload.databaseName ?? browseDatabaseName
         let resolvedSchemaName = DatabaseManager.shared.resolvedSchemaName(
-            payload.schemaName, for: connection.id
+            payload.schemaName, inDatabase: databaseName, for: connection.id
         )
 
         guard let tableName = payload.tableName else {
-            tabManager.addTab(databaseName: payload.databaseName ?? browseDatabaseName)
+            tabManager.addTab(databaseName: databaseName)
             return
         }
 
@@ -110,7 +111,7 @@ internal enum EditorTabOpener {
             didCreateTab = try tabManager.addTableTab(
                 tableName: tableName,
                 databaseType: connection.type,
-                databaseName: payload.databaseName ?? browseDatabaseName,
+                databaseName: databaseName,
                 schemaName: resolvedSchemaName,
                 isView: payload.isView,
                 objectType: payload.objectType,

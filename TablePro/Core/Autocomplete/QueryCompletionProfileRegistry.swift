@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 import Observation
 import TableProPluginKit
@@ -30,7 +29,7 @@ final class QueryCompletionRevisionBox {
 /// Deliberately not `@Observable`: everything a view observes here is a `QueryCompletionRevisionBox`,
 /// for the reason written on that type.
 @MainActor
-final class QueryCompletionProfileRegistry {
+final class QueryCompletionProfileRegistry: CatalogChangeTarget {
     struct CacheKey: Hashable {
         let scope: DatabaseScope
         let databaseType: DatabaseType
@@ -42,33 +41,14 @@ final class QueryCompletionProfileRegistry {
     private var inFlight: [CacheKey: Task<QueryCompletionProfile?, Never>] = [:]
     private var generations: [CacheKey: Int] = [:]
     private var revisionBoxes: [DatabaseScope: QueryCompletionRevisionBox] = [:]
-    private var cancellables: Set<AnyCancellable> = []
 
     #if DEBUG
     /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.
-    /// A second instance in shipping code is a second profile cache no `invalidate` call reaches,
-    /// plus a second permanent `refreshData` subscription.
-    internal init() {
-        subscribeToRefreshSignal()
-    }
+    /// A second instance in shipping code is a second profile cache no `invalidate` call reaches.
+    internal init() {}
     #else
-    private init() {
-        subscribeToRefreshSignal()
-    }
+    private init() {}
     #endif
-
-    private func subscribeToRefreshSignal() {
-        AppCommands.shared.refreshData
-            .sink { [weak self] request in
-                guard let self else { return }
-                if let scope = request.scope {
-                    self.invalidate(scope: scope)
-                } else {
-                    self.invalidate(connectionId: request.connectionId)
-                }
-            }
-            .store(in: &cancellables)
-    }
 
     /// The box a view keys its `.task(id:)` on. Creating one is invisible to SwiftUI, because the
     /// registry itself is not observable, so calling this from a body registers a dependency on
@@ -153,6 +133,10 @@ final class QueryCompletionProfileRegistry {
     func invalidate(scope: DatabaseScope) {
         revisionBoxes[scope]?.bump()
         discardEntries { $0 == scope }
+    }
+
+    func refreshCatalog(for change: CatalogChange) async {
+        invalidate(connectionId: change.connectionId)
     }
 
     func invalidate(connectionId: UUID) {

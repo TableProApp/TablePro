@@ -430,6 +430,16 @@ internal final class ObjectCopySession {
         }
     }
 
+    /// A copy that stopped part way has already created or replaced the objects before that point,
+    /// so every way out of a run reports the destination's catalog as changed.
+    private static func announceCatalogChange(for destination: ObjectCopyDestination) {
+        let scope = destination.endpoint.scope
+        let change = destination.createsDatabase
+            ? CatalogChange(connectionId: scope.connectionId, kinds: .everything)
+            : CatalogChange(connectionId: scope.connectionId, database: scope.database, kinds: [.objects, .schemas])
+        CatalogChangeService.post(.changed(change))
+    }
+
     internal func backToConfiguring() {
         runTask?.cancel()
         runTask = nil
@@ -466,6 +476,7 @@ internal final class ObjectCopySession {
                 self.step = .reviewing
             }
             self.progress = nil
+            Self.announceCatalogChange(for: plan.request.destination)
         }
 
         observe(runProgress)

@@ -109,8 +109,12 @@ struct SwitchDatabaseReconnectFailureTests {
         let connection = makeSession()
         defer { cleanUp(connection.id) }
 
+        /// Counted for this connection only. Suites run side by side in one process, and a switch
+        /// another suite completes on its own connection announces on the same subject.
         var announced: [UUID] = []
-        let cancellable = AppEvents.shared.browseContainerChanged.sink { announced.append($0) }
+        let cancellable = AppEvents.shared.browseContainerChanged
+            .filter { $0 == connection.id }
+            .sink { announced.append($0) }
         defer { cancellable.cancel() }
 
         try? await DatabaseManager.shared.switchDatabase(

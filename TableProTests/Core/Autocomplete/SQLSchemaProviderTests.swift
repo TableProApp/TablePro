@@ -108,12 +108,31 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
+    /// Holds the next `fetchTables()` after it has read `tablesToReturn`, the way a real fetch has
+    /// already read the server when it stalls on the wire.
+    var pausesNextFetchTables = false
+    var onFetchTablesPaused: (@Sendable () -> Void)?
+    private var fetchTablesGate: CheckedContinuation<Void, Never>?
+
+    func resumeFetchTables() {
+        fetchTablesGate?.resume()
+        fetchTablesGate = nil
+    }
+
     func fetchTables() async throws -> [TableInfo] {
         fetchTablesCallCount += 1
         if let fetchTablesError {
             throw fetchTablesError
         }
-        return tablesToReturn
+        let snapshot = tablesToReturn
+        if pausesNextFetchTables {
+            pausesNextFetchTables = false
+            await withCheckedContinuation { continuation in
+                fetchTablesGate = continuation
+                onFetchTablesPaused?()
+            }
+        }
+        return snapshot
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {

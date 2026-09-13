@@ -157,7 +157,7 @@ Comments suppress completion, and a brace or bracket inside a string literal doe
 
 ## My new table does not complete
 
-Table and column names are cached at connect, so a migration or a `CREATE TABLE` run from a terminal stays invisible until the cache reloads. Press `Cmd+R` (**Database > Refresh**), or right-click the sidebar's Tables header and choose **Refresh**. Switching databases reloads it too.
+Table and column names are cached at connect. A change made from TablePro reloads the cache on its own: a statement run in the SQL editor, a save from the sidebar, an import, a restore, Copy Objects, Compare & Sync, and statements run through MCP or the AI assistant. A migration or a `CREATE TABLE` run from another client stays invisible until the cache reloads. Press `Cmd+R` (**Database > Refresh**), or right-click the sidebar's Tables header and choose **Refresh**. Switching databases reloads it too.
 
 ## Large files
 
