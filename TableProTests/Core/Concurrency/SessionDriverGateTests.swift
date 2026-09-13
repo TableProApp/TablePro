@@ -329,6 +329,48 @@ struct SessionDriverGateTests {
         #expect(log.events == ["later-start", "later-end", "arriving-start"])
     }
 
+    /// The holder drains in the same synchronous step as its own release, which is after the hand-off
+    /// resumed the next caller and before that caller has run.
+    @Test("A drain fails a caller that was handed the gate but has not started")
+    func drainFailsAHandedOffCallerThatHasNotStarted() async throws {
+        let gate = SessionDriverGate()
+        let connectionId = UUID()
+        let log = EventLog()
+        let holderEntered = TestSignal()
+        let releaseHolder = TestSignal()
+
+        let holder = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                holderEntered.signal()
+                await releaseHolder.wait()
+            }
+            gate.drain(connectionId: connectionId)
+        }
+        await holderEntered.wait()
+
+        let handedOff = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("handed-off-ran")
+            }
+        }
+        await waitForWaiters(1, on: gate, connectionId)
+        #expect(gate.waiterCount(for: connectionId) == 1)
+
+        releaseHolder.signal()
+        try await holder.value
+
+        await #expect(throws: CancellationError.self) {
+            try await handedOff.value
+        }
+        #expect(log.events.isEmpty)
+
+        let ran = BoolBox()
+        try await gate.withExclusiveAccess(connectionId) {
+            ran.value = true
+        }
+        #expect(ran.value)
+    }
+
     @Test("The body observes its own task's cancellation")
     func bodyObservesCallerCancellation() async throws {
         let gate = SessionDriverGate()

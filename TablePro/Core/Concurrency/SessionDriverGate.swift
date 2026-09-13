@@ -67,6 +67,11 @@ final class SessionDriverGate {
                 }
             }
         )
+        /// A hand-off resumes this caller before it runs, so a drain can land in between, and the
+        /// turn it was handed ended with that drain.
+        guard owners[connectionId] == ticket else {
+            throw CancellationError()
+        }
         return ticket
     }
 

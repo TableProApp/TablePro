@@ -132,6 +132,33 @@ struct RedisDatabaseSelectionGateTests {
         #expect(DatabaseManager.shared.session(for: connection.id)?.browseDatabase == "3")
     }
 
+    /// A reconnect replaces the driver on the same session, so the session check alone cannot tell
+    /// that the handle the selection was asked on is gone.
+    @Test("A selection queued behind the driver switches the driver installed when its turn comes")
+    func selectionSwitchesTheDriverInstalledWhenItRuns() async throws {
+        let (connection, original) = makeSession()
+        defer { cleanUp(connection.id) }
+        let release = Latch()
+        let holder = await holdDriver(connection.id, until: release)
+
+        let selection = Task { @MainActor in
+            try await DatabaseManager.shared.switchDatabase(to: "2", for: connection.id, persist: false)
+        }
+        await waitForQueuedCallers(1, on: connection.id)
+        #expect(DatabaseManager.shared.sessionDriverGate.waiterCount(for: connection.id) == 1)
+
+        let replacement = RecordingRedisPluginDriver()
+        DatabaseManager.shared.updateSession(connection.id) { session in
+            session.driver = PluginDriverAdapter(connection: connection, pluginDriver: replacement)
+        }
+        release.open()
+        try await holder.value
+        try await selection.value
+
+        #expect(replacement.switchedDatabases == ["2"])
+        #expect(original.switchedDatabases.isEmpty)
+    }
+
     @Test("Loading the key tree waits for the driver")
     func keyTreeLoadWaitsForTheDriver() async throws {
         let (connection, recorder) = makeSession()
