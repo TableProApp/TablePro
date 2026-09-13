@@ -76,7 +76,10 @@ internal final class WindowManager {
 
         guard isStillClosed(),
               let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection
-        else { return }
+        else {
+            AppActivationPolicyController.shared.reevaluate()
+            return
+        }
         let payload = EditorTabPayload(
             connectionId: connectionId,
             tabType: tab.tabType,
@@ -106,15 +109,17 @@ internal final class WindowManager {
             window = buildWindow(payload: payload, sessionState: state, autoConnect: false)
         }
         /// The entry is let go only for a tab that reached a workspace, since a discarded entry
-        /// would take the closed tab with it. A state that reached none is torn down rather than
-        /// left to expire: `SessionStateFactory.create` registers its coordinator eagerly, and the
-        /// aggregated save would write the tab it holds into the connection's saved tab set.
+        /// would take the closed tab with it. A state that reached none leaves the coordinator
+        /// registry the way an expired pending entry does: `SessionStateFactory.create` registers
+        /// it eagerly, and the aggregated save would write its tab into the saved tab set. Not
+        /// `teardown()`, which releases a schema provider hold only an activated coordinator takes.
         guard Self.coordinator(in: window, for: connectionId) === state.coordinator else {
             Self.lifecycleLogger.error(
                 "[open] WindowManager.reopen tab reached no workspace connId=\(connectionId, privacy: .public)"
             )
             SessionStateFactory.removePending(for: payload.id)
-            state.coordinator.teardown()
+            MainContentCoordinator.activeCoordinators.removeValue(forKey: state.coordinator.instanceId)
+            AppActivationPolicyController.shared.reevaluate()
             return
         }
         onAdopted()
