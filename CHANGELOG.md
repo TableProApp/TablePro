@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong approximate row count for a PostgreSQL or PGlite table outside the current schema.
 - Queued queries running on a reopened connection, or stalling it, after a disconnect.
 - Redis keys read from the wrong database when switching databases while a load was running.
+- "This tab is on" error on a table tab for the previous database when it reloads during a database switch.
+- Table on another database opening empty with no error while the connection switches database.
 
 ## [0.74.0] - 2026-09-13
 

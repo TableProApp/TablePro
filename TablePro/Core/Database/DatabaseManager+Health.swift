@@ -138,6 +138,11 @@ extension DatabaseManager {
         let attemptedDriver = session.driver
         await SchemaService.shared.prepareForReload(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
+        /// A connection that stopped answering has most likely taken its pooled connections with it,
+        /// and a rebuilt tunnel moves every one of them to a new port, so pooled work waits for the
+        /// replacement rather than dialing what is being torn down.
+        MetadataConnectionPool.shared.beginTransportReplacement(connectionId: connectionId)
+        defer { MetadataConnectionPool.shared.endTransportReplacement(connectionId: connectionId) }
 
         do {
             guard let result = try await trackOperation(sessionId: connectionId, operation: {
@@ -355,6 +360,19 @@ extension DatabaseManager {
 
         await SchemaService.shared.prepareForReload(connectionId: sessionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: sessionId)
+        /// A pooled connection stands on the effective connection and its own database, so the pool is
+        /// only held back when this rebuilds a tunnel on a new port or recovers a session that had
+        /// stopped answering. A database switch over a live, direct connection changes neither, and
+        /// closing the pool there withdrew an open that another database's table load was waiting on.
+        let replacesPooledTransport = session.connection.activeTunnelKind != nil || session.liveness != .live
+        if replacesPooledTransport {
+            MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
+        }
+        defer {
+            if replacesPooledTransport {
+                MetadataConnectionPool.shared.endTransportReplacement(connectionId: sessionId)
+            }
+        }
 
         await stopHealthMonitor(for: sessionId)
 

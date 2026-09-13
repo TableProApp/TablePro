@@ -140,6 +140,10 @@ extension DatabaseManager {
 
         recoveringConnectionIds.insert(connectionId)
         defer { recoveringConnectionIds.remove(connectionId) }
+        /// The tunnel every pooled connection dialed is gone, and recovering binds a new one on another
+        /// port, so pooled work waits for it instead of dialing a port another tunnel may since own.
+        MetadataConnectionPool.shared.beginTransportReplacement(connectionId: connectionId)
+        defer { MetadataConnectionPool.shared.endTransportReplacement(connectionId: connectionId) }
 
         Self.logger.warning("\(kind, privacy: .public) tunnel died for connection: \(session.connection.name)")
 
