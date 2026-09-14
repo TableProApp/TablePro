@@ -37,20 +37,27 @@ pub struct SavedConnection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedSshConfig {
     pub host: String,
-    pub port: u16,
-    pub username: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub jump_hosts: Vec<String>,
     pub auth: SavedSshAuth,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SavedSshAuth {
-    Password,
+    Agent,
     PrivateKey {
-        path: PathBuf,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<PathBuf>,
         #[serde(default)]
         has_passphrase: bool,
     },
+    Password,
+    KeyboardInteractive,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -215,22 +222,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ssh_config_round_trips() {
+    async fn saved_ssh_config_round_trips_optional_port_user_and_jumps() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("connections.json");
-        let mut conn = sample_connection();
-        conn.ssh = Some(SavedSshConfig {
+        let mut full = sample_connection();
+        full.ssh = Some(SavedSshConfig {
             host: "bastion.example.com".into(),
-            port: 22,
-            username: "deploy".into(),
+            port: Some(2222),
+            username: Some("deploy".into()),
+            jump_hosts: vec!["ops@jump1:2200".into(), "[fd00::1]".into()],
             auth: SavedSshAuth::PrivateKey {
-                path: PathBuf::from("/home/u/.ssh/id_ed25519"),
+                path: Some(PathBuf::from("/home/u/.ssh/id_ed25519")),
                 has_passphrase: true,
             },
         });
-        save_to(&path, &[conn.clone()]).await.unwrap();
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(loaded, vec![conn]);
+        let mut minimal = sample_connection();
+        minimal.ssh = Some(SavedSshConfig {
+            host: "bastion".into(),
+            port: None,
+            username: None,
+            jump_hosts: Vec::new(),
+            auth: SavedSshAuth::Agent,
+        });
+
+        save_to(&path, &[full.clone(), minimal.clone()]).await.unwrap();
+        assert_eq!(load_from(&path).await.unwrap(), vec![full, minimal]);
+
+        let raw: serde_json::Value = serde_json::from_slice(&tokio::fs::read(&path).await.unwrap()).unwrap();
+        let minimal_ssh = &raw["connections"][1]["ssh"];
+        assert!(minimal_ssh.get("port").is_none());
+        assert!(minimal_ssh.get("username").is_none());
+        assert!(minimal_ssh.get("jump_hosts").is_none());
+    }
+
+    #[test]
+    fn each_ssh_auth_mode_round_trips() {
+        let cases = [
+            (SavedSshAuth::Agent, "agent"),
+            (
+                SavedSshAuth::PrivateKey {
+                    path: None,
+                    has_passphrase: false,
+                },
+                "private_key",
+            ),
+            (SavedSshAuth::Password, "password"),
+            (SavedSshAuth::KeyboardInteractive, "keyboard_interactive"),
+        ];
+        for (auth, kind) in cases {
+            let json = serde_json::to_value(&auth).unwrap();
+            assert_eq!(json["kind"], kind);
+            assert_eq!(serde_json::from_value::<SavedSshAuth>(json).unwrap(), auth);
+        }
+    }
+
+    #[test]
+    fn unknown_ssh_auth_kind_fails_to_parse() {
+        assert!(serde_json::from_str::<SavedSshAuth>(r#"{"kind":"gssapi"}"#).is_err());
     }
 
     #[tokio::test]

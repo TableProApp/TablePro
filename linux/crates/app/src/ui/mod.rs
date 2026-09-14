@@ -12,6 +12,7 @@ mod history_dialog;
 mod preferences;
 mod row_object;
 mod sidebar_row;
+mod ssh_inputs;
 mod ssh_section;
 mod structure_tab;
 mod structure_tab_dialogs;

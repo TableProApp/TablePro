@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use secrecy::SecretString;
+use std::path::PathBuf;
 use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
-use tablepro_ssh::russh_tunnel::{SshConfig, SshTunnel};
-use tablepro_storage::{SavedConnection, SavedSshAuth, load_password, load_ssh_passphrase, load_ssh_password};
+
+use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig, SshError, SshTunnel};
+use tablepro_storage::{
+    SavedConnection, SavedSshAuth, SavedSshConfig, load_password, load_ssh_passphrase, load_ssh_password,
+};
 
 use super::database_service::{self, ConnectionMetadata, ReconnectParams};
 
@@ -67,7 +71,7 @@ pub async fn establish(
         let remote = (std::mem::take(&mut opts.host), opts.port);
         let tun = SshTunnel::open(cfg, remote.0.clone(), remote.1)
             .await
-            .map_err(|e| format!("ssh: {e}"))?;
+            .map_err(|e| crate::ui::error_text::ssh_message(&e))?;
         redirect_through_tunnel(&mut opts, remote, (tun.local_host().to_string(), tun.local_port()));
         Some(tun)
     } else {
@@ -105,33 +109,75 @@ fn check_auth_mode(mode: AuthMode, supports_integrated: bool, driver_name: &str)
     Ok(())
 }
 
-async fn resolve_saved_ssh(id: uuid::Uuid, saved: &tablepro_storage::SavedSshConfig) -> Result<SshConfig, String> {
+pub(crate) enum InterimSshAuth {
+    Password,
+    PrivateKey { path: PathBuf, has_passphrase: bool },
+}
+
+pub(crate) struct InterimSshTarget {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: InterimSshAuth,
+}
+
+pub(crate) fn interim_ssh_target(saved: &SavedSshConfig) -> Result<InterimSshTarget, SshError> {
+    let refuse = |setting| Err(SshError::RequiresOpenSsh { setting });
+    if !saved.jump_hosts.is_empty() {
+        return refuse("SSH jump hosts");
+    }
+    let Some(port) = saved.port else {
+        return refuse("an SSH connection without a port");
+    };
+    let Some(username) = saved.username.clone() else {
+        return refuse("an SSH connection without a user name");
+    };
     let auth = match &saved.auth {
-        SavedSshAuth::Password => {
-            let pw = load_ssh_password(id)
+        SavedSshAuth::Password => InterimSshAuth::Password,
+        SavedSshAuth::PrivateKey {
+            path: Some(path),
+            has_passphrase,
+        } => InterimSshAuth::PrivateKey {
+            path: path.clone(),
+            has_passphrase: *has_passphrase,
+        },
+        SavedSshAuth::PrivateKey { path: None, .. } => return refuse("a private key without a path"),
+        SavedSshAuth::Agent => return refuse("SSH agent authentication"),
+        SavedSshAuth::KeyboardInteractive => return refuse("keyboard-interactive SSH authentication"),
+    };
+    Ok(InterimSshTarget {
+        host: saved.host.clone(),
+        port,
+        username,
+        auth,
+    })
+}
+
+async fn resolve_saved_ssh(id: uuid::Uuid, saved: &SavedSshConfig) -> Result<SshConfig, String> {
+    let target = interim_ssh_target(saved).map_err(|error| crate::ui::error_text::ssh_message(&error))?;
+    let auth = match target.auth {
+        InterimSshAuth::Password => {
+            let password = load_ssh_password(id)
                 .await
                 .map_err(|e| format!("load ssh password: {e}"))?
                 .ok_or_else(|| "ssh password not in keyring".to_string())?;
-            tablepro_ssh::russh_tunnel::SshAuth::Password { password: pw }
+            SshAuth::Password { password }
         }
-        SavedSshAuth::PrivateKey { path, has_passphrase } => {
-            let passphrase = if *has_passphrase {
+        InterimSshAuth::PrivateKey { path, has_passphrase } => {
+            let passphrase = if has_passphrase {
                 load_ssh_passphrase(id)
                     .await
                     .map_err(|e| format!("load ssh passphrase: {e}"))?
             } else {
                 None
             };
-            tablepro_ssh::russh_tunnel::SshAuth::PrivateKey {
-                path: path.clone(),
-                passphrase,
-            }
+            SshAuth::PrivateKey { path, passphrase }
         }
     };
     Ok(SshConfig {
-        host: saved.host.clone(),
-        port: saved.port,
-        username: saved.username.clone(),
+        host: target.host,
+        port: target.port,
+        username: target.username,
         auth,
     })
 }
@@ -155,6 +201,62 @@ mod tests {
         assert_eq!(opts.host, "127.0.0.1");
         assert_eq!(opts.port, 54321);
         assert_eq!(opts.service_address(), ("sql.corp.example", 1433));
+    }
+
+    #[test]
+    fn interim_tunnel_refuses_agent_before_network_io() {
+        let agent = SavedSshConfig {
+            host: "bastion".into(),
+            port: Some(22),
+            username: Some("deploy".into()),
+            jump_hosts: Vec::new(),
+            auth: SavedSshAuth::Agent,
+        };
+        assert!(matches!(
+            interim_ssh_target(&agent),
+            Err(SshError::RequiresOpenSsh {
+                setting: "SSH agent authentication"
+            })
+        ));
+        let refused = [
+            SavedSshConfig {
+                jump_hosts: vec!["jump1".into()],
+                auth: SavedSshAuth::Password,
+                ..agent.clone()
+            },
+            SavedSshConfig {
+                port: None,
+                auth: SavedSshAuth::Password,
+                ..agent.clone()
+            },
+            SavedSshConfig {
+                username: None,
+                auth: SavedSshAuth::Password,
+                ..agent.clone()
+            },
+            SavedSshConfig {
+                auth: SavedSshAuth::PrivateKey {
+                    path: None,
+                    has_passphrase: false,
+                },
+                ..agent.clone()
+            },
+            SavedSshConfig {
+                auth: SavedSshAuth::KeyboardInteractive,
+                ..agent.clone()
+            },
+        ];
+        for saved in refused {
+            assert!(matches!(
+                interim_ssh_target(&saved),
+                Err(SshError::RequiresOpenSsh { .. })
+            ));
+        }
+        let password = SavedSshConfig {
+            auth: SavedSshAuth::Password,
+            ..agent
+        };
+        assert!(interim_ssh_target(&password).is_ok_and(|target| target.port == 22 && target.username == "deploy"));
     }
 
     #[test]

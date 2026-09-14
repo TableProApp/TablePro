@@ -41,6 +41,16 @@ Implementation rules:
 - The JSON schema includes a `version` field. Migrations live in `storage::connections::migrate`. Never silently change the on-disk shape.
 - A `SavedConnection` does **not** carry the password. Passwords are stored separately in libsecret, keyed by the connection's UUID.
 
+### SSH settings
+
+`SavedConnection.ssh` holds an optional `SavedSshConfig`:
+
+- `host`, plus optional `port` and `username`. Leaving them out lets `~/.ssh/config` decide once the OpenSSH transport is in use.
+- `jump_hosts`: `[user@]host[:port]` entries, empty for a direct connection.
+- `auth`, tagged by `kind`: `agent`, `private_key` (optional `path` and `has_passphrase`), `password` or `keyboard_interactive`.
+
+SSH passwords and key passphrases live in libsecret next to database passwords. Until the OpenSSH transport lands, the russh tunnel serves `password`, and `private_key` with a path, when the port and user are set and there are no jump hosts. Any other stored combination fails before any network I/O with an error that names the setting.
+
 ## Passwords with libsecret
 
 `storage::secrets` exposes:
