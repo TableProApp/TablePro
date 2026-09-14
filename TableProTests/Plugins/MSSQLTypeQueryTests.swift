@@ -60,12 +60,13 @@ struct MSSQLTypeQueryTests {
     }
 
     /// An INCLUDE column is not part of the key, and listing it as one is the same defect the
-    /// table index reader carries.
-    @Test("Table type index keys exclude INCLUDE columns and sort by key ordinal")
+    /// table index reader carries. Rows come back one key at a time, so they group by index before
+    /// they sort by ordinal; the caller folds them back into one index each.
+    @Test("Table type index keys exclude INCLUDE columns and sort by index then key ordinal")
     func indexKeysExcludeIncludedColumns() {
         let sql = MSSQLTypeQueries.tableTypeIndexes(schema: "dbo", name: "t")
         #expect(sql.contains("ic.is_included_column = 0"))
-        #expect(sql.contains("ORDER BY ic.key_ordinal"))
+        #expect(sql.contains("ORDER BY i.index_id, ic.key_ordinal"))
         #expect(sql.contains("i.type > 0"))
     }
 }
@@ -108,14 +109,14 @@ struct MSSQLTypeDefinitionTests {
             ],
             indexes: [
                 .init(name: "PK__TT_Order__2EAE", isPrimaryKey: true, isUnique: true,
-                      typeDescription: "CLUSTERED", keyColumns: "LineId"),
+                      typeDescription: "CLUSTERED", keys: [.init(column: "LineId", isDescending: false)]),
                 .init(name: "ix_sku", isPrimaryKey: false, isUnique: false,
-                      typeDescription: "NONCLUSTERED", keyColumns: "Sku")
+                      typeDescription: "NONCLUSTERED", keys: [.init(column: "Sku", isDescending: false)])
             ],
             databaseCollation: "SQL_Latin1_General_CP1_CI_AS"
         )
         #expect(sql.hasPrefix("CREATE TYPE [dbo].[OrderLineTable] AS TABLE ("))
-        #expect(sql.contains("[LineId] int IDENTITY(1,1) NOT NULL PRIMARY KEY"))
+        #expect(sql.contains("[LineId] int IDENTITY(1,1) NOT NULL PRIMARY KEY CLUSTERED"))
         #expect(sql.contains("[Qty] int NOT NULL DEFAULT ((1))"))
         #expect(sql.contains("[Total] AS ([Qty]*[Price])"))
         #expect(sql.contains("INDEX [ix_sku] NONCLUSTERED ([Sku])"))
@@ -151,19 +152,103 @@ struct MSSQLTypeDefinitionTests {
                 .init(name: "a", type: "int", isNullable: false),
                 .init(name: "b", type: "int", isNullable: false)
             ],
-            indexes: [.init(name: "PK__x", isPrimaryKey: true, isUnique: true, keyColumns: "a, b")],
+            indexes: [.init(name: "PK__x", isPrimaryKey: true, isUnique: true, typeDescription: "NONCLUSTERED",
+                            keys: [.init(column: "a", isDescending: false), .init(column: "b", isDescending: false)])],
             databaseCollation: nil
         )
-        #expect(sql.contains("PRIMARY KEY ([a], [b])"))
+        #expect(sql.contains("PRIMARY KEY NONCLUSTERED ([a], [b])"))
         #expect(!sql.contains("[a] int NOT NULL PRIMARY KEY"))
         #expect(!sql.contains("PK__x"))
     }
 
-    /// A CLR type's body is in a .NET assembly, so there is nothing to rebuild and the statement
-    /// says where it came from instead of inventing one.
+    /// SQL Server defaults a primary key to CLUSTERED, so a NONCLUSTERED one replayed with a
+    /// different layout and failed outright when the type also had a clustered secondary index.
+    @Test("A NONCLUSTERED primary key keeps its clustering on the inline form too")
+    func inlinePrimaryKeyKeepsClustering() {
+        let sql = MSSQLTypeDefinition.tableStatement(
+            schema: "dbo",
+            name: "t",
+            columns: [.init(name: "Id", type: "int", isNullable: false)],
+            indexes: [.init(name: "PK__x", isPrimaryKey: true, isUnique: true,
+                            typeDescription: "NONCLUSTERED", keys: [.init(column: "Id", isDescending: false)])],
+            databaseCollation: nil
+        )
+        #expect(sql.contains("[Id] int NOT NULL PRIMARY KEY NONCLUSTERED"))
+    }
+
+    /// A comma is legal inside a bracketed identifier, so the comma-joined string this replaced
+    /// turned one column into two; and the string had nowhere to carry DESC at all.
+    @Test("A descending key keeps its direction and a comma in a name stays one column")
+    func descendingKeysAndCommasSurvive() {
+        let sql = MSSQLTypeDefinition.tableStatement(
+            schema: "dbo",
+            name: "t",
+            columns: [.init(name: "Ranked", type: "int", isNullable: false),
+                      .init(name: "a,b", type: "int", isNullable: false)],
+            indexes: [.init(name: "ix", isPrimaryKey: false, isUnique: false, typeDescription: "NONCLUSTERED",
+                            keys: [.init(column: "Ranked", isDescending: true),
+                                   .init(column: "a,b", isDescending: false)])],
+            databaseCollation: nil
+        )
+        #expect(sql.contains("INDEX [ix] NONCLUSTERED ([Ranked] DESC, [a,b])"))
+    }
+
+    /// Dropping a CHECK recreates the type with weaker validation than the original.
+    @Test("CHECK constraints are carried into the rebuilt statement")
+    func checkConstraintsSurvive() {
+        let sql = MSSQLTypeDefinition.tableStatement(
+            schema: "dbo",
+            name: "t",
+            columns: [.init(name: "Amount", type: "decimal(10,2)", isNullable: true)],
+            indexes: [],
+            checkConstraints: ["([Amount]>=(0))"],
+            databaseCollation: nil
+        )
+        #expect(sql.contains("CHECK ([Amount]>=(0))"))
+    }
+
+    /// Without the clause the replay makes a disk-backed type, and a hash index needs its bucket
+    /// count or it cannot be created at all.
+    @Test("A memory-optimized table type keeps its option and hash bucket count")
+    func memoryOptimizedTableType() {
+        let sql = MSSQLTypeDefinition.tableStatement(
+            schema: "dbo",
+            name: "t",
+            columns: [.init(name: "Id", type: "int", isNullable: false)],
+            indexes: [.init(name: "ix_hash", isPrimaryKey: false, isUnique: false,
+                            typeDescription: "NONCLUSTERED HASH",
+                            keys: [.init(column: "Id", isDescending: false)], bucketCount: 1_024)],
+            isMemoryOptimized: true,
+            databaseCollation: nil
+        )
+        #expect(sql.contains("INDEX [ix_hash] HASH ([Id]) WITH (BUCKET_COUNT = 1024)"))
+        #expect(sql.hasSuffix("WITH (MEMORY_OPTIMIZED = ON);"))
+    }
+
+    /// A table-type column can itself be an alias or CLR type, and a bare name binds to a different
+    /// type or fails outright when the UDT lives outside the default schema.
+    @Test("A user-defined column type is rendered schema-qualified by the catalog query")
+    func userDefinedColumnTypesAreQualified() {
+        let sql = MSSQLTypeQueries.tableTypeColumns(schema: "dbo", name: "t")
+        #expect(sql.contains("bt.is_user_defined = 1"))
+        #expect(sql.contains("SCHEMA_NAME(bt.schema_id)"))
+    }
+
+    @Test("Index keys and check constraints are read as structured catalog rows")
+    func indexAndCheckQueriesAreStructured() {
+        let indexes = MSSQLTypeQueries.tableTypeIndexes(schema: "dbo", name: "t")
+        #expect(indexes.contains("ic.is_descending_key"))
+        #expect(indexes.contains("sys.hash_indexes"))
+        #expect(!indexes.contains("FOR XML PATH"))
+        #expect(MSSQLTypeQueries.tableTypeCheckConstraints(schema: "dbo", name: "t")
+            .contains("sys.check_constraints"))
+    }
+
+    /// A CLR type's managed class is free to differ from the SQL type's name, and substituting the
+    /// SQL name produced an EXTERNAL NAME pointing at a class that does not exist.
     @Test("A CLR type names its assembly")
     func clrStatementNamesTheAssembly() {
-        #expect(MSSQLTypeDefinition.clrStatement(schema: "dbo", name: "Geo", assembly: "SpatialLib")
-            == "CREATE TYPE [dbo].[Geo] EXTERNAL NAME [SpatialLib].[Geo];")
+        #expect(MSSQLTypeDefinition.clrStatement(schema: "dbo", name: "Geo", assembly: "SpatialLib", assemblyClass: "Spatial.Point")
+            == "CREATE TYPE [dbo].[Geo] EXTERNAL NAME [SpatialLib].[Spatial.Point];")
     }
 }

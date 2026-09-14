@@ -40,26 +40,43 @@ public enum MSSQLTypeDefinition {
         }
     }
 
+    public struct IndexKey: Sendable, Equatable {
+        public let column: String
+        public let isDescending: Bool
+
+        public init(column: String, isDescending: Bool) {
+            self.column = column
+            self.isDescending = isDescending
+        }
+    }
+
+    /// Keys stay structured rather than comma-joined: a column name may legally contain a comma,
+    /// and only a per-key flag can carry `DESC`.
     public struct Index: Sendable, Equatable {
         public let name: String?
         public let isPrimaryKey: Bool
         public let isUnique: Bool
         public let typeDescription: String?
-        public let keyColumns: String?
+        public let keys: [IndexKey]
+        public let bucketCount: Int
 
         public init(
             name: String?,
             isPrimaryKey: Bool,
             isUnique: Bool,
             typeDescription: String? = nil,
-            keyColumns: String? = nil
+            keys: [IndexKey] = [],
+            bucketCount: Int = 0
         ) {
             self.name = name
             self.isPrimaryKey = isPrimaryKey
             self.isUnique = isUnique
             self.typeDescription = typeDescription
-            self.keyColumns = keyColumns
+            self.keys = keys
+            self.bucketCount = bucketCount
         }
+
+        var columnNames: [String] { keys.map(\.column) }
     }
 
     public static func bracketed(_ identifier: String) -> String {
@@ -74,11 +91,18 @@ public enum MSSQLTypeDefinition {
     }
 
     /// A CLR type's body is compiled into a .NET assembly, so this names the assembly rather than
-    /// pretending to a definition. The class name is not in `sys.assembly_types` under a name this
-    /// driver reads, so the statement is left with the type's own name, which is what SQL Server
-    /// requires them to match in practice.
-    public static func clrStatement(schema: String, name: String, assembly: String?) -> String {
-        let external = assembly.map { "\(bracketed($0)).[\(name)]" } ?? "<assembly>.[\(name)]"
+    /// pretending to a definition. The managed class is `sys.assembly_types.assembly_class` and is
+    /// free to differ from the SQL type's name; substituting the SQL name produced an
+    /// `EXTERNAL NAME` pointing at a class that does not exist.
+    public static func clrStatement(
+        schema: String,
+        name: String,
+        assembly: String?,
+        assemblyClass: String?
+    ) -> String {
+        let managedClass = (assemblyClass?.isEmpty == false ? assemblyClass : nil) ?? name
+        let external = assembly.map { "\(bracketed($0)).\(bracketed(managedClass))" }
+            ?? "<assembly>.\(bracketed(managedClass))"
         return "CREATE TYPE \(bracketed(schema)).\(bracketed(name)) EXTERNAL NAME \(external);"
     }
 
@@ -90,18 +114,45 @@ public enum MSSQLTypeDefinition {
         name: String,
         columns: [Column],
         indexes: [Index],
+        checkConstraints: [String] = [],
+        isMemoryOptimized: Bool = false,
         databaseCollation: String?
     ) -> String {
-        let singleColumnPrimaryKey = indexes.first { $0.isPrimaryKey && !($0.keyColumns?.contains(",") ?? true) }?.keyColumns
-        var lines = columns.map { column in
-            columnClause(column, primaryKeyColumn: singleColumnPrimaryKey, databaseCollation: databaseCollation)
+        let primaryKey = indexes.first(where: \.isPrimaryKey)
+        let inlinedKey = primaryKey.flatMap { key -> IndexKey? in
+            guard key.keys.count == 1, let only = key.keys.first, !only.isDescending else { return nil }
+            return only
         }
-        lines.append(contentsOf: indexClauses(indexes, inlinedPrimaryKey: singleColumnPrimaryKey))
+        var lines = columns.map { column in
+            columnClause(
+                column,
+                primaryKey: inlinedKey.map { ($0.column, primaryKey?.typeDescription) },
+                databaseCollation: databaseCollation
+            )
+        }
+        lines.append(contentsOf: indexClauses(indexes, inlinedPrimaryKeyColumn: inlinedKey?.column))
+        lines.append(contentsOf: checkConstraints.filter { !$0.isEmpty }.map { "CHECK \($0)" })
         let body = lines.map { "    \($0)" }.joined(separator: ",\n")
-        return "CREATE TYPE \(bracketed(schema)).\(bracketed(name)) AS TABLE (\n\(body)\n);"
+        let tail = isMemoryOptimized ? "\n)\nWITH (MEMORY_OPTIMIZED = ON);" : "\n);"
+        return "CREATE TYPE \(bracketed(schema)).\(bracketed(name)) AS TABLE (\n\(body)\(tail)"
     }
 
-    private static func columnClause(_ column: Column, primaryKeyColumn: String?, databaseCollation: String?) -> String {
+    /// SQL Server defaults a primary key to CLUSTERED, so a NONCLUSTERED one replays with a
+    /// different layout, and a clustered secondary index then makes the replay fail outright.
+    private static func clusteringClause(_ typeDescription: String?) -> String {
+        guard let description = typeDescription?.uppercased(),
+              description == "CLUSTERED" || description == "NONCLUSTERED"
+        else {
+            return ""
+        }
+        return " \(description)"
+    }
+
+    private static func columnClause(
+        _ column: Column,
+        primaryKey: (column: String, clustering: String?)?,
+        databaseCollation: String?
+    ) -> String {
         var parts = [bracketed(column.name)]
         if let computed = column.computedDefinition, !computed.isEmpty {
             parts.append("AS \(computed)")
@@ -114,27 +165,34 @@ public enum MSSQLTypeDefinition {
         if let identity = column.identitySpec, !identity.isEmpty { parts.append("IDENTITY(\(identity))") }
         parts.append(column.isNullable ? "NULL" : "NOT NULL")
         if let value = column.defaultDefinition, !value.isEmpty { parts.append("DEFAULT \(value)") }
-        if let key = primaryKeyColumn, key == column.name { parts.append("PRIMARY KEY") }
+        if let primaryKey, primaryKey.column == column.name {
+            parts.append("PRIMARY KEY\(clusteringClause(primaryKey.clustering))")
+        }
         return parts.joined(separator: " ")
     }
 
-    private static func indexClauses(_ indexes: [Index], inlinedPrimaryKey: String?) -> [String] {
+    private static func keyList(_ keys: [IndexKey]) -> String {
+        keys
+            .map { "\(bracketed($0.column))\($0.isDescending ? " DESC" : "")" }
+            .joined(separator: ", ")
+    }
+
+    private static func indexClauses(_ indexes: [Index], inlinedPrimaryKeyColumn: String?) -> [String] {
         indexes.compactMap { index -> String? in
-            guard let keyColumns = index.keyColumns, !keyColumns.isEmpty else { return nil }
-            let columnList = keyColumns
-                .split(separator: ",")
-                .map { bracketed($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
+            guard !index.keys.isEmpty else { return nil }
+            let columnList = keyList(index.keys)
             if index.isPrimaryKey {
-                guard inlinedPrimaryKey != keyColumns else { return nil }
-                return "PRIMARY KEY (\(columnList))"
+                guard index.columnNames != [inlinedPrimaryKeyColumn].compactMap({ $0 }) else { return nil }
+                return "PRIMARY KEY\(clusteringClause(index.typeDescription)) (\(columnList))"
             }
             guard let name = index.name, !name.isEmpty else {
                 return index.isUnique ? "UNIQUE (\(columnList))" : nil
             }
-            let clustering = index.typeDescription.map { " \($0.replacingOccurrences(of: "_", with: " "))" } ?? ""
             let unique = index.isUnique ? "UNIQUE " : ""
-            return "\(unique)INDEX \(bracketed(name))\(clustering) (\(columnList))"
+            if index.bucketCount > 0 {
+                return "\(unique)INDEX \(bracketed(name)) HASH (\(columnList)) WITH (BUCKET_COUNT = \(index.bucketCount))"
+            }
+            return "\(unique)INDEX \(bracketed(name))\(clusteringClause(index.typeDescription)) (\(columnList))"
         }
     }
 }

@@ -35,7 +35,8 @@ extension MSSQLPluginDriver {
             return match.withDefinition(MSSQLTypeDefinition.clrStatement(
                 schema: resolvedSchema,
                 name: match.name,
-                assembly: match.attributes.first { $0.label == "Assembly" }?.value
+                assembly: match.attributes.first { $0.label == "Assembly" }?.value,
+                assemblyClass: match.attributes.first { $0.label == "Class" }?.value
             ))
         default:
             return match.withDefinition(MSSQLTypeDefinition.aliasStatement(
@@ -57,6 +58,9 @@ extension MSSQLPluginDriver {
         let indexRows = try await execute(
             query: MSSQLTypeQueries.tableTypeIndexes(schema: schema, name: type.name)
         ).rows
+        let checkRows = try await execute(
+            query: MSSQLTypeQueries.tableTypeCheckConstraints(schema: schema, name: type.name)
+        ).rows
         let collation = try? await execute(query: MSSQLTypeQueries.databaseCollation).rows.first?[safe: 0]?.asText
 
         let columns = columnRows.compactMap { row -> MSSQLTypeDefinition.Column? in
@@ -71,15 +75,34 @@ extension MSSQLPluginDriver {
                 collation: row[safe: 6]?.asText
             )
         }
-        let indexes = indexRows.map { row in
-            MSSQLTypeDefinition.Index(
+        var indexOrder: [String] = []
+        var indexesById: [String: MSSQLTypeDefinition.Index] = [:]
+        for row in indexRows {
+            guard let indexId = row[safe: 6]?.asText, let column = row[safe: 4]?.asText else { continue }
+            let key = MSSQLTypeDefinition.IndexKey(column: column, isDescending: row[safe: 5]?.asText == "1")
+            if let existing = indexesById[indexId] {
+                indexesById[indexId] = MSSQLTypeDefinition.Index(
+                    name: existing.name,
+                    isPrimaryKey: existing.isPrimaryKey,
+                    isUnique: existing.isUnique,
+                    typeDescription: existing.typeDescription,
+                    keys: existing.keys + [key],
+                    bucketCount: existing.bucketCount
+                )
+                continue
+            }
+            indexOrder.append(indexId)
+            indexesById[indexId] = MSSQLTypeDefinition.Index(
                 name: row[safe: 0]?.asText,
                 isPrimaryKey: row[safe: 1]?.asText == "1",
                 isUnique: row[safe: 2]?.asText == "1",
                 typeDescription: row[safe: 3]?.asText,
-                keyColumns: row[safe: 4]?.asText
+                keys: [key],
+                bucketCount: row[safe: 7]?.asText.flatMap(Int.init) ?? 0
             )
         }
+        let indexes = indexOrder.compactMap { indexesById[$0] }
+        let checks = checkRows.compactMap { $0[safe: 0]?.asText }
 
         return PluginUserDefinedTypeInfo(
             name: type.name,
@@ -95,6 +118,8 @@ extension MSSQLPluginDriver {
                 name: type.name,
                 columns: columns,
                 indexes: indexes,
+                checkConstraints: checks,
+                isMemoryOptimized: type.attributes.contains { $0.label == "Memory Optimized" && $0.value == "YES" },
                 databaseCollation: collation ?? nil
             ),
             attributes: type.attributes
@@ -122,6 +147,12 @@ extension MSSQLPluginDriver {
         }
         if let assembly = row[safe: 7]?.asText, !assembly.isEmpty {
             attributes.append(PluginObjectAttribute(label: "Assembly", value: assembly))
+        }
+        if let assemblyClass = row[safe: 8]?.asText, !assemblyClass.isEmpty {
+            attributes.append(PluginObjectAttribute(label: "Class", value: assemblyClass))
+        }
+        if kind == .tableType, row[safe: 9]?.asText == "1" {
+            attributes.append(PluginObjectAttribute(label: "Memory Optimized", value: "YES"))
         }
 
         return PluginUserDefinedTypeInfo(

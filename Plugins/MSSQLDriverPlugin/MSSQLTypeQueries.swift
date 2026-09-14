@@ -50,12 +50,15 @@ public enum MSSQLTypeQueries {
             \(baseTypeSpelling) AS base_type,
             CONVERT(varchar(1), t.is_nullable) AS is_nullable,
             t.collation_name,
-            a.name AS assembly_name
+            a.name AS assembly_name,
+            at.assembly_class,
+            CONVERT(varchar(1), ISNULL(tt.is_memory_optimized, 0)) AS is_memory_optimized
         FROM sys.types t
         JOIN sys.schemas s ON s.schema_id = t.schema_id
         LEFT JOIN sys.types bt ON bt.user_type_id = t.system_type_id AND bt.is_user_defined = 0
         LEFT JOIN sys.assembly_types at ON at.user_type_id = t.user_type_id
         LEFT JOIN sys.assemblies a ON a.assembly_id = at.assembly_id
+        LEFT JOIN sys.table_types tt ON tt.user_type_id = t.user_type_id
         WHERE t.is_user_defined = 1 AND s.name = \(MSSQLStringLiteral.quoted(schema))
         ORDER BY t.name
         """
@@ -68,6 +71,9 @@ public enum MSSQLTypeQueries {
         SELECT
             c.name,
             CASE WHEN c.is_computed = 1 THEN NULL
+                 WHEN bt.is_user_defined = 1
+                     THEN '[' + REPLACE(SCHEMA_NAME(bt.schema_id), ']', ']]') + '].['
+                          + REPLACE(bt.name, ']', ']]') + ']'
                  WHEN bt.name IN ('nvarchar', 'nchar')
                      THEN bt.name + '(' + CASE WHEN c.max_length = -1 THEN 'max'
                           ELSE CONVERT(varchar(11), c.max_length / 2) END + ')'
@@ -100,9 +106,10 @@ public enum MSSQLTypeQueries {
         """
     }
 
-    /// A table type's primary key and its inline indexes. The key columns are aggregated through
-    /// `FOR XML PATH`, so this needs the session `MSSQLSessionOptions` establishes, exactly as the
-    /// routine list does.
+    /// One row per index key column rather than a comma-joined aggregate. A column name may legally
+    /// contain a comma (`[a,b]` is a valid identifier), which splitting turns into two columns, and
+    /// an aggregate has nowhere to carry `is_descending_key`, so a `DESC` key silently replayed as
+    /// ascending. Structured rows lose neither.
     public static func tableTypeIndexes(schema: String, name: String) -> String {
         """
         SELECT
@@ -110,22 +117,37 @@ public enum MSSQLTypeQueries {
             CONVERT(varchar(1), i.is_primary_key) AS is_primary_key,
             CONVERT(varchar(1), i.is_unique) AS is_unique,
             i.type_desc,
-            STUFF((
-                SELECT ', ' + c.name
-                FROM sys.index_columns ic
-                JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-                WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
-                ORDER BY ic.key_ordinal
-                FOR XML PATH(''), TYPE
-            ).value('.', 'nvarchar(max)'), 1, 2, '') AS key_columns
+            c.name AS key_column,
+            CONVERT(varchar(1), ic.is_descending_key) AS is_descending,
+            CONVERT(varchar(11), i.index_id) AS index_id,
+            CONVERT(varchar(11), ISNULL(hi.bucket_count, 0)) AS bucket_count
         FROM sys.table_types tt
         JOIN sys.schemas s ON s.schema_id = tt.schema_id
         JOIN sys.indexes i ON i.object_id = tt.type_table_object_id
+        JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        LEFT JOIN sys.hash_indexes hi ON hi.object_id = i.object_id AND hi.index_id = i.index_id
         WHERE tt.is_user_defined = 1
             AND i.type > 0
+            AND ic.is_included_column = 0
             AND s.name = \(MSSQLStringLiteral.quoted(schema))
             AND tt.name = \(MSSQLStringLiteral.quoted(name))
-        ORDER BY i.index_id
+        ORDER BY i.index_id, ic.key_ordinal
+        """
+    }
+
+    /// A CHECK on a table type is part of what the type validates, so a rebuilt statement that
+    /// drops it recreates a type with weaker validation than the original.
+    public static func tableTypeCheckConstraints(schema: String, name: String) -> String {
+        """
+        SELECT cc.definition
+        FROM sys.table_types tt
+        JOIN sys.schemas s ON s.schema_id = tt.schema_id
+        JOIN sys.check_constraints cc ON cc.parent_object_id = tt.type_table_object_id
+        WHERE tt.is_user_defined = 1
+            AND s.name = \(MSSQLStringLiteral.quoted(schema))
+            AND tt.name = \(MSSQLStringLiteral.quoted(name))
+        ORDER BY cc.object_id
         """
     }
 
