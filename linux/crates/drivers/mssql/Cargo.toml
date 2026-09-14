@@ -10,6 +10,10 @@ publish = false
 name = "drivers_mssql"
 path = "src/lib.rs"
 
+[features]
+default = []
+kerberos = ["tiberius/integrated-auth-gssapi"]
+
 [dependencies]
 tablepro-core = { path = "../../core" }
 async-trait.workspace = true

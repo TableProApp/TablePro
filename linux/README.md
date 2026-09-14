@@ -64,9 +64,10 @@ Local CI mirror (fmt + clippy + build + tests):
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
 
-`libkrb5-dev` and `clang` are there for the SQL Server driver's Windows
-integrated auth, which links MIT Kerberos and runs bindgen at build
-time.
+`libkrb5-dev` and `clang` are there for the app's default `kerberos`
+feature: SQL Server Windows integrated auth links MIT Kerberos and runs
+bindgen at build time. `cargo build -p tablepro-app --no-default-features`
+leaves it out, and the connect dialog then hides Windows (Kerberos).
 
 ## SQL Server with Windows integrated auth
 

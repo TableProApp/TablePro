@@ -94,9 +94,6 @@ jobs:
           - tablepro-driver-clickhouse
           - tablepro-ssh
         include:
-          # tiberius enables integrated-auth-gssapi, which links krb5 and runs bindgen.
-          - package: tablepro-driver-mssql
-            apt: libkrb5-dev clang
           - package: tablepro-ssh
             apt: openssh-client
     defaults:
