@@ -41,6 +41,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Headings this grid must refuse an edit for while the rest of it stays editable. See
     /// `DataGridConfiguration.lockedColumns`.
     var lockedColumns: Set<String> = []
+    var checkboxColumns: Set<Int> = []
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -249,6 +250,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.isEditable = isEditable
         editRefusalMessage = configuration.editRefusalMessage
         lockedColumns = configuration.lockedColumns
+        checkboxColumns = configuration.checkboxColumns
         tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns
@@ -1322,7 +1324,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             isDropdown: dropdownColumns?.contains(columnIndex) == true,
             isTypePicker: typePickerColumns?.contains(columnIndex) == true,
             isEnumOrSet: enumOrSetColumns.contains(columnIndex),
-            isEditable: isEditable
+            isEditable: isEditable,
+            isCheckbox: checkboxColumns.contains(columnIndex)
         )
     }
 

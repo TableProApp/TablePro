@@ -116,6 +116,10 @@ class DataGridRowView: NSTableRowView {
 
         let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
         let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+        if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
+            guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
+            return coordinator.toggleCheckbox(row: rowIndex, columnIndex: dataColumn)
+        }
         guard let appearance = coordinator.cellAppearance(
             row: rowIndex,
             columnIndex: dataColumn,
@@ -168,7 +172,8 @@ class DataGridRowView: NSTableRowView {
             let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
             coordinator.cellRenderer.draw(
                 appearance,
-                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
+                controlView: view
             )
         }
     }

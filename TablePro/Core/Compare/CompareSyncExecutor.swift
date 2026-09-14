@@ -9,6 +9,7 @@
 //  already blocked in a C call cannot be interrupted.
 //
 
+import CryptoKit
 import Foundation
 import os
 import TableProPluginKit
@@ -67,16 +68,21 @@ internal struct CompareSyncRunResult {
     /// expects.
     internal let commitFailure: String?
 
+    /// Tables whose storage cannot roll back, so a rolled-back run still left their rows written.
+    internal let nonTransactionalObjects: [String]
+
     internal init(
         outcomes: [SyncStatementOutcome],
         rolledBack: Bool,
         cancelled: Bool,
-        commitFailure: String? = nil
+        commitFailure: String? = nil,
+        nonTransactionalObjects: [String] = []
     ) {
         self.outcomes = outcomes
         self.rolledBack = rolledBack
         self.cancelled = cancelled
         self.commitFailure = commitFailure
+        self.nonTransactionalObjects = nonTransactionalObjects
     }
 
     internal var executedCount: Int {
@@ -89,6 +95,10 @@ internal struct CompareSyncRunResult {
 
     internal var heldBackCount: Int {
         outcomes.filter { $0.wasSkipped }.count
+    }
+
+    internal var rollbackLeftWritesInPlace: Bool {
+        rolledBack && !nonTransactionalObjects.isEmpty && executedCount > 0
     }
 }
 
@@ -107,7 +117,8 @@ internal actor CompareSyncExecutor {
         settings: CompareSyncExecutionSettings,
         target: DatabaseEndpoint,
         driver: any PluginDatabaseDriver,
-        progress: Progress
+        progress: Progress,
+        nonTransactionalObjects: [String] = []
     ) async throws -> CompareSyncRunResult {
         let runnable = statements.filter { settings.canRun($0) }
         let heldBack = statements.filter { !settings.canRun($0) }
@@ -150,7 +161,8 @@ internal actor CompareSyncExecutor {
                 mode: mode,
                 settings: settings,
                 driver: driver,
-                progress: progress
+                progress: progress,
+                nonTransactionalObjects: nonTransactionalObjects
             )
         }
     }
@@ -161,7 +173,8 @@ internal actor CompareSyncExecutor {
         mode: CompareSyncMode,
         settings: CompareSyncExecutionSettings,
         driver: any PluginDatabaseDriver,
-        progress: Progress
+        progress: Progress,
+        nonTransactionalObjects: [String]
     ) async throws -> CompareSyncRunResult {
         let usesTransaction = settings.usesTransaction(for: mode, driver: driver)
         if usesTransaction {
@@ -171,6 +184,7 @@ internal actor CompareSyncExecutor {
         var outcomes = heldBack.map {
             SyncStatementOutcome(id: $0.id, statement: $0, error: nil, wasSkipped: true)
         }
+        var openScopes: [(scope: String, closingSQL: String)] = []
         var completed: Int64 = 0
         var stopped = false
         var cancelled = false
@@ -181,7 +195,19 @@ internal actor CompareSyncExecutor {
                 break
             }
             do {
-                _ = try await driver.execute(query: statement.sql)
+                let result = try await driver.execute(query: statement.sql)
+                try Self.verify(statement, rowsAffected: result.rowsAffected)
+                /// A scope is only closed once its closing statement has actually run. Dropping it
+                /// before the call left a failed close with nothing to retry it, and the connection
+                /// went back to the pool still holding the session state.
+                switch statement.sessionEffect {
+                case .opens(let scope, let closingSQL):
+                    openScopes.append((scope, closingSQL))
+                case .closes(let scope):
+                    openScopes.removeAll { $0.scope == scope }
+                case nil:
+                    break
+                }
                 outcomes.append(SyncStatementOutcome(
                     id: statement.id, statement: statement, error: nil, wasSkipped: false
                 ))
@@ -202,6 +228,8 @@ internal actor CompareSyncExecutor {
             }
         }
         progress.completedUnitCount = completed
+
+        await closeSessionScopes(openScopes, on: driver)
 
         let shouldRollback = usesTransaction
             && (cancelled || (stopped && settings.errorHandling == .stopAndRollback))
@@ -226,7 +254,34 @@ internal actor CompareSyncExecutor {
             outcomes: outcomes,
             rolledBack: shouldRollback,
             cancelled: cancelled,
-            commitFailure: commitFailure
+            commitFailure: commitFailure,
+            nonTransactionalObjects: nonTransactionalObjects
+        )
+    }
+
+    /// Session state such as SQL Server's `IDENTITY_INSERT` is not transactional and outlives the
+    /// run on a pooled connection, so a scope a stopped run opened is closed whatever stopped it.
+    private func closeSessionScopes(
+        _ scopes: [(scope: String, closingSQL: String)],
+        on driver: any PluginDatabaseDriver
+    ) async {
+        for scope in scopes.reversed() {
+            do {
+                _ = try await driver.execute(query: scope.closingSQL)
+            } catch {
+                Self.logger.error("Closing a sync session scope failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private static func verify(_ statement: SyncStatement, rowsAffected: Int) throws {
+        guard let expected = statement.expectedRowCount,
+              KeyedWriteVerification.exceedsExpectation(rowsAffected: rowsAffected, expected: expected) else { return }
+        throw CompareSyncError.unsupportedOperation(
+            String(
+                format: String(localized: "This statement changed %1$d rows where at most %2$d was expected."),
+                rowsAffected, expected
+            )
         )
     }
 
@@ -241,7 +296,10 @@ internal actor CompareSyncExecutor {
         return OperationKind.worst(of: statements.map { $0.sql }, databaseType: databaseType)
     }
 
-    private static func digest(of statements: [SyncStatement]) -> String {
+    /// The confirmation shows the start of the script, and the trailer names the whole of it: the
+    /// statement count and a hash of every statement, so two scripts that share their first ten
+    /// thousand characters are never recorded as the same run.
+    static func digest(of statements: [SyncStatement]) -> String {
         var digest = ""
         var length = 0
         for statement in statements {
@@ -249,6 +307,9 @@ internal actor CompareSyncExecutor {
             digest += statement.sql + "\n"
             length += (statement.sql as NSString).length + 1
         }
+        let script = statements.map(\.sql).joined(separator: "\n")
+        let hash = SHA256.hash(data: Data(script.utf8)).map { String(format: "%02x", $0) }.joined()
+        digest += "-- \(statements.count) statements, SHA-256 \(hash)\n"
         return digest
     }
 

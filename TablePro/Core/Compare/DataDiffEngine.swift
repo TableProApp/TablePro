@@ -13,6 +13,7 @@
 //  sides.
 //
 
+import CryptoKit
 import Foundation
 import TableProPluginKit
 
@@ -28,7 +29,13 @@ internal struct DataRow: Hashable, Sendable {
 }
 
 internal protocol DataRowProviding: AnyObject {
+    var endedAtRowLimit: Bool { get }
     func nextRow() async throws -> DataRow?
+    func drain() async throws
+}
+
+internal protocol OneSidedRowResolving: AnyObject {
+    func rows(matching keys: [[PluginCellValue]], on side: ComparisonSide) async throws -> [DataRow]
 }
 
 internal enum RowDiffKind: String, Codable, Hashable, Sendable {
@@ -36,6 +43,14 @@ internal enum RowDiffKind: String, Codable, Hashable, Sendable {
     case update
     case delete
     case identical
+    case conflict
+
+    internal var isDifference: Bool {
+        switch self {
+        case .insert, .update, .delete: return true
+        case .identical, .conflict: return false
+        }
+    }
 }
 
 internal struct CellDifference: Hashable, Sendable {
@@ -71,6 +86,10 @@ internal struct RowDiffEntry: Identifiable, Hashable, Sendable {
         self.targetRow = targetRow
         self.cellDifferences = cellDifferences
     }
+
+    internal func differs(in column: String) -> Bool {
+        cellDifferences.contains { $0.column.caseInsensitiveCompare(column) == .orderedSame }
+    }
 }
 
 internal struct DataDiffSummary: Hashable, Sendable {
@@ -78,16 +97,63 @@ internal struct DataDiffSummary: Hashable, Sendable {
     internal let updateCount: Int
     internal let deleteCount: Int
     internal let identicalCount: Int
+    internal let conflictCount: Int
     internal let skippedNullKeyCount: Int
     internal let entries: [RowDiffEntry]
+    internal let identicalEntries: [RowDiffEntry]
     internal let truncatedEntries: Bool
+    internal let comparedKeyCount: Int
+    internal let stoppedAtRowLimit: Bool
+    internal let differenceDigest: String
+
+    internal init(
+        insertCount: Int,
+        updateCount: Int,
+        deleteCount: Int,
+        identicalCount: Int,
+        conflictCount: Int = 0,
+        skippedNullKeyCount: Int,
+        entries: [RowDiffEntry],
+        identicalEntries: [RowDiffEntry] = [],
+        truncatedEntries: Bool,
+        comparedKeyCount: Int = 0,
+        stoppedAtRowLimit: Bool = false,
+        differenceDigest: String = ""
+    ) {
+        self.insertCount = insertCount
+        self.updateCount = updateCount
+        self.deleteCount = deleteCount
+        self.identicalCount = identicalCount
+        self.conflictCount = conflictCount
+        self.skippedNullKeyCount = skippedNullKeyCount
+        self.entries = entries
+        self.identicalEntries = identicalEntries
+        self.truncatedEntries = truncatedEntries
+        self.comparedKeyCount = comparedKeyCount
+        self.stoppedAtRowLimit = stoppedAtRowLimit
+        self.differenceDigest = differenceDigest
+    }
 
     internal var differenceCount: Int {
         insertCount + updateCount + deleteCount
     }
 
     internal var totalCount: Int {
-        differenceCount + identicalCount
+        differenceCount + identicalCount + conflictCount
+    }
+
+    internal var answerIdentity: String {
+        "\(insertCount)|\(updateCount)|\(deleteCount)|\(identicalCount)|\(conflictCount)|\(differenceDigest)"
+    }
+
+    internal func count(of kind: RowDiffKind) -> Int {
+        switch kind {
+        case .insert: return insertCount
+        case .update: return updateCount
+        case .delete: return deleteCount
+        case .identical: return identicalCount
+        case .conflict: return conflictCount
+        }
     }
 }
 
@@ -96,7 +162,7 @@ internal struct KeyedRow {
     internal let key: [PluginCellValue]
 }
 
-internal enum ComparisonSide: String {
+internal enum ComparisonSide: String, Sendable {
     case source
     case target
 
@@ -106,85 +172,208 @@ internal enum ComparisonSide: String {
         case .target: return String(localized: "target")
         }
     }
+
+    internal var opposite: ComparisonSide {
+        self == .source ? .target : .source
+    }
+}
+
+internal struct DataComparisonShape: Sendable {
+    internal let keyColumns: [String]
+    internal let keyOrders: [KeyOrdering.ColumnOrder]
+    internal let comparedColumns: [String]
+    internal let valueKinds: [String: ValueComparisonKind]
+    internal let digestColumns: [String]
+    internal let rowLimit: Int?
+    internal let defersOneSidedRows: Bool
+
+    internal init(
+        keyColumns: [String],
+        keyOrders: [KeyOrdering.ColumnOrder] = [],
+        comparedColumns: [String],
+        valueKinds: [String: ValueComparisonKind] = [:],
+        digestColumns: [String] = [],
+        rowLimit: Int? = nil,
+        defersOneSidedRows: Bool = false
+    ) {
+        self.keyColumns = keyColumns
+        self.keyOrders = keyOrders
+        self.comparedColumns = comparedColumns
+        self.valueKinds = valueKinds
+        self.digestColumns = digestColumns
+        self.rowLimit = rowLimit.map { max(1, $0) }
+        self.defersOneSidedRows = defersOneSidedRows
+    }
+
+    internal func valueKind(of column: String) -> ValueComparisonKind {
+        valueKinds[column.lowercased()] ?? .other
+    }
 }
 
 internal struct DataDiffEngine {
+    private static let resolutionBatchSize = 200
+
     private let options: DataCompareOptions
+    private let shape: DataComparisonShape
     private let comparator: CellValueComparator
-    private let comparisonColumns: [String]
     private let ordering: KeyOrdering
 
-    internal init(
-        options: DataCompareOptions,
-        columns: [String],
-        keyDescriptors: [KeyColumnDescriptor] = []
-    ) {
+    internal init(options: DataCompareOptions, shape: DataComparisonShape) {
         self.options = options
+        self.shape = shape
         self.comparator = CellValueComparator(options: options)
-        self.comparisonColumns = options.comparisonColumns(from: columns)
-        self.ordering = KeyOrdering(
-            orders: KeyOrdering.orders(for: options.keyColumns, descriptors: keyDescriptors)
-        )
+        self.ordering = KeyOrdering(orders: shape.keyOrders)
     }
 
     /// `onEntry` sees every entry the walk produces, before the accumulator's retention cap.
     /// Script generation runs the walk a second time with a sink rather than reading the capped
-    /// entry list, because that list is a preview: building the script from it emitted 5,000
-    /// statements for a 12,000-row difference and reported success.
+    /// entry list, because that list is a preview.
     internal func compare(
         source: DataRowProviding,
         target: DataRowProviding,
+        resolver: OneSidedRowResolving? = nil,
         onEntry: ((RowDiffEntry) throws -> Void)? = nil
     ) async throws -> DataDiffSummary {
-        guard options.hasKey else {
+        guard !shape.keyColumns.isEmpty else {
             throw CompareSyncError.noComparisonKey(String(localized: "Choose a key column before comparing data."))
         }
 
-        var accumulator = Accumulator(limit: options.maxRetainedEntries)
+        let accumulator = Accumulator(
+            limit: options.maxRetainedEntries,
+            identicalLimit: options.maxRetainedIdenticalEntries,
+            digestColumns: shape.digestColumns
+        )
+        let recorder = EntryRecorder(accumulator: accumulator, sink: onEntry)
         let sourceReader = KeyedRowReader(
-            provider: source, keyColumns: options.keyColumns, ordering: ordering, side: .source
+            provider: source, keyColumns: shape.keyColumns, ordering: ordering, side: .source
         )
         let targetReader = KeyedRowReader(
-            provider: target, keyColumns: options.keyColumns, ordering: ordering, side: .target
+            provider: target, keyColumns: shape.keyColumns, ordering: ordering, side: .target
         )
 
-        var left = try await sourceReader.next(&accumulator)
-        var right = try await targetReader.next(&accumulator)
+        var deferredSource: [KeyedRow] = []
+        var deferredTarget: [KeyedRow] = []
+        var positions = 0
+        var stoppedAtRowLimit = false
 
-        func record(_ entry: RowDiffEntry) throws {
-            accumulator.add(entry)
-            try onEntry?(entry)
-        }
+        var left = try await sourceReader.next(accumulator)
+        var right = try await targetReader.next(accumulator)
 
-        while left != nil || right != nil {
+        walk: while true {
             try Task.checkCancellation()
-
-            guard let sourceEntry = left else {
-                try record(deleteEntry(for: right))
-                right = try await targetReader.next(&accumulator)
-                continue
-            }
-            guard let targetEntry = right else {
-                try record(insertEntry(for: sourceEntry))
-                left = try await sourceReader.next(&accumulator)
-                continue
+            if let limit = shape.rowLimit, positions >= limit {
+                stoppedAtRowLimit = true
+                break walk
             }
 
-            switch ordering.compare(sourceEntry.key, targetEntry.key) {
-            case .orderedSame:
-                try record(matchedEntry(source: sourceEntry, target: targetEntry))
-                left = try await sourceReader.next(&accumulator)
-                right = try await targetReader.next(&accumulator)
-            case .orderedAscending:
-                try record(insertEntry(for: sourceEntry))
-                left = try await sourceReader.next(&accumulator)
-            case .orderedDescending:
-                try record(deleteEntry(for: targetEntry))
-                right = try await targetReader.next(&accumulator)
+            switch (left, right) {
+            case (nil, nil):
+                break walk
+            case (nil, let targetRow?):
+                guard !source.endedAtRowLimit else {
+                    stoppedAtRowLimit = true
+                    break walk
+                }
+                if shape.defersOneSidedRows {
+                    deferredTarget.append(targetRow)
+                } else {
+                    try recorder.record(deleteEntry(for: targetRow))
+                }
+                right = try await targetReader.next(accumulator)
+            case (let sourceRow?, nil):
+                guard !target.endedAtRowLimit else {
+                    stoppedAtRowLimit = true
+                    break walk
+                }
+                if shape.defersOneSidedRows {
+                    deferredSource.append(sourceRow)
+                } else {
+                    try recorder.record(insertEntry(for: sourceRow))
+                }
+                left = try await sourceReader.next(accumulator)
+            case (let sourceRow?, let targetRow?):
+                switch ordering.compare(sourceRow.key, targetRow.key) {
+                case .orderedSame:
+                    try recorder.record(matchedEntry(source: sourceRow, target: targetRow))
+                    left = try await sourceReader.next(accumulator)
+                    right = try await targetReader.next(accumulator)
+                case .orderedAscending:
+                    if shape.defersOneSidedRows {
+                        deferredSource.append(sourceRow)
+                    } else {
+                        try recorder.record(insertEntry(for: sourceRow))
+                    }
+                    left = try await sourceReader.next(accumulator)
+                case .orderedDescending:
+                    if shape.defersOneSidedRows {
+                        deferredTarget.append(targetRow)
+                    } else {
+                        try recorder.record(deleteEntry(for: targetRow))
+                    }
+                    right = try await targetReader.next(accumulator)
+                }
             }
+            positions += 1
         }
 
-        return accumulator.summary()
+        try await source.drain()
+        try await target.drain()
+
+        if !deferredSource.isEmpty || !deferredTarget.isEmpty {
+            guard let resolver else {
+                throw CompareSyncError.unsupportedOperation(
+                    String(localized: "A filtered comparison needs both sides to look up rows by key.")
+                )
+            }
+            try await resolve(deferredSource, from: .source, resolver: resolver, recorder: recorder)
+            try await resolve(deferredTarget, from: .target, resolver: resolver, recorder: recorder)
+        }
+
+        return accumulator.summary(comparedKeyCount: positions, stoppedAtRowLimit: stoppedAtRowLimit)
+    }
+
+    private func resolve(
+        _ rows: [KeyedRow],
+        from side: ComparisonSide,
+        resolver: OneSidedRowResolving,
+        recorder: EntryRecorder
+    ) async throws {
+        var start = 0
+        while start < rows.count {
+            try Task.checkCancellation()
+            let batch = Array(rows[start ..< min(start + Self.resolutionBatchSize, rows.count)])
+            start += batch.count
+            let fetched = try await resolver.rows(matching: batch.map(\.key), on: side.opposite)
+            let counterparts = try keyedAndSorted(fetched, side: side.opposite)
+
+            var index = 0
+            for own in batch {
+                while index < counterparts.count,
+                      ordering.compare(counterparts[index].key, own.key) == .orderedAscending {
+                    index += 1
+                }
+                guard index < counterparts.count,
+                      ordering.compare(counterparts[index].key, own.key) == .orderedSame else {
+                    try recorder.record(side == .source ? insertEntry(for: own) : deleteEntry(for: own))
+                    continue
+                }
+                let counterpart = counterparts[index]
+                index += 1
+                let pair = side == .source ? (own, counterpart) : (counterpart, own)
+                try recorder.record(conflictEntry(source: pair.0, target: pair.1))
+            }
+        }
+    }
+
+    private func keyedAndSorted(_ rows: [DataRow], side: ComparisonSide) throws -> [KeyedRow] {
+        let keyed = rows
+            .map { row in KeyedRow(row: row, key: shape.keyColumns.map { row.value(for: $0) }) }
+            .filter { !KeyOrdering.hasNullComponent($0.key) }
+            .sorted { ordering.compare($0.key, $1.key) == .orderedAscending }
+        for index in keyed.indices.dropFirst() where ordering.compare(keyed[index - 1].key, keyed[index].key) == .orderedSame {
+            throw KeyedRowReader.duplicateKeyError(keyed[index].key, side: side)
+        }
+        return keyed
     }
 
     private func insertEntry(for entry: KeyedRow) -> RowDiffEntry {
@@ -197,30 +386,18 @@ internal struct DataDiffEngine {
         )
     }
 
-    private func deleteEntry(for entry: KeyedRow?) -> RowDiffEntry {
+    private func deleteEntry(for entry: KeyedRow) -> RowDiffEntry {
         RowDiffEntry(
             kind: .delete,
-            keyDescription: entry.map { KeyOrdering.description(of: $0.key) } ?? "",
-            keyIdentity: entry.map { KeyOrdering.identity(of: $0.key) } ?? "",
+            keyDescription: KeyOrdering.description(of: entry.key),
+            keyIdentity: KeyOrdering.identity(of: entry.key),
             sourceRow: nil,
-            targetRow: entry?.row
+            targetRow: entry.row
         )
     }
 
     private func matchedEntry(source: KeyedRow, target: KeyedRow) -> RowDiffEntry {
-        var differences: [CellDifference] = []
-        for column in comparisonColumns {
-            let sourceValue = source.row.value(for: column)
-            let targetValue = target.row.value(for: column)
-            let outcome = comparator.compare(sourceValue, targetValue)
-            guard !outcome.isEqual else { continue }
-            differences.append(CellDifference(
-                column: column,
-                rule: outcome.rule,
-                sourceValue: sourceValue,
-                targetValue: targetValue
-            ))
-        }
+        let differences = cellDifferences(source: source, target: target)
         return RowDiffEntry(
             kind: differences.isEmpty ? .identical : .update,
             keyDescription: KeyOrdering.description(of: source.key),
@@ -230,40 +407,76 @@ internal struct DataDiffEngine {
             cellDifferences: differences
         )
     }
+
+    private func conflictEntry(source: KeyedRow, target: KeyedRow) -> RowDiffEntry {
+        RowDiffEntry(
+            kind: .conflict,
+            keyDescription: KeyOrdering.description(of: source.key),
+            keyIdentity: KeyOrdering.identity(of: source.key),
+            sourceRow: source.row,
+            targetRow: target.row,
+            cellDifferences: cellDifferences(source: source, target: target)
+        )
+    }
+
+    private func cellDifferences(source: KeyedRow, target: KeyedRow) -> [CellDifference] {
+        var differences: [CellDifference] = []
+        for (index, column) in shape.keyColumns.enumerated()
+            where !KeyOrdering.isIdentical(source.key[index], target.key[index], order: ordering.order(at: index)) {
+            differences.append(CellDifference(
+                column: column,
+                rule: .exactValue,
+                sourceValue: source.key[index],
+                targetValue: target.key[index]
+            ))
+        }
+        for column in shape.comparedColumns {
+            let sourceValue = source.row.value(for: column)
+            let targetValue = target.row.value(for: column)
+            let outcome = comparator.compare(sourceValue, targetValue, as: shape.valueKind(of: column))
+            guard !outcome.isEqual else { continue }
+            differences.append(CellDifference(
+                column: column,
+                rule: outcome.rule,
+                sourceValue: sourceValue,
+                targetValue: targetValue
+            ))
+        }
+        return differences
+    }
 }
 
 internal extension DataDiffEngine {
-    struct Accumulator {
+    final class Accumulator {
         private let limit: Int
-        private var insertCount = 0
-        private var updateCount = 0
-        private var deleteCount = 0
-        private var identicalCount = 0
+        private let identicalLimit: Int
+        private let digestColumns: [String]
+        private var counts: [RowDiffKind: Int] = [:]
         private var skippedNullKeyCount = 0
         private var entries: [RowDiffEntry] = []
+        private var identicalEntries: [RowDiffEntry] = []
         private var truncated = false
+        private var digest = SHA256()
 
-        init(limit: Int) {
+        init(limit: Int, identicalLimit: Int, digestColumns: [String]) {
             self.limit = limit
+            self.identicalLimit = identicalLimit
+            self.digestColumns = digestColumns
         }
 
-        mutating func addSkippedNullKey() {
+        func addSkippedNullKey() {
             skippedNullKeyCount += 1
         }
 
-        /// Only differences are retained. Keeping identical rows too meant a table with 100,000
-        /// matching rows and ten differences near the end filled the retained list with matches and
-        /// dropped every difference, so the pane reported a count and listed nothing. The identical
-        /// count stays exact and the pane reports it as a number rather than as rows.
-        mutating func add(_ entry: RowDiffEntry) {
-            switch entry.kind {
-            case .insert: insertCount += 1
-            case .update: updateCount += 1
-            case .delete: deleteCount += 1
-            case .identical:
-                identicalCount += 1
+        func add(_ entry: RowDiffEntry) {
+            counts[entry.kind, default: 0] += 1
+            guard entry.kind != .identical else {
+                if identicalEntries.count < identicalLimit {
+                    identicalEntries.append(entry)
+                }
                 return
             }
+            updateDigest(with: entry)
             guard entries.count < limit else {
                 truncated = true
                 return
@@ -271,17 +484,71 @@ internal extension DataDiffEngine {
             entries.append(entry)
         }
 
-        func summary() -> DataDiffSummary {
+        func summary(comparedKeyCount: Int, stoppedAtRowLimit: Bool) -> DataDiffSummary {
             DataDiffSummary(
-                insertCount: insertCount,
-                updateCount: updateCount,
-                deleteCount: deleteCount,
-                identicalCount: identicalCount,
+                insertCount: counts[.insert] ?? 0,
+                updateCount: counts[.update] ?? 0,
+                deleteCount: counts[.delete] ?? 0,
+                identicalCount: counts[.identical] ?? 0,
+                conflictCount: counts[.conflict] ?? 0,
                 skippedNullKeyCount: skippedNullKeyCount,
                 entries: entries,
-                truncatedEntries: truncated
+                identicalEntries: identicalEntries,
+                truncatedEntries: truncated,
+                comparedKeyCount: comparedKeyCount,
+                stoppedAtRowLimit: stoppedAtRowLimit,
+                differenceDigest: digest.finalize().map { String(format: "%02x", $0) }.joined()
             )
         }
+
+        private func updateDigest(with entry: RowDiffEntry) {
+            append(entry.kind.rawValue)
+            append(entry.keyIdentity)
+            for row in [entry.sourceRow, entry.targetRow] {
+                guard let row else {
+                    digest.update(data: Data([0x1D]))
+                    continue
+                }
+                for column in digestColumns {
+                    append(column)
+                    append(row.value(for: column))
+                }
+            }
+        }
+
+        private func append(_ text: String) {
+            digest.update(data: Data(text.utf8))
+            digest.update(data: Data([0x1F]))
+        }
+
+        private func append(_ value: PluginCellValue) {
+            switch value {
+            case .null:
+                digest.update(data: Data([0x00]))
+            case .text(let text):
+                digest.update(data: Data([0x01]))
+                append(text)
+            case .bytes(let data):
+                digest.update(data: Data([0x02]))
+                append(String(data.count))
+                digest.update(data: data)
+            }
+        }
+    }
+}
+
+private final class EntryRecorder {
+    private let accumulator: DataDiffEngine.Accumulator
+    private let sink: ((RowDiffEntry) throws -> Void)?
+
+    init(accumulator: DataDiffEngine.Accumulator, sink: ((RowDiffEntry) throws -> Void)?) {
+        self.accumulator = accumulator
+        self.sink = sink
+    }
+
+    func record(_ entry: RowDiffEntry) throws {
+        accumulator.add(entry)
+        try sink?(entry)
     }
 }
 
@@ -299,7 +566,7 @@ private final class KeyedRowReader {
         self.side = side
     }
 
-    func next(_ accumulator: inout DataDiffEngine.Accumulator) async throws -> KeyedRow? {
+    func next(_ accumulator: DataDiffEngine.Accumulator) async throws -> KeyedRow? {
         while let row = try await provider.nextRow() {
             let key = keyColumns.map { row.value(for: $0) }
             if KeyOrdering.hasNullComponent(key) {
@@ -318,27 +585,55 @@ private final class KeyedRowReader {
     /// is the only thing standing between a disagreeing server order and a wrong diff.
     private func checkOrder(of key: [PluginCellValue]) throws {
         guard let previousKey else { return }
-        guard ordering.compare(previousKey, key) == .orderedDescending else { return }
-        let explanation = String(
-            localized: "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value."
-        )
-        throw CompareSyncError.streamOutOfOrder(
-            String(format: explanation, side.displayName, KeyOrdering.description(of: key))
+        switch ordering.compare(previousKey, key) {
+        case .orderedAscending:
+            return
+        case .orderedSame:
+            throw Self.duplicateKeyError(key, side: side)
+        case .orderedDescending:
+            let explanation = String(
+                localized: "The %1$@ sorted rows differently than the comparison expects, near key %2$@. Pick a numeric key, or one that sorts by byte value."
+            )
+            throw CompareSyncError.streamOutOfOrder(
+                String(format: explanation, side.displayName, KeyOrdering.description(of: key))
+            )
+        }
+    }
+
+    static func duplicateKeyError(_ key: [PluginCellValue], side: ComparisonSide) -> CompareSyncError {
+        CompareSyncError.duplicateKey(
+            String(
+                format: String(
+                    localized: "Key %1$@ matches more than one row in the %2$@. Choose key columns that identify a single row."
+                ),
+                KeyOrdering.description(of: key), side.displayName
+            )
         )
     }
 }
 
 internal final class ArrayRowProvider: DataRowProviding {
     private let rows: [DataRow]
+    private let rowLimit: Int?
     private var index = 0
 
-    internal init(rows: [DataRow]) {
-        self.rows = rows
+    internal init(rows: [DataRow], rowLimit: Int? = nil) {
+        self.rows = rowLimit.map { Array(rows.prefix($0)) } ?? rows
+        self.rowLimit = rowLimit
+    }
+
+    internal var endedAtRowLimit: Bool {
+        guard let rowLimit else { return false }
+        return index >= rows.count && rows.count >= rowLimit
     }
 
     internal func nextRow() async throws -> DataRow? {
         guard index < rows.count else { return nil }
         defer { index += 1 }
         return rows[index]
+    }
+
+    internal func drain() async throws {
+        index = rows.count
     }
 }
