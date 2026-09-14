@@ -109,13 +109,32 @@ public struct LibraryGroupGraph: Sendable {
         pathIds(to: id).compactMap { entries[$0]?.name }
     }
 
-    public func canPlace(_ groupId: UUID, under parentId: UUID?) -> Bool {
+    public enum PlacementProblem: Sendable {
+        case cycle
+        case depthExceeded
+        case missingParent
+    }
+
+    public func placementProblem(_ groupId: UUID, under parentId: UUID?) -> PlacementProblem? {
         if let parentId {
-            guard parentId != groupId, entries[parentId] != nil else { return false }
-            guard !descendantIds(of: groupId).contains(parentId) else { return false }
+            guard parentId != groupId, !descendantIds(of: groupId).contains(parentId) else { return .cycle }
+            guard entries[parentId] != nil else { return .missingParent }
         }
         let subtree = entries[groupId] == nil ? 0 : maxDescendantDepth(of: groupId)
-        return depth(of: parentId) + 1 + subtree <= Self.maxNestingDepth
+        guard depth(of: parentId) + 1 + subtree <= Self.maxNestingDepth else { return .depthExceeded }
+        return nil
+    }
+
+    public func canPlace(_ groupId: UUID, under parentId: UUID?) -> Bool {
+        placementProblem(groupId, under: parentId) == nil
+    }
+
+    public static func cyclicGroupIds<Group: LibraryGroupRepresentable>(in groups: [Group]) -> Set<UUID> {
+        var raw: [UUID: Entry] = [:]
+        for group in groups where raw[group.id] == nil {
+            raw[group.id] = Entry(id: group.id, name: group.name, parentId: group.parentId, sortOrder: group.sortOrder)
+        }
+        return cyclicIds(in: raw)
     }
 
     public func canCreateSubgroup(under parentId: UUID) -> Bool {

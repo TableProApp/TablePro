@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
+- Favorites and Recent sections, sorting, drag and drop into groups, inline rename and tag search tokens in the welcome window.
+- **File > New Group…**, **File > Rename** and **View > Sort Connections By** for the welcome window.
+- Favorites, Recent, nested groups, sorting and tag search tokens in the iOS connection list.
 
 ### Changed
 
@@ -26,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
 - Schema picker lists system schemas last, in place of its Show System Schemas toggle. (#2832)
+- Resizable welcome window that remembers its size and position.
+- Welcome window list moved with the arrow keys instead of `Ctrl+J`, `Ctrl+K`, `Ctrl+H` and `Ctrl+L`.
+- Connection switcher lists Favorites, Recent and groups at every depth.
+- Connection rows without colored dots, on the Mac and on iOS.
 
 ### Fixed
 
@@ -33,6 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
 - Remote database file reaching the previous server after the connection's host, port, or user was changed.
+- Favoriting, moving or reordering a connection reverting a Safe Mode level changed in its window.
+- Connections in groups nested more than three levels deep missing from the welcome window.
+- Linked folder and Team Library connections to two databases on one host treated as one connection.
+- New, duplicated and moved connections placed at the top of their group.
+- Password sources skipped after an older connection store was renumbered.
+- Connections from a cancelled New Group sheet moved into the next group created.
+- Search in the welcome window hiding matches inside collapsed groups.
+- Connection switcher showing a dropped connection as connected and checking the wrong one in a second window.
+- Welcome window changes that failed to save shown as saved.
+- Linked folder connection losing its SSH, SSL and Safe Mode settings on connect.
+- iOS connection edit resetting the order, color, query timeout and extra tags.
+- iOS group delete leaving its subgroups behind, and tag counts reading only the first tag.
+- iOS sync overwriting a connection edited while the sync ran.
+- iOS Duplicate losing the password, SSH secrets, client certificates and file access.
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)

@@ -2,6 +2,7 @@ import CoreSpotlight
 import Foundation
 import Observation
 import os
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import WidgetKit
@@ -35,6 +36,7 @@ final class AppState {
     let backgroundRelease: BackgroundReleaseCoordinator
     let queryActivities = QueryActivityController()
     let syncCoordinator = IOSSyncCoordinator()
+    let libraryPreferences = ConnectionLibraryPreferences()
     let sshProvider: IOSSSHProvider
     let secureStore: KeychainSecureStore
 
@@ -131,6 +133,7 @@ final class AppState {
         } catch {
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
         }
+        pruneLibraryPreferences()
     }
 
     private func persist(groups: [ConnectionGroup]) {
@@ -140,6 +143,7 @@ final class AppState {
         } catch {
             Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
         }
+        pruneLibraryPreferences()
     }
 
     private func persist(tags: [ConnectionTag]) {
@@ -151,55 +155,114 @@ final class AppState {
         }
     }
 
+    private func pruneLibraryPreferences() {
+        guard loadStatus == .ready else { return }
+        libraryPreferences.prune(
+            connectionIds: Set(connections.map(\.id)),
+            favoriteIds: Set(connections.filter(\.isFavorite).map(\.id)),
+            groupIds: Set(groups.map(\.id))
+        )
+    }
+
+    private var validGroupIds: Set<UUID> {
+        Set(groups.map(\.id))
+    }
+
     // MARK: - Connections
 
     func addConnection(_ connection: DatabaseConnection) {
-        var updated = connections
-        updated.append(connection)
-        persist(connections: updated)
-        updateWidgetData()
-        updateSpotlightIndex()
-        syncCoordinator.markDirty(connection.id)
-        syncCoordinator.scheduleSyncAfterChange()
+        apply(ConnectionLibraryEditing.adding(connection, to: connections, validGroupIds: validGroupIds))
     }
 
     func updateConnection(_ connection: DatabaseConnection) {
-        var updated = connections
-        guard let index = updated.firstIndex(where: { $0.id == connection.id }) else { return }
-        updated[index] = connection
-        persist(connections: updated)
-        updateWidgetData()
-        updateSpotlightIndex()
-        syncCoordinator.markDirty(connection.id)
-        syncCoordinator.scheduleSyncAfterChange()
+        guard let change = ConnectionLibraryEditing.updating(
+            connection,
+            in: connections,
+            validGroupIds: validGroupIds
+        ) else { return }
+        apply(change)
     }
 
     var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "com.TablePro.hasCompletedOnboarding") {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "com.TablePro.hasCompletedOnboarding") }
     }
 
-    func reorderConnections(_ reordered: [DatabaseConnection]) {
-        persist(connections: reordered)
+    func reorderConnections(_ orderedIds: [UUID]) {
+        apply(ConnectionLibraryEditing.reordering(orderedIds, in: connections))
+    }
+
+    func moveConnections(_ ids: [UUID], toGroup groupId: UUID?, before: UUID? = nil) {
+        apply(ConnectionLibraryEditing.moving(
+            ids,
+            toGroup: groupId,
+            before: before,
+            in: connections,
+            validGroupIds: validGroupIds
+        ))
+    }
+
+    func renameConnection(_ id: UUID, to name: String) {
+        apply(ConnectionLibraryEditing.renaming(id, to: name, in: connections))
+    }
+
+    func setFavorite(_ ids: Set<UUID>, isFavorite: Bool) {
+        let previousOrder = libraryPreferences.favoritesOrder
+        apply(ConnectionLibraryEditing.settingFavorite(ids, to: isFavorite, in: connections))
+        guard isFavorite else {
+            libraryPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(previousOrder, removing: ids))
+            return
+        }
+        let known = Set(previousOrder)
+        let added = connections.map(\.id).filter { ids.contains($0) && !known.contains($0) }
+        libraryPreferences.setFavoritesOrder(previousOrder + added)
+    }
+
+    func reorderFavorites(_ orderedIds: [UUID]) {
+        libraryPreferences.setFavoritesOrder(orderedIds)
+    }
+
+    @discardableResult
+    func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
+        let result = ConnectionLibraryEditing.duplicating(
+            connection,
+            named: String(format: String(localized: "%@ Copy"), connection.name),
+            in: connections,
+            validGroupIds: validGroupIds
+        )
+        ConnectionSecrets(secureStore: secureStore).copy(from: connection.id, to: result.copy.id)
+        apply(result.change)
+        return result.copy
+    }
+
+    func removeConnection(_ connection: DatabaseConnection) {
+        removeConnections([connection.id])
+    }
+
+    func removeConnections(_ ids: Set<UUID>) {
+        let removed = connections.filter { ids.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        let secrets = ConnectionSecrets(secureStore: secureStore)
+        for connection in removed {
+            secrets.delete(for: connection.id)
+            clearPerConnectionPreferences(for: connection.id)
+        }
+        persist(connections: connections.filter { !ids.contains($0.id) })
         updateWidgetData()
-        for connection in reordered {
-            syncCoordinator.markDirty(connection.id)
+        updateSpotlightIndex()
+        for connection in removed {
+            syncCoordinator.markDeleted(connection.id)
         }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
-    func removeConnection(_ connection: DatabaseConnection) {
-        var updated = connections
-        updated.removeAll { $0.id == connection.id }
-        try? connectionManager.deletePassword(for: connection.id)
-        try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
-        try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
-        try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
-        FileBookmarkStore().delete(for: connection.id)
-        clearPerConnectionPreferences(for: connection.id)
-        persist(connections: updated)
+    private func apply(_ change: ConnectionLibraryChange) {
+        guard !change.changedConnectionIds.isEmpty else { return }
+        persist(connections: change.connections)
         updateWidgetData()
         updateSpotlightIndex()
-        syncCoordinator.markDeleted(connection.id)
+        for id in change.changedConnectionIds {
+            syncCoordinator.markDirty(id)
+        }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
@@ -213,45 +276,47 @@ final class AppState {
 
     // MARK: - Groups
 
-    func addGroup(_ group: ConnectionGroup) {
-        var updated = groups
-        updated.append(group)
+    @discardableResult
+    func addGroup(_ group: ConnectionGroup) -> Bool {
+        guard let updated = ConnectionLibraryEditing.addingGroup(group, to: groups) else { return false }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
-    func updateGroup(_ group: ConnectionGroup) {
-        var updated = groups
-        guard let index = updated.firstIndex(where: { $0.id == group.id }) else { return }
-        updated[index] = group
+    @discardableResult
+    func updateGroup(_ group: ConnectionGroup) -> Bool {
+        guard let updated = ConnectionLibraryEditing.updatingGroup(group, in: groups) else { return false }
         persist(groups: updated)
         syncCoordinator.markDirtyGroup(group.id)
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
-    func reorderGroups(_ reordered: [ConnectionGroup]) {
-        persist(groups: reordered)
-        for group in reordered {
-            syncCoordinator.markDirtyGroup(group.id)
+    func reorderGroups(_ orderedIds: [UUID]) {
+        let result = ConnectionLibraryEditing.reorderingGroups(orderedIds, in: groups)
+        guard !result.changed.isEmpty else { return }
+        persist(groups: result.groups)
+        for id in result.changed {
+            syncCoordinator.markDirtyGroup(id)
         }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
     func deleteGroup(_ groupId: UUID) {
-        var updatedGroups = groups
-        updatedGroups.removeAll { $0.id == groupId }
-        persist(groups: updatedGroups)
-
-        var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].groupId == groupId {
-            updatedConnections[index].groupId = nil
-            syncCoordinator.markDirty(updatedConnections[index].id)
-        }
-        persist(connections: updatedConnections)
+        let change = ConnectionLibraryEditing.deletingGroup(groupId, groups: groups, connections: connections)
+        guard !change.removedGroupIds.isEmpty else { return }
+        persist(groups: change.groups)
+        persist(connections: change.connections)
         updateWidgetData()
 
-        syncCoordinator.markDeletedGroup(groupId)
+        for id in change.changedConnectionIds {
+            syncCoordinator.markDirty(id)
+        }
+        for id in change.removedGroupIds {
+            syncCoordinator.markDeletedGroup(id)
+        }
         syncCoordinator.scheduleSyncAfterChange()
     }
 
@@ -299,7 +364,8 @@ final class AppState {
         let items = connections.map { conn in
             let attributes = CSSearchableItemAttributeSet(contentType: .item)
             attributes.title = conn.name.isEmpty ? conn.host : conn.name
-            attributes.contentDescription = "\(conn.type.rawValue) · \(conn.host):\(conn.port)"
+            attributes.contentDescription = [conn.type.mobileDisplayName, ConnectionDetailFormatter.detail(for: conn)]
+                .joined(separator: ", ")
             return CSSearchableItem(
                 uniqueIdentifier: conn.id.uuidString,
                 domainIdentifier: "com.TablePro.connections",

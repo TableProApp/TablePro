@@ -5,8 +5,10 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
+import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSyncTransport
 
@@ -35,18 +37,22 @@ final class ConnectionStorage {
 
     private let keychain: any KeychainStoring
 
+    private let appEventsProvider: () -> AppEvents
+
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = .standard,
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
-        keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain
+        keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
+        appEvents: @escaping @autoclosure () -> AppEvents = .shared
     ) {
         self.fileURL = fileURL
         self.defaults = userDefaults
         self.syncTracker = syncTracker
         self.appSettingsProvider = appSettings
         self.keychain = keychain
+        self.appEventsProvider = appEvents
 
         migrateFromUserDefaultsIfNeeded()
     }
@@ -106,13 +112,10 @@ final class ConnectionStorage {
                 stored.toConnection()
             }
 
-            // Migration: assign sortOrder from array position for pre-existing data
-            if connections.count > 1 && connections.allSatisfy({ $0.sortOrder == 0 }) {
-                var migrated = connections
-                for i in migrated.indices { migrated[i].sortOrder = i }
-                let migratedStored = migrated.map { StoredConnection(from: $0) }
-                if let data = try? encoder.encode(migratedStored) {
-                    try? data.write(to: fileURL, options: .atomic)
+            let migrated = Self.numberingUnrankedGroups(connections)
+            if migrated != connections {
+                if storeIsTrusted {
+                    saveConnections(migrated)
                 }
                 cachedConnections = migrated
                 return migrated
@@ -159,10 +162,12 @@ final class ConnectionStorage {
         cachedConnections = nil
     }
 
-    /// Add a new connection
+    /// Add a new connection at the end of its group
     func addConnection(_ connection: DatabaseConnection, password: String? = nil) {
         var connections = loadConnections()
-        connections.append(connection)
+        var placed = connection
+        placed.sortOrder = Self.nextSortOrder(in: connections, groupId: connection.groupId)
+        connections.append(placed)
         guard saveConnections(connections) else {
             Self.logger.error("Aborted addConnection: persistence failed for \(connection.id, privacy: .public)")
             return
@@ -220,6 +225,92 @@ final class ConnectionStorage {
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
         return true
+    }
+
+    static func nextSortOrder(in connections: [DatabaseConnection], groupId: UUID?) -> Int {
+        LibraryOrdering.nextSortOrder(after: connections.filter { $0.groupId == groupId }.map(\.sortOrder))
+    }
+
+    static func numberingUnrankedGroups(_ connections: [DatabaseConnection]) -> [DatabaseConnection] {
+        var numbered = connections
+        let indicesByGroup = Dictionary(grouping: connections.indices) { connections[$0].groupId }
+        for indices in indicesByGroup.values
+            where indices.count > 1 && indices.allSatisfy({ connections[$0].sortOrder == 0 }) {
+            let displayed = indices.sorted {
+                LibrarySorting.connectionPrecedes(connections[$0], connections[$1], mode: .manual, lastConnected: [:])
+            }
+            for (rank, index) in displayed.enumerated() {
+                numbered[index].sortOrder = rank
+            }
+        }
+        return numbered
+    }
+
+    @discardableResult
+    func mutateConnections(ids: Set<UUID>, _ mutate: (inout DatabaseConnection) -> Void) -> Bool {
+        guard !ids.isEmpty else { return true }
+        var connections = loadConnections()
+        var changed: [DatabaseConnection] = []
+        for index in connections.indices where ids.contains(connections[index].id) {
+            let original = connections[index]
+            mutate(&connections[index])
+            if connections[index] != original {
+                changed.append(connections[index])
+            }
+        }
+        guard !changed.isEmpty else { return true }
+        guard saveConnections(connections) else {
+            Self.logger.error("Aborted mutateConnections: persistence failed for \(changed.count, privacy: .public) connection(s)")
+            return false
+        }
+        let dirtyIds = changed
+            .filter { !$0.localOnly && !$0.isSample }
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
+        appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
+        return true
+    }
+
+    @discardableResult
+    func moveConnections(
+        _ ids: [UUID],
+        toGroup groupId: UUID?,
+        before: UUID?,
+        validGroupIds: Set<UUID>
+    ) -> Bool {
+        let connections = loadConnections()
+        var seen: Set<UUID> = []
+        let moving = ids.filter { id in connections.contains { $0.id == id } && seen.insert(id).inserted }
+        guard !moving.isEmpty else { return true }
+        let movingSet = Set(moving)
+
+        let siblings = LibrarySorting.sorted(
+            connections.filter { connection in
+                guard !movingSet.contains(connection.id) else { return false }
+                let effectiveGroup = connection.groupId.flatMap { validGroupIds.contains($0) ? $0 : nil }
+                return effectiveGroup == groupId
+            },
+            mode: .manual
+        )
+
+        let ranks: [UUID: Int]
+        if let before, siblings.contains(where: { $0.id == before }) {
+            ranks = LibraryOrdering.ranks(
+                for: LibraryOrdering.reordered(siblings.map(\.id), moving: moving, before: before)
+            )
+        } else {
+            let start = LibraryOrdering.nextSortOrder(after: siblings.map(\.sortOrder))
+            ranks = Dictionary(uniqueKeysWithValues: moving.enumerated().map { ($0.element, start + $0.offset) })
+        }
+
+        return mutateConnections(ids: Set(ranks.keys)) { connection in
+            if movingSet.contains(connection.id) {
+                connection.groupId = groupId
+            }
+            if let rank = ranks[connection.id] {
+                connection.sortOrder = rank
+            }
+        }
     }
 
     @discardableResult
@@ -343,9 +434,10 @@ final class ConnectionStorage {
         return true
     }
 
-    /// Duplicate a connection with a new UUID and "(Copy)" suffix
-    /// Copies all passwords from source connection to the duplicate
-    func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
+    /// Duplicate a connection with a new UUID and "(Copy)" suffix, placed right after its source.
+    /// Copies all passwords from source connection to the duplicate. Returns nil when the copy
+    /// could not be saved.
+    func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection? {
         let newId = UUID()
 
         let duplicate = DatabaseConnection(
@@ -380,14 +472,31 @@ final class ConnectionStorage {
         )
 
         var connections = loadConnections()
-        connections.append(duplicate)
+        let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)
+        let sourceIndex = siblings.firstIndex { $0.id == connection.id }
+        let following = sourceIndex.flatMap { index in
+            siblings.indices.contains(index + 1) ? siblings[index + 1].id : nil
+        }
+        let ranks = LibraryOrdering.ranks(
+            for: LibraryOrdering.reordered(siblings.map(\.id), moving: [newId], before: following)
+        )
+        var renumbered: [DatabaseConnection] = []
+        for index in connections.indices {
+            guard let rank = ranks[connections[index].id], connections[index].sortOrder != rank else { continue }
+            connections[index].sortOrder = rank
+            renumbered.append(connections[index])
+        }
+        var placedDuplicate = duplicate
+        placedDuplicate.sortOrder = ranks[newId] ?? Self.nextSortOrder(in: connections, groupId: connection.groupId)
+        connections.append(placedDuplicate)
         guard saveConnections(connections) else {
             Self.logger.error("Aborted duplicateConnection: persistence failed for \(duplicate.id, privacy: .public)")
-            return duplicate
+            return nil
         }
-        if !duplicate.localOnly {
-            syncTracker.markDirty(.connection, id: duplicate.id.uuidString)
-        }
+        let dirtyIds = ([placedDuplicate] + renumbered)
+            .filter { !$0.localOnly && !$0.isSample }
+            .map { $0.id.uuidString }
+        syncTracker.markDirty(.connection, ids: dirtyIds)
 
         // Copy all passwords from source to duplicate (skip DB password in prompt mode)
         if !connection.promptForPassword, let password = loadPassword(for: connection.id) {
@@ -425,7 +534,8 @@ final class ConnectionStorage {
             }
         }
 
-        return duplicate
+        appEventsProvider().connectionUpdated.send(nil)
+        return placedDuplicate
     }
 
     // MARK: - Keychain (Password Storage)

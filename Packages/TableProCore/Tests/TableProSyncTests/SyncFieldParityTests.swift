@@ -47,7 +47,7 @@ struct SyncFieldParityTests {
     /// platform that does not write one also cannot erase it.
     private static let connectionMacOnly: Set<String> = [
         "aiPolicy", "aiRules", "aiAlwaysAllowedTools",
-        "redisDatabase", "startupCommands", "sshProfileId", "isFavorite",
+        "redisDatabase", "startupCommands", "sshProfileId",
     ]
 
     private static let connectionIosOnly: Set<String> = [

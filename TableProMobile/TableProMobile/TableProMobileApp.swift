@@ -77,11 +77,7 @@ struct TableProMobileApp: App {
                 if AppPreferences.isCloudSyncEnabled && appState.loadStatus == .ready {
                     syncTask?.cancel()
                     syncTask = Task {
-                        await appState.syncCoordinator.sync(
-                            localConnections: appState.connections,
-                            localGroups: appState.groups,
-                            localTags: appState.tags
-                        )
+                        await appState.syncCoordinator.sync()
                     }
                 }
                 if heartbeatTask == nil {
@@ -137,11 +133,7 @@ struct TableProMobileApp: App {
             return
         }
         Self.backgroundLogger.info("Background sync starting")
-        await appState.syncCoordinator.sync(
-            localConnections: appState.connections,
-            localGroups: appState.groups,
-            localTags: appState.tags
-        )
+        await appState.syncCoordinator.sync()
         Self.backgroundLogger.info("Background sync completed")
     }
 }

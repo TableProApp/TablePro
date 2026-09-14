@@ -114,6 +114,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.willCloseNotification, object: nil
         )
 
+        RecentConnectionsRecorder.shared.start()
+
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()
     }

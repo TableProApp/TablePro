@@ -226,8 +226,8 @@ struct ConnectionSwitcherSectionsTests {
         #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME / EUROPE"])
     }
 
-    @Test("A group carries its own colour onto the header, and no colour means no dot")
-    func groupColourReachesTheHeader() {
+    @Test("A group header carries no colored dot, whatever color the group has")
+    func groupHeadersHaveNoDot() {
         let coloured = ConnectionGroup(name: "Prod", color: .red)
         let plain = ConnectionGroup(name: "Scratch", sortOrder: 1)
 
@@ -238,8 +238,45 @@ struct ConnectionSwitcherSectionsTests {
             isFiltering: false
         )
 
-        #expect(sections.first { $0.title == "PROD" }?.accentColor != nil)
-        #expect(sections.first { $0.title == "SCRATCH" }?.accentColor == nil)
+        #expect(sections.allSatisfy { $0.accentColor == nil })
+    }
+
+    @Test("Favorites and recent connections come before the groups and are not repeated in them")
+    func favoritesAndRecentLeadTheLibrary() {
+        let acme = ConnectionGroup(name: "Acme")
+        let favorite = connection("acme-prod", groupId: acme.id)
+        let recent = connection("acme-staging", groupId: acme.id)
+        let other = connection("acme-local", groupId: acme.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            saved: [favorite, recent, other],
+            groups: [acme],
+            isFiltering: false,
+            favorites: [favorite],
+            recent: [recent]
+        )
+
+        #expect(titles(sections) == ["ACTIVE CONNECTIONS", "FAVORITES", "RECENT", "ACME"])
+        #expect(names(sections) == [[], ["acme-prod"], ["acme-staging"], ["acme-local"]])
+    }
+
+    @Test("A group nested past the cap still gets a section")
+    func deepGroupStillListed() {
+        let one = ConnectionGroup(name: "One")
+        let two = ConnectionGroup(name: "Two", parentId: one.id)
+        let three = ConnectionGroup(name: "Three", parentId: two.id)
+        let four = ConnectionGroup(name: "Four", parentId: three.id)
+        let five = ConnectionGroup(name: "Five", parentId: four.id)
+
+        let sections = ConnectionSwitcherSections.build(
+            active: [],
+            saved: [connection("deep", groupId: five.id)],
+            groups: [one, two, three, four, five],
+            isFiltering: false
+        )
+
+        #expect(titles(sections).last == "ONE / TWO / THREE / FOUR / FIVE")
     }
 
     /// A search is a lookup rather than a browse: one match in each of eight groups would otherwise

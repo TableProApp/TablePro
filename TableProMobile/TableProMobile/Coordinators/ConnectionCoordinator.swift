@@ -139,6 +139,7 @@ final class ConnectionCoordinator {
                 await loadSchemas()
                 guard attemptToken == token else { return }
                 phase = .connected
+                appState.libraryPreferences.recordConnected(connection.id)
                 return
             } catch {
                 guard attemptToken == token else { return }
@@ -166,6 +167,7 @@ final class ConnectionCoordinator {
             await loadSchemas()
             guard attemptToken == token else { return }
             phase = .connected
+            appState.libraryPreferences.recordConnected(connection.id)
             IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {

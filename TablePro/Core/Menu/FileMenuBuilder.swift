@@ -19,6 +19,10 @@ enum FileMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "New Group…"),
+                action: #selector(WelcomeWindowController.newConnectionGroup(_:))
+            ),
+            MenuItemFactory.item(
                 String(localized: "New Tab"),
                 action: #selector(MainSplitViewController.newEditorTab(_:)),
                 shortcut: .newTab,
@@ -42,6 +46,10 @@ enum FileMenuBuilder {
                 action: #selector(MainSplitViewController.openQuickSwitcher(_:)),
                 shortcut: .quickSwitcher,
                 keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Rename"),
+                action: #selector(WelcomeWindowController.renameConnectionListSelection(_:))
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
