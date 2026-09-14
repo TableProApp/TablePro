@@ -21,7 +21,7 @@ jobs:
     # ubuntu-24.04 ships glib 2.80, but libadwaita 1.6 (workspace pin)
     # transitively requires gio-2.0 >= 2.82. Building inside ubuntu:25.10
     # gives us glib 2.84, which satisfies the system-deps check. The
-    # integration job stays on the host runner — driver crates depend
+    # integration job stays on the host runner: driver crates depend
     # only on tablepro-core, so they don't pull in libadwaita.
     container:
       image: ubuntu:25.10
@@ -35,10 +35,10 @@ jobs:
         with:
           ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
       - name: Install system dependencies
-        # ubuntu:25.10 is minimal — git for Swatinem/rust-cache key
+        # ubuntu:25.10 is minimal: git for Swatinem/rust-cache key
         # generation, curl + ca-certificates for rust-toolchain's
         # rustup install, plus the GTK / libadwaita / sourceview /
-        # OpenSSL / libsecret -dev packages the workspace links, plus
+        # libsecret -dev packages the workspace links, plus
         # libkrb5-dev + clang for the MSSQL driver's integrated
         # (Kerberos/GSSAPI) auth (libgssapi-sys links gssapi_krb5 and
         # runs bindgen).
@@ -54,12 +54,12 @@ jobs:
             libgtk-4-dev \
             libadwaita-1-dev \
             libgtksourceview-5-dev \
-            libssl-dev \
             libsecret-1-dev \
             libkrb5-dev \
             clang
-      - uses: dtolnay/rust-toolchain@1.93
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
         with:
+          toolchain: "1.98"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -67,18 +67,28 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build
-        run: cargo build --workspace
-      # --bins matters: tablepro-app has no lib target, so --lib alone
-      # skips every test in the app crate.
-      - name: Unit tests
-        run: cargo test --workspace --lib --bins
+        run: cargo build --workspace --locked
+      - name: Tests
+        run: cargo test --workspace --locked
 
   integration:
-    name: Driver integration tests (docker)
+    name: Docker tests (${{ matrix.package }})
     runs-on: ubuntu-24.04
     needs: fast
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - tablepro-driver-postgres
+          - tablepro-driver-mysql
+          - tablepro-driver-mssql
+          - tablepro-driver-clickhouse
+        include:
+          # tiberius enables integrated-auth-gssapi, which links krb5 and runs bindgen.
+          - package: tablepro-driver-mssql
+            apt: libkrb5-dev clang
     defaults:
       run:
         working-directory: linux
@@ -89,19 +99,24 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libssl-dev
-      - uses: dtolnay/rust-toolchain@1.93
+          sudo apt-get install -y build-essential pkg-config ${{ matrix.apt }}
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
+        with:
+          toolchain: "1.98"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: linux
+          key: ${{ matrix.package }}
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: cargo-nextest@0.9.144
       - name: Verify docker is available
         run: docker version
-      - name: Postgres integration tests
-        run: cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
-      - name: MySQL integration tests
-        run: cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
-      - name: ClickHouse integration tests
-        run: cargo test --test integration -p tablepro-driver-clickhouse -- --include-ignored --test-threads=1
+      - name: Docker tests
+        run: cargo nextest run --locked --profile ci -p ${{ matrix.package }} --run-ignored only
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-${{ matrix.package }}
+          path: linux/target/nextest/ci/junit.xml
