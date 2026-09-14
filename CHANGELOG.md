@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
+- On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
 
 ### Changed
@@ -50,6 +51,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server and ClickHouse system databases listed as user databases once the database switcher finished loading.
 - Oracle system schemas such as `SYS` and `XDB` listed with user schemas.
 - Dameng `SYSDBA` schema hidden from the sidebar and listed under System.
+- TiDB's `INFORMATION_SCHEMA` and `PERFORMANCE_SCHEMA` listed as user databases on a MySQL or MariaDB connection.
+- SQL Server database size and table count showing the current database's numbers, and no size at 2 GB or more.
+- ClickHouse databases with no tables missing from the database switcher and database statistics.
+
+### Security
+
+- SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
+- The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 
 ## [0.74.0] - 2026-09-13
 

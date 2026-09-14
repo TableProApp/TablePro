@@ -496,6 +496,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      - Plugins/MySQLDriverPlugin/MySQLSystemDatabases.swift
       - Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
@@ -509,6 +510,7 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift

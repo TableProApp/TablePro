@@ -93,6 +93,20 @@ struct PluginDriverAdapterSystemDatabaseTests {
         #expect(result.isSystemDatabase)
     }
 
+    @Test("A MySQL connection counts TiDB's capitalised system databases, but not a name MySQL lets users create")
+    func mysqlConnectionClassifiesTiDBSpellings() async throws {
+        let adapter = makeAdapter(type: .mysql, metadata: [
+            PluginDatabaseMetadata(name: "INFORMATION_SCHEMA"),
+            PluginDatabaseMetadata(name: "METRICS_SCHEMA"),
+            PluginDatabaseMetadata(name: "PERFORMANCE_SCHEMA"),
+            PluginDatabaseMetadata(name: "app")
+        ])
+
+        let result = try await adapter.fetchAllDatabaseMetadata()
+
+        #expect(result.filter(\.isSystemDatabase).map(\.name) == ["INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"])
+    }
+
     @Test("A user database is never classified as a system database")
     func userDatabaseStaysUser() {
         let result = PluginDriverAdapter.databaseMetadata(

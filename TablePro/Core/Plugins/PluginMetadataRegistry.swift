@@ -101,6 +101,11 @@ struct PluginMetadataSnapshot: Sendable {
         /// out of it either fails to load or presents incomplete accounts, which is worse.
         var supportsRemoteDatabaseFile: Bool = false
 
+        /// Whether this type can run its statements on an SSH server against a live database file,
+        /// rather than only fetching a read-only copy. True for SQLite alone today, because the
+        /// remote agent opens the file with the server's `libsqlite3`.
+        var supportsRemoteDatabaseSession: Bool = false
+
         var supportsPrincipalConnectionLimit: Bool = true
 
         static let defaults = CapabilityFlags(
@@ -693,6 +698,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,
+                supportsRemoteDatabaseSession: existingSnapshot?.capabilities
+                    .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true
             ),
