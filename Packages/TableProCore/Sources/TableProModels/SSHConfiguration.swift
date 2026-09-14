@@ -9,6 +9,21 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var privateKeyData: String?
     public var jumpHosts: [SSHJumpHost]
 
+    /// Fields the macOS app stores inside `sshConfigJson` that this model does not use, kept only so
+    /// they survive an iOS sync round trip. Without them, re-encoding a synced connection on iOS
+    /// dropped the macOS `enabled`, remote file path, agent socket and TOTP settings, and the macOS
+    /// app then read the connection back with SSH turned off. Each is optional so a connection this
+    /// model creates omits it and the macOS side keeps inferring `enabled` from a non-empty host.
+    public var macEnabled: Bool?
+    public var macUseSSHConfig: Bool?
+    public var macAgentSocketPath: String?
+    public var macRemoteFilePath: String?
+    public var macRemoteFileAccess: String?
+    public var macTotpMode: String?
+    public var macTotpAlgorithm: String?
+    public var macTotpDigits: Int?
+    public var macTotpPeriod: Int?
+
     public enum SSHAuthMethod: String, Codable, Sendable {
         case password
         case privateKey
@@ -56,8 +71,8 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     // Custom Codable to handle macOS extra fields gracefully
     private enum CodingKeys: String, CodingKey {
         case host, port, username, authMethod, privateKeyPath, privateKeyData, jumpHosts
-        // macOS-only fields we read but ignore
-        case enabled, useSSHConfig, agentSocketPath
+        // macOS fields this model does not use but must preserve through a sync round trip.
+        case enabled, useSSHConfig, agentSocketPath, remoteFilePath, remoteFileAccess
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
     }
 
@@ -70,6 +85,15 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         privateKeyPath = try? container.decode(String.self, forKey: .privateKeyPath)
         privateKeyData = try? container.decode(String.self, forKey: .privateKeyData)
         jumpHosts = (try? container.decode([SSHJumpHost].self, forKey: .jumpHosts)) ?? []
+        macEnabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        macUseSSHConfig = try container.decodeIfPresent(Bool.self, forKey: .useSSHConfig)
+        macAgentSocketPath = try container.decodeIfPresent(String.self, forKey: .agentSocketPath)
+        macRemoteFilePath = try container.decodeIfPresent(String.self, forKey: .remoteFilePath)
+        macRemoteFileAccess = try container.decodeIfPresent(String.self, forKey: .remoteFileAccess)
+        macTotpMode = try container.decodeIfPresent(String.self, forKey: .totpMode)
+        macTotpAlgorithm = try container.decodeIfPresent(String.self, forKey: .totpAlgorithm)
+        macTotpDigits = try container.decodeIfPresent(Int.self, forKey: .totpDigits)
+        macTotpPeriod = try container.decodeIfPresent(Int.self, forKey: .totpPeriod)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -81,6 +105,15 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         try container.encodeIfPresent(privateKeyPath, forKey: .privateKeyPath)
         try container.encodeIfPresent(privateKeyData, forKey: .privateKeyData)
         try container.encode(jumpHosts, forKey: .jumpHosts)
+        try container.encodeIfPresent(macEnabled, forKey: .enabled)
+        try container.encodeIfPresent(macUseSSHConfig, forKey: .useSSHConfig)
+        try container.encodeIfPresent(macAgentSocketPath, forKey: .agentSocketPath)
+        try container.encodeIfPresent(macRemoteFilePath, forKey: .remoteFilePath)
+        try container.encodeIfPresent(macRemoteFileAccess, forKey: .remoteFileAccess)
+        try container.encodeIfPresent(macTotpMode, forKey: .totpMode)
+        try container.encodeIfPresent(macTotpAlgorithm, forKey: .totpAlgorithm)
+        try container.encodeIfPresent(macTotpDigits, forKey: .totpDigits)
+        try container.encodeIfPresent(macTotpPeriod, forKey: .totpPeriod)
     }
 }
 

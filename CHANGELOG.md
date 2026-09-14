@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **View > Zoom In** and **Zoom Out** (`Cmd+=`, `Cmd+-`) in place of Increase and Decrease Text Size, zooming a focused ER or query plan diagram.
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
 - The update window shows the release highlights, with the full changelog one click away.
@@ -29,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
+- SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
+- Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
 - Remote database file reaching the previous server after the connection's host, port, or user was changed.
 - Update preferences overwritten by the app at every launch instead of following the setting.
@@ -63,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Killed remote `VACUUM INTO` snapshot reported as a successful copy.
 - Interrupted remote snapshot files left on the server, now swept on the next fetch.
 - Local working copies of remote databases kept forever, now removed after 30 days unused.
+- Clicks, drags and the hand pointer landing on the wrong table or plan step once a diagram is zoomed.
 
 ### Security
 

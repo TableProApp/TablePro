@@ -288,6 +288,14 @@ public struct ExportableSSHConfig: Codable, Sendable {
     public let totpDigits: Int?
     public let totpPeriod: Int?
 
+    /// The database file on the SSH server, for a file-backed connection reached as a Remote
+    /// Database File. Optional and defaulted so the many importers that never see one keep compiling
+    /// and an export written before this field existed decodes with nil.
+    public let remoteFilePath: String?
+
+    /// How that file is opened, `onServer` or `readOnlyCopy`, as the raw value. Nil means the copy.
+    public let remoteFileAccess: String?
+
     public init(
         enabled: Bool,
         host: String,
@@ -300,7 +308,9 @@ public struct ExportableSSHConfig: Codable, Sendable {
         totpMode: String?,
         totpAlgorithm: String?,
         totpDigits: Int?,
-        totpPeriod: Int?
+        totpPeriod: Int?,
+        remoteFilePath: String? = nil,
+        remoteFileAccess: String? = nil
     ) {
         self.enabled = enabled
         self.host = host
@@ -314,6 +324,8 @@ public struct ExportableSSHConfig: Codable, Sendable {
         self.totpAlgorithm = totpAlgorithm
         self.totpDigits = totpDigits
         self.totpPeriod = totpPeriod
+        self.remoteFilePath = remoteFilePath
+        self.remoteFileAccess = remoteFileAccess
     }
 }
 
