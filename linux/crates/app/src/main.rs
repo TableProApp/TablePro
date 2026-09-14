@@ -16,7 +16,8 @@ fn main() {
         .with_target(false)
         .init();
 
-    i18n::init();
+    // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
+    unsafe { i18n::init() };
 
     // Single-instance gate: belt-and-suspenders flock on top of
     // gtk::Application's DBus-based uniqueness, since the latter

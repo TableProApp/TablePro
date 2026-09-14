@@ -2,8 +2,14 @@ use gettextrs::{LocaleCategory, bind_textdomain_codeset, bindtextdomain, setloca
 
 pub const DOMAIN: &str = "tablepro";
 
-pub fn init() {
-    setlocale(LocaleCategory::LcAll, "");
+/// # Safety
+///
+/// `setlocale` mutates process-global locale state that other threads read
+/// without synchronisation, so this must run before any other thread exists.
+pub unsafe fn init() {
+    unsafe {
+        setlocale(LocaleCategory::LcAll, "");
+    }
     let dir = locale_dir();
     if let Err(e) = bindtextdomain(DOMAIN, dir) {
         tracing::debug!(error = %e, "bindtextdomain failed; falling back to msgid");
