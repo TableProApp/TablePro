@@ -24,8 +24,10 @@ struct DeeplinkImportSheet: View {
             Form {
                 Section {
                     HStack(spacing: 10) {
-                        DatabaseType(rawValue: connection.type).iconImage
-                            .frame(width: 28, height: 28)
+                        ConnectionTypeIcon(
+                            type: DatabaseType(rawValue: connection.type),
+                            size: ConnectionIconMetrics.row
+                        )
                         Text(DatabaseType(rawValue: connection.type).displayName)
                             .font(.headline)
                     }

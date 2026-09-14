@@ -63,8 +63,9 @@ struct GeneralPaneView: View {
                 HStack(spacing: 8) {
                     type.iconImage
                         .renderingMode(.template)
+                        .font(.system(size: ConnectionIconMetrics.symbolPoints(ConnectionIconMetrics.row)))
                         .foregroundStyle(type.themeColor)
-                        .frame(width: 16, height: 16)
+                        .frame(width: ConnectionIconMetrics.row, height: ConnectionIconMetrics.row)
                     Text(type.rawValue)
                     Spacer(minLength: 8)
                     Button(String(localized: "Change…")) {

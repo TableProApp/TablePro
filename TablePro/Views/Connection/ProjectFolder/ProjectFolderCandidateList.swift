@@ -28,8 +28,7 @@ struct ProjectFolderCandidateRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            candidate.parsedURL.type.iconImage
-                .frame(width: 16, height: 16)
+            ConnectionTypeIcon(type: candidate.parsedURL.type, size: ConnectionIconMetrics.row)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: destination)

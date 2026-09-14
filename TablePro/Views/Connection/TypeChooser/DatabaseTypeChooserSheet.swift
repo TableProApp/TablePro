@@ -163,8 +163,9 @@ private struct DatabaseTypeChooserRow: View {
             /// returns an SF Symbol.
             type.iconImage
                 .renderingMode(.template)
+                .font(.system(size: ConnectionIconMetrics.symbolPoints(ConnectionIconMetrics.chooser)))
                 .foregroundStyle(type.themeColor)
-                .frame(width: 26, height: 26)
+                .frame(width: ConnectionIconMetrics.chooser, height: ConnectionIconMetrics.chooser)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {

@@ -13,8 +13,10 @@ internal struct WelcomeExternalConnectionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                DatabaseType(rawValue: linked.connection.type).iconImage
-                    .frame(width: 28, height: 28)
+                ConnectionTypeIcon(
+                    type: DatabaseType(rawValue: linked.connection.type),
+                    size: ConnectionIconMetrics.row
+                )
                 Image(systemName: badgeSystemImage)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

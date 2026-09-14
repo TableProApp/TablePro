@@ -57,9 +57,9 @@ struct WelcomeConnectionRow: View {
         HStack {
             connection.type.iconImage
                 .renderingMode(.template)
-                .font(.title3)
+                .font(.system(size: ConnectionIconMetrics.symbolPoints(ConnectionIconMetrics.row)))
                 .foregroundStyle(connection.brandColor)
-                .frame(width: 18, height: 18)
+                .frame(width: ConnectionIconMetrics.row, height: ConnectionIconMetrics.row)
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {

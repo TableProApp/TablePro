@@ -1,16 +1,23 @@
 {
   "fill" : {
-    "automatic-gradient" : "srgb:1.00000,0.57637,0.00000,1.00000"
+    "automatic-gradient" : "srgb:0.00000,0.44706,1.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
           "fill" : {
-            "solid" : "display-p3:0.99736,1.00000,0.97886,1.00000"
+            "solid" : "srgb:0.00000,0.94902,0.81961,1.00000"
           },
-          "image-name" : "foreground.svg",
-          "name" : "foreground"
+          "image-name" : "disc.svg",
+          "name" : "disc"
+        },
+        {
+          "fill" : {
+            "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+          },
+          "image-name" : "cylinder.svg",
+          "name" : "cylinder"
         }
       ],
       "position" : {

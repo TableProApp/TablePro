@@ -37,8 +37,10 @@ struct ConnectionImportPreviewList: View {
             .toggleStyle(.checkbox)
             .labelsHidden()
 
-            DatabaseType(rawValue: item.connection.type).iconImage
-                .frame(width: 18, height: 18)
+            ConnectionTypeIcon(
+                type: DatabaseType(rawValue: item.connection.type),
+                size: ConnectionIconMetrics.row
+            )
 
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
