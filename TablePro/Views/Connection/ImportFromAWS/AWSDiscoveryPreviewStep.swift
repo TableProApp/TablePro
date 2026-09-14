@@ -1,15 +1,10 @@
-//
-//  ImportFromAppPreviewStep.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProImport
 
-struct ImportFromAppPreviewStep: View {
+struct AWSDiscoveryPreviewStep: View {
     let preview: ConnectionImportPreview
-    let sourceName: String
-    let credentialsAborted: Bool
+    let notice: String?
+    let deselectedHosts: Set<String>
     let onBack: () -> Void
     var onImported: ((Int) -> Void)?
 
@@ -20,12 +15,13 @@ struct ImportFromAppPreviewStep: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if credentialsAborted {
-                credentialsAbortedBanner
+            if let notice {
+                noticeBanner(notice)
             }
             Divider()
             ConnectionImportPreviewList(
                 items: preview.items,
+                allowsReplace: false,
                 selectedIds: $selectedIds,
                 duplicateResolutions: $duplicateResolutions
             )
@@ -35,24 +31,9 @@ struct ImportFromAppPreviewStep: View {
         .onAppear { selectReadyItems() }
     }
 
-    private var credentialsAbortedBanner: some View {
-        Label {
-            Text(String(localized: "Some passwords were not read. You can enter them in the connection editor after import."))
-                .font(.caption)
-        } icon: {
-            Image(systemName: "key.slash")
-                .foregroundStyle(.orange)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12))
-    }
-
-    // MARK: - Header
-
     private var header: some View {
         HStack {
-            Text(String(format: String(localized: "Import from %@"), sourceName))
+            Text("Databases found in AWS")
                 .font(.body.weight(.semibold))
             Spacer()
             Toggle(String(localized: "Select All"), isOn: Binding(
@@ -72,7 +53,20 @@ struct ImportFromAppPreviewStep: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Footer
+    private func noticeBanner(_ notice: String) -> some View {
+        Label {
+            Text(verbatim: notice)
+                .font(.caption)
+                .lineLimit(3)
+                .help(notice)
+        } icon: {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.orange)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.12))
+    }
 
     private var footer: some View {
         HStack {
@@ -95,10 +89,12 @@ struct ImportFromAppPreviewStep: View {
         .padding(12)
     }
 
-    // MARK: - Actions
-
     private func selectReadyItems() {
-        selectedIds.formUnion(preview.items.filter(\.status.isSelectedByDefault).map(\.id))
+        let ready = preview.items.filter {
+            $0.status.isSelectedByDefault
+                && !deselectedHosts.contains($0.connection.host.lowercased())
+        }
+        selectedIds.formUnion(ready.map(\.id))
     }
 
     private func performImport() {

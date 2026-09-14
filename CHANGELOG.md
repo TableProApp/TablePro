@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favorites and Recent sections, sorting, drag and drop into groups, inline rename and tag search tokens in the welcome window.
 - **File > New Group…**, **File > Rename** and **View > Sort Connections By** for the welcome window.
 - Favorites, Recent, nested groups, sorting and tag search tokens in the iOS connection list.
+- **File > Import > Import from AWS…** for RDS instances and Aurora clusters, imported as connections. (#2852)
 
 ### Changed
 
@@ -93,12 +94,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fit to Window on an ER diagram fitting empty space left behind by a dragged table.
 - Query plan mode, selected step, zoom and scroll lost on a mode or editor tab switch, or zoom carried over to another plan.
 - Zoom Out on a diagram at 5% jumping to 1%.
+- An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
+- AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
+- AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
 
 ### Security
 
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 - Remote `VACUUM INTO` snapshot created world-readable beside a database with stricter permissions.
+- AWS SSO access token cached world-readable in `~/.aws/sso/cache`.
 
 ## [0.74.0] - 2026-09-13
 

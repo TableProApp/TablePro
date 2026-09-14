@@ -57,6 +57,7 @@ internal struct WelcomeSidebarPane: View {
             onOpenFile: { NSApp.sendAction(#selector(AppDelegate.openFile(_:)), to: nil, from: nil) },
             onImportFromURL: { viewModel.urlImportPresented = true },
             onImportFromApp: { viewModel.importConnectionsFromApp() },
+            onImportFromAWS: { viewModel.importConnectionsFromAWS() },
             onImportConnectionsFile: { viewModel.importConnectionsFromFile() },
             onOpenProjectFolder: { viewModel.openProjectFolder() }
         )

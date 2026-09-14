@@ -141,6 +141,10 @@ enum FileMenuBuilder {
                 String(localized: "Import from Other App…"),
                 action: #selector(AppDelegate.importFromOtherApp(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Import from AWS…"),
+                action: #selector(AppDelegate.importFromAWS(_:))
+            ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Open Project Folder…"),
