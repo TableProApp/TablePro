@@ -18,6 +18,7 @@ mod registry;
 mod server_name_override;
 pub mod sql_ddl;
 pub mod sql_dialect;
+pub mod sql_syntax;
 mod ssh_failure;
 mod timeout_phase;
 mod tls_capabilities;
