@@ -31,7 +31,7 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
     private var columnIdentities: [String] = []
     private var builtColumns: [ERDiagramColumnElement]?
 
-    func configure(owner: NSView, node: ERTableNode, rect: CGRect, relationships: String?) {
+    func configure(owner: NSView, node: ERTableNode, rect: CGRect, relationships: String?, isSelected: Bool) {
         self.owner = owner
         self.rect = rect
 
@@ -41,6 +41,7 @@ final class ERDiagramNodeElement: NSAccessibilityElement, @unchecked Sendable {
         setAccessibilityValue(String(format: String(localized: "%d columns"), node.displayColumns.count))
         setAccessibilityHelp(relationships)
         setAccessibilityParent(owner)
+        setAccessibilitySelected(isSelected)
 
         // A drag rewrites the rect on every pointer event, and the column elements read their row
         // from this one, so they only have to be rebuilt when the columns themselves change.
@@ -139,7 +140,8 @@ final class ERDiagramAccessibilityTree {
                 owner: owner,
                 node: node,
                 rect: rect,
-                relationships: joins.description(of: node.tableName)
+                relationships: joins.description(of: node.tableName),
+                isSelected: scene.selectedNodeId == node.id
             )
             kept[node.id] = element
             next.append(element)

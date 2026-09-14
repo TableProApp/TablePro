@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
+- Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
+- Remote database file reaching the previous server after the connection's host, port, or user was changed.
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
@@ -61,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Killed remote `VACUUM INTO` snapshot reported as a successful copy.
 - Interrupted remote snapshot files left on the server, now swept on the next fetch.
 - Local working copies of remote databases kept forever, now removed after 30 days unused.
+- Clicks, drags and the hand pointer landing on the wrong table or plan step once a diagram is zoomed.
 
 ### Security
 
