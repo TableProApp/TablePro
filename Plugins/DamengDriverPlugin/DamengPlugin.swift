@@ -29,7 +29,7 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
     static let databaseGroupingStrategy: GroupingStrategy = .hierarchicalSchema
     static let pathFieldRole: PathFieldRole = .database
-    static let systemSchemaNames = ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"]
+    static let systemSchemaNames = DamengSystemSchemas.listed
     static let supportsCascadeDrop = true
     static let supportsDropSchema = true
     static let supportsForeignKeyDisable = false
@@ -332,8 +332,8 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func dropSchema(name: String) async throws {
-        guard !DamengPlugin.systemSchemaNames.contains(name.uppercased()) else {
-            throw DamengError(message: String(localized: "Dameng system schemas cannot be dropped."))
+        guard !DamengSystemSchemas.isProtectedFromDrop(name) else {
+            throw DamengError(message: String(localized: "Dameng's built-in schemas cannot be dropped."))
         }
         guard name.caseInsensitiveCompare(activeSchema ?? "") != .orderedSame else {
             throw DamengError(message: String(localized: "Switch away from a schema before dropping it."))

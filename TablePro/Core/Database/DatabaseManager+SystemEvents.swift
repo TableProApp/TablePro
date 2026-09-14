@@ -60,6 +60,8 @@ extension DatabaseManager {
                 await handleTunnelCommandDied(connectionId: connectionId)
             case .remoteFile:
                 break
+            case .remoteDatabaseSession:
+                await handleRemoteSQLiteTunnelDied(connectionId: connectionId)
             }
         }
     }

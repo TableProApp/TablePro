@@ -106,7 +106,10 @@ extension PluginMetadataRegistry {
                 containerEntityName: "Database",
                 defaultPrimaryKeyColumn: nil,
                 immutableColumns: [],
-                systemDatabaseNames: ["INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys"],
+                systemDatabaseNames: [
+                    "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys",
+                    "information_schema", "performance_schema"
+                ],
                 systemSchemaNames: [],
                 fileExtensions: [],
                 databaseGroupingStrategy: .byDatabase,

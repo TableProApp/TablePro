@@ -280,4 +280,45 @@ struct MySQLServerFlavorTests {
         #expect(MySQLServerVersion.hasGenerationExpression(banner: "5.7.25", flavor: flavor))
         #expect(!MySQLServerVersion.quotesColumnDefault(banner: "5.7.25", flavor: flavor))
     }
+
+    /// A MySQL or MariaDB connection resolves its flavor from the banner, so it can land on MariaDB or TiDB, and
+    /// every name those servers report has to be on its list, or the sidebar lists it as a user database.
+    @Test("A MySQL or MariaDB connection lists what MySQL, MariaDB and TiDB report, except METRICS_SCHEMA")
+    func mysqlTypeCoversEveryReachableFlavor() {
+        let listed = Set(MySQLSystemDatabases.names(forVariant: nil))
+        for flavor in [MySQLServerFlavor.mysql, .mariadb, .tidb(version: nil)] {
+            let missing = Set(flavor.systemDatabaseNames).subtracting(listed).subtracting(["METRICS_SCHEMA"])
+            #expect(missing.isEmpty, "\(flavor) reports \(missing.sorted()) that a MySQL connection does not list")
+        }
+    }
+
+    @Test("A TiDB connection lists what TiDB reports, and what MySQL reports when the version probe fails")
+    func tidbTypeCoversEveryReachableFlavor() {
+        let listed = Set(MySQLSystemDatabases.names(forVariant: MySQLServerFlavor.tidbVariant))
+        for flavor in [MySQLServerFlavor.tidb(version: nil), .mysql, .mariadb] {
+            let missing = Set(flavor.systemDatabaseNames).subtracting(listed)
+            #expect(missing.isEmpty, "\(flavor) reports \(missing.sorted()) that a TiDB connection does not list")
+        }
+    }
+
+    /// Measured on MySQL 8.4 with lower_case_table_names 0: CREATE DATABASE succeeds for each of these.
+    @Test("A name MySQL lets a user create is never a system database on a MySQL connection")
+    func userCreatableNamesStayUserDatabases() {
+        let listed = MySQLSystemDatabases.names(forVariant: nil)
+        for name in ["METRICS_SCHEMA", "metrics_schema", "MYSQL", "SYS"] {
+            #expect(!listed.contains(name), "\(name) is a database a MySQL user can create")
+        }
+    }
+
+    @Test("Databend and OceanBase connections use their own server's list")
+    func singleFlavorTypesUseTheirFlavor() {
+        #expect(
+            MySQLSystemDatabases.names(forVariant: MySQLServerFlavor.databendVariant)
+                == MySQLServerFlavor.databend.systemDatabaseNames
+        )
+        #expect(
+            MySQLSystemDatabases.names(forVariant: MySQLServerFlavor.oceanbaseVariant)
+                == MySQLServerFlavor.oceanbase(version: nil).systemDatabaseNames
+        )
+    }
 }

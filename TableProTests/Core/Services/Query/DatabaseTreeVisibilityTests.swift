@@ -127,12 +127,12 @@ struct DatabaseTreeVisibilityTests {
     @Test("The schema being browsed stays listed while system schemas are hidden")
     func activeSystemSchemaStaysListed() {
         let visible = DatabaseTreeVisibility.visibleSchemas(
-            ["APP", "SYS", "SYSDBA"],
-            systemSchemas: ["SYS", "SYSDBA"],
-            activeSchema: "SYSDBA",
+            ["APP", "SYS", "CTISYS"],
+            systemSchemas: ["SYS", "CTISYS"],
+            activeSchema: "CTISYS",
             showsSystem: false
         )
-        #expect(visible == ["APP", "SYSDBA"])
+        #expect(visible == ["APP", "CTISYS"])
     }
 
     @Test("An empty active schema name is treated as absent")

@@ -49,7 +49,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
-    static let systemDatabaseNames: [String] = ["information_schema", "mysql", "performance_schema", "sys"]
+    static let systemDatabaseNames: [String] = MySQLSystemDatabases.mysql
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT"],
         "Float": ["FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL"],

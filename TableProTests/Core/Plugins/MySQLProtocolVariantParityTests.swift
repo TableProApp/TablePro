@@ -45,11 +45,15 @@ struct MySQLProtocolVariantParityTests {
         #expect(DataWriteRowCounts.areMeaningful(for: type) == !Self.outsideMySQLDialect.contains(type))
     }
 
-    @Test("The plugin flavor and the registry name the same system databases")
+    /// The app classifies a database list by the connection type's registry entry and the driver flags metadata by
+    /// the same type's plugin list. Classifying by the flavor instead let a TiDB server saved as MySQL disagree.
+    @Test("The registry names the system databases the plugin flags for each connection type")
     func systemDatabaseListsAgree() {
         let manager = PluginManager.shared
-        #expect(manager.systemDatabaseNames(for: .tidb) == MySQLServerFlavor.tidb(version: nil).systemDatabaseNames)
-        #expect(manager.systemDatabaseNames(for: .databend) == MySQLServerFlavor.databend.systemDatabaseNames)
-        #expect(manager.systemDatabaseNames(for: .oceanbase) == MySQLServerFlavor.oceanbase(version: nil).systemDatabaseNames)
+        #expect(manager.systemDatabaseNames(for: .mysql) == MySQLSystemDatabases.names(forVariant: nil))
+        #expect(manager.systemDatabaseNames(for: .mariadb) == MySQLSystemDatabases.names(forVariant: nil))
+        for type in Self.variants where type != .mariadb {
+            #expect(manager.systemDatabaseNames(for: type) == MySQLSystemDatabases.names(forVariant: type.rawValue))
+        }
     }
 }
