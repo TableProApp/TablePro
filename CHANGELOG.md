@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
+- Remote database file reaching the previous server after the connection's host, port, or user was changed.
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
