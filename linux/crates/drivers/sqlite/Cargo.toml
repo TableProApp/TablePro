@@ -14,11 +14,8 @@ tablepro-core = { path = "../../core" }
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
-rust_decimal.workspace = true
-serde_json.workspace = true
 sqlx = { workspace = true, features = ["sqlite"] }
 tokio.workspace = true
-uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
