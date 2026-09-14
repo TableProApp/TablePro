@@ -86,6 +86,32 @@ struct PasswordSourceTemplateTests {
         #expect(command == "vault kv get -field='password' 'secret/data/db'")
     }
 
+    @Test("The AWS command names the profile, so one machine can reach several accounts")
+    func awsCommandCarriesProfileAndRegion() {
+        let command = PasswordSourceResolver.effectiveCommand(
+            for: .awsSecretsManager(
+                secretId: "/ops/product/aurora/product-team-6/productadmin",
+                jsonKey: "password",
+                profile: "hms-product",
+                region: "ap-southeast-1"
+            ),
+            context: context
+        )
+        #expect(command == "aws secretsmanager get-secret-value "
+            + "--secret-id '/ops/product/aurora/product-team-6/productadmin' "
+            + "--query SecretString --output text --profile 'hms-product' --region 'ap-southeast-1'")
+    }
+
+    @Test("No profile leaves the command as the environment's own")
+    func awsCommandWithoutProfile() {
+        let command = PasswordSourceResolver.effectiveCommand(
+            for: .awsSecretsManager(secretId: "prod/db", jsonKey: nil, profile: nil, region: nil),
+            context: context
+        )
+        #expect(command == "aws secretsmanager get-secret-value --secret-id 'prod/db' "
+            + "--query SecretString --output text")
+    }
+
     @Test("The shared template survives a trip through connections.json")
     func codableRoundTrip() throws {
         let data = try JSONEncoder().encode(PasswordSource.sharedTemplate)

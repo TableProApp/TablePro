@@ -16,8 +16,10 @@ struct PasswordSourceDraftTests {
         PasswordSource.sharedTemplate,
         PasswordSource.onePassword(reference: "op://Vault/Database/password"),
         PasswordSource.vault(path: "secret/data/db", field: "password"),
-        PasswordSource.awsSecretsManager(secretId: "prod/db", jsonKey: "password"),
-        PasswordSource.awsSecretsManager(secretId: "prod/db", jsonKey: nil),
+        PasswordSource.awsSecretsManager(
+            secretId: "prod/db", jsonKey: "password", profile: "hms-product", region: "ap-southeast-1"
+        ),
+        PasswordSource.awsSecretsManager(secretId: "prod/db", jsonKey: nil, profile: nil, region: nil),
     ])
     func roundTrips(source: PasswordSource) {
         let draft = PasswordSourceDraft(source: source, promptsForPassword: false)

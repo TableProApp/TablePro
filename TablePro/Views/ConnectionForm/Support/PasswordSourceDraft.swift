@@ -57,6 +57,8 @@ struct PasswordSourceDraft: Equatable {
     var vaultField: String = "password"
     var awsSecretId: String = ""
     var awsJsonKey: String = ""
+    var awsProfile: String = ""
+    var awsRegion: String = ""
     var filePath: String = ""
     var environmentVariable: String = ""
 
@@ -88,10 +90,12 @@ struct PasswordSourceDraft: Equatable {
             mode = .vault
             vaultPath = path
             vaultField = field
-        case let .awsSecretsManager(secretId, jsonKey):
+        case let .awsSecretsManager(secretId, jsonKey, profile, region):
             mode = .awsSecretsManager
             awsSecretId = secretId
             awsJsonKey = jsonKey ?? ""
+            awsProfile = profile ?? ""
+            awsRegion = region ?? ""
         }
     }
 
@@ -113,7 +117,12 @@ struct PasswordSourceDraft: Equatable {
             return .vault(path: path, field: trimmed(vaultField) ?? "password")
         case .awsSecretsManager:
             guard let secretId = trimmed(awsSecretId) else { return nil }
-            return .awsSecretsManager(secretId: secretId, jsonKey: trimmed(awsJsonKey))
+            return .awsSecretsManager(
+                secretId: secretId,
+                jsonKey: trimmed(awsJsonKey),
+                profile: trimmed(awsProfile),
+                region: trimmed(awsRegion)
+            )
         case .file:
             return trimmed(filePath).map { .file(path: $0) }
         case .environment:

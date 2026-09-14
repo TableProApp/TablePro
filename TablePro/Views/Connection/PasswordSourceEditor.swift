@@ -78,7 +78,11 @@ struct PasswordSourceEditor: View {
                 .accessibilityIdentifier("connection-form-password-aws-secret")
             TextField(String(localized: "JSON key (optional)"), text: $draft.awsJsonKey)
                 .accessibilityIdentifier("connection-form-password-aws-key")
-            caption(String(localized: "Runs the AWS CLI with your current profile."))
+            TextField(String(localized: "Profile (optional)"), text: $draft.awsProfile)
+                .accessibilityIdentifier("connection-form-password-aws-profile")
+            TextField(String(localized: "Region (optional)"), text: $draft.awsRegion)
+                .accessibilityIdentifier("connection-form-password-aws-region")
+            caption(String(localized: "Name a profile to reach an account other than the one your environment selects."))
         case .file:
             TextField(String(localized: "File path"), text: $draft.filePath)
                 .accessibilityIdentifier("connection-form-password-file")

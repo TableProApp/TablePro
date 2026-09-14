@@ -222,7 +222,7 @@ struct PasswordSourceResolverTests {
     @Test("AWS Secrets Manager reference builds an aws command")
     func awsCommand() {
         let command = PasswordSourceResolver.externalCommand(
-            for: .awsSecretsManager(secretId: "prod/db", jsonKey: "password")
+            for: .awsSecretsManager(secretId: "prod/db", jsonKey: "password", profile: nil, region: nil)
         )
         #expect(command == "aws secretsmanager get-secret-value --secret-id 'prod/db' --query SecretString --output text")
     }
@@ -242,6 +242,27 @@ struct PasswordSourceResolverTests {
             "password", from: #"{"username":"admin","password":"s3cret"}"#
         )
         #expect(value == "s3cret")
+    }
+
+    /// The shape an RDS-managed Aurora secret actually has. It carries the whole endpoint beside
+    /// the password, and `port` is a string rather than a number, so the field the user names is
+    /// what decides the answer and nothing about the rest of the document may reach it.
+    @Test("Reads one field out of an Aurora secret")
+    func extractsFromAuroraSecret() throws {
+        let secret = """
+        {
+          "cluster_endpoint": "product-team-6.cluster-example.ap-southeast-1.rds.amazonaws.com",
+          "cluster_identifier": "product-team-6",
+          "engine": "mysql",
+          "password": "s3cret",
+          "port": "3306",
+          "strategy": "rds_master_api",
+          "username": "productadmin"
+        }
+        """
+        #expect(try PasswordSourceResolver.extractJsonField("password", from: secret) == "s3cret")
+        #expect(try PasswordSourceResolver.extractJsonField("username", from: secret) == "productadmin")
+        #expect(try PasswordSourceResolver.extractJsonField("port", from: secret) == "3306")
     }
 
     @Test("Throws when the JSON key is missing")

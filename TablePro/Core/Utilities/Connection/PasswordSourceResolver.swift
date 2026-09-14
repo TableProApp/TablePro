@@ -92,7 +92,7 @@ enum PasswordSourceResolver {
             return try await resolveCommand(shell: shell, timeoutSeconds: commandTimeoutSeconds)
         case .onePassword, .vault:
             return try await resolveExternalTool(source)
-        case let .awsSecretsManager(_, jsonKey):
+        case let .awsSecretsManager(_, jsonKey, _, _):
             let secret = try await resolveExternalTool(source)
             guard let jsonKey, !jsonKey.isEmpty else { return secret }
             return try extractJsonField(jsonKey, from: secret)
@@ -148,9 +148,16 @@ enum PasswordSourceResolver {
             return "op read --no-newline \(shellQuote(reference))"
         case let .vault(path, field):
             return "vault kv get -field=\(shellQuote(field)) \(shellQuote(path))"
-        case let .awsSecretsManager(secretId, _):
-            return "aws secretsmanager get-secret-value --secret-id \(shellQuote(secretId)) "
+        case let .awsSecretsManager(secretId, _, profile, region):
+            var command = "aws secretsmanager get-secret-value --secret-id \(shellQuote(secretId)) "
                 + "--query SecretString --output text"
+            if let profile, !profile.isEmpty {
+                command += " --profile \(shellQuote(profile))"
+            }
+            if let region, !region.isEmpty {
+                command += " --region \(shellQuote(region))"
+            }
+            return command
         }
     }
 

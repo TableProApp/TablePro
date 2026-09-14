@@ -20,8 +20,16 @@ struct PasswordSourceCodableTests {
         #expect(try shape(.onePassword(reference: "op://v/i/f")) == ["kind": "onePassword", "reference": "op://v/i/f"])
         #expect(try shape(.vault(path: "secret/db", field: "password"))
             == ["kind": "vault", "path": "secret/db", "field": "password"])
-        #expect(try shape(.awsSecretsManager(secretId: "prod/db", jsonKey: "password"))
-            == ["kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password"])
+        #expect(try shape(.awsSecretsManager(
+            secretId: "prod/db", jsonKey: "password", profile: "hms-product", region: "ap-southeast-1"
+        )) == [
+            "kind": "awsSecretsManager", "secretId": "prod/db", "jsonKey": "password",
+            "profile": "hms-product", "region": "ap-southeast-1",
+        ])
+        /// An absent profile stays absent on the wire rather than encoding as an empty string,
+        /// so a store written before the field existed decodes to exactly what it meant.
+        #expect(try shape(.awsSecretsManager(secretId: "prod/db", jsonKey: nil, profile: nil, region: nil))
+            == ["kind": "awsSecretsManager", "secretId": "prod/db"])
     }
 
     private func shape(_ source: PasswordSource) throws -> [String: String] {
@@ -36,8 +44,10 @@ struct PasswordSourceCodableTests {
             .command(shell: "op read op://vault/db/password"),
             .onePassword(reference: "op://vault/db/password"),
             .vault(path: "secret/data/db", field: "password"),
-            .awsSecretsManager(secretId: "prod/db", jsonKey: "password"),
-            .awsSecretsManager(secretId: "prod/db", jsonKey: nil),
+            .awsSecretsManager(
+                secretId: "prod/db", jsonKey: "password", profile: "hms-product", region: "ap-southeast-1"
+            ),
+            .awsSecretsManager(secretId: "prod/db", jsonKey: nil, profile: nil, region: nil),
         ]
         for source in sources {
             let decoded = try decoder.decode(PasswordSource.self, from: encoder.encode(source))

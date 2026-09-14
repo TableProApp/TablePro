@@ -18,12 +18,15 @@ enum PasswordSource: Codable, Hashable, Sendable {
     case sharedTemplate
     case onePassword(reference: String)
     case vault(path: String, field: String)
-    case awsSecretsManager(secretId: String, jsonKey: String?)
+    /// `profile` and `region` are what make this usable on a machine with more than one AWS
+    /// account. Without them the command is fixed, and a fork of it per connection is the only way
+    /// to reach a second account, which is the whole reason the shell command mode exists.
+    case awsSecretsManager(secretId: String, jsonKey: String?, profile: String?, region: String?)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PasswordSource")
 
     private enum CodingKeys: String, CodingKey {
-        case kind, path, variable, shell, reference, field, secretId, jsonKey
+        case kind, path, variable, shell, reference, field, secretId, jsonKey, profile, region
     }
 
     private enum Kind: String {
@@ -52,7 +55,9 @@ enum PasswordSource: Codable, Hashable, Sendable {
         case Kind.awsSecretsManager.rawValue:
             self = .awsSecretsManager(
                 secretId: try container.decode(String.self, forKey: .secretId),
-                jsonKey: try container.decodeIfPresent(String.self, forKey: .jsonKey)
+                jsonKey: try container.decodeIfPresent(String.self, forKey: .jsonKey),
+                profile: try container.decodeIfPresent(String.self, forKey: .profile),
+                region: try container.decodeIfPresent(String.self, forKey: .region)
             )
         default:
             throw DecodingError.dataCorruptedError(
@@ -84,10 +89,12 @@ enum PasswordSource: Codable, Hashable, Sendable {
             try container.encode(Kind.vault.rawValue, forKey: .kind)
             try container.encode(path, forKey: .path)
             try container.encode(field, forKey: .field)
-        case let .awsSecretsManager(secretId, jsonKey):
+        case let .awsSecretsManager(secretId, jsonKey, profile, region):
             try container.encode(Kind.awsSecretsManager.rawValue, forKey: .kind)
             try container.encode(secretId, forKey: .secretId)
             try container.encodeIfPresent(jsonKey, forKey: .jsonKey)
+            try container.encodeIfPresent(profile, forKey: .profile)
+            try container.encodeIfPresent(region, forKey: .region)
         }
     }
 
