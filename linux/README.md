@@ -56,11 +56,7 @@ cd linux
 cargo run -p tablepro-app
 ```
 
-Local CI mirror (fmt + clippy + build + tests):
-
-```bash
-./scripts/ci-local.sh
-```
+Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
 
