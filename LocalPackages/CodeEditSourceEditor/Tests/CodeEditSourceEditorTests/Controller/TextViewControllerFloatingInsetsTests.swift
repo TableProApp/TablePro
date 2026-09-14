@@ -264,4 +264,18 @@ struct TextViewControllerFloatingInsetsTests {
 
         #expect(controller.textView.layoutManager.lineStorage.maxWidth == wide)
     }
+
+    @Test("A long line scrolled a few points in stays there when the editor is laid out again (#2841)")
+    func layingOutKeepsAPositionNearTheLineStart() {
+        load(longLine)
+        controller.textView.scroll(NSPoint(x: leadingEdge + 20, y: 0))
+        let scrolled = origin
+        #expect(abs(scrolled - (leadingEdge + 20)) <= 0.5, "Scrolled to \(scrolled), wanted \(leadingEdge + 20)")
+
+        controller.scrollView.tile()
+        controller.scrollView.needsLayout = true
+        window.layoutIfNeeded()
+
+        #expect(origin == scrolled, "Laying out moved the view from \(scrolled) to \(origin)")
+    }
 }

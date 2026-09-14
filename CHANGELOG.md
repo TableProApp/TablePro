@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
 - Remote database file reaching the previous server after the connection's host, port, or user was changed.
 - Update preferences overwritten by the app at every launch instead of following the setting.

@@ -14,12 +14,12 @@ import CodeEditTextView
 /// scroll position, autoscrolling during a drag and re-clamping after the document narrows then all stop at the edge
 /// of the chrome, instead of carrying the start of each line underneath the gutter.
 ///
-/// The reservation is added in ``tile()``, on top of the insets AppKit works out for the clip view on that same tile:
-/// the scroll view's own ``contentInsets`` and title bar, and the room a ruler, a header or a legacy scroller takes.
-/// The clip view computes those only while it adjusts its insets automatically, so it does so for the length of
-/// `super.tile()` and stops before the reservation is written, or the next tile would drop it.
+/// ``SourceEditorClipView`` adds the reservation on top of the insets AppKit works out, so laying the scroll view out
+/// never moves the clip view. AppKit tiles at the start of every scroll gesture, and a tile that put the clip view
+/// back where it thought it belonged snapped a scroll that had just left the leading edge, and the bounce past that
+/// edge, straight back to it.
 public final class SourceEditorScrollView: NSScrollView {
-    /// Where the clip view sits horizontally before a tile, so it can be put back afterwards.
+    /// Where the clip view sits horizontally before the reservation changes, so it can be put back afterwards.
     private enum HorizontalPlacement {
         case leadingEdge
         case trailingEdge
@@ -30,38 +30,38 @@ public final class SourceEditorScrollView: NSScrollView {
     /// edge is only ever reached to within a fraction of a point.
     private static let edgeTolerance: CGFloat = 0.5
 
+    private let reservingClipView = SourceEditorClipView()
+
+    override public init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        contentView = reservingClipView
+    }
+
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        contentView = reservingClipView
+    }
+
     /// The widths of the views floating along the leading and trailing edges.
-    public internal(set) var floatingSubviewInsets: HorizontalEdgeInsets = .zero {
-        didSet {
-            guard floatingSubviewInsets != oldValue else { return }
-            tile()
+    ///
+    /// A view resting at an edge stays at that edge when they change, so a gutter that gains a digit moves the text over
+    /// rather than covering the start of every line, and a minimap appearing does not cover the end of the widest line.
+    /// A view scrolled anywhere else keeps its offset.
+    public internal(set) var floatingSubviewInsets: HorizontalEdgeInsets {
+        get {
+            reservingClipView.floatingSubviewInsets
+        }
+        set {
+            guard newValue != reservingClipView.floatingSubviewInsets else { return }
+            let placement = horizontalPlacement()
+            reservingClipView.floatingSubviewInsets = newValue
+            restore(placement)
         }
     }
 
-    override public func tile() {
-        let placement = horizontalPlacement()
-
-        contentView.automaticallyAdjustsContentInsets = true
-        super.tile()
-        let computed = contentView.contentInsets
-        contentView.automaticallyAdjustsContentInsets = false
-        contentView.contentInsets = NSEdgeInsets(
-            top: computed.top,
-            left: computed.left + floatingSubviewInsets.left,
-            bottom: computed.bottom,
-            right: computed.right + floatingSubviewInsets.right
-        )
-
-        restore(placement)
-    }
-
-    /// A clip view that shows the start of the document, even partly under the leading reservation, is at the leading
-    /// edge and stays there, so a gutter that gains a digit moves the text over rather than covering the start of
-    /// every line. One showing the end of the widest line stays at the trailing edge, so a minimap appearing does not
-    /// cover it. Anywhere else keeps its offset.
     private func horizontalPlacement() -> HorizontalPlacement {
         let bounds = contentView.bounds
-        if bounds.minX <= Self.edgeTolerance {
+        if bounds.minX <= -contentView.contentInsets.left + Self.edgeTolerance {
             return .leadingEdge
         }
         let furthest = NSRect(origin: NSPoint(x: documentView?.frame.maxX ?? bounds.minX, y: bounds.minY), size: bounds.size)
@@ -71,7 +71,7 @@ public final class SourceEditorScrollView: NSScrollView {
 
     private func restore(_ placement: HorizontalPlacement) {
         guard let documentView else { return }
-        let x = switch placement {
+        let targetX = switch placement {
         case .leadingEdge:
             -contentView.contentInsets.left
         case .trailingEdge:
@@ -79,7 +79,7 @@ public final class SourceEditorScrollView: NSScrollView {
         case .offset(let offset):
             offset
         }
-        documentView.scroll(NSPoint(x: x, y: contentView.bounds.minY))
+        documentView.scroll(NSPoint(x: targetX, y: contentView.bounds.minY))
         reflectScrolledClipView(contentView)
     }
 }

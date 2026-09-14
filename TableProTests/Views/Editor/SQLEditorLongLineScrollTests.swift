@@ -49,4 +49,18 @@ struct SQLEditorLongLineScrollTests {
         let gutterMaxX = gutter.convert(NSPoint(x: gutter.bounds.maxX, y: 0), to: nil).x
         #expect(characterX >= gutterMaxX - 0.5, "The line starts \(gutterMaxX - characterX)pt under the gutter")
     }
+
+    @Test("A long line scrolled a few points in stays there when the editor is laid out again (#2841)")
+    func positionNearTheLineStartSurvivesLayout() throws {
+        let controller = EditorControllerFixture.make(string: pastedRow + "\n" + query)
+        controller.textView.layoutManager.layoutLines()
+        controller.scrollPosition = CGPoint(x: 20, y: 0)
+        try #require(abs(controller.scrollPosition.x - 20) <= 0.5, "Scrolled to \(controller.scrollPosition.x)")
+
+        controller.scrollView.tile()
+        controller.scrollView.needsLayout = true
+        controller.view.layoutSubtreeIfNeeded()
+
+        #expect(abs(controller.scrollPosition.x - 20) <= 0.5, "Laying out moved the view to \(controller.scrollPosition.x)")
+    }
 }
