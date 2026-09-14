@@ -71,10 +71,15 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments(),
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
+            showSystemContainers: settings.showSystemContainers,
             rowSize: settings.sidebarRowSize,
             canFilterDatabases: PluginManager.shared.supportsDatabaseTree(for: databaseType)
                 && sidebarState?.sidebarLayout == .tree,
-            hasDatabaseFilter: !(sidebarState?.databaseFilterSelected.isEmpty ?? true),
+            hasDatabaseFilter: DatabaseTreeVisibility.isFiltering(
+                selected: sidebarState?.databaseFilterSelected ?? [],
+                databases: service.databases(for: connectionId),
+                showsSystem: showSystemContainers
+            ),
             /// Not gated on this connection's safe mode: a read-only connection is a valid source,
             /// and the target picker is where a read-only target is refused.
             canCopyObjects: ObjectCopyEligibility.supportsCopying(

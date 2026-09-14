@@ -21,9 +21,16 @@ actor SQLSchemaProvider {
     static let maxCachedTables = 300
     // MARK: - Properties
 
+    /// A column list belongs to a table, and a table is a schema and a name. Keyed by the bare name,
+    /// two schemas' `orders` shared one entry and each read whichever had been cached first.
+    private struct ColumnCacheKey: Hashable {
+        let schema: String?
+        let name: String
+    }
+
     private var tables: [TableInfo] = []
-    private var columnCache: [String: [ColumnInfo]] = [:]
-    private var columnAccessOrder: [String] = []
+    private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
+    private var columnAccessOrder: [ColumnCacheKey] = []
     private var isLoading = false
     private var lastLoadError: Error?
     private var lastRetryAttempt: Date?
@@ -128,7 +135,7 @@ actor SQLSchemaProvider {
 
     /// Get columns for a specific table (with LRU caching)
     func getColumns(for tableName: String, schema: String? = nil) async -> [ColumnInfo] {
-        let key = [schema?.lowercased(), tableName.lowercased()].compactMap(\.self).joined(separator: ".")
+        let key = cacheKey(table: tableName, schema: schema)
 
         if let cached = columnCache[key] {
             columnAccessOrder.removeAll { $0 == key }
@@ -162,6 +169,25 @@ actor SQLSchemaProvider {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
         }
+    }
+
+    /// A lookup that names no schema reads the schema an unqualified fetch targets, which is the one
+    /// the eager preload fills, so `orders` and `public.orders` on PostgreSQL share one entry.
+    private func cacheKey(table: String, schema: String?) -> ColumnCacheKey {
+        ColumnCacheKey(schema: (schema ?? eagerLoadSchema)?.lowercased(), name: table.lowercased())
+    }
+
+    /// A table outside the default schema keeps its schema, so two cached tables of one name never
+    /// offer the same `orders.id` for columns of two different tables.
+    private func fallbackTableLabel(for key: ColumnCacheKey, canonicalName: String) -> String {
+        guard let schema = key.schema, schema != getDefaultSchema()?.lowercased() else { return canonicalName }
+        return "\(schema).\(canonicalName)"
+    }
+
+    /// The schema a table can be named in without its schema: the engine's implicit schema when it
+    /// has one, otherwise the schema the driver was on when this scope loaded.
+    func getDefaultSchema() -> String? {
+        connectionInfo?.type.implicitSchemaName ?? eagerLoadSchema
     }
 
     func retryLoadSchemaIfNeeded() async {
@@ -229,11 +255,12 @@ actor SQLSchemaProvider {
     /// attribute to any schema counts, which is what a flat engine reports for all of them; zero
     /// means the list describes other schemas only, and a fetch sized by it would be a guess.
     private var eagerLoadTableCount: Int {
-        guard let eagerLoadSchema else { return tables.count }
-        return tables.filter { table in
-            guard let tableSchema = table.schema else { return true }
-            return tableSchema.caseInsensitiveCompare(eagerLoadSchema) == .orderedSame
-        }.count
+        tables.filter { isInEagerLoadSchema($0) }.count
+    }
+
+    private func isInEagerLoadSchema(_ table: TableInfo) -> Bool {
+        guard let eagerLoadSchema, let tableSchema = table.schema else { return true }
+        return tableSchema.caseInsensitiveCompare(eagerLoadSchema) == .orderedSame
     }
 
     private func startEagerColumnLoad() {
@@ -275,6 +302,9 @@ actor SQLSchemaProvider {
     /// Fills the cache in the order the schema lists its tables, so which tables survive the cache
     /// limit is the same on every run. Walking the fetched dictionary took whatever order hashing
     /// produced, which made the cached set differ between two loads of the same database.
+    ///
+    /// The fetch covers the eager-load schema alone, so only a table listed in that schema takes an
+    /// entry from it. A same-named table in another schema is fetched on its own when asked for.
     private func populateColumnCache(_ allColumns: [String: [ColumnInfo]]) {
         var pending: [String: [ColumnInfo]] = [:]
         pending.reserveCapacity(allColumns.count)
@@ -282,17 +312,17 @@ actor SQLSchemaProvider {
             pending[tableName.lowercased()] = columns
         }
 
-        for table in tables {
+        for table in tables where isInEagerLoadSchema(table) {
             guard let columns = pending.removeValue(forKey: table.name.lowercased()) else { continue }
-            insertIntoColumnCache(columns, forKey: table.name.lowercased())
+            insertIntoColumnCache(columns, forKey: cacheKey(table: table.name, schema: table.schema))
         }
-        for key in pending.keys.sorted() {
-            guard let columns = pending[key] else { continue }
-            insertIntoColumnCache(columns, forKey: key)
+        for tableName in pending.keys.sorted() {
+            guard let columns = pending[tableName] else { continue }
+            insertIntoColumnCache(columns, forKey: cacheKey(table: tableName, schema: nil))
         }
     }
 
-    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: String) {
+    private func insertIntoColumnCache(_ columns: [ColumnInfo], forKey key: ColumnCacheKey) {
         guard columnCache[key] == nil else { return }
         guard columnAccessOrder.count < Self.maxCachedTables else { return }
         columnCache[key] = columns
@@ -333,18 +363,18 @@ actor SQLSchemaProvider {
     func buildSchemaContextForAI(settings: AISettings) async -> String? {
         guard !tables.isEmpty, let connection = connectionInfo else { return nil }
 
-        var columnsByTable: [String: [ColumnInfo]] = [:]
-        let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
-        for table in tablesToFetch {
-            let columns = await getColumns(for: table.name)
-            if !columns.isEmpty {
-                columnsByTable[table.name] = columns
-            }
+        let listedTables = tables
+        var schemaTables: [AISchemaTable] = []
+        schemaTables.reserveCapacity(listedTables.count)
+        for table in listedTables.prefix(settings.maxSchemaTables) {
+            let columns = await getColumns(for: table.name, schema: table.schema)
+            schemaTables.append(AISchemaTable(table: table, columns: columns))
         }
+        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         let dbType = connection.type
         let capturedConnection = connection
-        let capturedTables = tables
+        let defaultSchema = getDefaultSchema()
         let capturedScopeDatabase = scopeDatabase
         let (dbName, idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
             let resolvedName = capturedScopeDatabase
@@ -358,9 +388,8 @@ actor SQLSchemaProvider {
         return AISchemaContext.buildSystemPrompt(
             databaseType: dbType,
             databaseName: dbName,
-            tables: capturedTables,
-            columnsByTable: columnsByTable,
-            foreignKeys: [:],
+            tables: schemaTables,
+            defaultSchema: defaultSchema,
             currentQuery: nil,
             queryResults: nil,
             settings: settings,
@@ -492,14 +521,13 @@ actor SQLSchemaProvider {
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] {
         let name = column.lowercased()
         let candidates = references.isEmpty
-            ? tables.map { (table: $0.name, schema: String?.none) }
+            ? tables.map { (table: $0.name, schema: $0.schema) }
             : references.map { (table: $0.tableName, schema: $0.schema) }
 
         for candidate in candidates {
-            let key = [candidate.schema?.lowercased(), candidate.table.lowercased()]
-                .compactMap(\.self)
-                .joined(separator: ".")
-            guard let columns = columnCache[key] else { continue }
+            guard let columns = columnCache[cacheKey(table: candidate.table, schema: candidate.schema)] else {
+                continue
+            }
             if let match = columns.first(where: { $0.name.lowercased() == name }),
                let values = match.allowedValues, !values.isEmpty {
                 return values
@@ -574,7 +602,7 @@ actor SQLSchemaProvider {
         var nameCount: [String: Int] = [:]
 
         for (key, columns) in columnCache {
-            let tableName = canonicalNames[key] ?? key
+            let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
             for col in columns {
                 allEntries.append((table: tableName, col: col))
                 nameCount[col.name.lowercased(), default: 0] += 1

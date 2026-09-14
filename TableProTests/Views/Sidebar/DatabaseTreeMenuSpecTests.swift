@@ -74,6 +74,7 @@ struct DatabaseTreeMenuSpecTests {
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments,
             showObjectIcons: true,
             showObjectComments: false,
+            showSystemContainers: false,
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
@@ -215,12 +216,33 @@ struct DatabaseTreeMenuSpecTests {
     @Test("View Options reports the settings it is toggling")
     func viewOptionsCarryTheirState() {
         let items = SidebarViewOptionsMenu.sections(context(clicked: nil)).flatMap(\.items)
-        let icons = items.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
-            guard case .command(let entry) = item, entry.command == .toggleObjectIcons else { return nil }
-            return entry
+        func entry(for command: SidebarMenuCommand) -> SidebarMenuEntry<SidebarMenuCommand>? {
+            items.lazy.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
+                guard case .command(let entry) = item, entry.command == command else { return nil }
+                return entry
+            }.first
         }
 
-        #expect(icons.first?.isOn == true)
+        #expect(entry(for: .toggleObjectIcons)?.isOn == true)
+        #expect(entry(for: .toggleSystemContainers)?.isOn == false)
+    }
+
+    @Test("View Options offers System Databases and Schemas beside Icons and Comments")
+    func viewOptionsOfferSystemContainers() {
+        let sections = SidebarViewOptionsMenu.sections(
+            showObjectIcons: true,
+            showObjectComments: true,
+            showSystemContainers: true,
+            rowSize: .matchSystem
+        )
+        let items = sections.first?.items ?? []
+        let toggles: [SidebarMenuCommand] = items.compactMap { item in
+            guard case .command(let entry) = item, entry.isOn == true else { return nil }
+            return entry.command
+        }
+        let expected: [SidebarMenuCommand] = [.toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers]
+
+        #expect(toggles == expected)
     }
 
     // MARK: - Tables

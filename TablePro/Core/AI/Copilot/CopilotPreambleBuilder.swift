@@ -34,13 +34,7 @@ final class CopilotPreambleBuilder {
             return
         }
 
-        var columnsByTable: [String: [ColumnInfo]] = [:]
-        for table in tables {
-            let columns = await schemaProvider.getColumns(for: table.name)
-            if !columns.isEmpty {
-                columnsByTable[table.name.lowercased()] = columns
-            }
-        }
+        let defaultSchema = await schemaProvider.getDefaultSchema()
 
         var lines: [String] = []
         lines.append("-- Database: \(databaseName)")
@@ -48,7 +42,7 @@ final class CopilotPreambleBuilder {
         lines.append("--")
 
         for table in tables {
-            let columns = columnsByTable[table.name.lowercased()] ?? []
+            let columns = await schemaProvider.getColumns(for: table.name, schema: table.schema)
             guard !columns.isEmpty else { continue }
 
             let colDefs = columns.map { col -> String in
@@ -57,7 +51,13 @@ final class CopilotPreambleBuilder {
                 if !col.isNullable { parts.append("NOT NULL") }
                 return parts.joined(separator: " ")
             }
-            lines.append("-- \(table.name)(\(colDefs.joined(separator: ", ")))")
+            let tableName = SchemaQualifiedName.render(
+                name: table.name,
+                schema: table.schema,
+                implicitSchemaName: defaultSchema,
+                quote: { $0 }
+            )
+            lines.append("-- \(tableName)(\(colDefs.joined(separator: ", ")))")
         }
 
         lines.append("")

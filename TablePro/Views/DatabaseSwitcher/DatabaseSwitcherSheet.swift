@@ -120,9 +120,17 @@ struct DatabaseSwitcherSheet: View {
 
     private var list: some View {
         ScrollViewReader { proxy in
+            let sections = viewModel.visibleSections
             List(selection: $viewModel.selectedDatabase) {
-                ForEach(viewModel.filteredDatabases) { db in
+                ForEach(sections.user) { db in
                     row(for: db)
+                }
+                if !sections.system.isEmpty {
+                    Section(String(localized: "System")) {
+                        ForEach(sections.system) { db in
+                            row(for: db)
+                        }
+                    }
                 }
             }
             .listStyle(.inset)

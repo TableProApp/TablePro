@@ -80,17 +80,29 @@ struct DatabaseTreeView: View {
         treeService.databases(for: connectionId)
     }
 
+    private var showsSystemContainers: Bool {
+        settingsManager.general.showSystemContainers
+    }
+
     private var filteredDatabases: [DatabaseMetadata] {
         DatabaseTreeVisibility.visible(
             databases: databases,
             selected: sidebarState.databaseFilterSelected,
-            activeDatabase: activeDatabase
+            activeDatabase: activeDatabase,
+            showsSystem: showsSystemContainers
+        )
+    }
+
+    private var isFiltering: Bool {
+        DatabaseTreeVisibility.isFiltering(
+            selected: sidebarState.databaseFilterSelected,
+            databases: databases,
+            showsSystem: showsSystemContainers
         )
     }
 
     private var isFilterHidingEverything: Bool {
-        DatabaseTreeVisibility.isFiltering(selected: sidebarState.databaseFilterSelected)
-            && filteredDatabases.isEmpty
+        isFiltering && filteredDatabases.isEmpty
     }
 
     private var isLoadingDatabases: Bool {
@@ -134,14 +146,19 @@ struct DatabaseTreeView: View {
     /// that used to carry that state, at the bottom of the sidebar, is gone.
     @ViewBuilder
     private var filterBanner: some View {
-        if DatabaseTreeVisibility.isFiltering(selected: sidebarState.databaseFilterSelected) {
+        if isFiltering {
+            let summary = DatabaseTreeVisibility.summary(
+                databases: databases,
+                selected: sidebarState.databaseFilterSelected,
+                showsSystem: showsSystemContainers
+            )
             HStack(spacing: 6) {
                 Image(systemName: "line.3.horizontal.decrease.circle.fill")
                     .foregroundStyle(.tint)
                 Text(String(
                     format: String(localized: "Showing %lld of %lld"),
-                    filteredDatabases.count,
-                    databases.count
+                    summary.shown,
+                    summary.total
                 ))
                 .lineLimit(1)
                 Spacer(minLength: 4)
@@ -174,6 +191,7 @@ struct DatabaseTreeView: View {
             activeSchema: activeSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: showsSystemContainers,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

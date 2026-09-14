@@ -120,7 +120,7 @@ On MongoDB connections the query parser runs as well, so an unknown collection m
 
 ## Per-tab database picker
 
-The editor toolbar carries a database picker, or a schema picker depending on the engine. Each tab binds to its own database, and switching the active database elsewhere leaves existing tabs on theirs. The picker lists what the sidebar lists, so it follows the sidebar's database filter.
+The editor toolbar carries a database picker, or a schema picker depending on the engine. Each tab binds to its own database, and switching the active database elsewhere leaves existing tabs on theirs. The picker lists the databases the sidebar's database filter keeps, then the system databases after a divider.
 
 PostgreSQL, Redshift and CockroachDB reconnect the session to change database, so their picker shows a lock instead of a menu. The tab keeps the database it opened with, and a tab bound to anything other than the connection's active database runs on a separate connection. See [Cross-Database Tabs](/databases/postgresql#cross-database-tabs).
 

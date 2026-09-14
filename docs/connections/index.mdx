@@ -95,7 +95,7 @@ The same two transports put a live figure beside the connection name in the midd
   <img className="hidden dark:block" src="/images/database-switcher-toolbar-dark.png" alt="Database list with the current database checked" />
 </Frame>
 
-Leaving **Database** empty on MySQL, MariaDB, MongoDB, SQL Server, and ClickHouse browses every database the user can reach. PostgreSQL and Redshift need one to connect at all: use `postgres` (Redshift: `dev`) and switch with `Cmd+K`. To hide the rest, choose **View > Filter Databases** and check the ones you want; the choice is saved per connection.
+Leaving **Database** empty on MySQL, MariaDB, MongoDB, SQL Server, and ClickHouse browses every database the user can reach. PostgreSQL and Redshift need one to connect at all: use `postgres` (Redshift: `dev`) and switch with `Cmd+K`. System databases such as `mysql`, `information_schema` and `master` sit at the end of the switcher under **System**. To hide the rest, choose **View > Filter Databases** and check the ones you want; the choice is saved per connection and never hides a system database from the switcher.
 
 ## Edit, delete, and where it all lives
 

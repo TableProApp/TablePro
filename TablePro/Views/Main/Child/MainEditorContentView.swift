@@ -360,13 +360,11 @@ struct MainEditorContentView: View {
 
     private func containerDatabases(for tab: QueryTab) -> [DatabaseMetadata] {
         guard containerSwitchTarget == .database else { return [] }
-        let all = treeService.databases(for: connectionId)
-        let selected = SharedSidebarState.forConnection(connectionId).databaseFilterSelected
-        return DatabaseTreeVisibility.visible(
-            databases: all,
-            selected: selected,
+        return DatabaseSwitchList.sections(
+            databases: treeService.databases(for: connectionId),
+            selected: SharedSidebarState.forConnection(connectionId).databaseFilterSelected,
             activeDatabase: containerName(for: tab)
-        )
+        ).all
     }
 
     private var isContainerSwitchReadOnly: Bool {

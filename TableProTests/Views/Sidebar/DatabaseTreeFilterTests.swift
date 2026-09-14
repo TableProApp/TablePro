@@ -84,10 +84,38 @@ struct DatabaseTreeFilterTests {
         let result = DatabaseTreeFilter.visibleSchemas(
             schemas,
             systemSchemas: ["pg_catalog"],
+            activeSchema: nil,
+            showsSystem: false,
             searchText: "",
             contentMatches: { _ in false }
         )
         #expect(result == ["public", "sales"])
+    }
+
+    @Test("visibleSchemas lists system schemas when they are shown")
+    func visibleSchemasShowsSystemSchemas() {
+        let result = DatabaseTreeFilter.visibleSchemas(
+            ["public", "pg_catalog"],
+            systemSchemas: ["pg_catalog"],
+            activeSchema: nil,
+            showsSystem: true,
+            searchText: "",
+            contentMatches: { _ in false }
+        )
+        #expect(result == ["public", "pg_catalog"])
+    }
+
+    @Test("visibleSchemas keeps the browsed system schema listed while system schemas are hidden")
+    func visibleSchemasKeepsActiveSystemSchema() {
+        let result = DatabaseTreeFilter.visibleSchemas(
+            ["APP", "SYSDBA"],
+            systemSchemas: ["SYSDBA"],
+            activeSchema: "SYSDBA",
+            showsSystem: false,
+            searchText: "",
+            contentMatches: { _ in false }
+        )
+        #expect(result == ["APP", "SYSDBA"])
     }
 
     @Test("visibleSchemas keeps a schema when its content matches even if the name does not")
@@ -96,6 +124,8 @@ struct DatabaseTreeFilterTests {
         let result = DatabaseTreeFilter.visibleSchemas(
             schemas,
             systemSchemas: [],
+            activeSchema: nil,
+            showsSystem: false,
             searchText: "invoice",
             contentMatches: { $0 == "sales" }
         )

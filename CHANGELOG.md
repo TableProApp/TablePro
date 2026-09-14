@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
+- **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
 
 ### Changed
 
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The update window shows the release highlights, with the full changelog one click away.
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
+- Schema picker lists system schemas last, in place of its Show System Schemas toggle. (#2832)
 
 ### Fixed
 
@@ -41,9 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unchecked and soloed filter rows dropped from a table's saved filters after switching tabs.
 - Table opened in another database from a link, MCP or AppleScript bound to the current schema.
 - Recent table opened before connecting reopening a same-named table in another schema, and listed twice.
+- AI and Copilot schema context listing a table with the columns of a same-named table in another schema.
 - Inline cell editor left open over a different row after a refresh.
 - Row selected by Back or Forward dropped once the table finished loading.
 - Data grid jumping to the top on a later reload after a page change failed.
+- System databases such as `mysql` missing from the database switcher, the tab database picker and Open Quickly. (#2832)
+- SQL Server and ClickHouse system databases listed as user databases once the database switcher finished loading.
 
 ### Security
 

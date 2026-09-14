@@ -102,7 +102,8 @@ extension DatabaseTreeOutlineCoordinator {
         let visible = DatabaseTreeVisibility.visible(
             databases: service.databases(for: connectionId),
             selected: sidebarState?.databaseFilterSelected ?? [],
-            activeDatabase: mainCoordinator?.browseDatabaseName ?? activeDatabase
+            activeDatabase: mainCoordinator?.browseDatabaseName ?? activeDatabase,
+            showsSystem: showSystemContainers
         )
         let matched = searchText.isEmpty ? visible : visible.filter { databaseMatchesSearch($0) }
         var seen = Set<String>()
@@ -226,9 +227,13 @@ extension DatabaseTreeOutlineCoordinator {
         if !recentTableRefs().isEmpty {
             nodes.append(node(id: DatabaseTreeNode.recentSectionId, kind: .recentSection))
         }
-        let hidden = systemSchemas
-        nodes += schemaService.schemas(for: connectionId)
-            .filter { !hidden.contains($0) }
+        let browsable = DatabaseTreeVisibility.visibleSchemas(
+            schemaService.schemas(for: connectionId),
+            systemSchemas: systemSchemas,
+            activeSchema: activeSchema,
+            showsSystem: showSystemContainers
+        )
+        nodes += browsable
             .filter { searchText.isEmpty || hierarchicalSchemaMatches($0) }
             .map {
                 node(id: DatabaseTreeNode.hierarchicalSchemaSectionId($0), kind: .hierarchicalSchemaSection(schema: $0))
@@ -344,6 +349,8 @@ extension DatabaseTreeOutlineCoordinator {
             let visible = DatabaseTreeFilter.visibleSchemas(
                 schemas,
                 systemSchemas: systemSchemas,
+                activeSchema: database == browsingDatabase ? activeSchema : nil,
+                showsSystem: showSystemContainers,
                 searchText: searchText,
                 contentMatches: { schemaContentMatchesSearch(database: database, schema: $0) }
             )
