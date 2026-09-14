@@ -9,8 +9,6 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | `drivers/<engine>` | Real engines | Unit tests + `testcontainers-rs` integration tests | Yes |
 | `app` | GTK4 + Relm4 components | Limited; pure logic in `services/` is unit-tested | No |
 
-`scripts/ci-local.sh` runs the fast CI checks locally.
-
 ## Unit tests
 
 In-crate, in `#[cfg(test)] mod tests` next to the code they cover. Standard Rust idiom.
@@ -154,7 +152,7 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `xvfb-run -a dbus-run-session -- cargo test --workspace --locked` with `GTK_A11Y=test` and `GSK_RENDERER=cairo`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
+1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `xvfb-run -a dbus-run-session -- cargo test --workspace --locked` with `GTK_A11Y=test` and `GSK_RENDERER=cairo`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
 2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, and `tablepro-ssh` against an OpenSSH server container) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
