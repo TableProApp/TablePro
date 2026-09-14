@@ -25,6 +25,8 @@ tokio = { workspace = true, features = ["io-util"] }
 uuid.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
+sqlparser.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
