@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Update preferences overwritten by the app at every launch instead of following the setting.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)

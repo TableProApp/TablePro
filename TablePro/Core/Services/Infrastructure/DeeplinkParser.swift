@@ -277,7 +277,9 @@ internal enum DeeplinkParser {
                 totpMode: value("sshTotpMode"),
                 totpAlgorithm: value("sshTotpAlgorithm"),
                 totpDigits: value("sshTotpDigits").flatMap(Int.init),
-                totpPeriod: value("sshTotpPeriod").flatMap(Int.init)
+                totpPeriod: value("sshTotpPeriod").flatMap(Int.init),
+                remoteFilePath: value("sshRemoteFilePath"),
+                remoteFileAccess: value("sshRemoteFileAccess")
             )
         } else {
             sshConfig = nil
