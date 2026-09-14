@@ -26,13 +26,14 @@ struct DiagramZoomToolbar<Extras: View>: View {
             .help(String(localized: "Zoom Out"))
 
             Button(action: viewport.resetZoom) {
-                Text(verbatim: "\(Int((viewport.magnification * 100).rounded()))%")
+                Text(verbatim: zoomPercentage)
                     .font(.system(.caption, design: .monospaced))
                     .frame(width: 40)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(String(localized: "Reset Zoom"))
+            .accessibilityValue(Text(verbatim: zoomPercentage))
             .help(String(localized: "Reset Zoom"))
 
             Button(action: viewport.zoomIn) {
@@ -55,5 +56,9 @@ struct DiagramZoomToolbar<Extras: View>: View {
         .padding(.vertical, 6)
         .themeMaterial(.toolbar, .thinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
+    }
+
+    private var zoomPercentage: String {
+        "\(Int((viewport.magnification * 100).rounded()))%"
     }
 }

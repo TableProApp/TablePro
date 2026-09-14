@@ -3,9 +3,9 @@
 //  TablePro
 //
 //  A diagram viewport backed by NSScrollView's own magnification. Pinch anchored at the
-//  pointer, two-finger double tap to smart magnify, Cmd+scroll to zoom, real scrollers that
-//  follow the system setting and elastic scrolling all come from AppKit rather than being
-//  rebuilt on top of a SwiftUI ScrollView.
+//  pointer, two-finger double tap to smart magnify, real scrollers that follow the system
+//  setting and elastic scrolling all come from AppKit rather than being rebuilt on top of a
+//  SwiftUI ScrollView. Cmd+scroll does not come from AppKit; `DiagramScrollView` adds it.
 //
 
 import AppKit
@@ -129,7 +129,7 @@ struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = DiagramScrollView()
         scrollView.allowsMagnification = true
         scrollView.minMagnification = DiagramZoom.minimum
         scrollView.maxMagnification = DiagramZoom.maximum
