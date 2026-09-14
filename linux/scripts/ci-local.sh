@@ -14,14 +14,13 @@ echo "==> cargo fmt --check"
 cargo fmt --all -- --check
 
 echo "==> cargo clippy"
-cargo clippy --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 
-echo "==> cargo build --workspace"
-cargo build --workspace
+echo "==> cargo build --workspace --locked"
+cargo build --workspace --locked
 
-echo "==> cargo test --workspace --lib --bins"
-# --bins matters: tablepro-app has no lib.rs, so --lib alone skips its tests.
-cargo test --workspace --lib --bins
+echo "==> cargo test --workspace --locked"
+cargo test --workspace --locked
 
 echo "All fast checks passed."
-echo "Driver integration tests are a separate CI job; see docs/testing.md to run them locally."
+echo "Docker tests run per package in a separate CI job; see docs/testing.md to run them locally."

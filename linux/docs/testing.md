@@ -9,7 +9,7 @@ Three layers, three tools. Each crate's test policy follows from its position in
 | `drivers/<engine>` | Real engines | Unit tests + `testcontainers-rs` integration tests | Yes |
 | `app` | GTK4 + Relm4 components | Limited; pure logic in `services/` is unit-tested | No |
 
-Two helper scripts sit on top: `scripts/ci-local.sh` runs the fast CI checks, `scripts/smoke-postgres.sh` runs the driver smoke against a Postgres you already have.
+`scripts/ci-local.sh` runs the fast CI checks locally.
 
 ## Unit tests
 
@@ -29,13 +29,13 @@ mod tests {
 }
 ```
 
-Run all unit tests:
+Run every test that needs no external service:
 
 ```bash
-cargo test --workspace --lib --bins
+cargo test --workspace --locked
 ```
 
-`--bins` is not optional: `tablepro-app` has no `lib.rs`, so `--lib` alone skips every test in the app crate. Both `scripts/ci-local.sh` and the CI workflow run this exact command.
+This runs unit tests, doc tests and every test target. Tests that need Docker or a Secret Service are ignored. The CI fast job and `scripts/ci-local.sh` run this exact command.
 
 ## Integration tests
 
@@ -67,7 +67,36 @@ async fn list_tables_returns_seeded_tables() {
 
 Keep the container alive for the whole test: dropping the handle stops it.
 
-Integration tests run in CI. Locally they require a Docker-compatible API socket.
+### Ignore reasons
+
+Two reasons are allowed:
+
+- `#[ignore = "requires docker"]` for testcontainers suites.
+- `#[ignore = "requires a Secret Service"]` for tests that talk to a keyring.
+
+The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fails the build.
+
+### Running the docker tests
+
+CI runs one job per driver package:
+
+```bash
+cargo nextest run --locked --profile ci -p tablepro-driver-mssql --run-ignored only
+```
+
+`.config/nextest.toml` puts each driver's tests in a test group with one thread, so the tests of one suite never compete for a container. The `ci` profile writes a JUnit report to `target/nextest/ci/junit.xml`.
+
+Locally, with [cargo-nextest](https://nexte.st/) installed:
+
+```bash
+cargo nextest run -p tablepro-driver-postgres --run-ignored only
+```
+
+meson and distro builds use cargo test, which works too:
+
+```bash
+cargo test -p tablepro-driver-postgres -- --ignored --test-threads=1
+```
 
 ### Docker or Podman
 
@@ -77,9 +106,7 @@ Upstream CI uses Docker. Fedora ships Podman instead, and on Debian it is the ea
 sudo dnf install -y podman   # or: sudo apt install -y podman
 systemctl --user enable --now podman.socket
 export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
-cargo test --test integration -p tablepro-driver-postgres -- --include-ignored --test-threads=1
-cargo test --test integration -p tablepro-driver-mysql -- --include-ignored --test-threads=1
-cargo test --test integration -p tablepro-driver-clickhouse -- --include-ignored --test-threads=1
+cargo nextest run -p tablepro-driver-postgres --run-ignored only
 ```
 
 Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java / go setting; the Rust crate has no Ryuk reaper and stops each container when its handle drops.
@@ -88,58 +115,36 @@ Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java
 
 A test that panics hard can still leave a container behind. `podman container prune` clears them.
 
-### Local smoke without a container
+### Regression names
 
-`crates/drivers/postgres/tests/smoke_local.rs` runs connect, list tables, fetch rows, edit a cell against a Postgres that is already up. It is `#[ignore]`d like the container suites, so it never runs during a plain `cargo test`.
-
-```bash
-podman run -d --name tablepro-smoke -p 54329:5432 \
-  -e POSTGRES_USER=tablepro -e POSTGRES_PASSWORD=tablepro -e POSTGRES_DB=tablepro \
-  docker.io/library/postgres:16-alpine
-
-./scripts/smoke-postgres.sh
-```
-
-Point it somewhere else with `SMOKE_PG_HOST`, `SMOKE_PG_PORT`, `SMOKE_PG_USER`, `SMOKE_PG_PASS`, `SMOKE_PG_DB`. The test creates, clears and drops `tablepro_smoke_items`, so use a scratch database.
-
-Mark slow integration tests with `#[ignore]` if they take more than ~5 seconds:
-
-```rust
-#[tokio::test]
-#[ignore]  // pulls a 1GB image
-async fn import_pgdump_one_million_rows() { /* ... */ }
-```
-
-Run them explicitly: `cargo test --workspace -- --include-ignored`.
+A test that guards a critical audit finding starts with the finding id, `f001_` to `f006_`. `cargo test --workspace -- f001_` runs the guards for that finding.
 
 ## App / UI tests
 
 We do not write Relm4 component tests until we hit a bug that they would have caught. The reasoning:
 
 - Relm4's testing helpers require a running GTK main loop, which makes CI flaky.
-- Most app logic worth testing belongs in `app::services` modules — extract those into pure Rust and test directly.
+- Most app logic worth testing belongs in `app::services` modules: extract those into pure Rust and test directly.
 - UI testing tools that drive GTK4 (`pyatspi`, `dogtail`) are more trouble than they are worth at this scale.
 
 Policy:
 
 - Pure logic: extract to `app::services::<thing>`, write unit tests there.
 - View building: cover by manual QA. Add a screenshot to the PR description.
-- Cross-component flows: covered by smoke test (see below).
+- Cross-component flows: manual QA until the end-to-end test below exists.
 
 If a UI bug ships and a regression test would have caught it, write the test then.
 
-## End-to-end smoke test
+## End-to-end test
 
 There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` through its registered `gtk::Application` actions is the intended shape when we add one.
-
-What exists today is the driver-level smoke described above: `scripts/smoke-postgres.sh` against a Postgres you already run.
 
 ## CI
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo build --workspace`, `cargo test --workspace --lib --bins`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
-2. **Driver integration tests**: runs after fast checks pass. Boots Docker on the host runner and runs the Postgres, MySQL, and ClickHouse suites with `--include-ignored`. The MSSQL suite exists but is not wired in yet.
+1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `cargo test --workspace --locked`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
+2. **Docker tests**: runs after fast checks pass. One matrix entry per driver package (PostgreSQL, MySQL, SQL Server, ClickHouse) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
 

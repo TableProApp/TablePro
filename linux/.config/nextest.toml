@@ -1,0 +1,27 @@
+[test-groups]
+postgres = { max-threads = 1 }
+mysql = { max-threads = 1 }
+mssql = { max-threads = 1 }
+clickhouse = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-driver-postgres)'
+test-group = 'postgres'
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-driver-mysql)'
+test-group = 'mysql'
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-driver-mssql)'
+test-group = 'mssql'
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-driver-clickhouse)'
+test-group = 'clickhouse'
+
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

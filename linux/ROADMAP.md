@@ -17,7 +17,7 @@ This is **past demo-grade**, but still **not beta-shippable**. The gap between "
 | Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
 | Internationalization | gettext + `tr!` macro + `po/` template; the template has 227 strings against 390 in the app, and `POTFILES.in` is stale |
 | Accessibility | Untested with Orca / keyboard nav |
-| Integration tests | Postgres and MySQL suites run in CI; the MSSQL suite exists but no CI job runs it; SQLite has none |
+| Integration tests | Postgres, MySQL, MSSQL and ClickHouse docker suites run in CI, one nextest job per package; SQLite has none |
 | Recovery | `connection_monitor` ping + reconnect loop; cancel drops the client future, the server-side query keeps running |
 
 **What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully.
@@ -113,9 +113,8 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] `tests/integration.rs` using `testcontainers-rs` for Postgres, MySQL, MSSQL
 - [ ] SQLite suite (the crate has no `tests/` directory)
 - [x] Connect, list_tables, fetch_columns (PK detection), pagination, value round-trip, bad SQL
-- [x] CI integration job gated behind `--include-ignored`, for Postgres and MySQL
-- [ ] Run the MSSQL suite in CI
-- [x] `smoke_local` test + `scripts/smoke-postgres.sh` for a Docker-free driver check
+- [x] CI runs each driver docker suite through cargo-nextest, one job per package
+- [x] Run the MSSQL suite in CI
 
 **Exit criterion**: Connect to a 10M-row Postgres table, scroll, edit a date column, lose network mid-query, see a recoverable error, reconnect via the same UI flow.
 

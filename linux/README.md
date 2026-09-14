@@ -56,16 +56,10 @@ cd linux
 cargo run -p tablepro-app
 ```
 
-Local CI mirror (fmt + clippy + build + unit tests):
+Local CI mirror (fmt + clippy + build + tests):
 
 ```bash
 ./scripts/ci-local.sh
-```
-
-Driver smoke against a Postgres you already run, no Docker needed:
-
-```bash
-./scripts/smoke-postgres.sh
 ```
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
