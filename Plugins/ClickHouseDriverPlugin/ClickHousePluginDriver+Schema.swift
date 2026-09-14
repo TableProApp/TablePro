@@ -311,18 +311,35 @@ extension ClickHousePluginDriver {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let sql = """
-            SELECT database, count() AS table_count, sum(total_bytes) AS size_bytes
-            FROM system.tables
-            GROUP BY database
-            ORDER BY database
-            """
-        let result = try await execute(query: sql)
-        return result.rows.compactMap { row -> PluginDatabaseMetadata? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
-            let sizeBytes = (row[safe: 2]?.asText).flatMap { Int64($0) }
-            return PluginDatabaseMetadata(name: name, tableCount: tableCount, sizeBytes: sizeBytes)
+        let aggregate = try await execute(query: Self.databaseTableAggregateQuery)
+        let names = try await fetchDatabases()
+        return Self.databaseMetadata(names: names, aggregateRows: aggregate.rows)
+    }
+
+    static let databaseTableAggregateQuery = """
+        SELECT database, count() AS table_count, sum(total_bytes) AS size_bytes
+        FROM system.tables
+        GROUP BY database
+        """
+
+    /// `SHOW DATABASES` is the list and `system.tables` only supplies the numbers. The aggregate has no row for a
+    /// database that holds no tables, so a list read from it dropped every empty database.
+    static func databaseMetadata(names: [String], aggregateRows: [[PluginCellValue]]) -> [PluginDatabaseMetadata] {
+        var aggregates: [String: (tableCount: Int, sizeBytes: Int64?)] = [:]
+        for row in aggregateRows {
+            guard let name = row[safe: 0]?.asText else { continue }
+            aggregates[name] = (
+                tableCount: (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0,
+                sizeBytes: (row[safe: 2]?.asText).flatMap { Int64($0) }
+            )
+        }
+        return names.map { name in
+            let aggregate = aggregates[name]
+            return PluginDatabaseMetadata(
+                name: name,
+                tableCount: aggregate?.tableCount ?? 0,
+                sizeBytes: aggregate?.sizeBytes
+            )
         }
     }
 
