@@ -7,6 +7,7 @@ members = [
     "crates/session",
     "crates/ssh",
     "crates/storage",
+    "crates/test-fixtures",
     "crates/test-support",
     "crates/drivers/clickhouse",
     "crates/drivers/mssql",

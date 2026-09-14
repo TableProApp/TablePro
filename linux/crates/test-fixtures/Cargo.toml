@@ -1,0 +1,30 @@
+[package]
+name = "tablepro-test-fixtures"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "tablepro_test_fixtures"
+path = "src/lib.rs"
+
+[dependencies]
+rcgen.workspace = true
+tempfile.workspace = true
+testcontainers = { workspace = true, features = ["http_wait_plain"] }
+testcontainers-modules = { workspace = true, features = ["postgres", "mssql_server"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs", "io-util", "process"] }
+uuid.workspace = true
+
+[dev-dependencies]
+rustls.workspace = true
+tiberius.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-rustls.workspace = true
+tokio-util = { workspace = true, features = ["compat"] }
+
+[lints]
+workspace = true

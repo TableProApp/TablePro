@@ -4,6 +4,7 @@ mysql = { max-threads = 1 }
 mssql = { max-threads = 1 }
 clickhouse = { max-threads = 1 }
 ssh = { max-threads = 1 }
+fixtures = { max-threads = 1 }
 
 [[profile.default.overrides]]
 filter = 'package(tablepro-driver-postgres)'
@@ -24,6 +25,10 @@ test-group = 'clickhouse'
 [[profile.default.overrides]]
 filter = 'package(tablepro-ssh)'
 test-group = 'ssh'
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-test-fixtures)'
+test-group = 'fixtures'
 
 [profile.ci]
 fail-fast = false
