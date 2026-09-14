@@ -3,6 +3,7 @@ name = "tablepro-driver-clickhouse"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [lib]
@@ -26,3 +27,6 @@ chrono.workspace = true
 secrecy.workspace = true
 testcontainers = { workspace = true, features = ["http_wait_plain"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

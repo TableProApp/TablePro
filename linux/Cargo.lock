@@ -4913,6 +4913,7 @@ dependencies = [
  "tablepro-driver-sqlite",
  "tablepro-ssh",
  "tablepro-storage",
+ "thiserror 2.0.20",
  "tokio",
  "tokio-util",
  "tracing",

@@ -372,13 +372,9 @@ fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gt
         .build();
     button.add_css_class("flat");
     button.insert_action_group("types", Some(&action_group));
-    button.set_menu_model(Some(&menu));
-
-    // The PopoverMenu is auto-created by MenuButton from the menu
-    // model. Hand it back so the caller can `popdown` it before the
-    // owning column row is torn down on Refresh.
-    let popover = button
-        .popover()
-        .expect("MenuButton creates a PopoverMenu when a menu model is set");
-    (button, popover)
+    // The popover is handed back so the caller can `popdown` it before
+    // the owning column row is torn down on Refresh.
+    let popover = gtk::PopoverMenu::from_model(Some(&menu));
+    button.set_popover(Some(&popover));
+    (button, popover.upcast())
 }

@@ -22,7 +22,7 @@ cargo fmt --all                # format
 | `rustfmt` | `rustfmt.toml` at workspace root | Run before commit. Pre-commit hook enforces it. |
 | `clippy` | `clippy.toml` at workspace root | All workspace crates pass with `-D warnings`. New lints are negotiated per PR. |
 | Edition | 2024 | Set per workspace. Do not override per crate. |
-| MSRV | 1.93 | Pinned in `rust-toolchain.toml`. Bumped only with discussion. |
+| MSRV | 1.98 | Pinned in `rust-toolchain.toml` and `rust-version`; matches the Flatpak rust-stable extension. |
 
 Conventions, beyond what `rustfmt` decides:
 

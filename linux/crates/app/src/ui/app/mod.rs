@@ -1493,7 +1493,6 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("about", AppMsg::ShowAbout),
         quit,
         input_action!("open-editor", AppMsg::NewEditorTab),
-        input_action!("disconnect", AppMsg::Disconnect),
         input_action!("close-current", AppMsg::CloseActiveWorkspaceTab),
         input_action!("preferences", AppMsg::ShowPreferences),
         input_action!("show-history", AppMsg::ShowHistory),
@@ -1504,43 +1503,46 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
         input_action!("open-filter", AppMsg::ShowFilterDialog),
     ]);
-    window.insert_action_group("win", Some(&group));
-    let disconnect_action: gio::SimpleAction = group
-        .lookup_action("disconnect")
-        .and_then(|a| a.downcast::<gio::SimpleAction>().ok())
-        .expect("disconnect action must be a SimpleAction");
+    let disconnect_action = gio::SimpleAction::new("disconnect", None);
+    let sender_for_disconnect = sender.clone();
+    disconnect_action.connect_activate(move |_, _| sender_for_disconnect.input(AppMsg::Disconnect));
     disconnect_action.set_enabled(false);
+    group.add_action(&disconnect_action);
+    window.insert_action_group("win", Some(&group));
     tracing::info!(enabled = disconnect_action.is_enabled(), "registered win.disconnect");
     disconnect_action
 }
 
 fn install_window_shortcuts(window: &adw::ApplicationWindow) {
+    use gtk::gdk::{Key, ModifierType};
+    let primary = ModifierType::CONTROL_MASK;
+    let primary_shift = ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK;
     let controller = gtk::ShortcutController::new();
     controller.set_scope(gtk::ShortcutScope::Global);
-    controller.add_shortcut(make_shortcut("<Primary>question", "win.shortcuts"));
-    controller.add_shortcut(make_shortcut("<Primary>slash", "win.shortcuts"));
-    controller.add_shortcut(make_shortcut("<Primary>q", "win.quit"));
-    controller.add_shortcut(make_shortcut("<Primary>w", "win.close-current"));
-    controller.add_shortcut(make_shortcut("<Primary>e", "win.open-editor"));
+    controller.add_shortcut(make_shortcut(Key::question, primary, "win.shortcuts"));
+    controller.add_shortcut(make_shortcut(Key::slash, primary, "win.shortcuts"));
+    controller.add_shortcut(make_shortcut(Key::q, primary, "win.quit"));
+    controller.add_shortcut(make_shortcut(Key::w, primary, "win.close-current"));
+    controller.add_shortcut(make_shortcut(Key::e, primary, "win.open-editor"));
     // Ctrl+T mirrors Ctrl+E for the browser/IDE muscle memory ("new
     // tab"). Both fire `win.open-editor` so the empty workspace state
     // can be exited via either shortcut without focus tricks.
-    controller.add_shortcut(make_shortcut("<Primary>t", "win.open-editor"));
-    controller.add_shortcut(make_shortcut("F5", "win.refresh-page"));
-    controller.add_shortcut(make_shortcut("<Primary>f", "win.open-filter"));
-    controller.add_shortcut(make_shortcut("<Primary>comma", "win.preferences"));
-    controller.add_shortcut(make_shortcut("<Primary>h", "win.show-history"));
-    controller.add_shortcut(make_shortcut("<Primary>s", "win.save-changes"));
-    controller.add_shortcut(make_shortcut("<Primary>z", "win.undo-change"));
-    controller.add_shortcut(make_shortcut("<Primary>y", "win.redo-change"));
-    controller.add_shortcut(make_shortcut("<Primary><Shift>z", "win.redo-change"));
-    controller.add_shortcut(make_shortcut("<Primary><Shift>t", "win.reopen-closed-tab"));
+    controller.add_shortcut(make_shortcut(Key::t, primary, "win.open-editor"));
+    controller.add_shortcut(make_shortcut(Key::F5, ModifierType::empty(), "win.refresh-page"));
+    controller.add_shortcut(make_shortcut(Key::f, primary, "win.open-filter"));
+    controller.add_shortcut(make_shortcut(Key::comma, primary, "win.preferences"));
+    controller.add_shortcut(make_shortcut(Key::h, primary, "win.show-history"));
+    controller.add_shortcut(make_shortcut(Key::s, primary, "win.save-changes"));
+    controller.add_shortcut(make_shortcut(Key::z, primary, "win.undo-change"));
+    controller.add_shortcut(make_shortcut(Key::y, primary, "win.redo-change"));
+    controller.add_shortcut(make_shortcut(Key::z, primary_shift, "win.redo-change"));
+    controller.add_shortcut(make_shortcut(Key::t, primary_shift, "win.reopen-closed-tab"));
     window.add_controller(controller);
 }
 
-fn make_shortcut(trigger: &str, action: &str) -> gtk::Shortcut {
+fn make_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType, action: &str) -> gtk::Shortcut {
     gtk::Shortcut::builder()
-        .trigger(&gtk::ShortcutTrigger::parse_string(trigger).expect("valid trigger"))
+        .trigger(&gtk::KeyvalTrigger::new(key, modifiers))
         .action(&gtk::NamedAction::new(action))
         .build()
 }

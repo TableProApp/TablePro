@@ -4,9 +4,9 @@ use tablepro_core::{ColumnInfo, ConnectOptions, DatabaseDriver, Value};
 use testcontainers::core::wait::HttpWaitStrategy;
 use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, GenericImage, ImageExt};
+use testcontainers::{ContainerAsync, GenericImage, ImageExt, TestcontainersError};
 
-async fn start_clickhouse() -> (ContainerAsync<GenericImage>, ConnectOptions) {
+async fn start_clickhouse() -> Result<(ContainerAsync<GenericImage>, ConnectOptions), TestcontainersError> {
     let container = GenericImage::new("clickhouse/clickhouse-server", "24.8")
         .with_exposed_port(8123.tcp())
         .with_wait_for(WaitFor::http(
@@ -19,10 +19,9 @@ async fn start_clickhouse() -> (ContainerAsync<GenericImage>, ConnectOptions) {
         .with_env_var("CLICKHOUSE_DB", "default")
         .with_env_var("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
         .start()
-        .await
-        .expect("start clickhouse container");
-    let host = container.get_host().await.expect("host").to_string();
-    let port = container.get_host_port_ipv4(8123).await.expect("port");
+        .await?;
+    let host = container.get_host().await?.to_string();
+    let port = container.get_host_port_ipv4(8123).await?;
     let opts = ConnectOptions {
         host,
         port,
@@ -32,18 +31,14 @@ async fn start_clickhouse() -> (ContainerAsync<GenericImage>, ConnectOptions) {
         use_tls: false,
         ..Default::default()
     };
-    (container, opts)
-}
-
-async fn connect(opts: ConnectOptions) -> Box<dyn tablepro_core::Connection> {
-    ClickhouseDriver.connect(opts).await.expect("connect")
+    Ok((container, opts))
 }
 
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn hostile_table_name_is_browsed_as_data() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     let name = r"t\` UNION ALL SELECT 42 --";
     let quoted = tablepro_core::sql_dialect::quote_ident("clickhouse", name);
@@ -63,8 +58,8 @@ async fn hostile_table_name_is_browsed_as_data() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn connect_list_tables_and_pk_detection() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE pk_demo (
@@ -108,8 +103,8 @@ async fn connect_list_tables_and_pk_detection() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn views_appear_in_the_table_list() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE base (id UInt64) ENGINE = MergeTree ORDER BY id")
         .await
@@ -133,8 +128,8 @@ async fn views_appear_in_the_table_list() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn inline_edit_update_applies() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE edits (id UInt64, name String) ENGINE = MergeTree ORDER BY id")
         .await
@@ -165,8 +160,8 @@ async fn inline_edit_update_applies() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn full_row_update_applies() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE rows_edit (id UInt64, a String, b Int64) ENGINE = MergeTree ORDER BY id")
         .await
@@ -189,8 +184,8 @@ async fn full_row_update_applies() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn literals_with_quotes_and_placeholders_round_trip() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE quoting (id UInt64, note String) ENGINE = MergeTree ORDER BY id")
         .await
@@ -213,8 +208,8 @@ async fn literals_with_quotes_and_placeholders_round_trip() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn parameterised_types_decode_to_typed_values() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE typed (
@@ -248,8 +243,8 @@ async fn parameterised_types_decode_to_typed_values() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn value_roundtrip_common_types() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE roundtrip (
@@ -302,8 +297,8 @@ async fn value_roundtrip_common_types() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn pagination_and_truncated_flag() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE n (i UInt64) ENGINE = MergeTree ORDER BY i")
         .await
@@ -333,8 +328,8 @@ async fn pagination_and_truncated_flag() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn query_truncates_at_the_row_cap() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
 
     let cap = tablepro_core::MAX_QUERY_ROWS;
     let exact = conn.query(&format!("SELECT number FROM numbers({cap})")).await.unwrap();
@@ -352,8 +347,8 @@ async fn query_truncates_at_the_row_cap() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn bad_sql_returns_query_error() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
     let err = conn
         .query("SELECT * FROM definitely_missing_table_xyz")
         .await

@@ -3,6 +3,7 @@ name = "tablepro-app"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [[bin]]
@@ -20,6 +21,7 @@ chrono.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 tablepro-ssh = { path = "../ssh" }
 tablepro-storage = { path = "../storage" }
 gtk4.workspace = true
@@ -36,3 +38,6 @@ uuid.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 libc = "0.2"
 sqlformat = "0.5"
+
+[lints]
+workspace = true

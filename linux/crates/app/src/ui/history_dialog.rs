@@ -858,7 +858,10 @@ impl HistoryDialog {
         row.add_controller(gesture);
 
         let menu_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Menu,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new({
                 let popover = popover_menu.clone();
                 move |_, _| {

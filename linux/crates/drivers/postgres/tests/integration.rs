@@ -6,25 +6,21 @@ use serde_json::json;
 use uuid::Uuid;
 
 use drivers_postgres::PgDriver;
-use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, Value};
-use testcontainers::ContainerAsync;
+use tablepro_core::{ConnectOptions, DatabaseDriver, Value};
 use testcontainers::ImageExt;
+use testcontainers::{ContainerAsync, TestcontainersError};
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
-async fn start_pg() -> (ContainerAsync<Postgres>, ConnectOptions) {
+async fn start_pg() -> Result<(ContainerAsync<Postgres>, ConnectOptions), TestcontainersError> {
     // Pin to Postgres 16: the introspection query in `fetch_columns`
     // reads `pg_attribute.attgenerated`, which was added in PG 12.
     // testcontainers-modules's default tag is older and breaks the
     // generated-column flag query. PG 11 hit upstream EOL in Nov 2023
     // so production deployments shouldn't be older than this anyway.
-    let container = Postgres::default()
-        .with_tag("16-alpine")
-        .start()
-        .await
-        .expect("start postgres container");
-    let host = container.get_host().await.expect("host").to_string();
-    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let container = Postgres::default().with_tag("16-alpine").start().await?;
+    let host = container.get_host().await?.to_string();
+    let port = container.get_host_port_ipv4(5432).await?;
     let opts = ConnectOptions {
         host,
         port,
@@ -34,18 +30,14 @@ async fn start_pg() -> (ContainerAsync<Postgres>, ConnectOptions) {
         use_tls: false,
         ..Default::default()
     };
-    (container, opts)
-}
-
-async fn connect(opts: ConnectOptions) -> Box<dyn Connection> {
-    PgDriver.connect(opts).await.expect("connect")
+    Ok((container, opts))
 }
 
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn connect_list_tables_and_pk_detection() {
-    let (_c, opts) = start_pg().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE pk_demo (
@@ -80,8 +72,8 @@ async fn connect_list_tables_and_pk_detection() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn value_roundtrip_all_types() {
-    let (_c, opts) = start_pg().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE roundtrip (
@@ -188,8 +180,8 @@ async fn value_roundtrip_all_types() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn pagination_and_truncated_flag() {
-    let (_c, opts) = start_pg().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE big (i int PRIMARY KEY)").await.unwrap();
     let mut sql = String::from("INSERT INTO big (i) VALUES ");
@@ -221,8 +213,8 @@ async fn pagination_and_truncated_flag() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn bad_sql_returns_query_error() {
-    let (_c, opts) = start_pg().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
 
     let err = conn.query("SELECT * FROM no_such_table").await.unwrap_err();
     let msg = format!("{err}");

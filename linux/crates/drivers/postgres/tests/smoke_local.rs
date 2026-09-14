@@ -20,10 +20,10 @@ use tablepro_core::{ConnectOptions, DatabaseDriver, Value};
 const TABLE: &str = "tablepro_smoke_items";
 const DEFAULT_PORT: u16 = 54329;
 
-fn opts_from_env() -> ConnectOptions {
-    ConnectOptions {
+fn opts_from_env() -> Result<ConnectOptions, String> {
+    Ok(ConnectOptions {
         host: std::env::var("SMOKE_PG_HOST").unwrap_or_else(|_| "127.0.0.1".into()),
-        port: port_from_env(),
+        port: port_from_env()?,
         database: std::env::var("SMOKE_PG_DB").unwrap_or_else(|_| "tablepro".into()),
         username: std::env::var("SMOKE_PG_USER").unwrap_or_else(|_| "tablepro".into()),
         password: secrecy::SecretString::new(
@@ -33,21 +33,21 @@ fn opts_from_env() -> ConnectOptions {
         ),
         use_tls: false,
         ..Default::default()
-    }
+    })
 }
 
-fn port_from_env() -> u16 {
+fn port_from_env() -> Result<u16, String> {
     let Ok(raw) = std::env::var("SMOKE_PG_PORT") else {
-        return DEFAULT_PORT;
+        return Ok(DEFAULT_PORT);
     };
     raw.parse()
-        .unwrap_or_else(|e| panic!("SMOKE_PG_PORT={raw} is not a port number: {e}"))
+        .map_err(|e| format!("SMOKE_PG_PORT={raw} is not a port number: {e}"))
 }
 
 #[tokio::test]
 #[ignore = "requires a local postgres; run via scripts/smoke-postgres.sh"]
 async fn connect_browse_and_edit_cell() {
-    let opts = opts_from_env();
+    let opts = opts_from_env().unwrap();
     let conn = PgDriver.connect(opts).await.expect("connect to smoke postgres");
 
     conn.execute(&format!(

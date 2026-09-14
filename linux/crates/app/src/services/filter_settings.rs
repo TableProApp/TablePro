@@ -85,15 +85,6 @@ pub fn save(connection_id: Uuid, schema: Option<&str>, table: &str, set: FilterS
     });
 }
 
-#[allow(dead_code)]
-pub fn clear(connection_id: Uuid, schema: Option<&str>, table: &str) {
-    // Public API even if no current callsite uses it directly —
-    // the dialog's "Clear all" button routes through `save` with an
-    // empty FilterSet which is the same code path. Kept exposed for
-    // a future "remove this filter" action elsewhere.
-    save(connection_id, schema, table, FilterSet::default());
-}
-
 fn load_from_disk() -> Connections {
     let Some(path) = xdg_config_path(FILE) else {
         return HashMap::new();

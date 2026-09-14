@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "requires a Secret Service"]
     async fn round_trip_via_secret_service() {
         use secrecy::ExposeSecret;
         let id = Uuid::new_v4();

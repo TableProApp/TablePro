@@ -3,6 +3,7 @@ name = "tablepro-driver-sqlite"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [lib]
@@ -20,3 +21,6 @@ tokio.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

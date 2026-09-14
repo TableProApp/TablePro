@@ -3,6 +3,7 @@ name = "tablepro-storage"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 publish = false
 
 [lib]
@@ -25,3 +26,6 @@ tracing.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

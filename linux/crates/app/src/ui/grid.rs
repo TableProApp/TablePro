@@ -128,7 +128,10 @@ impl TabGridContext {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is an independent grid setting chosen by the caller"
+)]
 pub fn build_column_view(
     result: &QueryResult,
     schema_columns: &[ColumnInfo],
@@ -259,7 +262,10 @@ pub fn build_column_view(
     (column_view, selection)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is captured by a different column factory closure"
+)]
 fn build_column(
     info: &ColumnInfo,
     idx: usize,
@@ -566,7 +572,10 @@ fn build_column(
 /// (focus-then-click) because clicks in a data grid are routinely
 /// row-selection clicks — a single-click trigger would silently drop
 /// the user into edit mode on the cell they happened to land on.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is captured by a different cell signal handler"
+)]
 fn setup_editable_cell(
     item: &gtk::ListItem,
     idx: usize,
@@ -1709,8 +1718,8 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     column_view.insert_action_group("cell", Some(&group));
 
     let actions = CellActions {
-        edit: editable.then(|| simple_action(&group, "edit")),
-        set_empty: editable.then(|| simple_action(&group, "set-empty")),
+        edit: editable.then(|| simple_action(&group, "edit")).flatten(),
+        set_empty: editable.then(|| simple_action(&group, "set-empty")).flatten(),
     };
 
     // Popovers are parented eagerly so each PopoverMenu's action muxer
@@ -1776,11 +1785,10 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     }
 }
 
-fn simple_action(group: &gio::SimpleActionGroup, name: &str) -> gio::SimpleAction {
+fn simple_action(group: &gio::SimpleActionGroup, name: &str) -> Option<gio::SimpleAction> {
     group
         .lookup_action(name)
         .and_then(|a| a.downcast::<gio::SimpleAction>().ok())
-        .expect("registered above as an ActionEntry, which is a SimpleAction")
 }
 
 pub(super) fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
@@ -1963,7 +1971,10 @@ fn attach_cell_gesture(
     let view_for_key = column_view.clone();
     let popover_for_key = popover;
     let menu_shortcut = gtk::Shortcut::builder()
-        .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
+        .trigger(&gtk::KeyvalTrigger::new(
+            gtk::gdk::Key::Menu,
+            gtk::gdk::ModifierType::empty(),
+        ))
         .action(&gtk::CallbackAction::new(move |_, _| {
             let Some(cv) = view_for_key.upgrade() else {
                 return glib::Propagation::Proceed;

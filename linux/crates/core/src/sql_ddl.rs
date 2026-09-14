@@ -906,7 +906,10 @@ pub fn build_drop_foreign_key(
 /// - Indexes / FKs matched by name. Pure rename without other
 ///   changes ⇒ `Drop` + `Add` (no native ALTER INDEX in the
 ///   supported drivers).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the diff compares the original and draft table name, columns, indexes and foreign keys"
+)]
 pub fn diff_to_ops(
     schema: Option<&str>,
     original_table: &str,
