@@ -7,7 +7,7 @@ import AppKit
 import Foundation
 import os
 
-/// The rail asks the window which connection it is showing rather than remembering one, so the
+/// The sidebar asks the window which connection it is showing rather than remembering one, so the
 /// window answers from the registry that already knows.
 extension MainSplitViewController: WorkspaceRailHost {
     internal var hostedConnectionIds: [UUID] { workspaces.connectionIds }
@@ -16,6 +16,32 @@ extension MainSplitViewController: WorkspaceRailHost {
 
     internal func selectHostedConnection(_ connectionId: UUID) {
         workspaces.select(connectionId)
+    }
+}
+
+extension MainSplitViewController: ConnectionTreeHost {
+    /// Nil for a connection this window does not host. The tree lists every saved connection, so
+    /// most of its rows name a workspace that does not exist, which is a different row from one
+    /// whose workspace exists and is idle.
+    internal func connectionPhase(for connectionId: UUID) -> ConnectionWindowPhase? {
+        workspaces.workspace(for: connectionId)?.phase
+    }
+
+    /// Opening from the tree adopts the connection into this window rather than making another
+    /// one: the tree is the window's own list, and a click in it that spawned a second window
+    /// would leave the list the user clicked in behind.
+    internal func openConnectionInWindow(_ connectionId: UUID) {
+        if workspaces.workspace(for: connectionId) != nil {
+            workspaces.select(connectionId)
+            reconnectWorkspace(connectionId)
+            return
+        }
+        guard let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId })
+        else { return }
+        let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+        adoptWorkspace(payload: payload, autoConnect: true)
+        workspaces.select(connectionId)
+        startActivationConnectIfNeeded()
     }
 }
 

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Password from 1Password, Vault, AWS Secrets Manager, a shell command, a file, or an environment variable.
 - **Secret Manager** in Settings > General, one placeholder command shared by every connection set to it.
 - In-memory cache for fetched passwords, with a lifetime in Settings > General.
+- Connections list in the sidebar, naming every saved connection beside the object tree.
 
 ### Changed
 

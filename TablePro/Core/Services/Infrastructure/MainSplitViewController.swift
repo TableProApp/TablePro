@@ -275,6 +275,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
         navigationSidebar = NavigationSidebarViewController()
         navigationSidebar.railController.host = self
+        navigationSidebar.connectionTree.host = self
         navigationSidebar.railController.onLayoutChange = { [weak self] _ in
             self?.navigationSidebar.applyRailWidth(animated: false)
             self?.recomputeWindowMinSize()
@@ -615,12 +616,17 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         /// Only this window's rail moved, and only its highlight. Broadcasting instead made every
         /// rail in the app rebuild its whole entry list to answer a question none of them asked.
         navigationSidebar?.railController.refreshSelection()
+        navigationSidebar?.connectionTree.applySelection()
     }
 
     private func applyPhase() {
         syncSelectedPanes()
         applyPaneChrome()
         applyWindowTitle()
+        /// The tree paints a row per saved connection from this window's phases, so a connect that
+        /// lands has to reach it. Only the state is redrawn: a reload here would collapse the
+        /// folders the user opened every time a connection changed state.
+        navigationSidebar?.connectionTree.refreshStates()
         SessionRecoveryTracker.sync()
     }
 

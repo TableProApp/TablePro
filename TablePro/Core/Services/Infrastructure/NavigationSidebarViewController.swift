@@ -16,16 +16,23 @@ import SwiftUI
 @MainActor
 internal final class NavigationSidebarViewController: NSViewController {
     internal let railController: WorkspaceRailViewController
+    internal let connectionTree: ConnectionTreeOutlineController
     internal let objectBrowser: SidebarContainerViewController
 
     private let separator = NSBox()
     private var railWidthConstraint: NSLayoutConstraint!
     private var separatorWidthConstraint: NSLayoutConstraint!
 
+    /// A plain `NSSplitView` rather than an `NSSplitViewController`. A nested split view controller
+    /// publishes `sum(minimums) + dividers` as its `fittingSize`, which the sidebar item would
+    /// adopt as a required minimum and the window's own dividers then cannot beat (#1872).
+    private let stack = NSSplitView()
+
     internal private(set) var isRailVisible = false
 
     internal init() {
         self.railController = WorkspaceRailViewController()
+        self.connectionTree = ConnectionTreeOutlineController()
         self.objectBrowser = SidebarContainerViewController()
         super.init(nibName: nil, bundle: nil)
     }
@@ -39,11 +46,19 @@ internal final class NavigationSidebarViewController: NSViewController {
         view = NSView()
 
         addChild(railController)
+        addChild(connectionTree)
         addChild(objectBrowser)
 
         let rail = railController.view
-        let browser = objectBrowser.view
         separator.boxType = .separator
+
+        stack.isVertical = false
+        stack.dividerStyle = .thin
+        stack.addArrangedSubview(connectionTree.view)
+        stack.addArrangedSubview(objectBrowser.view)
+        stack.autosaveName = "TableProSidebarStack"
+
+        let browser = stack
 
         for child in [rail, separator, browser] {
             child.translatesAutoresizingMaskIntoConstraints = false
@@ -71,6 +86,24 @@ internal final class NavigationSidebarViewController: NSViewController {
         ])
 
         separator.isHidden = true
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        applyInitialStackPosition()
+    }
+
+    /// Only until AppKit's own autosave record exists. A split view with no saved position gives
+    /// its first pane half the height, which is far more than a connection list needs and leaves
+    /// the object tree with nothing.
+    private var hasPositionedStack = false
+
+    private func applyInitialStackPosition() {
+        guard !hasPositionedStack, stack.autosaveName != nil else { return }
+        hasPositionedStack = true
+        guard stack.bounds.height > 0 else { return }
+        let preferred = min(stack.bounds.height * 0.4, 220)
+        stack.setPosition(preferred, ofDividerAt: 0)
     }
 
     /// The width the sidebar needs on top of the object browser's own minimum. Read from the
