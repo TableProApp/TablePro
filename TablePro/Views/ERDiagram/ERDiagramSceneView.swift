@@ -34,6 +34,7 @@ struct ERDiagramCanvasActions {
     let updateDrag: (CGSize, CGPoint) -> Void
     let endDrag: () -> Void
     let scrollBy: (CGSize) -> Void
+    let copyImage: () -> Void
 }
 
 final class ERDiagramSceneView: NSView {
@@ -73,6 +74,10 @@ final class ERDiagramSceneView: NSView {
 
     override var isOpaque: Bool { false }
 
+    /// Taking focus is what puts the diagram's scroll view on the responder chain, so View > Zoom
+    /// In and Edit > Copy act on the diagram rather than on the window's fallbacks.
+    override var acceptsFirstResponder: Bool { true }
+
     /// Cursor rects do not fire for a view mounted under SwiftUI, which this one is, so the hand
     /// pointer comes from a tracking area, the way `ResizeCursorSplitViewController` sets its own.
     override init(frame frameRect: NSRect) {
@@ -95,9 +100,32 @@ final class ERDiagramSceneView: NSView {
         ERDiagramSceneRenderer.draw(scene, dirtyRect: dirtyRect, in: context)
     }
 
+    /// An ER diagram tab has nothing else to type into, so the canvas takes focus when nothing holds
+    /// it, the same claim the SQL editor makes. A tab switch mounts the canvas in the same update that
+    /// removes the outgoing tab, measured, so the editor it replaces still holds focus on arrival and
+    /// leaves the window holding it a moment later. The claim is asked again on the next turn.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !claimFocusIfUnheld() else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.claimFocusIfUnheld()
+        }
+    }
+
+    @discardableResult
+    private func claimFocusIfUnheld() -> Bool {
+        guard let window, window.firstResponder == nil || window.firstResponder === window else { return false }
+        return window.makeFirstResponder(self)
+    }
+
+    @objc func copy(_ sender: Any?) {
+        actions?.copyImage()
+    }
+
     // MARK: - Pointer
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
         press = Press(
             documentStart: point,

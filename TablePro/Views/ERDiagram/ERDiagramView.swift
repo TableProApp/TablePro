@@ -53,7 +53,6 @@ struct ERDiagramView: View {
                 ERDiagramToolbar(viewModel: viewModel, viewport: viewport, onExport: exportDiagram)
             }
         }
-        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: exportImage()) }
         .task { await viewModel.loadDiagram() }
         .task(id: viewModel.loadState) { await settleViewport() }
     }
@@ -85,7 +84,11 @@ struct ERDiagramView: View {
             beginDrag: { viewModel.beginDrag(at: $0) },
             updateDrag: { viewModel.updateDrag(translation: $0, currentPoint: $1) },
             endDrag: { viewModel.endDrag() },
-            scrollBy: { viewModel.viewport.scrollBy($0) }
+            scrollBy: { viewModel.viewport.scrollBy($0) },
+            copyImage: {
+                guard let image = exportImage() else { return }
+                ClipboardService.shared.writeImage(image)
+            }
         )
     }
 

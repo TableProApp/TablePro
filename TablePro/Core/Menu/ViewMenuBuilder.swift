@@ -141,14 +141,14 @@ enum ViewMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Increase Text Size"),
-                action: #selector(MainSplitViewController.increaseEditorTextSize(_:)),
+                String(localized: "Zoom In"),
+                action: #selector(ZoomCommandResponding.zoomIn(_:)),
                 keyEquivalent: "=",
                 modifiers: .command
             ),
             MenuItemFactory.item(
-                String(localized: "Decrease Text Size"),
-                action: #selector(MainSplitViewController.decreaseEditorTextSize(_:)),
+                String(localized: "Zoom Out"),
+                action: #selector(ZoomCommandResponding.zoomOut(_:)),
                 keyEquivalent: "-",
                 modifiers: .command
             ),

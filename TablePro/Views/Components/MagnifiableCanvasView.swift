@@ -73,6 +73,7 @@ final class DiagramViewportController {
     /// tears the diagram down and rebuilds it, and reading would drop the user back to 100%.
     func attach(to scrollView: NSScrollView) {
         self.scrollView = scrollView
+        (scrollView as? DiagramScrollView)?.zoomController = self
         scrollView.magnification = DiagramZoom.clamped(magnification)
         magnification = scrollView.magnification
         magnificationObservation = scrollView.observe(\.magnification, options: [.new]) { [weak self] _, change in
@@ -100,6 +101,7 @@ final class DiagramViewportController {
         }
         magnificationObservation?.invalidate()
         magnificationObservation = nil
+        (scrollView as? DiagramScrollView)?.zoomController = nil
         scrollView = nil
     }
 

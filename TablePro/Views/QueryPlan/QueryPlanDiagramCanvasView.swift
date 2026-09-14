@@ -20,6 +20,9 @@ final class QueryPlanDiagramCanvasView: NSView {
     private(set) var selectedNodeId: UUID?
     private var select: ((UUID?) -> Void)?
 
+    /// Renders the export copy of the plan, which the SwiftUI view owns, onto the pasteboard.
+    var copyImage: (() -> Void)?
+
     private var drawingHost: QueryPlanDiagramDrawingHost?
     private var nodeElements: [QueryPlanDiagramNodeElement] = []
     private var pressedNodeId: UUID?
@@ -27,6 +30,14 @@ final class QueryPlanDiagramCanvasView: NSView {
     private var popoverNodeId: UUID?
 
     override var isFlipped: Bool { true }
+
+    /// Taking focus on a click is what puts the plan's scroll view on the responder chain, so View >
+    /// Zoom In and Edit > Copy act on the plan instead of on the editor above it.
+    override var acceptsFirstResponder: Bool { true }
+
+    @objc func copy(_ sender: Any?) {
+        copyImage?()
+    }
 
     func update(layout: QueryPlanDiagramLayout, selectedNodeId: UUID?, select: @escaping (UUID?) -> Void) {
         let isNewPlan = self.planLayout?.nodes.map(\.id) != layout.nodes.map(\.id)
@@ -88,6 +99,7 @@ final class QueryPlanDiagramCanvasView: NSView {
     // MARK: - Pointer
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
         pressedNodeId = nodeId(at: convert(event.locationInWindow, from: nil))
     }
 

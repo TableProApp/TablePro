@@ -227,4 +227,29 @@ struct QueryPlanDiagramCanvasViewTests {
         let elements = fixture.canvas.accessibilityChildren() as? [QueryPlanDiagramNodeElement] ?? []
         #expect(elements.map(\.nodeId) == replacement.nodes.map(\.id))
     }
+
+    /// The plan sits under the SQL editor, so it waits for a click rather than taking focus from it.
+    @Test("The plan takes focus on a click and not on arrival")
+    func focusFollowsAClick() throws {
+        let fixture = makeFixture(magnification: 0.5)
+        #expect(fixture.canvas.acceptsFirstResponder)
+        #expect(fixture.window.firstResponder !== fixture.canvas)
+        let pointer = fixture.canvas.convert(CGPoint(x: 2, y: 2), to: nil)
+
+        fixture.canvas.mouseDown(with: try mouseEvent(.leftMouseDown, at: pointer, in: fixture.window))
+        fixture.canvas.mouseUp(with: try mouseEvent(.leftMouseUp, at: pointer, in: fixture.window))
+
+        #expect(fixture.window.firstResponder === fixture.canvas)
+    }
+
+    @Test("Copy on the focused plan copies the diagram")
+    func copyCopiesThePlan() {
+        let fixture = makeFixture(magnification: 1.0)
+        var copies = 0
+        fixture.canvas.copyImage = { copies += 1 }
+
+        fixture.canvas.copy(nil)
+
+        #expect(copies == 1)
+    }
 }

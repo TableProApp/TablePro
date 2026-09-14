@@ -42,7 +42,6 @@ struct QueryPlanDiagramView: View {
             }
             .padding(12)
         }
-        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: exportCanvas) }
     }
 
     // MARK: - Canvas
@@ -52,6 +51,7 @@ struct QueryPlanDiagramView: View {
         let layout = layout
         let selectedNodeId = selectedNodeId
         let selection = $selectedNodeId
+        let exportCanvas = exportCanvas
         return MagnifiableCanvasView(
             viewport: viewport,
             contentSize: layout.canvasSize,
@@ -59,6 +59,10 @@ struct QueryPlanDiagramView: View {
             makeDocument: { QueryPlanDiagramCanvasView() },
             updateDocument: { canvasView in
                 canvasView.update(layout: layout, selectedNodeId: selectedNodeId) { selection.wrappedValue = $0 }
+                canvasView.copyImage = {
+                    guard let image = DiagramImageExporter.image(of: exportCanvas) else { return }
+                    ClipboardService.shared.writeImage(image)
+                }
             }
         )
     }
