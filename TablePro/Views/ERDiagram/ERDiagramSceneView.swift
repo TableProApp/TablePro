@@ -104,6 +104,18 @@ final class ERDiagramSceneView: NSView {
     /// it, the same claim the SQL editor makes. A tab switch mounts the canvas in the same update that
     /// removes the outgoing tab, measured, so the editor it replaces still holds focus on arrival and
     /// leaves the window holding it a moment later. The claim is asked again on the next turn.
+    /// A tab or connection switch takes the canvas out of its window mid-drag, and a view that has
+    /// left its window never gets the mouse-up, measured. Without this the drag and its auto-pan
+    /// outlived the canvas and scrolled the diagram on their own once it came back.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        guard newWindow == nil, let press else { return }
+        self.press = nil
+        if press.isDragging {
+            actions?.endDrag()
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil, !claimFocusIfUnheld() else { return }

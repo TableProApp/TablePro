@@ -106,8 +106,9 @@ struct ERDiagramView: View {
 
     // MARK: - Initial Fit
 
-    /// The first pass fits the whole diagram. Every later one restores what the viewport was left
-    /// on, because an editor-tab switch rebuilds this view against a model that already loaded.
+    /// The first pass fits the whole diagram. A later one, after an editor-tab switch rebuilt this view
+    /// against a model that already loaded, leaves the viewport to the scroll view, which puts back
+    /// the offset it was left on.
     private func settleViewport() async {
         guard viewModel.loadState == .loaded else { return }
         for _ in 0..<Self.fitLayoutAttempts {
@@ -117,8 +118,6 @@ struct ERDiagramView: View {
                 if viewModel.needsInitialFit {
                     viewport.fitToWindow()
                     viewModel.needsInitialFit = false
-                } else {
-                    viewport.restoreScrollPosition()
                 }
                 return
             }

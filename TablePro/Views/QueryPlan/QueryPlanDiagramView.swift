@@ -11,15 +11,17 @@ import SwiftUI
 struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?
 
-    @State private var viewport = DiagramViewportController()
+    /// Owned by the plan's `QueryPlanViewState`, because this view goes away on every mode switch.
+    let viewport: DiagramViewportController
 
     /// Derived from the plan on every update, so a second EXPLAIN in the same tab redraws
     /// instead of keeping the layout the first one produced.
     private let layout: QueryPlanDiagramLayout
 
-    init(plan: QueryPlan, selectedNodeId: Binding<UUID?>) {
+    init(plan: QueryPlan, selectedNodeId: Binding<UUID?>, viewport: DiagramViewportController) {
         layout = QueryPlanDiagramLayout(root: plan.rootNode)
         _selectedNodeId = selectedNodeId
+        self.viewport = viewport
     }
 
     var body: some View {

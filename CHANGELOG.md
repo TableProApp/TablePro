@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interrupted remote snapshot files left on the server, now swept on the next fetch.
 - Local working copies of remote databases kept forever, now removed after 30 days unused.
 - Clicks, drags and the hand pointer landing on the wrong table or plan step once a diagram is zoomed.
+- ER diagram table held at the edge of the view sliding away from the pointer, or auto-pan not starting when zoomed out.
+- ER diagram scrolling on its own after a table drag was interrupted by a tab or connection switch.
+- Fit to Window on an ER diagram fitting empty space left behind by a dragged table.
+- Query plan mode, selected step, zoom and scroll lost on a mode or editor tab switch, or zoom carried over to another plan.
+- Zoom Out on a diagram at 5% jumping to 1%.
 
 ### Security
 

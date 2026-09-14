@@ -178,6 +178,35 @@ struct ERDiagramPointerInputTests {
         #expect(fixture.recorder.dragStarts.isEmpty)
     }
 
+    /// A tab or connection switch takes the canvas out of its window with the button still down, and
+    /// the mouse-up then never reaches it.
+    @Test("A drag cut short by the canvas leaving its window still ends")
+    func leavingTheWindowEndsTheDrag() throws {
+        let fixture = makeFixture(magnification: 1.0)
+        let start = fixture.sceneView.convert(Self.farCentre, to: nil)
+        let end = CGPoint(x: start.x + 40, y: start.y)
+
+        fixture.sceneView.mouseDown(with: try mouseEvent(.leftMouseDown, at: start, in: fixture.window))
+        fixture.sceneView.mouseDragged(with: try mouseEvent(.leftMouseDragged, at: end, in: fixture.window))
+        fixture.window.contentView = NSView()
+
+        #expect(fixture.recorder.endedDrags == 1)
+        #expect(fixture.recorder.selections.isEmpty)
+    }
+
+    @Test("A press that never became a drag is dropped when the canvas leaves its window")
+    func leavingTheWindowDropsAPress() throws {
+        let fixture = makeFixture(magnification: 1.0)
+        let start = fixture.sceneView.convert(Self.farCentre, to: nil)
+
+        fixture.sceneView.mouseDown(with: try mouseEvent(.leftMouseDown, at: start, in: fixture.window))
+        fixture.window.contentView = NSView()
+        fixture.sceneView.mouseUp(with: try mouseEvent(.leftMouseUp, at: start, in: fixture.window))
+
+        #expect(fixture.recorder.endedDrags == 0)
+        #expect(fixture.recorder.selections.isEmpty)
+    }
+
     @Test("The selected table's element reports itself selected")
     func selectionReachesAccessibility() {
         let fixture = makeFixture(magnification: 0.5)

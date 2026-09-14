@@ -71,13 +71,12 @@ struct QueryPlanResultView: View {
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @AppStorage(PreferenceKeys.queryPlanBarMetric.name) private var storedBarMetric: String = ""
+    @Bindable var tabState: QueryPlanTabState
+    @Bindable var planState: QueryPlanViewState
+    @Bindable private var comparison: QueryPlanComparisonModel
+
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
-    @State private var viewMode: QueryPlanViewMode = .diagram
-    @State private var comparison = QueryPlanComparisonModel()
-
-    /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
-    @State private var selectedNodeId: UUID?
 
     /// Resolved once per plan rather than per body evaluation. Working it out costs a walk of the
     /// whole tree for each metric, and the toolbar asks for it several times per render, which a
@@ -92,12 +91,17 @@ struct QueryPlanResultView: View {
         rawText: String,
         executionTime: TimeInterval?,
         plan: QueryPlan?,
-        planContext: QueryPlanContext? = nil
+        planContext: QueryPlanContext? = nil,
+        tabState: QueryPlanTabState,
+        planState: QueryPlanViewState
     ) {
         self.rawText = rawText
         self.executionTime = executionTime
         self.plan = plan
         self.planContext = planContext
+        self.tabState = tabState
+        self.planState = planState
+        _comparison = Bindable(tabState.comparison)
     }
 
     /// Compare is offered only when there is something to compare: a plan the app could read, and a
@@ -122,8 +126,8 @@ struct QueryPlanResultView: View {
             availableMetrics = plan.map(QueryPlanMetricIndex.availableMetrics) ?? []
         }
         .onChange(of: availableModes) { _, modes in
-            guard !modes.contains(viewMode) else { return }
-            viewMode = .diagram
+            guard !modes.contains(tabState.viewMode) else { return }
+            tabState.viewMode = .diagram
         }
     }
 
@@ -145,11 +149,11 @@ struct QueryPlanResultView: View {
             }
 
         case .parsed(let plan):
-            switch viewMode {
+            switch tabState.viewMode {
             case .diagram:
-                QueryPlanDiagramView(plan: plan, selectedNodeId: $selectedNodeId)
+                QueryPlanDiagramView(plan: plan, selectedNodeId: $planState.selectedNodeId, viewport: planState.viewport)
             case .tree:
-                QueryPlanTreeView(plan: plan, metric: barMetric, selectedNodeId: $selectedNodeId)
+                QueryPlanTreeView(plan: plan, metric: barMetric, selectedNodeId: $planState.selectedNodeId)
             case .raw:
                 DDLTextView(ddl: rawText, fontSize: $fontSize)
             case .compare:
@@ -177,7 +181,7 @@ struct QueryPlanResultView: View {
     private var toolbar: some View {
         HStack(spacing: 12) {
             if presentation.plan != nil {
-                Picker("", selection: $viewMode) {
+                Picker("", selection: $tabState.viewMode) {
                     ForEach(availableModes) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -189,19 +193,19 @@ struct QueryPlanResultView: View {
                 .accessibilityIdentifier("query-plan-mode-picker")
             }
 
-            if viewMode == .compare {
+            if tabState.viewMode == .compare {
                 baselinePicker
             }
 
-            if viewMode == .tree {
+            if tabState.viewMode == .tree {
                 metricPicker
             }
 
-            if viewMode == .raw || presentation.plan == nil {
+            if tabState.viewMode == .raw || presentation.plan == nil {
                 fontSizeStepper
             }
 
-            if viewMode != .compare {
+            if tabState.viewMode != .compare {
                 timings
             }
 

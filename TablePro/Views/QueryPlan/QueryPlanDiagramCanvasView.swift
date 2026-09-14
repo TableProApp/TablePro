@@ -153,6 +153,7 @@ final class QueryPlanDiagramCanvasView: NSView {
 
     private func syncPopover() {
         guard window != nil,
+              !visibleRect.isEmpty,
               let selectedNodeId,
               let positioned = planLayout?.nodes.first(where: { $0.id == selectedNodeId }) else {
             dismissPopover()
@@ -217,6 +218,15 @@ extension QueryPlanDiagramCanvasView: NSPopoverDelegate {
         popover = nil
         popoverNodeId = nil
         select?(nil)
+    }
+}
+
+/// Coming back to Diagram mode with a step selected shows its details again, but the canvas arrives
+/// in its window before the scroll view has a size or its restored offset, so revealing the step
+/// then would scroll a viewport that is about to be replaced.
+extension QueryPlanDiagramCanvasView: DiagramViewportSettling {
+    func viewportDidSettle() {
+        syncPopover()
     }
 }
 

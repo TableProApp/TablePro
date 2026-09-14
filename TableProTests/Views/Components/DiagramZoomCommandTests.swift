@@ -60,11 +60,24 @@ struct DiagramZoomCommandTests {
         #expect(!fixture.scrollView.validateMenuItem(item(#selector(ZoomCommandResponding.zoomOut(_:)))))
     }
 
+    @Test("Zoom Out dims at the ladder's floor and below it, and stays put if sent anyway", arguments: [0.05, 0.03] as [CGFloat])
+    func zoomOutStopsAtTheFloor(magnification: CGFloat) {
+        let fixture = makeAttached(magnification: magnification)
+        #expect(!fixture.scrollView.validateMenuItem(item(#selector(ZoomCommandResponding.zoomOut(_:)))))
+        #expect(fixture.scrollView.validateMenuItem(item(#selector(ZoomCommandResponding.zoomIn(_:)))))
+
+        fixture.scrollView.zoomOut(nil)
+        #expect(abs(fixture.viewport.magnification - magnification) < 0.0001)
+
+        fixture.scrollView.zoomIn(nil)
+        #expect(abs(fixture.viewport.magnification - DiagramZoom.stepUp(from: magnification)) < 0.0001)
+    }
+
     @Test("A scroll view whose diagram detached claims no zoom")
     func detachedScrollViewDisablesZoom() {
         let fixture = makeAttached()
 
-        fixture.viewport.detach()
+        fixture.viewport.detach(from: fixture.scrollView)
 
         #expect(fixture.scrollView.zoomController == nil)
         #expect(!fixture.scrollView.validateMenuItem(item(#selector(ZoomCommandResponding.zoomIn(_:)))))
