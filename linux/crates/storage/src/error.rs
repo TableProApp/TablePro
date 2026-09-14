@@ -22,4 +22,7 @@ pub enum StorageError {
 
     #[error("not found")]
     NotFound,
+
+    #[error("export encoding failed: {0}")]
+    Encode(#[from] tablepro_core::export::EncodeError),
 }

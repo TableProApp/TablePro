@@ -438,41 +438,49 @@ pub async fn export_sql(ids: &[i64]) -> Result<String, StorageError> {
 
 pub async fn export_csv(ids: &[i64]) -> Result<String, StorageError> {
     let entries = fetch_by_ids(ids).await?;
-    let mut out = String::new();
-    out.push_str("executed_at,connection,driver,duration_ms,rows_affected,success,cancelled,pinned,query,error\n");
-    for entry in &entries {
-        let when = chrono::DateTime::<chrono::Utc>::from(entry.executed_at).to_rfc3339();
-        out.push_str(&csv_field(&when));
-        out.push(',');
-        out.push_str(&csv_field(&entry.connection_name));
-        out.push(',');
-        out.push_str(&csv_field(&entry.driver_id));
-        out.push(',');
-        out.push_str(&entry.duration_ms.map(|n| n.to_string()).unwrap_or_default());
-        out.push(',');
-        out.push_str(&entry.rows_affected.map(|n| n.to_string()).unwrap_or_default());
-        out.push(',');
-        out.push_str(if entry.success { "1" } else { "0" });
-        out.push(',');
-        out.push_str(if entry.cancelled { "1" } else { "0" });
-        out.push(',');
-        out.push_str(if entry.pinned { "1" } else { "0" });
-        out.push(',');
-        out.push_str(&csv_field(&entry.query));
-        out.push(',');
-        out.push_str(&csv_field(entry.error.as_deref().unwrap_or("")));
-        out.push('\n');
-    }
-    Ok(out)
+    history_csv(&entries)
 }
 
-fn csv_field(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        let escaped = s.replace('"', "\"\"");
-        format!("\"{escaped}\"")
-    } else {
-        s.to_string()
-    }
+const HISTORY_CSV_HEADER: [&str; 10] = [
+    "executed_at",
+    "connection",
+    "driver",
+    "duration_ms",
+    "rows_affected",
+    "success",
+    "cancelled",
+    "pinned",
+    "query",
+    "error",
+];
+
+fn history_csv(entries: &[Entry]) -> Result<String, StorageError> {
+    let records: Vec<Vec<String>> = entries.iter().map(history_record).collect();
+    let options = tablepro_core::export::CsvOptions::default();
+    Ok(tablepro_core::export::render_text_csv(
+        &HISTORY_CSV_HEADER,
+        &records,
+        &options,
+    )?)
+}
+
+fn history_record(entry: &Entry) -> Vec<String> {
+    vec![
+        chrono::DateTime::<chrono::Utc>::from(entry.executed_at).to_rfc3339(),
+        entry.connection_name.clone(),
+        entry.driver_id.clone(),
+        entry.duration_ms.map(|n| n.to_string()).unwrap_or_default(),
+        entry.rows_affected.map(|n| n.to_string()).unwrap_or_default(),
+        flag(entry.success),
+        flag(entry.cancelled),
+        flag(entry.pinned),
+        entry.query.clone(),
+        entry.error.clone().unwrap_or_default(),
+    ]
+}
+
+fn flag(value: bool) -> String {
+    if value { "1" } else { "0" }.to_string()
 }
 
 fn outcome_summary(entry: &Entry) -> String {
@@ -528,10 +536,28 @@ mod tests {
     }
 
     #[test]
-    fn csv_escaping() {
-        assert_eq!(csv_field("plain"), "plain");
-        assert_eq!(csv_field("a,b"), "\"a,b\"");
-        assert_eq!(csv_field("a\"b"), "\"a\"\"b\"");
-        assert_eq!(csv_field("line\n"), "\"line\n\"");
+    fn history_csv_quotes_every_field_and_neutralises_formulas() {
+        let entry = Entry {
+            id: 1,
+            query: "=HYPERLINK(\"x\")".into(),
+            driver_id: "postgres".into(),
+            connection_id: Uuid::nil(),
+            connection_name: "a,b".into(),
+            executed_at: UNIX_EPOCH,
+            duration_ms: Some(12),
+            rows_affected: None,
+            success: true,
+            cancelled: false,
+            pinned: false,
+            error: Some("line\nbreak".into()),
+        };
+        let csv = history_csv(&[entry]).unwrap();
+        assert_eq!(
+            csv,
+            "\"executed_at\",\"connection\",\"driver\",\"duration_ms\",\"rows_affected\",\
+             \"success\",\"cancelled\",\"pinned\",\"query\",\"error\"\n\
+             \"1970-01-01T00:00:00+00:00\",\"a,b\",\"postgres\",\"12\",\"\",\"1\",\"0\",\"0\",\
+             \"'=HYPERLINK(\"\"x\"\")\",\"line\nbreak\"\n"
+        );
     }
 }

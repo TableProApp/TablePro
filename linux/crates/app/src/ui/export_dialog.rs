@@ -259,21 +259,22 @@ fn save_with_file_dialog(
     file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
         let Ok(file) = outcome else { return };
         let Some(path) = file.path() else { return };
-        let text = match format {
-            Format::Csv => export::render_csv(&result.columns, &result.rows, &options),
-            Format::Json => export::render_json(&result.columns, &result.rows),
+        let encoded = match format {
+            Format::Csv => export::render_csv(&result.columns, &result.rows, &options).map_err(|e| e.to_string()),
+            Format::Json => Ok(export::render_json(&result.columns, &result.rows)),
         };
-        match std::fs::write(&path, text) {
+        let written = encoded.and_then(|text| std::fs::write(&path, text).map_err(|e| e.to_string()));
+        match written {
             Ok(()) => toast_overlay.add_toast(adw::Toast::new(
                 &crate::tr!("Exported to {path}").replace("{path}", &path.display().to_string()),
             )),
-            Err(e) => {
+            Err(error) => {
                 let alert = adw::AlertDialog::new(
                     Some(&crate::tr!("Couldn't export")),
                     Some(
                         &crate::tr!("Writing {path} failed: {error}")
                             .replace("{path}", &path.display().to_string())
-                            .replace("{error}", &e.to_string()),
+                            .replace("{error}", &error),
                     ),
                 );
                 alert.add_response("close", &crate::tr!("Close"));

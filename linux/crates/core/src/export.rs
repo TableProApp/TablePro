@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{ColumnInfo, Value};
 
@@ -19,15 +20,6 @@ impl CsvDelimiter {
         CsvDelimiter::Tab,
         CsvDelimiter::Pipe,
     ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CsvDelimiter::Comma => ",",
-            CsvDelimiter::Semicolon => ";",
-            CsvDelimiter::Tab => "\t",
-            CsvDelimiter::Pipe => "|",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,14 +42,6 @@ pub enum CsvLineBreak {
 
 impl CsvLineBreak {
     pub const ALL: [CsvLineBreak; 3] = [CsvLineBreak::Lf, CsvLineBreak::CrLf, CsvLineBreak::Cr];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CsvLineBreak::Lf => "\n",
-            CsvLineBreak::CrLf => "\r\n",
-            CsvLineBreak::Cr => "\r",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -132,19 +116,13 @@ fn is_plain_decimal(s: &str) -> bool {
         && frac_part.chars().all(|c| c.is_ascii_digit())
 }
 
-fn quote_field(field: &str) -> String {
-    format!("\"{}\"", field.replace('"', "\"\""))
-}
-
-/// The four characters a spreadsheet reads as the start of a formula.
-pub const FORMULA_PREFIXES: [char; 4] = ['=', '+', '-', '@'];
-
-/// A leading tab or carriage return leads a formula too: Excel strips
-/// it before parsing the cell, so `\t=cmd|'/C calc'!A0` reaches the
-/// formula engine exactly as `=cmd|…` would.
-fn is_formula_lead(c: char) -> bool {
-    FORMULA_PREFIXES.contains(&c) || c == '\t' || c == '\r'
-}
+/// Every leading character a spreadsheet may read as the start of a
+/// formula: the four ASCII operators, the whitespace Excel strips before
+/// parsing (so `\t=cmd|'/C calc'!A0` reaches the formula engine as
+/// `=cmd|…` would), and the full-width forms of the operators.
+pub const FORMULA_LEADS: [char; 11] = [
+    '=', '+', '-', '@', '\t', '\r', '\n', '\u{FF1D}', '\u{FF0B}', '\u{FF0D}', '\u{FF20}',
+];
 
 fn is_plain_number(s: &str) -> bool {
     let bytes = s.as_bytes();
@@ -182,121 +160,168 @@ fn is_plain_number(s: &str) -> bool {
     i == bytes.len()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FormulaGuard {
-    Apply,
-    Skip,
+#[derive(Debug, Error)]
+pub enum EncodeError {
+    #[error("CSV encoding failed: {0}")]
+    Csv(#[from] csv::Error),
+
+    #[error("CSV output could not be flushed: {0}")]
+    Flush(#[from] std::io::Error),
+
+    #[error("CSV output is not valid UTF-8: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
+}
+
+/// A neutralised cell keeps its leading apostrophe as data only when the
+/// field is quoted, so sanitising quotes every field.
+pub fn csv_writer_builder(opts: &CsvOptions) -> csv::WriterBuilder {
+    let delimiter = match opts.delimiter {
+        CsvDelimiter::Comma => b',',
+        CsvDelimiter::Semicolon => b';',
+        CsvDelimiter::Tab => b'\t',
+        CsvDelimiter::Pipe => b'|',
+    };
+    let terminator = match opts.line_break {
+        CsvLineBreak::Lf => csv::Terminator::Any(b'\n'),
+        CsvLineBreak::CrLf => csv::Terminator::CRLF,
+        CsvLineBreak::Cr => csv::Terminator::Any(b'\r'),
+    };
+    let quote_style = match opts.quote {
+        _ if opts.sanitize_formulas => csv::QuoteStyle::Always,
+        CsvQuote::Always => csv::QuoteStyle::Always,
+        CsvQuote::IfNeeded => csv::QuoteStyle::Necessary,
+        CsvQuote::Never => csv::QuoteStyle::Never,
+    };
+    let mut builder = csv::WriterBuilder::new();
+    builder
+        .delimiter(delimiter)
+        .terminator(terminator)
+        .quote_style(quote_style);
+    builder
+}
+
+/// A tab, a line break or a quote inside a value would move the following
+/// text into the next column or the next row, so such a value is quoted
+/// and its own quotes doubled. That is what a spreadsheet puts on the
+/// clipboard for a multi-line cell, and what Calc and Excel parse back on
+/// paste.
+pub fn tsv_writer_builder() -> csv::WriterBuilder {
+    let mut builder = csv::WriterBuilder::new();
+    builder
+        .delimiter(b'\t')
+        .terminator(csv::Terminator::Any(b'\n'))
+        .quote_style(csv::QuoteStyle::Necessary);
+    builder
 }
 
 /// Only free text can smuggle a formula into a spreadsheet. A typed
-/// number, date or UUID, and text that is itself a plain number, is
-/// data the spreadsheet already reads correctly, and prefixing it
-/// would turn `-5` into the string `'-5`.
-fn formula_guard(value: &Value, text: &str) -> FormulaGuard {
-    match value {
-        Value::Text(_) | Value::Json(_) if !is_plain_number(text) => FormulaGuard::Apply,
-        _ => FormulaGuard::Skip,
+/// number, date or UUID, and text that is itself a plain number, is data
+/// the spreadsheet already reads correctly, and prefixing it would turn
+/// `-5` into the string `'-5`.
+pub fn neutralise_formula(value: &Value, text: String, is_header: bool) -> String {
+    if is_header || matches!(value, Value::Text(_) | Value::Json(_)) {
+        neutralise_text(text)
+    } else {
+        text
     }
 }
 
-/// `had_line_breaks` carries whether the raw value contained a line
-/// break before `line_break_to_space` scrubbed it, so `IfNeeded`
-/// still quotes a converted multi-line value even though the
-/// resulting text no longer contains `\n`/`\r` itself.
-fn escape_field(field: &str, opts: &CsvOptions, had_line_breaks: bool, formula: FormulaGuard) -> String {
-    let mut field = field.to_string();
-    let mut neutralised = false;
-    if formula == FormulaGuard::Apply && opts.sanitize_formulas && field.starts_with(is_formula_lead) {
-        field.insert(0, '\'');
-        neutralised = true;
-    }
-    match opts.quote {
-        CsvQuote::Always => quote_field(&field),
-        CsvQuote::Never => field,
-        CsvQuote::IfNeeded => {
-            // A tab splits the field for every tab-aware consumer, and
-            // a neutralised value has to keep its leading quote as
-            // data rather than as the start of a bare token.
-            let delim = opts.delimiter.as_str();
-            if field.contains(delim) || field.contains(['"', '\n', '\r', '\t']) || had_line_breaks || neutralised {
-                quote_field(&field)
-            } else {
-                field
-            }
-        }
+fn neutralise_text(text: String) -> String {
+    if text.starts_with(FORMULA_LEADS) && !is_plain_number(&text) {
+        format!("'{text}")
+    } else {
+        text
     }
 }
 
-fn format_cell(value: &Value, opts: &CsvOptions) -> String {
-    let Some(mut text) = value_to_text(value) else {
-        let empty = if opts.null_to_empty {
+fn collapse_line_breaks(text: String, opts: &CsvOptions) -> String {
+    if opts.line_break_to_space {
+        text.replace("\r\n", " ").replace(['\r', '\n'], " ")
+    } else {
+        text
+    }
+}
+
+fn csv_cell(value: &Value, opts: &CsvOptions) -> String {
+    let Some(text) = value_to_text(value) else {
+        return if opts.null_to_empty {
             String::new()
         } else {
             "NULL".to_string()
         };
-        return escape_field(&empty, opts, false, FormulaGuard::Skip);
     };
-    let formula = formula_guard(value, &text);
-    let had_line_breaks = text.contains('\n') || text.contains('\r');
-    if opts.line_break_to_space {
-        text = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
-    }
+    let mut text = collapse_line_breaks(text, opts);
     let is_numeric = matches!(value, Value::Float(_) | Value::Decimal(_));
     if opts.decimal == CsvDecimal::Comma && is_numeric && is_plain_decimal(&text) {
         text = text.replace('.', ",");
     }
-    escape_field(&text, opts, had_line_breaks, formula)
-}
-
-pub fn render_csv(columns: &[ColumnInfo], rows: &[Vec<Value>], opts: &CsvOptions) -> String {
-    let delim = opts.delimiter.as_str();
-    let line_break = opts.line_break.as_str();
-    let mut out = String::new();
-    if opts.header_row {
-        let header: Vec<String> = columns
-            .iter()
-            .map(|c| escape_field(&c.name, opts, false, FormulaGuard::Apply))
-            .collect();
-        out.push_str(&header.join(delim));
-        out.push_str(line_break);
-    }
-    for row in rows {
-        let cells: Vec<String> = row.iter().map(|v| format_cell(v, opts)).collect();
-        out.push_str(&cells.join(delim));
-        out.push_str(line_break);
-    }
-    out
-}
-
-/// A tab, a line break or a quote inside a value would move the
-/// following text into the next column or the next row, so the value
-/// is quoted and its own quotes doubled. That is what a spreadsheet
-/// puts on the clipboard for a multi-line cell, and what Calc and
-/// Excel parse back on paste; collapsing the character to a space
-/// keeps the grid intact but hands the user a value the database
-/// never held.
-fn tsv_field(text: &str) -> String {
-    if text.contains(['\t', '\n', '\r', '"']) {
-        quote_field(text)
+    if opts.sanitize_formulas {
+        neutralise_formula(value, text, false)
     } else {
-        text.to_string()
+        text
     }
 }
 
-pub fn render_tsv(columns: &[ColumnInfo], rows: &[Vec<Value>], with_headers: bool) -> String {
-    let mut lines: Vec<String> = Vec::new();
-    if with_headers {
-        let header: Vec<String> = columns.iter().map(|c| tsv_field(&c.name)).collect();
-        lines.push(header.join("\t"));
+fn csv_header(name: &str, opts: &CsvOptions) -> String {
+    if opts.sanitize_formulas {
+        neutralise_formula(&Value::Null, name.to_string(), true)
+    } else {
+        name.to_string()
+    }
+}
+
+fn csv_text_field(text: &str, opts: &CsvOptions) -> String {
+    let text = collapse_line_breaks(text.to_string(), opts);
+    if opts.sanitize_formulas {
+        neutralise_text(text)
+    } else {
+        text
+    }
+}
+
+fn finish(writer: csv::Writer<Vec<u8>>) -> Result<String, EncodeError> {
+    let bytes = writer
+        .into_inner()
+        .map_err(|error| EncodeError::Flush(error.into_error()))?;
+    Ok(String::from_utf8(bytes)?)
+}
+
+pub fn render_csv(columns: &[ColumnInfo], rows: &[Vec<Value>], opts: &CsvOptions) -> Result<String, EncodeError> {
+    let mut writer = csv_writer_builder(opts).from_writer(Vec::new());
+    if opts.header_row {
+        writer.write_record(columns.iter().map(|column| csv_header(&column.name, opts)))?;
     }
     for row in rows {
-        let cells: Vec<String> = row
-            .iter()
-            .map(|v| tsv_field(&value_to_text(v).unwrap_or_else(|| "NULL".to_string())))
-            .collect();
-        lines.push(cells.join("\t"));
+        writer.write_record(row.iter().map(|value| csv_cell(value, opts)))?;
     }
-    lines.join("\n")
+    finish(writer)
+}
+
+/// CSV for records whose fields are all free text, such as exported query
+/// history.
+pub fn render_text_csv(header: &[&str], records: &[Vec<String>], opts: &CsvOptions) -> Result<String, EncodeError> {
+    let mut writer = csv_writer_builder(opts).from_writer(Vec::new());
+    if opts.header_row {
+        writer.write_record(header.iter().map(|name| csv_header(name, opts)))?;
+    }
+    for record in records {
+        writer.write_record(record.iter().map(|field| csv_text_field(field, opts)))?;
+    }
+    finish(writer)
+}
+
+pub fn render_tsv(columns: &[ColumnInfo], rows: &[Vec<Value>], with_headers: bool) -> Result<String, EncodeError> {
+    let mut writer = tsv_writer_builder().from_writer(Vec::new());
+    if with_headers {
+        writer.write_record(columns.iter().map(|column| column.name.as_str()))?;
+    }
+    for row in rows {
+        writer.write_record(
+            row.iter()
+                .map(|value| value_to_text(value).unwrap_or_else(|| "NULL".to_string())),
+        )?;
+    }
+    finish(writer)
 }
 
 fn value_to_json(v: &Value) -> serde_json::Value {
@@ -492,11 +517,26 @@ mod tests {
         );
     }
 
+    fn plain() -> CsvOptions {
+        CsvOptions {
+            sanitize_formulas: false,
+            ..Default::default()
+        }
+    }
+
     #[test]
-    fn csv_defaults_render_comma_lf_if_needed() {
+    fn csv_defaults_quote_every_field_when_sanitising() {
         let columns = cols(&["id", "name"]);
         let rows = vec![vec![Value::Int(1), Value::Text("Alice".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default());
+        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"id\",\"name\"\n\"1\",\"Alice\"\n");
+    }
+
+    #[test]
+    fn csv_if_needed_leaves_plain_fields_bare() {
+        let columns = cols(&["id", "name"]);
+        let rows = vec![vec![Value::Int(1), Value::Text("Alice".into())]];
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
         assert_eq!(out, "id,name\n1,Alice\n");
     }
 
@@ -504,7 +544,7 @@ mod tests {
     fn csv_quote_if_needed_triggers_on_delimiter() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("has,comma".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default());
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
         assert_eq!(out, "a\n\"has,comma\"\n");
     }
 
@@ -512,20 +552,28 @@ mod tests {
     fn csv_quote_if_needed_triggers_on_quote_char() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("say \"hi\"".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default());
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
         assert_eq!(out, "a\n\"say \"\"hi\"\"\"\n");
     }
 
     #[test]
-    fn csv_quote_if_needed_triggers_on_original_line_break_even_when_converted() {
+    fn csv_quote_if_needed_triggers_on_line_break() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("line1\nline2".into())]];
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
+        assert_eq!(out, "a\n\"line1\nline2\"\n");
+    }
+
+    #[test]
+    fn csv_line_break_to_space_leaves_nothing_to_quote() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Text("line1\r\nline2".into())]];
         let opts = CsvOptions {
             line_break_to_space: true,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
-        assert_eq!(out, "a\n\"line1 line2\"\n");
+        let out = render_csv(&columns, &rows, &opts).unwrap();
+        assert_eq!(out, "a\nline1 line2\n");
     }
 
     #[test]
@@ -534,9 +582,9 @@ mod tests {
         let rows = vec![vec![Value::Text("plain".into())]];
         let opts = CsvOptions {
             quote: CsvQuote::Always,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
+        let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "\"a\"\n\"plain\"\n");
     }
 
@@ -546,57 +594,73 @@ mod tests {
         let rows = vec![vec![Value::Text("has,comma".into())]];
         let opts = CsvOptions {
             quote: CsvQuote::Never,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
+        let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "a\nhas,comma\n");
     }
 
     #[test]
+    fn csv_sanitising_overrides_quote_never() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Text("=cmd".into())]];
+        let opts = CsvOptions {
+            quote: CsvQuote::Never,
+            ..Default::default()
+        };
+        let out = render_csv(&columns, &rows, &opts).unwrap();
+        assert_eq!(out, "\"a\"\n\"'=cmd\"\n");
+    }
+
+    #[test]
     fn csv_sanitizes_formula_prefixes() {
-        // A neutralised value is quoted so its leading apostrophe
-        // reaches the spreadsheet as data rather than as a text marker
-        // the importer swallows.
         let columns = cols(&["a"]);
         for ch in ['=', '+', '-', '@'] {
             let rows = vec![vec![Value::Text(format!("{ch}cmd"))]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default());
-            assert_eq!(out, format!("a\n\"'{ch}cmd\"\n"), "prefix {ch} should be sanitized");
+            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            assert_eq!(out, format!("\"a\"\n\"'{ch}cmd\"\n"), "prefix {ch} should be sanitized");
         }
     }
 
     #[test]
     fn csv_sanitizes_formula_lead_hidden_behind_whitespace() {
         let columns = cols(&["a"]);
-        for lead in ['\t', '\r'] {
+        for lead in ['\t', '\r', '\n'] {
             let rows = vec![vec![Value::Text(format!("{lead}=cmd|'/C calc'!A0"))]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default());
-            let expected = format!("a\n\"'{lead}=cmd|'/C calc'!A0\"\n");
+            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            let expected = format!("\"a\"\n\"'{lead}=cmd|'/C calc'!A0\"\n");
             assert_eq!(out, expected, "lead {lead:?} should be sanitized and quoted");
         }
     }
 
     #[test]
-    fn csv_quote_if_needed_triggers_on_tab_and_on_neutralised_value() {
+    fn csv_sanitizes_full_width_formula_leads() {
         let columns = cols(&["a"]);
-        let tabbed = vec![vec![Value::Text("has\ttab".into())]];
-        assert_eq!(
-            render_csv(&columns, &tabbed, &CsvOptions::default()),
-            "a\n\"has\ttab\"\n"
-        );
-        let formula = vec![vec![Value::Text("=SUM(A1)".into())]];
-        assert_eq!(
-            render_csv(&columns, &formula, &CsvOptions::default()),
-            "a\n\"'=SUM(A1)\"\n"
-        );
+        for lead in ['\u{FF1D}', '\u{FF0B}', '\u{FF0D}', '\u{FF20}'] {
+            let rows = vec![vec![Value::Text(format!("{lead}SUM(A1)"))]];
+            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            assert_eq!(
+                out,
+                format!("\"a\"\n\"'{lead}SUM(A1)\"\n"),
+                "lead {lead:?} should be sanitized"
+            );
+        }
+    }
+
+    #[test]
+    fn csv_leaves_formula_text_alone_when_sanitising_is_off() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Text("=SUM(A1)".into())]];
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
+        assert_eq!(out, "a\n=SUM(A1)\n");
     }
 
     #[test]
     fn csv_does_not_sanitize_non_formula_prefixes() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("plain text".into())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default());
-        assert_eq!(out, "a\nplain text\n");
+        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"a\"\n\"plain text\"\n");
     }
 
     #[test]
@@ -605,53 +669,41 @@ mod tests {
         let opts = CsvOptions {
             decimal: CsvDecimal::Comma,
             delimiter: CsvDelimiter::Semicolon,
-            ..Default::default()
+            ..plain()
         };
-        assert_eq!(render_csv(&columns, &[vec![Value::Float(1.5)]], &opts), "a\n1,5\n");
-        assert_eq!(render_csv(&columns, &[vec![Value::Float(-1.5)]], &opts), "a\n-1,5\n");
+        let render = |value: Value| render_csv(&columns, &[vec![value]], &opts).unwrap();
+        assert_eq!(render(Value::Float(1.5)), "a\n1,5\n");
+        assert_eq!(render(Value::Float(-1.5)), "a\n-1,5\n");
         assert_eq!(
-            render_csv(
-                &columns,
-                &[vec![Value::Decimal(Decimal::from_str("12.30").unwrap())]],
-                &opts
-            ),
+            render(Value::Decimal(Decimal::from_str("12.30").unwrap())),
             "a\n12,30\n"
         );
-        assert_eq!(
-            render_csv(&columns, &[vec![Value::Text("1.5".into())]], &opts),
-            "a\n1.5\n"
-        );
-        assert_eq!(
-            render_csv(&columns, &[vec![Value::Text("1e5".into())]], &opts),
-            "a\n1e5\n"
-        );
-        assert_eq!(render_csv(&columns, &[vec![Value::Int(12)]], &opts), "a\n12\n");
-        assert_eq!(
-            render_csv(&columns, &[vec![Value::Text("1.2.3".into())]], &opts),
-            "a\n1.2.3\n"
-        );
+        assert_eq!(render(Value::Text("1.5".into())), "a\n1.5\n");
+        assert_eq!(render(Value::Text("1e5".into())), "a\n1e5\n");
+        assert_eq!(render(Value::Int(12)), "a\n12\n");
+        assert_eq!(render(Value::Text("1.2.3".into())), "a\n1.2.3\n");
     }
 
     #[test]
     fn csv_keeps_negative_int() {
         let columns = cols(&["a"]);
-        let out = render_csv(&columns, &[vec![Value::Int(-5)]], &CsvOptions::default());
-        assert_eq!(out, "a\n-5\n");
+        let out = render_csv(&columns, &[vec![Value::Int(-5)]], &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"a\"\n\"-5\"\n");
     }
 
     #[test]
     fn csv_keeps_negative_decimal() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Decimal(Decimal::from_str("-12.30").unwrap())]];
-        let out = render_csv(&columns, &rows, &CsvOptions::default());
-        assert_eq!(out, "a\n-12.30\n");
+        let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"a\"\n\"-12.30\"\n");
     }
 
     #[test]
     fn csv_keeps_negative_float() {
         let columns = cols(&["a"]);
-        let out = render_csv(&columns, &[vec![Value::Float(-1.5)]], &CsvOptions::default());
-        assert_eq!(out, "a\n-1.5\n");
+        let out = render_csv(&columns, &[vec![Value::Float(-1.5)]], &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"a\"\n\"-1.5\"\n");
     }
 
     #[test]
@@ -659,8 +711,8 @@ mod tests {
         let columns = cols(&["a"]);
         for text in ["-12", "+1.5e3", "-.5", "1.", "-7E-3"] {
             let rows = vec![vec![Value::Text(text.into())]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default());
-            assert_eq!(out, format!("a\n{text}\n"), "{text} is a number, not a formula");
+            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            assert_eq!(out, format!("\"a\"\n\"{text}\"\n"), "{text} is a number, not a formula");
         }
     }
 
@@ -669,16 +721,23 @@ mod tests {
         let columns = cols(&["a"]);
         for text in ["-cmd", "=SUM(A1)", "+1+cmd", "-", "-.", "-1e"] {
             let rows = vec![vec![Value::Text(text.into())]];
-            let out = render_csv(&columns, &rows, &CsvOptions::default());
-            assert_eq!(out, format!("a\n\"'{text}\"\n"), "{text} must be neutralised");
+            let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+            assert_eq!(out, format!("\"a\"\n\"'{text}\"\n"), "{text} must be neutralised");
         }
     }
 
     #[test]
     fn csv_neutralises_formula_header() {
         let columns = cols(&["=HYPERLINK(\"x\")"]);
-        let out = render_csv(&columns, &[], &CsvOptions::default());
+        let out = render_csv(&columns, &[], &CsvOptions::default()).unwrap();
         assert_eq!(out, "\"'=HYPERLINK(\"\"x\"\")\"\n");
+    }
+
+    #[test]
+    fn text_csv_treats_every_field_as_free_text() {
+        let records = vec![vec!["-cmd".to_string(), "12".to_string(), String::new()]];
+        let out = render_text_csv(&["q", "n", "e"], &records, &CsvOptions::default()).unwrap();
+        assert_eq!(out, "\"q\",\"n\",\"e\"\n\"'-cmd\",\"12\",\"\"\n");
     }
 
     #[test]
@@ -699,14 +758,22 @@ mod tests {
     fn csv_null_modes() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Null]];
-        let out_empty = render_csv(&columns, &rows, &CsvOptions::default());
-        assert_eq!(out_empty, "a\n\n");
+        let out_empty = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
+        assert_eq!(out_empty, "\"a\"\n\"\"\n");
         let opts = CsvOptions {
             null_to_empty: false,
             ..Default::default()
         };
-        let out_null = render_csv(&columns, &rows, &opts);
-        assert_eq!(out_null, "a\nNULL\n");
+        let out_null = render_csv(&columns, &rows, &opts).unwrap();
+        assert_eq!(out_null, "\"a\"\n\"NULL\"\n");
+    }
+
+    #[test]
+    fn csv_lone_empty_field_stays_a_visible_row() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Null]];
+        let out = render_csv(&columns, &rows, &plain()).unwrap();
+        assert_eq!(out, "a\n\"\"\n");
     }
 
     #[test]
@@ -715,10 +782,22 @@ mod tests {
         let rows = vec![vec![Value::Int(1)]];
         let opts = CsvOptions {
             line_break: CsvLineBreak::CrLf,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
+        let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "a\r\n1\r\n");
+    }
+
+    #[test]
+    fn csv_cr_line_break_quotes_embedded_line_feeds() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Text("x\ny".into())]];
+        let opts = CsvOptions {
+            line_break: CsvLineBreak::Cr,
+            ..plain()
+        };
+        let out = render_csv(&columns, &rows, &opts).unwrap();
+        assert_eq!(out, "a\r\"x\ny\"\r");
     }
 
     #[test]
@@ -727,9 +806,9 @@ mod tests {
         let rows = vec![vec![Value::Int(1), Value::Int(2)]];
         let opts = CsvOptions {
             delimiter: CsvDelimiter::Semicolon,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
+        let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "a;b\n1;2\n");
     }
 
@@ -739,9 +818,9 @@ mod tests {
         let rows = vec![vec![Value::Int(1)]];
         let opts = CsvOptions {
             header_row: false,
-            ..Default::default()
+            ..plain()
         };
-        let out = render_csv(&columns, &rows, &opts);
+        let out = render_csv(&columns, &rows, &opts).unwrap();
         assert_eq!(out, "1\n");
     }
 
@@ -749,29 +828,32 @@ mod tests {
     fn tsv_with_and_without_header() {
         let columns = cols(&["a", "b"]);
         let rows = vec![vec![Value::Int(1), Value::Null]];
-        assert_eq!(render_tsv(&columns, &rows, true), "a\tb\n1\tNULL");
-        assert_eq!(render_tsv(&columns, &rows, false), "1\tNULL");
+        assert_eq!(render_tsv(&columns, &rows, true).unwrap(), "a\tb\n1\tNULL\n");
+        assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "1\tNULL\n");
     }
 
     #[test]
     fn tsv_quotes_values_that_would_break_the_grid() {
         let columns = cols(&["a", "b"]);
         let rows = vec![vec![Value::Text("line1\nline2".into()), Value::Text("has\ttab".into())]];
-        assert_eq!(render_tsv(&columns, &rows, false), "\"line1\nline2\"\t\"has\ttab\"");
+        assert_eq!(
+            render_tsv(&columns, &rows, false).unwrap(),
+            "\"line1\nline2\"\t\"has\ttab\"\n"
+        );
     }
 
     #[test]
     fn tsv_doubles_quotes_inside_a_quoted_value() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("say \"hi\"".into())]];
-        assert_eq!(render_tsv(&columns, &rows, false), "\"say \"\"hi\"\"\"");
+        assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "\"say \"\"hi\"\"\"\n");
     }
 
     #[test]
     fn tsv_leaves_ordinary_values_bare() {
         let columns = cols(&["a"]);
         let rows = vec![vec![Value::Text("plain, value".into())]];
-        assert_eq!(render_tsv(&columns, &rows, false), "plain, value");
+        assert_eq!(render_tsv(&columns, &rows, false).unwrap(), "plain, value\n");
     }
 
     #[test]

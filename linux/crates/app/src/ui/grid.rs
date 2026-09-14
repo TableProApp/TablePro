@@ -1494,15 +1494,23 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     }
     // Renders the rows the menu targets, with the change tracker's
     // pending edits applied, and puts the result on the clipboard.
+    fn clipboard_message(encoded: Result<String, tablepro_core::export::EncodeError>) -> GridMsg {
+        match encoded {
+            Ok(text) => GridMsg::CopyToClipboard(text),
+            Err(error) => GridMsg::ShowToast(
+                crate::tr!("Couldn't copy the selection: {error}").replace("{error}", &error.to_string()),
+            ),
+        }
+    }
     macro_rules! copy_action {
-        ($name:literal, |$slot:ident, $rows:ident| $text:expr) => {{
+        ($name:literal, |$slot:ident, $rows:ident| $message:expr) => {{
             let s = sender.clone();
             let view = view.clone();
             let tab = tab.clone();
             cell_action!($name, |$slot| {
                 let Some(cv) = view.upgrade() else { return };
                 let $rows = rows_for_menu(&cv, &tab, slot_position($slot));
-                s.send(GridMsg::CopyToClipboard($text)).ok();
+                s.send($message).ok();
             })
         }};
     }
@@ -1530,57 +1538,58 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         cell_action!("copy", |slot| {
             let Some(cv) = view.upgrade() else { return };
             let rows = rows_for_menu(&cv, &tab, slot_position(slot));
-            let text = match rows.as_slice() {
-                [row] => row
-                    .get(slot.col_index)
-                    .and_then(tablepro_core::export::value_to_text)
-                    .unwrap_or_default(),
-                many => tablepro_core::export::render_tsv(&cols, many, false),
+            let message = match rows.as_slice() {
+                [row] => GridMsg::CopyToClipboard(
+                    row.get(slot.col_index)
+                        .and_then(tablepro_core::export::value_to_text)
+                        .unwrap_or_default(),
+                ),
+                many => clipboard_message(tablepro_core::export::render_tsv(&cols, many, false)),
             };
-            s.send(GridMsg::CopyToClipboard(text)).ok();
+            s.send(message).ok();
         })
     };
     let copy_rows_action = {
         let cols = columns.clone();
-        copy_action!("copy-rows", |_slot, rows| tablepro_core::export::render_tsv(
-            &cols, &rows, false
+        copy_action!("copy-rows", |_slot, rows| clipboard_message(
+            tablepro_core::export::render_tsv(&cols, &rows, false)
         ))
     };
     let copy_rows_headers_action = {
         let cols = columns.clone();
-        copy_action!("copy-rows-headers", |_slot, rows| tablepro_core::export::render_tsv(
-            &cols, &rows, true
+        copy_action!("copy-rows-headers", |_slot, rows| clipboard_message(
+            tablepro_core::export::render_tsv(&cols, &rows, true)
         ))
     };
     let copy_json_action = {
         let cols = columns.clone();
-        copy_action!("copy-json", |_slot, rows| tablepro_core::export::render_json(
-            &cols, &rows
+        copy_action!("copy-json", |_slot, rows| GridMsg::CopyToClipboard(
+            tablepro_core::export::render_json(&cols, &rows)
         ))
     };
     let copy_csv_action = {
         let cols = columns.clone();
-        copy_action!("copy-csv", |_slot, rows| tablepro_core::export::render_csv(
-            &cols,
-            &rows,
-            &tablepro_core::export::CsvOptions {
-                header_row: false,
-                ..Default::default()
-            }
+        copy_action!("copy-csv", |_slot, rows| clipboard_message(
+            tablepro_core::export::render_csv(
+                &cols,
+                &rows,
+                &tablepro_core::export::CsvOptions {
+                    header_row: false,
+                    ..Default::default()
+                }
+            )
         ))
     };
     let copy_csv_headers_action = {
         let cols = columns.clone();
-        copy_action!("copy-csv-headers", |_slot, rows| tablepro_core::export::render_csv(
-            &cols,
-            &rows,
-            &tablepro_core::export::CsvOptions::default()
+        copy_action!("copy-csv-headers", |_slot, rows| clipboard_message(
+            tablepro_core::export::render_csv(&cols, &rows, &tablepro_core::export::CsvOptions::default())
         ))
     };
     let copy_markdown_action = {
         let cols = columns.clone();
-        copy_action!("copy-markdown", |_slot, rows| tablepro_core::export::render_markdown(
-            &cols, &rows
+        copy_action!("copy-markdown", |_slot, rows| GridMsg::CopyToClipboard(
+            tablepro_core::export::render_markdown(&cols, &rows)
         ))
     };
     // NULL and binary values have no place in an IN list, so the
