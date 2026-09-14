@@ -164,6 +164,7 @@
               "databases/mssql",
               "databases/mongodb",
               "databases/mysql",
+              "databases/oceanbase",
               "databases/oracle",
               "databases/pglite",
               "databases/postgresql",

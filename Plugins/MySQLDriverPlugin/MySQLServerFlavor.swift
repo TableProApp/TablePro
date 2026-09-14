@@ -33,9 +33,13 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     case mariadb
     case tidb(version: MySQLEngineVersion?)
     case databend
+    case oceanbase(version: MySQLEngineVersion?)
 
     static let tidbVariant = "TiDB"
     static let databendVariant = "Databend"
+    static let oceanbaseVariant = "OceanBase"
+
+    static let oceanbaseUnlimitedQueryTimeoutMicroseconds = 3_216_672_000_000_000
 
     static func fromBanner(_ banner: String?) -> MySQLServerFlavor {
         guard let banner else { return .mysql }
@@ -63,6 +67,20 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         banner.range(of: #"^\d+\.\d+\.\d+-v\d+\.\d+\.\d+-"#, options: .regularExpression) != nil
     }
 
+    static func oceanbaseVersion(fromVersionComment comment: String) -> MySQLEngineVersion? {
+        guard let name = comment.range(
+            of: #"^OceanBase(_CE)? +(?=\d)"#, options: [.regularExpression, .caseInsensitive]
+        ) else { return nil }
+        return MySQLEngineVersion(parsing: comment[name.upperBound...])
+    }
+
+    static func oceanbaseVersion(fromServerVersion version: String) -> MySQLEngineVersion? {
+        guard let marker = version.range(
+            of: #"-OceanBase(_CE)?-v(?=\d)"#, options: [.regularExpression, .caseInsensitive]
+        ) else { return nil }
+        return MySQLEngineVersion(parsing: version[marker.upperBound...])
+    }
+
     var isMariaDB: Bool { self == .mariadb }
 
     var isTiDB: Bool {
@@ -71,6 +89,11 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
     }
 
     var isDatabend: Bool { self == .databend }
+
+    var isOceanBase: Bool {
+        guard case .oceanbase = self else { return false }
+        return true
+    }
 
     var tidbVersion: MySQLEngineVersion? {
         guard case .tidb(let version) = self else { return nil }
@@ -85,6 +108,8 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
             return ["INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys"]
         case .databend:
             return ["information_schema", "system"]
+        case .oceanbase:
+            return ["information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"]
         }
     }
 
@@ -99,14 +124,17 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         return mode == .readWrite ? "START TRANSACTION READ WRITE" : "START TRANSACTION"
     }
 
-    func queryTimeoutStatement(seconds: Int) -> String {
+    func queryTimeoutStatements(seconds: Int) -> [String] {
         switch self {
         case .mariadb:
-            return "SET SESSION max_statement_time = \(seconds)"
+            return ["SET SESSION max_statement_time = \(seconds)"]
         case .databend:
-            return "SET max_execute_time_in_seconds = \(seconds)"
+            return ["SET max_execute_time_in_seconds = \(seconds)"]
+        case .oceanbase:
+            let microseconds = seconds > 0 ? seconds * 1_000_000 : Self.oceanbaseUnlimitedQueryTimeoutMicroseconds
+            return ["SET SESSION ob_query_timeout = \(microseconds)", "SET SESSION max_execution_time = 0"]
         case .mysql, .tidb:
-            return "SET SESSION max_execution_time = \(seconds * 1_000)"
+            return ["SET SESSION max_execution_time = \(seconds * 1_000)"]
         }
     }
 
@@ -139,7 +167,14 @@ nonisolated internal enum MySQLFlavorResolution {
         variant == MySQLServerFlavor.databendVariant && !MySQLServerFlavor.fromBanner(banner).isDatabend
     }
 
+    static func oceanbaseFlavor(versionComment: String?, serverVersion: String?) -> MySQLServerFlavor? {
+        let version = versionComment.flatMap(MySQLServerFlavor.oceanbaseVersion(fromVersionComment:))
+            ?? serverVersion.flatMap(MySQLServerFlavor.oceanbaseVersion(fromServerVersion:))
+        return version.map { .oceanbase(version: $0) }
+    }
+
     static let tidbVersionProbe = "SELECT tidb_version()"
     static let databendProbe = "SELECT value FROM system.settings WHERE name = 'max_result_rows'"
+    static let oceanbaseProbe = "SELECT @@version_comment, @@version"
     static let connectionIdentifierProbe = "SELECT CONNECTION_ID()"
 }

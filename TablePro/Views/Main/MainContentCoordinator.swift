@@ -288,8 +288,6 @@ final class MainContentCoordinator {
     @ObservationIgnored let schemaColumns = SchemaColumnStore()
     @ObservationIgnored var columnScopeRequeryTask: Task<Void, Never>?
 
-    @ObservationIgnored var pendingScrollToTopAfterReplace: Set<UUID> = []
-
     @ObservationIgnored var openTabInNewWindow: (EditorTabPayload) -> Void = {
         WindowManager.shared.openTab(payload: $0)
     }
@@ -337,11 +335,6 @@ final class MainContentCoordinator {
     /// describes rows that may be gone by the next launch. Keeping it out of the struct also keeps
     /// it out of the hand-written `Equatable`, so a push never re-publishes the tab list.
     @ObservationIgnored internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
-
-    /// The row a restored tab should land on, keyed by tab because one grid coordinator serves
-    /// every tab in the window. Set when a navigation starts and consumed by the first draw that
-    /// has the rows, or dropped with the tab.
-    @ObservationIgnored internal var pendingRowAnchors: [UUID: [String: String]] = [:]
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var periodicSaveTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
@@ -1032,7 +1025,7 @@ final class MainContentCoordinator {
 
     // MARK: - Query Execution
 
-    func runQuery(trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
+    func runQuery(viewport: GridReloadIntent, trigger: TableLoadTrigger = .userInitiated, bypassRowLimit: Bool = false) {
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
         guard !tabExecution.isExecuting(tab.id) else {
             traceExecutionBlocked(tabId: tab.id, site: "runQuery")
@@ -1040,7 +1033,7 @@ final class MainContentCoordinator {
         }
 
         if tab.tabType == .table {
-            executeTableTabQueryDirectly(trigger: trigger)
+            executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
             return
         }
 
@@ -1165,7 +1158,7 @@ final class MainContentCoordinator {
     /// Execute table tab query directly.
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
-    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated) {
+    func executeTableTabQueryDirectly(trigger: TableLoadTrigger = .userInitiated, viewport: GridReloadIntent) {
         guard let (tab, index) = tabManager.selectedTabAndIndex else { return }
         TableLoadTracer.shared.stage(.executeRequested, tabId: tab.id)
 
@@ -1199,14 +1192,14 @@ final class MainContentCoordinator {
                 )
                 switch decision {
                 case .authorized:
-                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
+                    executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
                 case .denied(let reason):
                     traceNavigationAbandoned(tabId: tab.id, outcome: .safeModeDenied)
                     tabManager.mutate(at: index) { $0.execution.errorMessage = reason }
                 }
             }
         } else {
-            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger)
+            executeQueryInternal(sql, isAutoLoad: true, trigger: trigger, viewport: viewport)
         }
     }
 
@@ -1274,7 +1267,8 @@ final class MainContentCoordinator {
         isAutoLoad: Bool = false,
         trigger: TableLoadTrigger = .userInitiated,
         bypassRowLimit: Bool = false,
-        anchor: StatementAnchor? = nil
+        anchor: StatementAnchor? = nil,
+        viewport: GridReloadIntent = .firstRow
     ) {
         guard let (selectedTab, index) = tabManager.selectedTabAndIndex else { return }
 
@@ -1320,6 +1314,7 @@ final class MainContentCoordinator {
             }
             return
         }
+        let isTableTab = tab.tabType == .table
 
         let queryTask = Task { [weak self] in
             guard let self else { return }
@@ -1348,10 +1343,9 @@ final class MainContentCoordinator {
 
             let fetchBeganAt = ContinuousClock.now
             do {
-                let fetchResult = try await services.databaseManager.withScopedDriver(
+                let fetchResult = try await withExecutionDriver(
                     scope: scope,
-                    route: services.databaseManager.executionRoute(for: scope),
-                    cancellation: .cancellableRead
+                    isTableTab: isTableTab
                 ) { [queryExecutor] driver in
                     try await queryExecutor.executeQuery(
                         driver: driver,
@@ -1413,7 +1407,8 @@ final class MainContentCoordinator {
                         connection: conn,
                         isTruncated: fetchResult.isTruncated,
                         anchor: anchor,
-                        timing: fetchResult.resolvedTiming
+                        timing: fetchResult.resolvedTiming,
+                        viewport: viewport
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
@@ -1623,7 +1618,7 @@ final class MainContentCoordinator {
                     tab.pagination.resetLoadMore()
                     tab.pagination.sortExecutionOverride = orderQuery
                 }) else { return }
-                self.runQuery()
+                self.runQuery(viewport: .firstRow)
             }
             return
         }
@@ -1639,7 +1634,7 @@ final class MainContentCoordinator {
             }) else { return }
             guard let tabIndex = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
             self.rebuildTableQuery(at: tabIndex)
-            self.runQuery()
+            self.runQuery(viewport: .firstRow)
         }
     }
 }

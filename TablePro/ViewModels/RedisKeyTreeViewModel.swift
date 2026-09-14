@@ -32,13 +32,17 @@ internal final class RedisKeyTreeViewModel {
         isTruncated = false
         defer { isLoading = false }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard DatabaseManager.shared.driver(for: connectionId) != nil else {
             clear()
             return
         }
 
+        let scope = DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+        let limit = Self.maxKeys
         do {
-            let result = try await driver.execute(query: "KEYTREE LIMIT \(Self.maxKeys)")
+            let result = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.execute(query: "KEYTREE LIMIT \(limit)")
+            }
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1

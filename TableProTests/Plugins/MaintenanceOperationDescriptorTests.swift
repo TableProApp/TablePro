@@ -268,6 +268,24 @@ struct MaintenanceOperationDescriptorTests {
         }
     }
 
+    @Test("OceanBase offers ANALYZE TABLE from 4.2.2, the first release that parses the bare form")
+    func oceanbaseAnalyzeFloor() {
+        let before = MySQLServerFlavor.oceanbase(version: MySQLEngineVersion(major: 4, minor: 2, patch: 1))
+        let from = MySQLServerFlavor.oceanbase(version: MySQLEngineVersion(major: 4, minor: 2, patch: 2))
+        #expect(MySQLMaintenance.statements(
+            operation: "ANALYZE TABLE", table: "orders", schema: nil, options: [:], flavor: before
+        ) == nil)
+        #expect(MySQLMaintenance.statements(
+            operation: "ANALYZE TABLE", table: "orders", schema: nil, options: [:], flavor: .oceanbase(version: nil)
+        ) == nil)
+        #expect(MySQLMaintenance.statements(
+            operation: "ANALYZE TABLE", table: "orders", schema: "shop", options: [:], flavor: from
+        ) == ["ANALYZE TABLE `shop`.`orders`"])
+        #expect(MySQLMaintenance.statements(
+            operation: "OPTIMIZE TABLE", table: "orders", schema: nil, options: [:], flavor: from
+        ) == nil)
+    }
+
     // MARK: - Every declared option is read
 
     /// An option the descriptor declares that the statement builder never reads is the hardcoding bug

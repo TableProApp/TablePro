@@ -82,7 +82,7 @@ final class FilterCoordinator {
             $0.filterState.executedFilters = filters
         }
         saveLastFilters(of: parent.tabManager.tabs[tabIndex])
-        parent.runQuery()
+        parent.runQuery(viewport: .firstRow)
     }
 
     func clearFiltersAndReload() {
@@ -114,7 +114,7 @@ final class FilterCoordinator {
                 $0.filterState.executedFilters = []
             }
             clearLastFilters(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 
@@ -149,7 +149,7 @@ final class FilterCoordinator {
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 
@@ -169,7 +169,7 @@ final class FilterCoordinator {
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 

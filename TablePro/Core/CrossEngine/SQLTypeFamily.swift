@@ -43,6 +43,7 @@ internal enum SQLTypeFamily: String, Hashable, Sendable, CaseIterable {
         "MySQL": .mysql,
         "MariaDB": .mysql,
         "TiDB": .mysql,
+        "OceanBase": .mysql,
         "PostgreSQL": .postgres,
         "Redshift": .postgres,
         "CockroachDB": .postgres,

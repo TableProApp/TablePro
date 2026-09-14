@@ -107,6 +107,7 @@ struct DataGridView: NSViewRepresentable {
     var restoredCellSelection: GridSelection?
     /// Handed this grid's selection on the way out, for the owner to keep until the next mount.
     var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
+    var viewportPlacementProvider: (@MainActor () -> GridViewportPlacement?)?
     var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
@@ -300,6 +301,9 @@ struct DataGridView: NSViewRepresentable {
         syncSortState(tableView: tableView, coordinator: coordinator)
         restoreSelection(tableView: tableView, coordinator: coordinator)
         syncSelection(tableView: tableView, coordinator: coordinator)
+        if let placement = viewportPlacementProvider?() {
+            coordinator.applyViewportPlacement(placement)
+        }
         coordinator.schedulePendingColumnJump(contentReplaced: contentReplaced)
     }
 
@@ -315,6 +319,8 @@ struct DataGridView: NSViewRepresentable {
         contentChanged: Bool,
         columnComments: [String: String]
     ) {
+        let rowsKeptAcrossReload = contentChanged ? [] : coordinator.selectedRowIDs()
+
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
@@ -420,6 +426,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.restoreScrollAnchor()
+            coordinator.reselectRows(rowsKeptAcrossReload)
             coordinator.startBackgroundPrewarm()
         } else if displayFormatsChanged {
             coordinator.reloadAfterDisplayFormatChange()

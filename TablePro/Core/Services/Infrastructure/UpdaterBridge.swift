@@ -51,12 +51,19 @@ final class UpdaterBridge: UpdaterSettingsWriting {
 
     private init() {
         controller = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: Self.startsUpdater,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
         observeUpdater()
         refreshFromUpdater()
+    }
+
+    /// Sparkle keeps its state in the real `com.TablePro` domain, which a UI test's storage sandbox
+    /// cannot redirect. Started there, it asks the runner for permission on the second launch, and
+    /// that prompt takes the key window from every test after it.
+    private static var startsUpdater: Bool {
+        !AppStorageEnvironment.shared.isIsolated
     }
 
     var updater: SPUUpdater {

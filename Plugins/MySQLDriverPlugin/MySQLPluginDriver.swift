@@ -867,14 +867,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// back, so it is not the session's to lose.
     func applyQueryTimeout(_ seconds: Int) async throws {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
-        do {
-            _ = try await executeWithReconnect(
-                query: flavor.queryTimeoutStatement(seconds: seconds),
-                isRetry: false,
-                countsAsActivity: false
-            )
-        } catch {
-            Self.logger.warning("Failed to set query timeout: \(error.localizedDescription)")
+        for statement in flavor.queryTimeoutStatements(seconds: seconds) {
+            do {
+                _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
+            } catch {
+                Self.logger.warning(
+                    "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
+                )
+                return
+            }
         }
     }
 

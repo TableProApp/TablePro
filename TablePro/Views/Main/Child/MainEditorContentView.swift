@@ -403,7 +403,7 @@ struct MainEditorContentView: View {
         tabManager.markTabRenamed(tabId)
         SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         guard tabManager.selectedTabId == tabId else { return }
-        coordinator.runQuery()
+        coordinator.runQuery(viewport: .firstRow)
     }
 
     // MARK: - Query Tab Content
@@ -437,8 +437,8 @@ struct MainEditorContentView: View {
                         cursorPositions: $bindableCoordinator.cursorPositions,
                         parameters: parameterBinding(for: tab),
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
-                        onExecute: { coordinator.runQuery() },
-                        onExecuteWithoutLimit: { coordinator.runQuery(bypassRowLimit: true) },
+                        onExecute: { coordinator.runQuery(viewport: .firstRow) },
+                        onExecuteWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
                         onExecuteAllStatements: { coordinator.runAllStatements() },
                         schemaProvider: queryScope.map { SchemaProviderRegistry.shared.getOrCreate(for: $0) },
                         databaseType: coordinator.connection.type,
@@ -462,7 +462,7 @@ struct MainEditorContentView: View {
                         onCloseTab: {
                             coordinator.commandActions?.closeTab()
                         },
-                        onExecuteQuery: { coordinator.runQuery() },
+                        onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
                         onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
                         isExecuting: coordinator.tabExecution.isExecuting(tab.id),
                         showsHistoryTip: showsHistoryTip,
@@ -961,6 +961,9 @@ struct MainEditorContentView: View {
             restoredCellSelection: tab.cellSelection,
             onSelectionTeardown: { [coordinator] rows, cells in
                 coordinator.storeGridSelectionOnTeardown(rows: rows, cells: cells, forTab: tabId)
+            },
+            viewportPlacementProvider: { [coordinator] in
+                coordinator.takeViewportPlacement(forTab: tabId)
             }
         )
         .id(tabId)

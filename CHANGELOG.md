@@ -13,12 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
+- OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 
 ### Changed
 
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
 - The update window shows the release highlights, with the full changelog one click away.
+- Data grid top row held across a refresh, matched by primary key.
+- Data grid scroll reset to the first row on sort, filter and page change.
 
 ### Fixed
 
@@ -29,10 +32,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dropped tables left staged after a save that failed part way, and drops staged in another database unstaged on refresh.
 - Table tab showing another database's rows after a database switch on PostgreSQL, Redshift and CockroachDB.
 - Wrong approximate row count for a PostgreSQL or PGlite table outside the current schema.
+- Queued queries running on a reopened connection, or stalling it, after a disconnect.
+- Redis keys read from the wrong database when switching databases while a load was running.
+- "This tab is on" error on a table tab for the previous database when it reloads during a database switch.
+- Table on another database opening empty with no error while the connection switches database.
+- Reopen Closed Tab removing the closed tab without reopening it when its connection's window already had tabs.
 - Unchecked and soloed filter rows dropped from a table's saved filters after switching tabs.
 - Table opened in another database from a link, MCP or AppleScript bound to the current schema.
 - Recent table opened before connecting reopening a same-named table in another schema, and listed twice.
 - AI and Copilot schema context listing a table with the columns of a same-named table in another schema.
+- Inline cell editor left open over a different row after a refresh.
+- Row selected by Back or Forward dropped once the table finished loading.
+- Data grid jumping to the top on a later reload after a page change failed.
 
 ## [0.74.0] - 2026-09-13
 

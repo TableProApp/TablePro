@@ -19,7 +19,7 @@ struct SQLExportBinaryLiteralTests {
 
     @Test("MySQL and SQLite keep the hex literal they have always taken")
     func hexLiteralEnginesAreUnchanged() {
-        for typeId in ["MySQL", "MariaDB", "TiDB", "SQLite", "libSQL", "Turso", "DuckDB", "Cloudflare D1"] {
+        for typeId in ["MySQL", "MariaDB", "TiDB", "OceanBase", "SQLite", "libSQL", "Turso", "DuckDB", "Cloudflare D1"] {
             #expect(SQLExportBinaryLiteral.render(sample, databaseTypeId: typeId) == "X'414243'")
         }
     }

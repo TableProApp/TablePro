@@ -1,5 +1,6 @@
 import CMariaDB
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProMSSQLCore
@@ -49,6 +50,13 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     // MARK: - Connection
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "MySQLDriver")
+
+    static func sessionSetupStatements(for databaseType: DatabaseType) -> [String] {
+        guard databaseType == .oceanbase else { return [] }
+        return MySQLServerFlavor.oceanbase(version: nil).queryTimeoutStatements(seconds: 0)
+    }
+
     func connect() async throws {
         try await LocalNetworkPermission.shared.ensureAccess(for: host)
         try await actor.connect(
@@ -56,6 +64,16 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
             ssl: ssl, encoding: connectionEncoding
         )
         serverVersion = await actor.serverVersion()
+        for statement in Self.sessionSetupStatements(for: databaseType) {
+            do {
+                _ = try await actor.execute(statement)
+            } catch {
+                Self.logger.warning(
+                    "Session setup failed with \(statement, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                break
+            }
+        }
     }
 
     func disconnect() async throws {

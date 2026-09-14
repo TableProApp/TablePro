@@ -103,4 +103,73 @@ struct DatabaseManagerDisconnectTests {
 
         #expect(DatabaseManager.shared.activeSessions[id] == nil)
     }
+
+    /// A driver stuck in a call keeps its turn across a disconnect. Work queued behind it has to end
+    /// with the session, or it wakes when that call returns and runs on whatever holds the id then.
+    @Test("Disconnecting fails the work still queued for the session's driver")
+    func disconnectFailsQueuedDriverWork() async throws {
+        let connection = TestFixtures.makeConnection(name: "Queued")
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let gate = DatabaseManager.shared.sessionDriverGate
+
+        let acquired = Latch()
+        let release = Latch()
+        let holder = Task { @MainActor in
+            try await gate.withExclusiveAccess(connection.id) {
+                acquired.open()
+                await release.wait()
+            }
+        }
+        await acquired.wait()
+
+        let scope = DatabaseScope(connectionId: connection.id, database: connection.database, schema: nil)
+        let lease = Task { @MainActor in
+            try await DatabaseManager.shared.withScopedDriver(
+                scope: scope,
+                route: .sessionDriver,
+                cancellation: .cancellableRead
+            ) { driver in
+                driver.connection.database
+            }
+        }
+        for _ in 0..<10_000 where gate.waiterCount(for: connection.id) < 1 {
+            await Task.yield()
+        }
+        #expect(gate.waiterCount(for: connection.id) == 1)
+
+        await DatabaseManager.shared.disconnectSession(connection.id)
+
+        #expect(gate.waiterCount(for: connection.id) == 0)
+
+        release.open()
+        try await holder.value
+
+        await #expect(throws: CancellationError.self) {
+            try await lease.value
+        }
+    }
+}
+
+@MainActor
+private final class Latch {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let pending = waiters
+        waiters = []
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
 }

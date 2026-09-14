@@ -26,7 +26,7 @@ internal extension MySQLServerFlavor {
         case .databend:
             guard let session = connectionIdentifier, !session.isEmpty else { return .threadId }
             return .databendSession(session)
-        case .mysql, .mariadb:
+        case .mysql, .mariadb, .oceanbase:
             return .threadId
         }
     }

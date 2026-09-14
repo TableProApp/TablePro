@@ -23,7 +23,8 @@ extension MainContentCoordinator {
             }
             return
         }
-        executeTableTabQueryDirectly(trigger: trigger)
+        let viewport = restoredRowAnchor(forTab: tabId).map(GridReloadIntent.restoreRow) ?? .keepPlace
+        executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
     }
 
     @discardableResult

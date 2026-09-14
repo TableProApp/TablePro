@@ -48,7 +48,7 @@ extension MainContentView {
         if tabManager.selectedTab?.tabType == .table {
             coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
-            coordinator.runQuery(trigger: trigger)
+            coordinator.runQuery(viewport: .firstRow, trigger: trigger)
         }
     }
 

@@ -333,7 +333,7 @@ extension RowEditingCoordinator {
         /// retiring it the reload's automatic count refuses to replace it, and the bar
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-        parent.runQuery()
+        parent.runQuery(viewport: .keepPlace)
     }
 
     /// MySQL, MariaDB and Oracle commit each DROP as it runs, so a save that failed part way can

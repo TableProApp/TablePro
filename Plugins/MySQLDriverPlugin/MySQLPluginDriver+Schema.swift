@@ -44,6 +44,10 @@ internal extension MySQLPluginDriver {
         guard !flavor.isDatabend else {
             return try await databendColumns(table: table, schema: schema)
         }
+        guard !flavor.isOceanBase else {
+            let columnsByTable = try await informationSchemaColumns(schema: schema, table: table)
+            return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
+        }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
         let generationExpressions = try await fetchGenerationExpressions(table: table, schema: schema)
 
@@ -165,7 +169,15 @@ internal extension MySQLPluginDriver {
     /// the bulk read reports a changed generation expression as no difference at all.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
+        return try await informationSchemaColumns(schema: schema, table: nil)
+    }
+
+    private func informationSchemaColumns(
+        schema: String?,
+        table: String?
+    ) async throws -> [String: [PluginColumnInfo]] {
         let escapedDb = effectiveSchemaLiteral(schema)
+        let tableFilter = table.map { " AND TABLE_NAME = '\(mysqlEscapeStringLiteral($0))'" } ?? ""
         let hasGenerationExpression = MySQLServerVersion.hasGenerationExpression(
             banner: _serverVersion, flavor: flavor
         )
@@ -176,11 +188,14 @@ internal extension MySQLPluginDriver {
                 IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT,
                 \(generationProjection)
             FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = '\(escapedDb)'
+            WHERE TABLE_SCHEMA = '\(escapedDb)'\(tableFilter)
             ORDER BY TABLE_NAME, ORDINAL_POSITION
             """
 
         let result = try await execute(query: query)
+        let createTableClausesByTable = try await oceanbaseDefaultClausesByTable(
+            forRows: result.rows, tableColumn: 0, typeColumn: 2, defaultColumn: 6, schema: schema
+        )
 
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -205,8 +220,12 @@ internal extension MySQLPluginDriver {
             let normalizedType = (upperType.hasPrefix("ENUM(") || upperType.hasPrefix("SET("))
                 ? dataType : upperType
             let allowedValues = EnumValueParser.parseMySQLEnumOrSet(from: normalizedType)
-            let defaultValue = mysqlDefaultValueFromCatalog(
-                rawDefault, extra: extra, dataType: normalizedType, quotesLiterals: catalogQuotesDefaults
+            let defaultValue = columnDefaultValue(
+                catalogDefault: rawDefault,
+                extra: extra,
+                dataType: normalizedType,
+                column: name,
+                createTableClauses: createTableClausesByTable[tableName]
             )
 
             let column = PluginColumnInfo(

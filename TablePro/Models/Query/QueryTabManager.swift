@@ -512,6 +512,7 @@ final class QueryTabManager {
         tab.pendingRestoredSort = nil
         tab.restoredPage = nil
         tab.restoredPageSize = nil
+        tab.restoredRowAnchor = nil
         tab.tableContext.databaseName = databaseName
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview

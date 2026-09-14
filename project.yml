@@ -502,6 +502,8 @@ targets:
       - Plugins/MySQLDriverPlugin/DatabendLiteral.swift
       - Plugins/MySQLDriverPlugin/DatabendResultShape.swift
       - Plugins/MySQLDriverPlugin/TiDBCheckConstraints.swift
+      - Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
+      - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
