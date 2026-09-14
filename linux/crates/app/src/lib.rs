@@ -7,6 +7,8 @@ use tablepro_core::DriverRegistry;
 
 mod i18n;
 mod services;
+#[cfg(test)]
+mod test_support;
 mod ui;
 
 const APP_ID: &str = "com.tablepro.linux";

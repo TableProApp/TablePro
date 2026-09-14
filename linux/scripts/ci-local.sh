@@ -19,8 +19,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 echo "==> cargo build --workspace --locked"
 cargo build --workspace --locked
 
-echo "==> cargo test --workspace --locked"
-cargo test --workspace --locked
+echo "==> GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked"
+GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked
 
 echo "All fast checks passed."
 echo "Docker tests run per package in a separate CI job; see docs/testing.md to run them locally."
