@@ -56,7 +56,8 @@ jobs:
             libgtksourceview-5-dev \
             libsecret-1-dev \
             libkrb5-dev \
-            clang
+            clang \
+            openssh-client
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
         with:
           toolchain: "1.98"
@@ -85,10 +86,13 @@ jobs:
           - tablepro-driver-mysql
           - tablepro-driver-mssql
           - tablepro-driver-clickhouse
+          - tablepro-ssh
         include:
           # tiberius enables integrated-auth-gssapi, which links krb5 and runs bindgen.
           - package: tablepro-driver-mssql
             apt: libkrb5-dev clang
+          - package: tablepro-ssh
+            apt: openssh-client
     defaults:
       run:
         working-directory: linux

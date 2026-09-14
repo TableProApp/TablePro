@@ -5105,14 +5105,21 @@ version = "0.1.0"
 name = "tablepro-ssh"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "futures",
  "russh",
  "secrecy",
  "serde_json",
+ "tablepro-core",
+ "tablepro-test-support",
  "tempfile",
+ "testcontainers",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
  "tracing",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -5138,6 +5145,7 @@ name = "tablepro-test-support"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "tablepro-core",
  "tokio",
 ]
@@ -5391,6 +5399,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
+ "futures-util",
  "libc",
  "pin-project-lite",
  "tokio",

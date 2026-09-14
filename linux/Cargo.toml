@@ -26,8 +26,8 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
-tokio-util = { version = "0.7", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process"] }
+tokio-util = { version = "0.7", default-features = false, features = ["codec", "rt"] }
 russh = "0.63"
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
@@ -49,6 +49,7 @@ libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }
 sourceview5 = { version = "0.11", features = ["v5_12"] }
 glib = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = "1.9"
 tempfile = "3"
 testcontainers = "0.27"
 testcontainers-modules = "0.15"
