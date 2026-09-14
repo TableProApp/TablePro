@@ -196,6 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
+        RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
     }
 
     private func persistOpenConnectionsForRecovery() {

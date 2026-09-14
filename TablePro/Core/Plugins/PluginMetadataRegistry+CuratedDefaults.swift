@@ -674,7 +674,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false,
                     localFilePathField: .database,
-                    supportsRemoteDatabaseFile: true
+                    supportsRemoteDatabaseFile: true,
+                    supportsRemoteDatabaseSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

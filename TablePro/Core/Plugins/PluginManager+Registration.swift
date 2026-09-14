@@ -541,6 +541,12 @@ extension PluginManager {
             .capabilities.supportsRemoteDatabaseFile ?? false
     }
 
+    /// Whether this type can run its statements on an SSH server against a live database file.
+    func supportsRemoteDatabaseSession(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRemoteDatabaseSession ?? false
+    }
+
     func supportsSSL(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsSSL ?? true
