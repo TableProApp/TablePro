@@ -146,14 +146,67 @@ fn is_formula_lead(c: char) -> bool {
     FORMULA_PREFIXES.contains(&c) || c == '\t' || c == '\r'
 }
 
+fn is_plain_number(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
+    let int_start = i;
+    while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+        i += 1;
+    }
+    let int_digits = i - int_start;
+    let mut frac_digits = 0;
+    if bytes.get(i) == Some(&b'.') {
+        i += 1;
+        let frac_start = i;
+        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        frac_digits = i - frac_start;
+    }
+    if int_digits == 0 && frac_digits == 0 {
+        return false;
+    }
+    if matches!(bytes.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(bytes.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        let exp_start = i;
+        while bytes.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        if i == exp_start {
+            return false;
+        }
+    }
+    i == bytes.len()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FormulaGuard {
+    Apply,
+    Skip,
+}
+
+/// Only free text can smuggle a formula into a spreadsheet. A typed
+/// number, date or UUID, and text that is itself a plain number, is
+/// data the spreadsheet already reads correctly, and prefixing it
+/// would turn `-5` into the string `'-5`.
+fn formula_guard(value: &Value, text: &str) -> FormulaGuard {
+    match value {
+        Value::Text(_) | Value::Json(_) if !is_plain_number(text) => FormulaGuard::Apply,
+        _ => FormulaGuard::Skip,
+    }
+}
+
 /// `had_line_breaks` carries whether the raw value contained a line
 /// break before `line_break_to_space` scrubbed it, so `IfNeeded`
 /// still quotes a converted multi-line value even though the
 /// resulting text no longer contains `\n`/`\r` itself.
-fn escape_field(field: &str, opts: &CsvOptions, had_line_breaks: bool) -> String {
+fn escape_field(field: &str, opts: &CsvOptions, had_line_breaks: bool, formula: FormulaGuard) -> String {
     let mut field = field.to_string();
     let mut neutralised = false;
-    if opts.sanitize_formulas && field.starts_with(is_formula_lead) {
+    if formula == FormulaGuard::Apply && opts.sanitize_formulas && field.starts_with(is_formula_lead) {
         field.insert(0, '\'');
         neutralised = true;
     }
@@ -181,16 +234,18 @@ fn format_cell(value: &Value, opts: &CsvOptions) -> String {
         } else {
             "NULL".to_string()
         };
-        return escape_field(&empty, opts, false);
+        return escape_field(&empty, opts, false, FormulaGuard::Skip);
     };
+    let formula = formula_guard(value, &text);
     let had_line_breaks = text.contains('\n') || text.contains('\r');
     if opts.line_break_to_space {
         text = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
     }
-    if opts.decimal == CsvDecimal::Comma && is_plain_decimal(&text) {
+    let is_numeric = matches!(value, Value::Float(_) | Value::Decimal(_));
+    if opts.decimal == CsvDecimal::Comma && is_numeric && is_plain_decimal(&text) {
         text = text.replace('.', ",");
     }
-    escape_field(&text, opts, had_line_breaks)
+    escape_field(&text, opts, had_line_breaks, formula)
 }
 
 pub fn render_csv(columns: &[ColumnInfo], rows: &[Vec<Value>], opts: &CsvOptions) -> String {
@@ -198,7 +253,10 @@ pub fn render_csv(columns: &[ColumnInfo], rows: &[Vec<Value>], opts: &CsvOptions
     let line_break = opts.line_break.as_str();
     let mut out = String::new();
     if opts.header_row {
-        let header: Vec<String> = columns.iter().map(|c| escape_field(&c.name, opts, false)).collect();
+        let header: Vec<String> = columns
+            .iter()
+            .map(|c| escape_field(&c.name, opts, false, FormulaGuard::Apply))
+            .collect();
         out.push_str(&header.join(delim));
         out.push_str(line_break);
     }
@@ -549,22 +607,92 @@ mod tests {
             delimiter: CsvDelimiter::Semicolon,
             ..Default::default()
         };
+        assert_eq!(render_csv(&columns, &[vec![Value::Float(1.5)]], &opts), "a\n1,5\n");
+        assert_eq!(render_csv(&columns, &[vec![Value::Float(-1.5)]], &opts), "a\n-1,5\n");
+        assert_eq!(
+            render_csv(
+                &columns,
+                &[vec![Value::Decimal(Decimal::from_str("12.30").unwrap())]],
+                &opts
+            ),
+            "a\n12,30\n"
+        );
         assert_eq!(
             render_csv(&columns, &[vec![Value::Text("1.5".into())]], &opts),
-            "a\n1,5\n"
+            "a\n1.5\n"
         );
         assert_eq!(
             render_csv(&columns, &[vec![Value::Text("1e5".into())]], &opts),
             "a\n1e5\n"
         );
-        assert_eq!(
-            render_csv(&columns, &[vec![Value::Text("12".into())]], &opts),
-            "a\n12\n"
-        );
+        assert_eq!(render_csv(&columns, &[vec![Value::Int(12)]], &opts), "a\n12\n");
         assert_eq!(
             render_csv(&columns, &[vec![Value::Text("1.2.3".into())]], &opts),
             "a\n1.2.3\n"
         );
+    }
+
+    #[test]
+    fn csv_keeps_negative_int() {
+        let columns = cols(&["a"]);
+        let out = render_csv(&columns, &[vec![Value::Int(-5)]], &CsvOptions::default());
+        assert_eq!(out, "a\n-5\n");
+    }
+
+    #[test]
+    fn csv_keeps_negative_decimal() {
+        let columns = cols(&["a"]);
+        let rows = vec![vec![Value::Decimal(Decimal::from_str("-12.30").unwrap())]];
+        let out = render_csv(&columns, &rows, &CsvOptions::default());
+        assert_eq!(out, "a\n-12.30\n");
+    }
+
+    #[test]
+    fn csv_keeps_negative_float() {
+        let columns = cols(&["a"]);
+        let out = render_csv(&columns, &[vec![Value::Float(-1.5)]], &CsvOptions::default());
+        assert_eq!(out, "a\n-1.5\n");
+    }
+
+    #[test]
+    fn csv_keeps_signed_numeric_text() {
+        let columns = cols(&["a"]);
+        for text in ["-12", "+1.5e3", "-.5", "1.", "-7E-3"] {
+            let rows = vec![vec![Value::Text(text.into())]];
+            let out = render_csv(&columns, &rows, &CsvOptions::default());
+            assert_eq!(out, format!("a\n{text}\n"), "{text} is a number, not a formula");
+        }
+    }
+
+    #[test]
+    fn csv_neutralises_formula_text() {
+        let columns = cols(&["a"]);
+        for text in ["-cmd", "=SUM(A1)", "+1+cmd", "-", "-.", "-1e"] {
+            let rows = vec![vec![Value::Text(text.into())]];
+            let out = render_csv(&columns, &rows, &CsvOptions::default());
+            assert_eq!(out, format!("a\n\"'{text}\"\n"), "{text} must be neutralised");
+        }
+    }
+
+    #[test]
+    fn csv_neutralises_formula_header() {
+        let columns = cols(&["=HYPERLINK(\"x\")"]);
+        let out = render_csv(&columns, &[], &CsvOptions::default());
+        assert_eq!(out, "\"'=HYPERLINK(\"\"x\"\")\"\n");
+    }
+
+    #[test]
+    fn plain_number_scanner_matches_the_grammar() {
+        for yes in [
+            "0", "12", "-12", "+12", "1.", ".5", "-.5", "1.25", "1e5", "1E+5", "-1.5e-3",
+        ] {
+            assert!(is_plain_number(yes), "{yes} should be a plain number");
+        }
+        for no in [
+            "", "+", "-", ".", "e5", "1e", "1e+", "1.2.3", "1,5", " 1", "1 ", "0x10", "--1",
+        ] {
+            assert!(!is_plain_number(no), "{no:?} should not be a plain number");
+        }
     }
 
     #[test]
