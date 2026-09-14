@@ -1,0 +1,57 @@
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+all-features = true
+exclude-dev = false
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "Stage A until the OpenSSH transport replaces russh: rsa signs SSH RSA identities in process through russh, one blinded signature per authentication. sqlx-mysql uses rsa only to encrypt a password with the server public key. See docs/decisions/0009-crypto-provider-and-sources.md." },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "AGPL-3.0-or-later",
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+    "LGPL-2.1-or-later",
+    "0BSD",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    { crate = "ring", reason = "aws-lc-rs is the only crypto provider" },
+    { crate = "openssl-sys", reason = "TLS goes through rustls with aws-lc-rs" },
+    { crate = "native-tls", reason = "TLS goes through rustls with aws-lc-rs" },
+    { crate = "rustls:<0.23", reason = "rustls before 0.23 has no pluggable provider and carries fixed advisories" },
+    { crate = "rustls-pemfile", reason = "unmaintained; rustls-pki-types parses PEM" },
+    { crate = "bigdecimal", reason = "decimals use tablepro_core::value::SqlDecimal" },
+    { crate = "backoff", reason = "unmaintained" },
+    { crate = "instant", reason = "unmaintained" },
+    { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = ["https://github.com/tiberius-rs/tiberius"]
