@@ -13,6 +13,28 @@ public enum MSSQLSchemaQueries {
         "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
     }
 
+    /// Both catalog views are scoped to a database, so each is qualified with the one asked about. Read unqualified
+    /// they describe whichever database the connection is using, which reported that database's size and table
+    /// count under every name. `size` counts 8 KB pages and is cast before multiplying: the session runs with
+    /// ANSI_WARNINGS off, so an int overflow past 2 GB comes back as NULL rather than as an error.
+    public static func databaseMetadata(database: String) -> String {
+        let qualified = "[\(escapeBracket(database))]"
+        return """
+            SELECT
+                (SELECT SUM(CAST(size AS bigint)) * 8192 FROM \(qualified).sys.database_files) AS size_bytes,
+                (SELECT COUNT(*) FROM \(qualified).sys.tables) AS table_count
+            """
+    }
+
+    /// Every database's file size from the server-wide view, for a database whose own catalog cannot be read
+    /// because it is offline or the login has no access to it.
+    public static let allDatabaseSizes = """
+        SELECT d.name, SUM(CAST(mf.size AS bigint)) * 8192 AS size_bytes
+        FROM sys.databases d
+        LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
+        GROUP BY d.name
+        """
+
     /// Renders `CREATE INDEX` for the rows `sys.indexes` joined to `sys.index_columns` returns,
     /// one statement per index, in the order the rows arrive.
     ///
