@@ -58,6 +58,11 @@ fi
 # Ensure output directory exists
 mkdir -p "build/Release"
 
+# hdiutil refuses to convert onto a path that exists, and the message it gives is "convert failed -
+# File exists", which names neither the file nor the DMG. A rebuild that did not wipe build/Release
+# first ended there every time.
+rm -f "$FINAL_DMG"
+
 # Create a staging copy of the app under the shipped name. The bundle directory is not sealed by
 # the signature, so renaming it here is what lets PRODUCT_NAME stay TablePro while the app the user
 # installs is named by TABLEPRO_APP_NAME.
