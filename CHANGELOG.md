@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid jumping to the top on a later reload after a page change failed.
 - System databases such as `mysql` missing from the database switcher, the tab database picker and Open Quickly. (#2832)
 - SQL Server and ClickHouse system databases listed as user databases once the database switcher finished loading.
+- Oracle system schemas such as `SYS` and `XDB` listed with user schemas.
+- Dameng `SYSDBA` schema hidden from the sidebar and listed under System.
 
 ## [0.74.0] - 2026-09-13
 

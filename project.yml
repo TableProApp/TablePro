@@ -416,6 +416,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift

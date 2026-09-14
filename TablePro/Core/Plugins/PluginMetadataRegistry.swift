@@ -295,6 +295,43 @@ struct PluginMetadataSnapshot: Sendable {
         )
     }
 
+    func withSystemNames(databases: [String], schemas: [String]) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            structureEditing: structureEditing,
+            capabilities: capabilities,
+            schema: SchemaInfo(
+                defaultSchemaName: schema.defaultSchemaName,
+                defaultGroupName: schema.defaultGroupName,
+                tableEntityName: schema.tableEntityName,
+                containerEntityName: schema.containerEntityName,
+                schemaEntityName: schema.schemaEntityName,
+                defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
+                immutableColumns: schema.immutableColumns,
+                systemDatabaseNames: databases,
+                systemSchemaNames: schemas,
+                fileExtensions: schema.fileExtensions,
+                fileSignatures: schema.fileSignatures,
+                databaseGroupingStrategy: schema.databaseGroupingStrategy,
+                structureColumnFields: schema.structureColumnFields,
+                implicitSchemaName: schema.implicitSchemaName,
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
+            ),
+            editor: editor,
+            connection: connection
+        )
+    }
+
     func withBranding(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
         PluginMetadataSnapshot(
             displayName: source.displayName, iconName: source.iconName, defaultPort: defaultPort,
@@ -450,6 +487,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
             Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
+            Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"

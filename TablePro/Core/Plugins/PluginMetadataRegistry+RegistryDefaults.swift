@@ -551,10 +551,8 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Schema",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: [
-                        "SYS", "SYSTEM", "OUTLN", "DBSNMP", "APPQOSSYS", "WMSYS", "XDB"
-                    ],
-                    systemSchemaNames: [],
+                    systemDatabaseNames: PluginMetadataRegistry.oracleSystemSchemaNames,
+                    systemSchemaNames: PluginMetadataRegistry.oracleSystemSchemaNames,
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
@@ -612,7 +610,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: ["SYS", "SYSDBA", "SYSAUDITOR", "SYSSSO", "CTISYS"],
+                    systemSchemaNames: ["SYS", "SYSAUDITOR", "SYSSSO", "CTISYS", "SYSJOB", "SYSGEO2"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .hierarchicalSchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]

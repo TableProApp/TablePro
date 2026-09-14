@@ -26,7 +26,7 @@ A RAC SCAN listener, a shared server, or a load balancer in front of the databas
 | **Username** | - | Username and password only. There is no OS auth |
 | **Role** | Normal | SYSDBA or SYSOPER for an administrative logon. The account needs the matching privilege, and the session runs as `SYS` rather than as the user you signed in with |
 
-There is no Database field. Each user is a schema, the sidebar lists them all, and `Cmd+K` or the **Schema** toolbar button switches the active one. A tab binds to a schema rather than a database, so nothing reconnects when you switch.
+There is no Database field. Each user is a schema, and `Cmd+K` or the **Schema** toolbar button switches the active one. Oracle's own schemas, such as `SYS`, `SYSTEM` and `XDB`, sit at the end of the schema switcher, and the sidebar lists them only with [**Show system databases and schemas**](/customization/general-settings#tabs-and-sidebar) on, or when one is the schema in use. A tab binds to a schema rather than a database, so nothing reconnects when you switch.
 
 <Frame caption="Oracle connection form">
   <img className="block dark:hidden" src="/images/oracle-connection-form.png" alt="Oracle connection form with Connection Type and Service Name fields" />
