@@ -508,6 +508,7 @@ targets:
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift

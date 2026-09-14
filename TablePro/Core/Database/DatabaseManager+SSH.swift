@@ -40,6 +40,11 @@ extension DatabaseManager {
                 for: connection,
                 sshPasswordOverride: sshPasswordOverride
             )
+        case .remoteDatabaseSession:
+            return try await buildRemoteSQLiteEffectiveConnection(
+                for: connection,
+                sshPasswordOverride: sshPasswordOverride
+            )
         case .ssh, .none:
             break
         }

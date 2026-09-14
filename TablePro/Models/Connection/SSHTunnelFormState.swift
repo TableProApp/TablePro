@@ -40,6 +40,11 @@ struct SSHTunnelFormState {
     // Remote database file
     var remoteFilePath: String = ""
 
+    /// New connections default to running on the server, which is what a user reaching for a remote
+    /// SQLite database wants; loading an existing connection overwrites this with its saved value,
+    /// and a connection saved before the live mode existed decodes as the read-only copy.
+    var remoteFileAccess: RemoteFileAccess = .onServer
+
     // MARK: - Computed Properties
 
     var selectedProfile: SSHProfile? {
@@ -67,7 +72,8 @@ struct SSHTunnelFormState {
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
             totpPeriod: totpPeriod,
-            remoteFilePath: remoteFilePath
+            remoteFilePath: remoteFilePath,
+            remoteFileAccess: remoteFileAccess
         )
     }
 
@@ -80,6 +86,7 @@ struct SSHTunnelFormState {
         }
         var config = profile.toSSHConfiguration()
         config.remoteFilePath = remoteFilePath
+        config.remoteFileAccess = remoteFileAccess
         return config
     }
 
@@ -95,11 +102,13 @@ struct SSHTunnelFormState {
             profileId = nil
             populateFields(from: config)
             remoteFilePath = config.remoteFilePath
+            remoteFileAccess = config.remoteFileAccess
         case .profile(let id, let snapshot):
             enabled = true
             profileId = id
             populateFields(from: snapshot)
             remoteFilePath = connection.sshConfig.remoteFilePath
+            remoteFileAccess = connection.sshConfig.remoteFileAccess
         }
     }
 
@@ -124,6 +133,7 @@ struct SSHTunnelFormState {
         if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
             var snapshot = profile.toSSHConfiguration()
             snapshot.remoteFilePath = remoteFilePath
+            snapshot.remoteFileAccess = remoteFileAccess
             return .profile(id: profileId, snapshot: snapshot)
         }
         return .inline(buildInlineConfig())

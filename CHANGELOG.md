@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
+- On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 
 ### Changed
 
@@ -43,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline cell editor left open over a different row after a refresh.
 - Row selected by Back or Forward dropped once the table finished loading.
 - Data grid jumping to the top on a later reload after a page change failed.
+
+### Security
+
+- SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
+- The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 
 ## [0.74.0] - 2026-09-13
 

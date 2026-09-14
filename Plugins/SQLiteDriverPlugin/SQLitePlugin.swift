@@ -114,445 +114,16 @@ final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
-// MARK: - Busy Wait
-
-/// Ends a wait on a locked database when the user presses Stop, and after the configured timeout.
-///
-/// `sqlite3_busy_timeout` cannot do the first of those: it sleeps inside SQLite with nothing to
-/// interrupt it, and `sqlite3_interrupt` does not reach a connection that is waiting for a lock
-/// rather than running a statement. Measured against SQLite 3.54.0 with a second connection
-/// holding `BEGIN EXCLUSIVE`: the interrupt was ignored and the waiter ran the full 60 seconds
-/// before returning `SQLITE_BUSY`. A busy handler is the documented way to keep that decision,
-/// because it is called back on every retry and stops the wait by returning zero.
-///
-/// Read and written from whichever thread is stepping a statement and from the caller of Stop, so
-/// every access takes the lock.
-private final class SQLiteBusyState: @unchecked Sendable {
-    private let lock = NSLock()
-    private var isCancelled = false
-    private var timeoutMilliseconds: Int32 = 0
-
-    /// How long one retry waits. Also the granularity at which Stop is noticed.
-    static let retryIntervalMilliseconds: Int32 = 10
-
-    func setTimeout(milliseconds: Int32) {
-        lock.lock()
-        defer { lock.unlock() }
-        timeoutMilliseconds = milliseconds
-    }
-
-    func beginOperation() {
-        lock.lock()
-        defer { lock.unlock() }
-        isCancelled = false
-    }
-
-    func cancel() {
-        lock.lock()
-        defer { lock.unlock() }
-        isCancelled = true
-    }
-
-    /// - Parameter retryCount: How many times SQLite has already called back for this lock.
-    /// - Returns: `true` to wait and retry, `false` to give up and let the step return `SQLITE_BUSY`.
-    func shouldRetry(afterRetryCount retryCount: Int32) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !isCancelled else { return false }
-        guard timeoutMilliseconds > 0 else { return true }
-        return retryCount * Self.retryIntervalMilliseconds < timeoutMilliseconds
-    }
-}
-
-private let sqliteBusyHandler: @convention(c) (UnsafeMutableRawPointer?, Int32) -> Int32 = { context, retryCount in
-    guard let context else { return 0 }
-    let state = Unmanaged<SQLiteBusyState>.fromOpaque(context).takeUnretainedValue()
-    guard state.shouldRetry(afterRetryCount: retryCount) else { return 0 }
-    usleep(UInt32(SQLiteBusyState.retryIntervalMilliseconds) * 1_000)
-    return 1
-}
-
-// MARK: - SQLite Connection Actor
-
-private actor SQLiteConnectionActor {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteConnectionActor")
-
-    private var db: OpaquePointer?
-    private let busyState: SQLiteBusyState
-
-    init(busyState: SQLiteBusyState) {
-        self.busyState = busyState
-    }
-
-    var isConnected: Bool { db != nil }
-
-    func open(path: String) throws {
-        let result = sqlite3_open(path, &db)
-
-        if result != SQLITE_OK {
-            let errorMessage = db.map { String(cString: sqlite3_errmsg($0)) }
-                ?? "Unknown SQLite error"
-            throw SQLitePluginError.connectionFailed(errorMessage)
-        }
-        installBusyHandler()
-    }
-
-    func close() {
-        if db != nil {
-            sqlite3_close(db)
-            db = nil
-        }
-    }
-
-    func applyBusyTimeout(_ milliseconds: Int32) {
-        busyState.setTimeout(milliseconds: milliseconds)
-    }
-
-    func beginBusyOperation() {
-        busyState.beginOperation()
-    }
-
-    private func installBusyHandler() {
-        guard let db else { return }
-        sqlite3_busy_handler(db, sqliteBusyHandler, Unmanaged.passUnretained(busyState).toOpaque())
-    }
-
-    var dbHandleForInterrupt: Int { db.map { Int(bitPattern: $0) } ?? 0 }
-
-    func executeQuery(_ query: String) throws -> SQLiteRawResult {
-        guard let db else {
-            throw SQLitePluginError.notConnected
-        }
-        busyState.beginOperation()
-
-        let startTime = Date()
-        var statement: OpaquePointer?
-
-        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-
-        if prepareResult != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(db))
-            throw SQLitePluginError.queryFailed(errorMessage)
-        }
-
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        let columnCount = sqlite3_column_count(statement)
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-
-        for i in 0..<columnCount {
-            if let name = sqlite3_column_name(statement, i) {
-                columns.append(String(cString: name))
-            } else {
-                columns.append("column_\(i)")
-            }
-
-            if let typePtr = sqlite3_column_decltype(statement, i) {
-                columnTypeNames.append(String(cString: typePtr))
-            } else {
-                columnTypeNames.append("")
-            }
-        }
-
-        var rows: [[PluginCellValue]] = []
-        var rowsAffected = 0
-        var truncated = false
-
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            if rows.count >= PluginRowLimits.emergencyMax {
-                truncated = true
-                break
-            }
-
-            var row: [PluginCellValue] = []
-
-            for i in 0..<columnCount {
-                let colType = sqlite3_column_type(statement, i)
-                if colType == SQLITE_NULL {
-                    row.append(.null)
-                } else if colType == SQLITE_BLOB {
-                    let byteCount = Int(sqlite3_column_bytes(statement, i))
-                    if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
-                    } else {
-                        row.append(.bytes(Data()))
-                    }
-                } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(.text(String(cString: text)))
-                } else {
-                    row.append(.null)
-                }
-            }
-
-            rows.append(row)
-            stepResult = sqlite3_step(statement)
-        }
-
-        if !truncated, stepResult != SQLITE_DONE {
-            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
-
-        if columns.isEmpty {
-            rowsAffected = Int(sqlite3_changes(db))
-        }
-
-        let executionTime = Date().timeIntervalSince(startTime)
-
-        return SQLiteRawResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: rowsAffected,
-            executionTime: executionTime,
-            isTruncated: truncated
-        )
-    }
-
-    func streamQuery(_ query: String, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) throws {
-        busyState.beginOperation()
-        guard let db else {
-            throw SQLitePluginError.notConnected
-        }
-
-        var statement: OpaquePointer?
-
-        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-        if prepareResult != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(db))
-            throw SQLitePluginError.queryFailed(errorMessage)
-        }
-
-        let columnCount = sqlite3_column_count(statement)
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-
-        for i in 0..<columnCount {
-            if let name = sqlite3_column_name(statement, i) {
-                columns.append(String(cString: name))
-            } else {
-                columns.append("column_\(i)")
-            }
-
-            if let typePtr = sqlite3_column_decltype(statement, i) {
-                columnTypeNames.append(String(cString: typePtr))
-            } else {
-                columnTypeNames.append("")
-            }
-        }
-
-        continuation.yield(.header(PluginStreamHeader(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            estimatedRowCount: nil
-        )))
-
-        let batchSize = 5_000
-        var batch: [PluginRow] = []
-        batch.reserveCapacity(batchSize)
-
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            if Task.isCancelled {
-                if !batch.isEmpty {
-                    continuation.yield(.rows(batch))
-                }
-                sqlite3_finalize(statement)
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            var row: [PluginCellValue] = []
-
-            for i in 0..<columnCount {
-                let colType = sqlite3_column_type(statement, i)
-                if colType == SQLITE_NULL {
-                    row.append(.null)
-                } else if colType == SQLITE_BLOB {
-                    let byteCount = Int(sqlite3_column_bytes(statement, i))
-                    if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
-                    } else {
-                        row.append(.bytes(Data()))
-                    }
-                } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(.text(String(cString: text)))
-                } else {
-                    row.append(.null)
-                }
-            }
-
-            batch.append(row)
-            if batch.count >= batchSize {
-                continuation.yield(.rows(batch))
-                batch.removeAll(keepingCapacity: true)
-            }
-            stepResult = sqlite3_step(statement)
-        }
-
-        if !batch.isEmpty {
-            continuation.yield(.rows(batch))
-        }
-
-        // A step that ends on anything but `SQLITE_DONE` stopped early: a locked database, an I/O
-        // error on the volume, a corrupt page. Finishing the stream normally would report the rows
-        // read so far as the whole table, which is indistinguishable from an empty one.
-        guard stepResult == SQLITE_DONE else {
-            let message = String(cString: sqlite3_errmsg(db))
-            sqlite3_finalize(statement)
-            continuation.finish(throwing: SQLitePluginError.queryFailed(message))
-            return
-        }
-
-        sqlite3_finalize(statement)
-        continuation.finish()
-    }
-
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) throws -> SQLiteRawResult {
-        guard let db else {
-            throw SQLitePluginError.notConnected
-        }
-        busyState.beginOperation()
-
-        let startTime = Date()
-        var statement: OpaquePointer?
-
-        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-
-        if prepareResult != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(db))
-            throw SQLitePluginError.queryFailed(errorMessage)
-        }
-
-        defer {
-            sqlite3_finalize(statement)
-        }
-
-        let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-        for (index, param) in parameters.enumerated() {
-            let bindIndex = Int32(index + 1)
-            let bindResult: Int32
-
-            switch param {
-            case .null:
-                bindResult = sqlite3_bind_null(statement, bindIndex)
-            case .text(let stringValue):
-                bindResult = sqlite3_bind_text(statement, bindIndex, stringValue, -1, sqliteTransient)
-            case .bytes(let data):
-                bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
-                    let baseAddress = rawBuffer.baseAddress
-                    return sqlite3_bind_blob(statement, bindIndex, baseAddress, Int32(data.count), sqliteTransient)
-                }
-            }
-
-            if bindResult != SQLITE_OK {
-                let errorMessage = String(cString: sqlite3_errmsg(db))
-                throw SQLitePluginError.queryFailed(
-                    "Failed to bind parameter \(index): \(errorMessage)"
-                )
-            }
-        }
-
-        let columnCount = sqlite3_column_count(statement)
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-
-        for i in 0..<columnCount {
-            if let name = sqlite3_column_name(statement, i) {
-                columns.append(String(cString: name))
-            } else {
-                columns.append("column_\(i)")
-            }
-
-            if let typePtr = sqlite3_column_decltype(statement, i) {
-                columnTypeNames.append(String(cString: typePtr))
-            } else {
-                columnTypeNames.append("")
-            }
-        }
-
-        var rows: [[PluginCellValue]] = []
-        var rowsAffected = 0
-        var truncated = false
-
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            if rows.count >= PluginRowLimits.emergencyMax {
-                truncated = true
-                break
-            }
-
-            var row: [PluginCellValue] = []
-
-            for i in 0..<columnCount {
-                let colType = sqlite3_column_type(statement, i)
-                if colType == SQLITE_NULL {
-                    row.append(.null)
-                } else if colType == SQLITE_BLOB {
-                    let byteCount = Int(sqlite3_column_bytes(statement, i))
-                    if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
-                        row.append(.bytes(Data(bytes: blobPtr, count: byteCount)))
-                    } else {
-                        row.append(.bytes(Data()))
-                    }
-                } else if let text = sqlite3_column_text(statement, i) {
-                    row.append(.text(String(cString: text)))
-                } else {
-                    row.append(.null)
-                }
-            }
-
-            rows.append(row)
-            stepResult = sqlite3_step(statement)
-        }
-
-        if !truncated, stepResult != SQLITE_DONE {
-            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
-        }
-
-        if columns.isEmpty {
-            rowsAffected = Int(sqlite3_changes(db))
-        }
-
-        let executionTime = Date().timeIntervalSince(startTime)
-
-        return SQLiteRawResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: rows,
-            rowsAffected: rowsAffected,
-            executionTime: executionTime,
-            isTruncated: truncated
-        )
-    }
-}
-
-private struct SQLiteRawResult: Sendable {
-    let columns: [String]
-    let columnTypeNames: [String]
-    let rows: [[PluginCellValue]]
-    let rowsAffected: Int
-    let executionTime: TimeInterval
-    let isTruncated: Bool
-}
-
 // MARK: - SQLite Plugin Driver
 
 final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
-    private let busyState = SQLiteBusyState()
-    private let connectionActor: SQLiteConnectionActor
-    private let interruptLock = NSLock()
-    nonisolated(unsafe) private var _dbHandleForInterrupt: OpaquePointer?
+    private let backend: any SQLiteExecutionBackend
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLitePluginDriver")
 
     var currentSchema: String? { nil }
-    var serverVersion: String? { String(cString: sqlite3_libversion()) }
+    var serverVersion: String? { backend.resolvedServerVersion }
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { true }
 
@@ -576,30 +147,37 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.config = config
-        self.connectionActor = SQLiteConnectionActor(busyState: busyState)
+        self.backend = Self.makeBackend(config: config)
+    }
+
+    /// A file-backed connection runs on the app's own SQLite; one whose transport marks it a remote
+    /// session runs on the server's SQLite through the agent. The mark and the token are set by the
+    /// app's transport when it rewrites the effective connection, never by the user.
+    private static func makeBackend(config: DriverConnectionConfig) -> any SQLiteExecutionBackend {
+        guard config.additionalFields[SQLiteAgentProtocol.backendFieldKey] == SQLiteAgentProtocol.agentBackendValue else {
+            return SQLiteLocalBackend(path: config.database)
+        }
+        return SQLiteAgentBackend(
+            host: config.host.isEmpty ? "127.0.0.1" : config.host,
+            port: config.port,
+            path: config.database,
+            token: config.additionalFields[SQLiteAgentProtocol.tokenFieldKey] ?? ""
+        )
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        let path = expandPath(config.database)
-
-        if !FileManager.default.fileExists(atPath: path) {
-            let directory = (path as NSString).deletingLastPathComponent
-            try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        try await withTaskCancellationHandler {
+            try await backend.open()
+        } onCancel: {
+            backend.abortConnect()
         }
-
-        try await connectionActor.open(path: path)
-        let rawHandle = await connectionActor.dbHandleForInterrupt
-        setInterruptHandle(rawHandle != 0 ? OpaquePointer(bitPattern: rawHandle) : nil)
     }
 
     func disconnect() {
-        interruptLock.lock()
-        _dbHandleForInterrupt = nil
-        interruptLock.unlock()
-        let actor = connectionActor
-        Task { await actor.close() }
+        let backend = self.backend
+        Task { await backend.close() }
     }
 
     func ping() async throws {
@@ -607,13 +185,13 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func applyQueryTimeout(_ seconds: Int) async throws {
-        await connectionActor.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
+        await backend.applyBusyTimeout(Int32(max(0, seconds) * 1_000))
     }
 
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeQuery(query)
+        let rawResult = try await backend.executeQuery(query)
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -625,7 +203,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeParameterizedQuery(query, parameters: parameters)
+        let rawResult = try await backend.executeParameterizedQuery(query, parameters: parameters)
         return PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
@@ -637,13 +215,10 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     /// `sqlite3_interrupt` ends a statement that is running. A connection waiting for a lock is
-    /// not running one, and measurably ignores it, so the busy handler is what ends that wait.
+    /// not running one, and measurably ignores it, so the busy handler is what ends that wait. The
+    /// remote backend forwards the same intent to the agent as a cancel frame.
     func cancelQuery() throws {
-        busyState.cancel()
-        interruptLock.lock()
-        defer { interruptLock.unlock() }
-        guard let db = _dbHandleForInterrupt else { return }
-        sqlite3_interrupt(db)
+        backend.canceller.cancel()
     }
 
     // MARK: - EXPLAIN
@@ -1095,14 +670,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
     }
 
-    // MARK: - Private Helpers
-
-    nonisolated private func setInterruptHandle(_ handle: OpaquePointer?) {
-        interruptLock.lock()
-        _dbHandleForInterrupt = handle
-        interruptLock.unlock()
-    }
-
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -1110,7 +677,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.connectionActor.streamQuery(queryToRun, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -1119,13 +686,6 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 streamTask.cancel()
             }
         }
-    }
-
-    private func expandPath(_ path: String) -> String {
-        if path.hasPrefix("~") {
-            return NSString(string: path).expandingTildeInPath
-        }
-        return path
     }
 
     // MARK: - Create Table DDL
