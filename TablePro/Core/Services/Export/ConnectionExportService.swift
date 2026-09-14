@@ -83,7 +83,9 @@ enum ConnectionExportService {
                     totpMode: sshConfig.totpMode == .none ? nil : sshConfig.totpMode.rawValue,
                     totpAlgorithm: sshConfig.totpAlgorithm == .sha1 ? nil : sshConfig.totpAlgorithm.rawValue,
                     totpDigits: sshConfig.totpDigits == 6 ? nil : sshConfig.totpDigits,
-                    totpPeriod: sshConfig.totpPeriod == 30 ? nil : sshConfig.totpPeriod
+                    totpPeriod: sshConfig.totpPeriod == 30 ? nil : sshConfig.totpPeriod,
+                    remoteFilePath: sshConfig.remoteFilePath.isEmpty ? nil : sshConfig.remoteFilePath,
+                    remoteFileAccess: sshConfig.remoteFileAccess == .readOnlyCopy ? nil : sshConfig.remoteFileAccess.rawValue
                 )
             } else {
                 exportableSSH = nil
@@ -576,6 +578,12 @@ enum ConnectionExportService {
             if let totpPeriod = ssh.totpPeriod {
                 queryItems.append(URLQueryItem(name: "sshTotpPeriod", value: String(totpPeriod)))
             }
+            if let remoteFilePath = ssh.remoteFilePath, !remoteFilePath.isEmpty {
+                queryItems.append(URLQueryItem(name: "sshRemoteFilePath", value: remoteFilePath))
+            }
+            if let remoteFileAccess = ssh.remoteFileAccess {
+                queryItems.append(URLQueryItem(name: "sshRemoteFileAccess", value: remoteFileAccess))
+            }
         }
 
         if let ssl = exportable.sslConfig {
@@ -677,6 +685,8 @@ enum ConnectionExportService {
             config.totpAlgorithm = ssh.totpAlgorithm.flatMap { TOTPAlgorithm(rawValue: $0) } ?? .sha1
             config.totpDigits = ssh.totpDigits ?? 6
             config.totpPeriod = ssh.totpPeriod ?? 30
+            config.remoteFilePath = ssh.remoteFilePath ?? ""
+            config.remoteFileAccess = ssh.remoteFileAccess.flatMap { RemoteFileAccess(rawValue: $0) } ?? .readOnlyCopy
             sshConfig = config
         } else {
             sshConfig = SSHConfiguration()

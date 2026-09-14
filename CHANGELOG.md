@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
+- Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
 - Remote database file reaching the previous server after the connection's host, port, or user was changed.
 - Update preferences overwritten by the app at every launch instead of following the setting.
@@ -63,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Killed remote `VACUUM INTO` snapshot reported as a successful copy.
 - Interrupted remote snapshot files left on the server, now swept on the next fetch.
 - Local working copies of remote databases kept forever, now removed after 30 days unused.
+- Clicks, drags and the hand pointer landing on the wrong table or plan step once a diagram is zoomed.
 
 ### Security
 
