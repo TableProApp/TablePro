@@ -57,7 +57,10 @@ jobs:
             libsecret-1-dev \
             libkrb5-dev \
             clang \
-            openssh-client
+            openssh-client \
+            xvfb \
+            xauth \
+            dbus-daemon
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98
         with:
           toolchain: "1.98"
@@ -72,7 +75,10 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
       - name: Tests
-        run: cargo test --workspace --locked
+        env:
+          GTK_A11Y: test
+          GSK_RENDERER: cairo
+        run: xvfb-run -a dbus-run-session -- cargo test --workspace --locked
 
   integration:
     name: Docker tests (${{ matrix.package }})

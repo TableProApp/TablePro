@@ -10,10 +10,18 @@ System packages — see [README.md](README.md) for distro-specific commands. Aft
 cd linux
 cargo build                    # debug build
 cargo run -p tablepro-app      # run the app
-cargo test                     # all unit and integration tests
-cargo clippy --all -- -D warnings   # lint, treat warnings as errors
+GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked   # tests, inside a desktop session
+cargo clippy --workspace --all-targets -- -D warnings   # lint, treat warnings as errors
 cargo fmt --all                # format
 ```
+
+Without a display (SSH, containers), run the tests the way the CI fast job does:
+
+```bash
+GTK_A11Y=test GSK_RENDERER=cairo xvfb-run -a dbus-run-session -- cargo test --workspace --locked
+```
+
+CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
 
 ## Code style
 
@@ -52,7 +60,7 @@ docs(adding-drivers): clarify TLS configuration step
 1. Branch from `main`. Branch name format: `feat/short-slug`, `fix/short-slug`, `refactor/short-slug`.
 2. PR title is the conventional commit message you intend to land.
 3. PR description has two sections: **Summary** (what and why, 2–4 bullets) and **Test plan** (checkbox list).
-4. Run `cargo test`, `cargo clippy --all -- -D warnings`, `cargo fmt --all -- --check` locally before pushing. CI runs the same.
+4. Run the tests as shown in Dev environment, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all -- --check` locally before pushing. CI runs the same.
 5. UI changes must include before / after screenshots in the PR description, taken at HiDPI on both light and dark themes.
 
 ## What does not belong here

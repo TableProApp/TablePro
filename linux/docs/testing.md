@@ -29,13 +29,17 @@ mod tests {
 }
 ```
 
-Run every test that needs no external service:
+Run every test that needs no external service. GTK tests need a display and the GTK test accessibility backend:
 
 ```bash
-cargo test --workspace --locked
+GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked
 ```
 
-This runs unit tests, doc tests and every test target. Tests that need Docker or a Secret Service are ignored. The CI fast job and `scripts/ci-local.sh` run this exact command.
+This runs unit tests, GTK tests, doc tests and every test target. Tests that need Docker or a Secret Service are ignored. Without a display (SSH, containers), run the command the CI fast job uses:
+
+```bash
+GTK_A11Y=test GSK_RENDERER=cairo xvfb-run -a dbus-run-session -- cargo test --workspace --locked
+```
 
 ## Integration tests
 
@@ -121,19 +125,26 @@ A test that guards a critical audit finding starts with the finding id, `f001_` 
 
 ## App / UI tests
 
-We do not write Relm4 component tests until we hit a bug that they would have caught. The reasoning:
+GTK code is tested with `#[gtk4::test]`, which runs each test on a single GTK thread after `gtk::init`. Pure logic still belongs in `app::services` with plain unit tests.
 
-- Relm4's testing helpers require a running GTK main loop, which makes CI flaky.
-- Most app logic worth testing belongs in `app::services` modules: extract those into pure Rust and test directly.
-- UI testing tools that drive GTK4 (`pyatspi`, `dogtail`) are more trouble than they are worth at this scale.
+Helpers live in `crates/app/src/test_support`, compiled only for tests:
+
+- `drain_main_context()` runs pending main-loop sources. `wait_until(timeout, condition)` iterates the main loop until the condition holds or the timeout passes, so a missing signal fails the test instead of hanging it.
+- `SignalLog::connect(object, signal, extract)` records emissions and disconnects when dropped.
+- `descendants`, `find_by_action_name` and `first_descendant_of_type` walk a widget tree.
+- `assert_labelled(widget)` checks that a screen reader can name a control:
+  - an `adw::PreferencesRow` needs a non-empty title;
+  - an `adw::EntryRow` or `adw::PasswordEntryRow` must keep its inner text field labelled by that title;
+  - an `adw::ActionRow` with an activatable widget must keep that widget labelled;
+  - any other widget, such as an icon-only button or a bare entry, needs an accessible label or a labelled-by relation.
+
+CI sets `GTK_A11Y=test` so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 
 Policy:
 
-- Pure logic: extract to `app::services::<thing>`, write unit tests there.
-- View building: cover by manual QA. Add a screenshot to the PR description.
-- Cross-component flows: manual QA until the end-to-end test below exists.
-
-If a UI bug ships and a regression test would have caught it, write the test then.
+- Pure logic: extract to `app::services::<thing>` and write plain unit tests.
+- Widgets the app builds: a `#[gtk4::test]` that constructs the widget, drives it through its actions or signals, checks the result, and runs `assert_labelled` on the controls a user reaches.
+- UI changes still carry before and after screenshots in the PR description.
 
 ## End-to-end test
 
@@ -143,7 +154,7 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `cargo test --workspace --locked`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
+1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `xvfb-run -a dbus-run-session -- cargo test --workspace --locked` with `GTK_A11Y=test` and `GSK_RENDERER=cairo`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
 2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, and `tablepro-ssh` against an OpenSSH server container) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
