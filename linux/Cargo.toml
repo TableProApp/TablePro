@@ -34,9 +34,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls-aws-lc", "rustls-tls-webpki-roots"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "chrono", "rust_decimal", "uuid", "json"] }
-# `integrated-auth-gssapi` (Windows integrated auth) links MIT Kerberos
-# (libkrb5) and runs bindgen (libclang) at build time.
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "integrated-auth-gssapi"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
