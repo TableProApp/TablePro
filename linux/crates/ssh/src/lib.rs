@@ -226,7 +226,15 @@ async fn connect_and_auth(cfg: &SshConfig) -> Result<Handle<ClientHandler>, SshE
         ),
         Some(HostKeyOutcome::Trusted) => tracing::debug!(host = %cfg.host, "ssh: host key matches known_hosts"),
         Some(HostKeyOutcome::KnownHostsIo(e)) => return Err(SshError::KnownHosts(e)),
-        Some(HostKeyOutcome::Changed { .. }) => unreachable!("connect should fail on key mismatch"),
+        Some(HostKeyOutcome::Changed { fingerprint, line }) => {
+            return Err(SshError::HostKeyMismatch {
+                host: cfg.host.clone(),
+                port: cfg.port,
+                new_fingerprint: fingerprint,
+                line,
+                known_hosts: known_hosts_path,
+            });
+        }
         None => {}
     }
 

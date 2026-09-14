@@ -109,7 +109,10 @@ pub enum ConnectDialogOutput {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
+)]
 pub enum ConnectDialogCmd {
     Result(Result<(SavedConnection, Vec<TableInfo>), String>),
     TestResult(Result<usize, String>),

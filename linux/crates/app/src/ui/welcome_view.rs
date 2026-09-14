@@ -15,7 +15,10 @@ pub struct WelcomeView {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
+)]
 pub enum WelcomeViewInput {
     SetConnections(Vec<SavedConnection>),
     OpenConnect,
@@ -24,7 +27,10 @@ pub enum WelcomeViewInput {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
+)]
 pub enum WelcomeViewOutput {
     OpenConnect,
     OpenSaved(SavedConnection),

@@ -340,7 +340,6 @@ impl App {
     /// `(schema, table)`. The DDL editor for the same table opens as
     /// a separate `WorkspaceTab::Structure` page via the sidebar
     /// right-click "Edit Structure" action (`append_existing_structure_tab`).
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn append_table_tab(
         &mut self,
         schema: Option<String>,

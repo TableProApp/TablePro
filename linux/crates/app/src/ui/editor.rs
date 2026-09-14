@@ -258,7 +258,10 @@ impl SimpleComponent for SqlEditor {
         });
 
         let run_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>Return").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new({
                 let sender = sender.clone();
                 move |_, _| {
@@ -274,7 +277,10 @@ impl SimpleComponent for SqlEditor {
         // Cancel button. The Cancel handler no-ops when nothing is
         // running, so binding unconditionally is safe.
         let cancel_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new({
                 let sender = sender.clone();
                 move |_, _| {
@@ -289,7 +295,10 @@ impl SimpleComponent for SqlEditor {
         // source-view controller so it only fires when the editor has
         // focus; window-scoped Ctrl+F is "Find in results".
         let format_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>f").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::f,
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+            ))
             .action(&gtk::CallbackAction::new({
                 let sender = sender.clone();
                 move |_, _| {
@@ -303,7 +312,10 @@ impl SimpleComponent for SqlEditor {
         // multi-statement scripts: the user keeps several queries in
         // one buffer, parks the cursor on one, runs just that.
         let run_at_cursor_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>Return").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+            ))
             .action(&gtk::CallbackAction::new({
                 let sender = sender.clone();
                 move |_, _| {
@@ -319,7 +331,10 @@ impl SimpleComponent for SqlEditor {
         // uncommenting all. Wrapped in begin/end_user_action so it's
         // a single undo step regardless of how many lines toggle.
         let toggle_comment_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>slash").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::slash,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new({
                 let sender = sender.clone();
                 move |_, _| {
@@ -1056,22 +1071,28 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
         }
         if in_block_comment {
             current.push(c);
-            if c == '*' && chars.peek() == Some(&'/') {
-                current.push(chars.next().unwrap());
+            if c == '*'
+                && let Some(slash) = chars.next_if_eq(&'/')
+            {
+                current.push(slash);
                 in_block_comment = false;
             }
             continue;
         }
         if !in_single && !in_double {
-            if c == '-' && chars.peek() == Some(&'-') {
+            if c == '-'
+                && let Some(dash) = chars.next_if_eq(&'-')
+            {
                 current.push(c);
-                current.push(chars.next().unwrap());
+                current.push(dash);
                 in_line_comment = true;
                 continue;
             }
-            if c == '/' && chars.peek() == Some(&'*') {
+            if c == '/'
+                && let Some(star) = chars.next_if_eq(&'*')
+            {
                 current.push(c);
-                current.push(chars.next().unwrap());
+                current.push(star);
                 in_block_comment = true;
                 continue;
             }

@@ -35,6 +35,8 @@ use tablepro_core::{
     sql_dialect::{BuildSqlError, build_insert_from_draft, build_update, placeholder_for, quote_ident},
 };
 
+pub type MaterializedStatements = (Vec<(String, Vec<Value>)>, Vec<StatementSource>);
+
 const UNDO_LIMIT: usize = 50;
 
 /// Stable identity for a row across sort / filter / page navigation.
@@ -549,14 +551,13 @@ impl TabChangeTracker {
     /// vector lets the caller map a `DriverError::Transaction
     /// { statement_index, .. }` back to the grid row that produced
     /// the failing statement.
-    #[allow(clippy::type_complexity)]
     pub fn materialize(
         &self,
         driver_id: &str,
         schema: Option<&str>,
         table: &str,
         columns: &[ColumnInfo],
-    ) -> Result<(Vec<(String, Vec<Value>)>, Vec<StatementSource>), BuildSqlError> {
+    ) -> Result<MaterializedStatements, BuildSqlError> {
         let mut out: Vec<(String, Vec<Value>)> = Vec::new();
         let mut sources: Vec<StatementSource> = Vec::new();
         for draft in &self.inserts {

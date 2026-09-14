@@ -177,12 +177,45 @@ pub fn build_filter_where(
         Combinator::And => " AND ",
         Combinator::Or => " OR ",
     };
-    let sql = if clauses.len() == 1 {
-        clauses.into_iter().next().unwrap()
-    } else {
-        format!("({})", clauses.join(joiner))
+    let sql = match clauses.as_slice() {
+        [only] => only.clone(),
+        _ => format!("({})", clauses.join(joiner)),
     };
     Ok(Some((sql, params)))
+}
+
+fn bind_comparison(
+    driver_id: &str,
+    col: &ColumnInfo,
+    col_sql: &str,
+    rule: &FilterRule,
+    op_sql: &str,
+    placeholder_idx: &mut usize,
+    params: &mut Vec<Value>,
+) -> Result<String, BuildFilterError> {
+    let raw = require_single(rule)?;
+    let value = parse_value_for(col, raw)?;
+    let ph = placeholder_for(driver_id, *placeholder_idx);
+    *placeholder_idx += 1;
+    params.push(value);
+    Ok(format!("{col_sql} {op_sql} {ph}"))
+}
+
+/// Case-sensitive on all drivers. The user picks Ilike explicitly when
+/// they want case-insensitive matching.
+fn bind_like_pattern(
+    driver_id: &str,
+    col_sql: &str,
+    rule: &FilterRule,
+    pattern: impl FnOnce(&str) -> String,
+    placeholder_idx: &mut usize,
+    params: &mut Vec<Value>,
+) -> Result<String, BuildFilterError> {
+    let raw = require_single(rule)?;
+    let ph = placeholder_for(driver_id, *placeholder_idx);
+    *placeholder_idx += 1;
+    params.push(Value::Text(pattern(&escape_like(raw))));
+    Ok(format!("{col_sql} LIKE {ph}"))
 }
 
 fn build_rule_sql(
@@ -197,40 +230,37 @@ fn build_rule_sql(
         FilterOp::IsNull => Ok(format!("{col_sql} IS NULL")),
         FilterOp::IsNotNull => Ok(format!("{col_sql} IS NOT NULL")),
 
-        FilterOp::Eq | FilterOp::NotEq | FilterOp::Lt | FilterOp::LtEq | FilterOp::Gt | FilterOp::GtEq => {
-            let raw = require_single(rule)?;
-            let value = parse_value_for(col, raw)?;
-            let ph = placeholder_for(driver_id, *placeholder_idx);
-            *placeholder_idx += 1;
-            params.push(value);
-            let op_sql = match rule.op {
-                FilterOp::Eq => "=",
-                FilterOp::NotEq => "<>",
-                FilterOp::Lt => "<",
-                FilterOp::LtEq => "<=",
-                FilterOp::Gt => ">",
-                FilterOp::GtEq => ">=",
-                _ => unreachable!(),
-            };
-            Ok(format!("{col_sql} {op_sql} {ph}"))
-        }
+        FilterOp::Eq => bind_comparison(driver_id, col, &col_sql, rule, "=", placeholder_idx, params),
+        FilterOp::NotEq => bind_comparison(driver_id, col, &col_sql, rule, "<>", placeholder_idx, params),
+        FilterOp::Lt => bind_comparison(driver_id, col, &col_sql, rule, "<", placeholder_idx, params),
+        FilterOp::LtEq => bind_comparison(driver_id, col, &col_sql, rule, "<=", placeholder_idx, params),
+        FilterOp::Gt => bind_comparison(driver_id, col, &col_sql, rule, ">", placeholder_idx, params),
+        FilterOp::GtEq => bind_comparison(driver_id, col, &col_sql, rule, ">=", placeholder_idx, params),
 
-        FilterOp::Contains | FilterOp::StartsWith | FilterOp::EndsWith => {
-            let raw = require_single(rule)?;
-            let escaped = escape_like(raw);
-            let pattern = match rule.op {
-                FilterOp::Contains => format!("%{escaped}%"),
-                FilterOp::StartsWith => format!("{escaped}%"),
-                FilterOp::EndsWith => format!("%{escaped}"),
-                _ => unreachable!(),
-            };
-            let ph = placeholder_for(driver_id, *placeholder_idx);
-            *placeholder_idx += 1;
-            params.push(Value::Text(pattern));
-            // Case-sensitive on all drivers. The user picks Ilike
-            // explicitly when they want case-insensitive matching.
-            Ok(format!("{col_sql} LIKE {ph}"))
-        }
+        FilterOp::Contains => bind_like_pattern(
+            driver_id,
+            &col_sql,
+            rule,
+            |escaped| format!("%{escaped}%"),
+            placeholder_idx,
+            params,
+        ),
+        FilterOp::StartsWith => bind_like_pattern(
+            driver_id,
+            &col_sql,
+            rule,
+            |escaped| format!("{escaped}%"),
+            placeholder_idx,
+            params,
+        ),
+        FilterOp::EndsWith => bind_like_pattern(
+            driver_id,
+            &col_sql,
+            rule,
+            |escaped| format!("%{escaped}"),
+            placeholder_idx,
+            params,
+        ),
 
         FilterOp::Like | FilterOp::NotLike => {
             let raw = require_single(rule)?;

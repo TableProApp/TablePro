@@ -14,7 +14,8 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.93"
+rust-version = "1.98"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
@@ -47,6 +48,22 @@ testcontainers = "0.27"
 testcontainers-modules = "0.15"
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
 relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_47"] }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+ignore_without_reason = "deny"
 
 [profile.release]
 lto = "fat"

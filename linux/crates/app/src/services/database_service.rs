@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -88,28 +88,28 @@ impl DatabaseService {
         };
         self.connections
             .lock()
-            .expect("database_service lock")
+            .unwrap_or_else(PoisonError::into_inner)
             .insert(id, entry);
-        *self.active.lock().expect("database_service lock") = Some(id);
+        *self.active.lock().unwrap_or_else(PoisonError::into_inner) = Some(id);
     }
 
     pub fn active_metadata(&self) -> Option<ConnectionMetadata> {
         let id = self.active_id()?;
-        let entries = self.connections.lock().expect("database_service lock");
+        let entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         entries.get(&id).map(|e| e.metadata.clone())
     }
 
     pub fn all_connections(&self) -> Vec<ConnectionMetadata> {
-        let entries = self.connections.lock().expect("database_service lock");
+        let entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         let mut out: Vec<_> = entries.values().map(|e| e.metadata.clone()).collect();
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_cached_key(|metadata| metadata.name.to_lowercase());
         out
     }
 
     pub fn get(&self, id: Uuid) -> Option<Arc<dyn Connection>> {
-        let entries = self.connections.lock().expect("database_service lock");
+        let entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         let entry = entries.get(&id)?;
-        let inner = entry.inner.lock().expect("entry inner lock");
+        let inner = entry.inner.lock().unwrap_or_else(PoisonError::into_inner);
         Some(inner.connection.clone())
     }
 
@@ -119,14 +119,14 @@ impl DatabaseService {
     }
 
     pub fn active_id(&self) -> Option<Uuid> {
-        *self.active.lock().expect("database_service lock")
+        *self.active.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     pub fn active_health(&self) -> Option<ConnectionHealth> {
         let id = self.active_id()?;
-        let entries = self.connections.lock().expect("database_service lock");
+        let entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         let entry = entries.get(&id)?;
-        let inner = entry.inner.lock().expect("entry inner lock");
+        let inner = entry.inner.lock().unwrap_or_else(PoisonError::into_inner);
         Some(inner.health.clone())
     }
 
@@ -137,29 +137,29 @@ impl DatabaseService {
         };
         self.connections
             .lock()
-            .expect("database_service lock")
+            .unwrap_or_else(PoisonError::into_inner)
             .get(&id)
             .map(|e| e.read_only)
             .unwrap_or(false)
     }
 
     pub fn remove(&self, id: Uuid) {
-        let mut entries = self.connections.lock().expect("database_service lock");
+        let mut entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(entry) = entries.remove(&id) {
             entry.cancel.cancel();
         }
-        let mut active = self.active.lock().expect("database_service lock");
+        let mut active = self.active.lock().unwrap_or_else(PoisonError::into_inner);
         if *active == Some(id) {
             *active = None;
         }
     }
 
     pub fn clear_all(&self) {
-        let mut entries = self.connections.lock().expect("database_service lock");
+        let mut entries = self.connections.lock().unwrap_or_else(PoisonError::into_inner);
         for (_, entry) in entries.drain() {
             entry.cancel.cancel();
         }
-        *self.active.lock().expect("database_service lock") = None;
+        *self.active.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 }
 

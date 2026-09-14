@@ -5,19 +5,15 @@ use rust_decimal::Decimal;
 use secrecy::SecretString;
 
 use drivers_mssql::MssqlDriver;
-use tablepro_core::{ConnectOptions, Connection, DatabaseDriver, Value};
-use testcontainers::ContainerAsync;
+use tablepro_core::{ConnectOptions, DatabaseDriver, Value};
+use testcontainers::{ContainerAsync, TestcontainersError};
 use testcontainers_modules::mssql_server::MssqlServer;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
-async fn start_mssql() -> (ContainerAsync<MssqlServer>, ConnectOptions) {
-    let container = MssqlServer::default()
-        .with_accept_eula()
-        .start()
-        .await
-        .expect("start mssql container");
-    let host = container.get_host().await.expect("host").to_string();
-    let port = container.get_host_port_ipv4(1433).await.expect("port");
+async fn start_mssql() -> Result<(ContainerAsync<MssqlServer>, ConnectOptions), TestcontainersError> {
+    let container = MssqlServer::default().with_accept_eula().start().await?;
+    let host = container.get_host().await?.to_string();
+    let port = container.get_host_port_ipv4(1433).await?;
     let opts = ConnectOptions {
         host,
         port,
@@ -27,18 +23,14 @@ async fn start_mssql() -> (ContainerAsync<MssqlServer>, ConnectOptions) {
         use_tls: false,
         ..Default::default()
     };
-    (container, opts)
-}
-
-async fn connect(opts: ConnectOptions) -> Box<dyn Connection> {
-    MssqlDriver.connect(opts).await.expect("connect")
+    Ok((container, opts))
 }
 
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn connect_list_tables_pk_and_identity() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE pk_demo (
@@ -74,8 +66,8 @@ async fn connect_list_tables_pk_and_identity() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn value_roundtrip_representative_types() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute(
         "CREATE TABLE types_demo (
@@ -143,8 +135,8 @@ async fn value_roundtrip_representative_types() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn pagination_and_truncated_flag() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE big (i int PRIMARY KEY)").await.unwrap();
     let mut sql = String::from("INSERT INTO big (i) VALUES ");
@@ -185,8 +177,8 @@ async fn pagination_and_truncated_flag() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn bad_sql_returns_query_error() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     let err = conn.query("SELECT * FROM no_such_table").await.unwrap_err();
     let msg = format!("{err}").to_lowercase();
@@ -204,8 +196,8 @@ async fn bad_sql_returns_query_error() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn ddl_batch_commits_and_rolls_back_as_a_unit() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     let committed = conn
         .execute_in_transaction(&[
@@ -242,8 +234,8 @@ async fn ddl_batch_commits_and_rolls_back_as_a_unit() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn alter_column_default_round_trips() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE def_demo (id int NOT NULL, status nvarchar(20) NULL)")
         .await
@@ -291,8 +283,8 @@ async fn alter_column_default_round_trips() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn foreign_key_actions_round_trip() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE fk_parent (id int NOT NULL PRIMARY KEY)")
         .await
@@ -333,8 +325,8 @@ async fn foreign_key_actions_round_trip() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn index_columns_exclude_included_columns() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE ix_demo (a int NOT NULL, b int NOT NULL, c int NULL, d int NULL)")
         .await
@@ -351,8 +343,8 @@ async fn index_columns_exclude_included_columns() {
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn empty_result_set_still_reports_columns() {
-    let (_c, opts) = start_mssql().await;
-    let conn = connect(opts).await;
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
 
     conn.execute("CREATE TABLE empty_demo (id int NOT NULL, label nvarchar(10) NULL)")
         .await

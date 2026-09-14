@@ -616,7 +616,10 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // handlers elsewhere in the BrowseTab.
     let revealer_for_esc = revealer.clone();
     let esc_shortcut = gtk::Shortcut::builder()
-        .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+        .trigger(&gtk::KeyvalTrigger::new(
+            gtk::gdk::Key::Escape,
+            gtk::gdk::ModifierType::empty(),
+        ))
         .action(&gtk::CallbackAction::new(move |_, _| {
             revealer_for_esc.set_reveal_child(false);
             relm4::gtk::glib::Propagation::Stop

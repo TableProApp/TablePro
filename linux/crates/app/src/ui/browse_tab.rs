@@ -281,7 +281,6 @@ pub enum BrowseTabInput {
 }
 
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum BrowseTabOutput {
     /// Tab needs the next page of rows fetched (state is in the slot).
     FetchPage,
@@ -1458,7 +1457,10 @@ impl SimpleComponent for BrowseTab {
 
         let sender_for_esc = sender.clone();
         let esc_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 // Esc on the grid (no edit in progress) clears a
                 // multi-row selection. Spreadsheet convention
@@ -1491,7 +1493,10 @@ impl SimpleComponent for BrowseTab {
         //   in every text-edit widget.
         let sender_for_delete = sender.clone();
         let delete_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Delete").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Delete,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_delete.input(BrowseTabInput::DeleteSelectedRow);
                 glib::Propagation::Stop
@@ -1499,7 +1504,10 @@ impl SimpleComponent for BrowseTab {
             .build();
         let sender_for_insert = sender.clone();
         let insert_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>n").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::n,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_insert.input(BrowseTabInput::InsertRow);
                 glib::Propagation::Stop
@@ -1507,7 +1515,10 @@ impl SimpleComponent for BrowseTab {
             .build();
         let grid_sender_for_null = grid_sender.clone();
         let null_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>n").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::n,
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |widget, _| {
                 let Some((row_position, col_index)) = super::grid::focused_cell_coords(widget) else {
                     return glib::Propagation::Proceed;
@@ -1530,7 +1541,10 @@ impl SimpleComponent for BrowseTab {
         // copy still works without our handler interfering.
         let sender_for_copy = sender.clone();
         let copy_rows_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>c").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::c,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_copy.input(BrowseTabInput::CopySelectedRowsAsTsv);
                 glib::Propagation::Stop
@@ -1543,7 +1557,10 @@ impl SimpleComponent for BrowseTab {
         // attempts.
         let sender_for_paste = sender.clone();
         let paste_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>v").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::v,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_paste.input(BrowseTabInput::PasteNotSupported);
                 glib::Propagation::Stop
@@ -1555,7 +1572,10 @@ impl SimpleComponent for BrowseTab {
         // count exceeds the threshold).
         let sender_for_select_all = sender.clone();
         let select_all_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>a").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::a,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_select_all.input(BrowseTabInput::SelectAllRows);
                 glib::Propagation::Stop
@@ -1568,7 +1588,10 @@ impl SimpleComponent for BrowseTab {
         // keeps the keyboard fluent across pages.
         let sender_for_pgup = sender.clone();
         let page_up_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Page_Up").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Page_Up,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_pgup.input(BrowseTabInput::PrevPage);
                 glib::Propagation::Stop
@@ -1576,7 +1599,10 @@ impl SimpleComponent for BrowseTab {
             .build();
         let sender_for_pgdn = sender.clone();
         let page_down_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("Page_Down").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Page_Down,
+                gtk::gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_pgdn.input(BrowseTabInput::NextPage);
                 glib::Propagation::Stop
@@ -1586,7 +1612,10 @@ impl SimpleComponent for BrowseTab {
         // last visible row of the current page.
         let sender_for_home = sender.clone();
         let home_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>Home").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::Home,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_home.input(BrowseTabInput::GoToFirstRow);
                 glib::Propagation::Stop
@@ -1594,7 +1623,10 @@ impl SimpleComponent for BrowseTab {
             .build();
         let sender_for_end = sender.clone();
         let end_shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>End").expect("valid trigger"))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gtk::gdk::Key::End,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 sender_for_end.input(BrowseTabInput::GoToLastRow);
                 glib::Propagation::Stop

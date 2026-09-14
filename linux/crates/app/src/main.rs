@@ -1,6 +1,8 @@
+use std::process::ExitCode;
 use std::sync::Arc;
 
 use relm4::RelmApp;
+use thiserror::Error;
 
 use tablepro_core::DriverRegistry;
 
@@ -10,7 +12,13 @@ mod ui;
 
 const APP_ID: &str = "com.tablepro.linux";
 
-fn main() {
+#[derive(Debug, Error)]
+enum StartupError {
+    #[error("could not start the query history runtime: {0}")]
+    HistoryRuntime(#[source] std::io::Error),
+}
+
+fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .with_target(false)
@@ -19,16 +27,26 @@ fn main() {
     // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
     unsafe { i18n::init() };
 
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            tracing::error!(%error, "TablePro could not start");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), StartupError> {
     // Single-instance gate: belt-and-suspenders flock on top of
     // gtk::Application's DBus-based uniqueness, since the latter
     // silently lets two processes through when DBus is unavailable.
     // A second instance corrupts workspace_state.json via concurrent
-    // read-modify-write. Hold the lock through the entire `main`.
+    // read-modify-write. Hold the lock through the entire `run`.
     let _instance_lock = match services::single_instance::acquire() {
         Ok(lock) => Some(lock),
         Err(services::single_instance::LockError::AlreadyRunning) => {
             tracing::info!("another TablePro instance is running; exiting");
-            return;
+            return Ok(());
         }
         Err(e) => {
             // No XDG runtime / cache / HOME — proceed without the
@@ -43,7 +61,7 @@ fn main() {
         .worker_threads(1)
         .enable_all()
         .build()
-        .expect("history runtime");
+        .map_err(StartupError::HistoryRuntime)?;
     runtime.block_on(async {
         if let Err(e) = tablepro_storage::query_history::init().await {
             tracing::warn!(error = %e, "history init failed; feature disabled");
@@ -61,12 +79,11 @@ fn main() {
     // Explicit ordered shutdown: `app.run` returned (window closed),
     // so let the tokio runtime's worker threads finish in-flight
     // tasks rather than getting cancelled mid-flight by an abrupt
-    // mem::forget-style leak. The previous `mem::forget(runtime)`
-    // was a workaround for an sqlx-pool reaper concern that no
-    // longer applies — the history pool sits in a global OnceLock
-    // and stays usable from relm4's runtime; this runtime here is
-    // only used for the startup init / prune block_on above.
+    // mem::forget-style leak. The history pool sits in a global
+    // OnceLock and stays usable from relm4's runtime; this runtime
+    // here is only used for the startup init / prune block_on above.
     runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    Ok(())
 }
 
 fn build_registry() -> DriverRegistry {
