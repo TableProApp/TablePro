@@ -41,6 +41,27 @@ async fn connect(opts: ConnectOptions) -> Box<dyn tablepro_core::Connection> {
 
 #[tokio::test]
 #[ignore = "requires docker"]
+async fn hostile_table_name_is_browsed_as_data() {
+    let (_c, opts) = start_clickhouse().await;
+    let conn = connect(opts).await;
+
+    let name = r"t\` UNION ALL SELECT 42 --";
+    let quoted = tablepro_core::sql_dialect::quote_ident("clickhouse", name);
+    conn.execute(&format!(
+        "CREATE TABLE {quoted} (id UInt64) ENGINE = MergeTree ORDER BY id"
+    ))
+    .await
+    .unwrap();
+    conn.execute(&format!("INSERT INTO {quoted} VALUES (1)")).await.unwrap();
+
+    let result = conn.fetch_rows(None, name, 0, 100).await.unwrap();
+    assert_eq!(result.rows.len(), 1, "only the table's own row may come back");
+    assert_ne!(result.rows[0][0], Value::Int(42));
+    assert_ne!(result.rows[0][0], Value::Text("42".into()));
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
 async fn connect_list_tables_and_pk_detection() {
     let (_c, opts) = start_clickhouse().await;
     let conn = connect(opts).await;

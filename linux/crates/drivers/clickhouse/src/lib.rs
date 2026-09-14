@@ -815,7 +815,23 @@ mod tests {
     #[test]
     fn qualify_escapes_backticks() {
         assert_eq!(qualify("db", "users"), "`db`.`users`");
-        assert_eq!(qualify("db", "a`b"), "`db`.`a``b`");
+        assert_eq!(qualify("db", "a`b"), r"`db`.`a\`b`");
+    }
+
+    #[test]
+    fn qualify_escapes_backslash_before_backtick() {
+        assert_eq!(
+            qualify("db", r"t\` UNION ALL SELECT 42 --"),
+            r"`db`.`t\\\` UNION ALL SELECT 42 --`"
+        );
+    }
+
+    #[test]
+    fn bind_placeholders_keeps_escaped_identifier_intact() {
+        let table = qualify("db", r"t\`?");
+        let sql = format!("SELECT * FROM {table} WHERE id = ?");
+        let bound = bind_placeholders(&sql, &[Value::Int(7)]).unwrap();
+        assert_eq!(bound, format!("SELECT * FROM {table} WHERE id = 7"));
     }
 
     #[test]
