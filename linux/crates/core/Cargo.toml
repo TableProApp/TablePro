@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+csv.workspace = true
 rust_decimal.workspace = true
 secrecy.workspace = true
 serde.workspace = true

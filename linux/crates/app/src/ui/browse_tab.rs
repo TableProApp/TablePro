@@ -2282,8 +2282,16 @@ impl SimpleComponent for BrowseTab {
                 if rows.is_empty() {
                     return;
                 }
-                let tsv = tablepro_core::export::render_tsv(&self.current_columns, &rows, false);
-                let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
+                match tablepro_core::export::render_tsv(&self.current_columns, &rows, false) {
+                    Ok(tsv) => {
+                        let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
+                    }
+                    Err(error) => {
+                        let _ = sender.output(BrowseTabOutput::ShowToast(
+                            crate::tr!("Couldn't copy the selection: {error}").replace("{error}", &error.to_string()),
+                        ));
+                    }
+                }
             }
             BrowseTabInput::PasteNotSupported => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(

@@ -34,6 +34,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 # (libkrb5) and runs bindgen (libclang) at build time.
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal", "integrated-auth-gssapi"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
 gtk4 = { version = "0.11", features = ["v4_14"] }
