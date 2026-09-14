@@ -127,6 +127,10 @@ internal struct CompareRunner {
 
         let runProgress = Progress(totalUnitCount: Int64(session.statements.count))
         session.progress = runProgress
+        let setupGeneration = session.setupGeneration
+        let nonTransactionalObjects = session.mode == .data
+            ? session.nonTransactionalTables(in: session.statements)
+            : []
 
         session.runTask = Task { [session] in
             session.activity = .applying
@@ -156,17 +160,29 @@ internal struct CompareRunner {
                         settings: settings,
                         target: target,
                         driver: plugin,
-                        progress: runProgress
+                        progress: runProgress,
+                        nonTransactionalObjects: nonTransactionalObjects
                     )
                 }
                 /// Set from the result, not before the run. Setting it up front meant a declined
                 /// authorization or a driver that could not run the script still flipped the status
                 /// strip to "written", next to text that still read "Nothing has been written."
-                session.hasWrittenToTarget = session.hasWrittenToTarget || result.executedCount > 0
+                session.hasWrittenToTarget = session.hasWrittenToTarget || result.writtenStatementCount > 0
+                /// The setup cannot change while a run applies, and this is the fence if it did:
+                /// the result describes the pair it ran against, so it is never published onto
+                /// another.
+                guard session.isCurrent(setupGeneration) else {
+                    Self.announceCatalogChange(in: target)
+                    return
+                }
                 session.runResult = result
                 session.lastAction = .applied(
                     Date(), target: target.qualifiedDescription, statements: result.executedCount
                 )
+                /// The Apply sheet closes before the run starts, so the result it would have shown
+                /// is reported on the window instead. A rollback that could not reach every table is
+                /// the case this exists for.
+                session.reportRunResult(result, target: target)
                 /// The script just ran, so it describes work the target has already had. Leaving it
                 /// armed left Apply enabled on a stale plan, one click from running the same
                 /// CREATE/ALTER/DELETE a second time.

@@ -33,11 +33,20 @@ final class DataGridCellRenderer {
 
     private var lineCache: [LineKey: CTLine] = [:]
 
+    private let checkboxCell: NSButtonCell = {
+        let cell = NSButtonCell()
+        cell.setButtonType(.switch)
+        cell.title = ""
+        cell.imagePosition = .imageOnly
+        cell.controlSize = .small
+        return cell
+    }()
+
     func invalidateCachedLines() {
         lineCache.removeAll(keepingCapacity: true)
     }
 
-    func draw(_ appearance: DataGridCellAppearance, in rect: NSRect) {
+    func draw(_ appearance: DataGridCellAppearance, in rect: NSRect, controlView: NSView? = nil) {
         guard rect.width > 0, rect.height > 0 else { return }
 
         if let tint = appearance.backgroundTint {
@@ -51,6 +60,9 @@ final class DataGridCellRenderer {
         NSBezierPath(rect: rect).addClip()
         drawText(appearance, in: rect)
         drawAccessory(appearance.accessoryRole, in: accessoryRect)
+        if let mark = appearance.checkboxMark, let controlView {
+            drawCheckbox(mark, in: rect, controlView: controlView)
+        }
         NSGraphicsContext.current?.restoreGraphicsState()
 
         if appearance.drawsFocusBorder {
@@ -124,6 +136,15 @@ final class DataGridCellRenderer {
         context.scaleBy(x: 1, y: -1)
         context.draw(glyph.image, in: CGRect(origin: .zero, size: drawRect.size))
         context.restoreGState()
+    }
+
+    /// Drawn by the system's own checkbox cell, so it matches every other checkbox in the window in
+    /// each appearance and contrast setting rather than approximating one with a symbol.
+    private func drawCheckbox(_ mark: DataGridCheckboxMark, in rect: NSRect, controlView: NSView) {
+        let frame = DataGridCheckboxMark.frame(in: rect)
+        guard !frame.isEmpty else { return }
+        checkboxCell.state = mark == .checked ? .on : .off
+        checkboxCell.draw(withFrame: frame, in: controlView)
     }
 
     private func drawFocusBorder(in rect: NSRect) {
