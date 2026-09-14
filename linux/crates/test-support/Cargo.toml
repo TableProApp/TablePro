@@ -1,0 +1,22 @@
+[package]
+name = "tablepro-test-support"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "tablepro_test_support"
+path = "src/lib.rs"
+
+[dependencies]
+tablepro-core = { path = "../core" }
+async-trait.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+
+[lints]
+workspace = true

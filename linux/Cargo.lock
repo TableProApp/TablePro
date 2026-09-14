@@ -5025,6 +5025,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-session"
+version = "0.1.0"
+
+[[package]]
 name = "tablepro-ssh"
 version = "0.1.0"
 dependencies = [
@@ -5054,6 +5058,15 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-test-support"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "tablepro-core",
+ "tokio",
 ]
 
 [[package]]
