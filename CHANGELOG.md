@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
+- SQL Server alias, table and CLR types in the sidebar's **Types** section, each with a rebuilt `CREATE TYPE` statement.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
