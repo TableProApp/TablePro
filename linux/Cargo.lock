@@ -5375,6 +5375,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-test-fixtures"
+version = "0.1.0"
+dependencies = [
+ "rcgen",
+ "rustls",
+ "tempfile",
+ "testcontainers",
+ "testcontainers-modules",
+ "thiserror 2.0.20",
+ "tiberius",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
 name = "tablepro-test-support"
 version = "0.1.0"
 dependencies = [

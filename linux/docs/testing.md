@@ -69,6 +69,21 @@ async fn list_tables_returns_seeded_tables() {
 
 Keep the container alive for the whole test: dropping the handle stops it.
 
+### Container fixtures
+
+`crates/test-fixtures` (`tablepro-test-fixtures`) holds the containers that need more than a default image: a generated PKI, TLS turned on in the engine's own config format, and OpenSSH servers with a chosen auth method. It is a dev-dependency only and depends on no other TablePro crate.
+
+`TestPki::generate()` writes `ca.pem`, `unrelated-ca.pem`, `server.pem`, `server.key`, `client.pem` and `client.key` to a `TempDir`, private keys at 0600. The server certificate carries SANs `localhost` and `db.tablepro.test` and no IP SAN, so verifying against `127.0.0.1` is a name mismatch. The client certificate's CN is `tablepro_client`, which PostgreSQL `cert` auth matches against the role name.
+
+Every TLS fixture has two principals:
+
+- `password_credentials()`: user `tablepro`, which the server forces onto TLS (`ALTER USER ... REQUIRE SSL`, `hostssl ... scram-sha-256`, `require_secure_transport=ON`).
+- `certificate_credentials()`: user `tablepro_client`, which authenticates with the client certificate (`REQUIRE X509`, pg_hba `cert`, ClickHouse `ssl_certificates`).
+
+SQL Server has only the `sa` principal, because its TLS contract carries no client identity.
+
+`HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `KeyboardInteractive` or `HostCertificate`. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
+
 ### Ignore reasons
 
 Two reasons are allowed:
@@ -153,7 +168,7 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
 1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `xvfb-run -a dbus-run-session -- cargo test --workspace --locked` with `GTK_A11Y=test` and `GSK_RENDERER=cairo`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
-2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, and `tablepro-ssh` against an OpenSSH server container) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
+2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
 

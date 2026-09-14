@@ -93,8 +93,11 @@ jobs:
           - tablepro-driver-mssql
           - tablepro-driver-clickhouse
           - tablepro-ssh
+          - tablepro-test-fixtures
         include:
           - package: tablepro-ssh
+            apt: openssh-client
+          - package: tablepro-test-fixtures
             apt: openssh-client
     defaults:
       run:
