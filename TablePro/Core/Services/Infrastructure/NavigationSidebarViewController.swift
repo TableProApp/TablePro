@@ -23,10 +23,17 @@ internal final class NavigationSidebarViewController: NSViewController {
     private var railWidthConstraint: NSLayoutConstraint!
     private var separatorWidthConstraint: NSLayoutConstraint!
 
-    /// A plain `NSSplitView` rather than an `NSSplitViewController`. A nested split view controller
-    /// publishes `sum(minimums) + dividers` as its `fittingSize`, which the sidebar item would
-    /// adopt as a required minimum and the window's own dividers then cannot beat (#1872).
-    private let stack = NSSplitView()
+    /// The rule between the connections list and the object browser. Both are laid out by
+    /// constraints, like everything else in this view.
+    ///
+    /// An `NSSplitView` sat here and had to go. It sets its panes' frames itself, and every one of
+    /// those writes re-dirtied the constraints of the `_NSSplitViewItemViewWrapper` that the
+    /// window's own sidebar item wraps this view in. The loop does not converge: AppKit gives up
+    /// with "more Update Constraints in Window passes than there are views in the window" and the
+    /// process dies on an uncaught exception before the first window is drawn. It reproduced once,
+    /// on the first launch after install, and never again, which is the worst shape a crash can
+    /// have in the one view every window builds. A draggable divider is not worth it.
+    private let listDivider = NSBox()
 
     internal private(set) var isRailVisible = false
 
@@ -52,15 +59,11 @@ internal final class NavigationSidebarViewController: NSViewController {
         let rail = railController.view
         separator.boxType = .separator
 
-        stack.isVertical = false
-        stack.dividerStyle = .thin
-        stack.addArrangedSubview(connectionTree.view)
-        stack.addArrangedSubview(objectBrowser.view)
-        stack.autosaveName = "TableProSidebarStack"
+        let connections = connectionTree.view
+        let browser = objectBrowser.view
+        listDivider.boxType = .separator
 
-        let browser = stack
-
-        for child in [rail, separator, browser] {
+        for child in [rail, separator, connections, listDivider, browser] {
             child.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(child)
         }
@@ -79,31 +82,37 @@ internal final class NavigationSidebarViewController: NSViewController {
             separator.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             separatorWidthConstraint,
 
+            connections.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
+            connections.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            connections.topAnchor.constraint(equalTo: view.topAnchor),
+
+            listDivider.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
+            listDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            listDivider.topAnchor.constraint(equalTo: connections.bottomAnchor),
+            listDivider.heightAnchor.constraint(equalToConstant: 1),
+
             browser.leadingAnchor.constraint(equalTo: separator.trailingAnchor),
             browser.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            browser.topAnchor.constraint(equalTo: view.topAnchor),
+            browser.topAnchor.constraint(equalTo: listDivider.bottomAnchor),
             browser.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
+        /// The list takes a fixed slice and the object browser takes the rest. Neither of these is
+        /// required, and that is the point: the object browser's own content carries a minimum, so
+        /// a required cap here made a short sidebar unsatisfiable and AppKit broke one of them at
+        /// random. Measured at a 300pt sidebar, the panes summed to 400. The cap outranks the fixed
+        /// height instead, so a short sidebar shrinks the list and the arithmetic always closes.
+        let listHeight = connections.heightAnchor.constraint(equalToConstant: 200)
+        listHeight.priority = NSLayoutConstraint.Priority(500)
+        listHeight.isActive = true
+        let listCap = connections.heightAnchor.constraint(
+            lessThanOrEqualTo: view.heightAnchor,
+            multiplier: 0.4
+        )
+        listCap.priority = NSLayoutConstraint.Priority(900)
+        listCap.isActive = true
+
         separator.isHidden = true
-    }
-
-    override func viewDidAppear() {
-        super.viewDidAppear()
-        applyInitialStackPosition()
-    }
-
-    /// Only until AppKit's own autosave record exists. A split view with no saved position gives
-    /// its first pane half the height, which is far more than a connection list needs and leaves
-    /// the object tree with nothing.
-    private var hasPositionedStack = false
-
-    private func applyInitialStackPosition() {
-        guard !hasPositionedStack, stack.autosaveName != nil else { return }
-        hasPositionedStack = true
-        guard stack.bounds.height > 0 else { return }
-        let preferred = min(stack.bounds.height * 0.4, 220)
-        stack.setPosition(preferred, ofDividerAt: 0)
     }
 
     /// The width the sidebar needs on top of the object browser's own minimum. Read from the
