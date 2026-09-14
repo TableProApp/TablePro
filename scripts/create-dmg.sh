@@ -6,10 +6,11 @@ set -e
 
 # shellcheck source=lib/notarize.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/notarize.sh"
+# shellcheck source=lib/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 # Configuration
-APP_NAME="TablePro"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_NAME="$(tablepro_app_name)"
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
     # Configs/Version.xcconfig is the single declaration of the app version. The literal that
@@ -57,8 +58,9 @@ fi
 # Ensure output directory exists
 mkdir -p "build/Release"
 
-# Create a staging copy of the app with the correct name (TablePro.app)
-# This ensures the DMG shows "TablePro.app" regardless of the source name
+# Create a staging copy of the app under the shipped name. The bundle directory is not sealed by
+# the signature, so renaming it here is what lets PRODUCT_NAME stay TablePro while the app the user
+# installs is named by TABLEPRO_APP_NAME.
 STAGING_APP="build/Release/${APP_NAME}.app"
 if [ "$SOURCE_APP" != "$STAGING_APP" ]; then
     echo "📋 Preparing $APP_NAME.app for DMG..."
@@ -250,9 +252,15 @@ if [ ! -f "$FINAL_DMG" ]; then
     exit 1
 fi
 
-# Sign the DMG
+# Sign the DMG. An ad-hoc signature cannot carry a timestamp: the timestamp service signs against
+# a certificate and ad-hoc has none, so a fork passing SIGN_IDENTITY=- failed here with the DMG
+# already built and valid beside it.
 echo "🔏 Signing DMG with: $SIGN_IDENTITY"
-codesign -fs "$SIGN_IDENTITY" --timestamp "$FINAL_DMG"
+TIMESTAMP_ARGS=(--timestamp)
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    TIMESTAMP_ARGS=()
+fi
+codesign -fs "$SIGN_IDENTITY" ${TIMESTAMP_ARGS[@]+"${TIMESTAMP_ARGS[@]}"} "$FINAL_DMG"
 if ! codesign --verify "$FINAL_DMG" 2>&1; then
     echo "❌ ERROR: DMG signature verification failed"
     exit 1

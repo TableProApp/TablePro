@@ -4,3 +4,9 @@ DEBUG_INFORMATION_FORMAT = dwarf-with-dsym
 ENABLE_NS_ASSERTIONS = NO
 MTL_ENABLE_DEBUG_INFO = NO
 SWIFT_COMPILATION_MODE = wholemodule
+
+// The app's entitlements. scripts/build-local.sh overrides this with
+// TablePro/TablePro.Local.entitlements to sign a fork's build ad-hoc; because only the app target
+// reads it, the path cannot reach a Swift package target, which would resolve it against its own
+// checkout and fail with "Build input file cannot be found".
+TABLEPRO_ENTITLEMENTS = TablePro/TablePro.entitlements

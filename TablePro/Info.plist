@@ -11,7 +11,7 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TablePro connects to database servers and SSH tunnels running on your local network, including Bonjour (.local) hostnames.</string>
 	<key>SUFeedURL</key>
-	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
+	<string>$(TABLEPRO_APPCAST_URL)</string>
 	<key>SUPublicEDKey</key>
 	<string>EongGFyuahKlYPZwgmnFx8nW3s1CqWlSSU5BDqY6n6Q=</string>
 	<key>SUAutomaticallyUpdate</key>

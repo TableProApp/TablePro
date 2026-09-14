@@ -249,7 +249,7 @@ targets:
           - $(inherited)
           - $(SRCROOT)/TablePro/Core/SSH/CLibSSH2/include
         INFOPLIST_FILE: TablePro/Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: TablePro
+        INFOPLIST_KEY_CFBundleDisplayName: $(TABLEPRO_APP_NAME)
         INFOPLIST_KEY_CFBundleIconFile: AppIcon
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
         LD_RUNPATH_SEARCH_PATHS:
@@ -279,10 +279,11 @@ targets:
         SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
       configs:
         Debug:
-          # Drops iCloud so a free Apple team can sign a local build.
-          CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.Debug.entitlements
+          # Defaulted per configuration in Configs/Debug.xcconfig, which drops iCloud so a free
+          # Apple team can sign a local build.
+          CODE_SIGN_ENTITLEMENTS: $(TABLEPRO_ENTITLEMENTS)
         Release:
-          CODE_SIGN_ENTITLEMENTS: TablePro/TablePro.entitlements
+          CODE_SIGN_ENTITLEMENTS: $(TABLEPRO_ENTITLEMENTS)
           COPY_PHASE_STRIP: YES
           DEPLOYMENT_POSTPROCESSING: YES
 

@@ -57,6 +57,19 @@ CODE_SIGN_STYLE = Automatic
 TABLEPRO_DEVELOPMENT_TEAM = D7HJ5TFYCU
 TABLEPRO_APP_BUNDLE_IDENTIFIER = com.TablePro
 
+// What the app calls itself: the Dock, the menu bar, the About window, and the name Finder shows
+// for the bundle. PRODUCT_NAME deliberately stays TablePro, so the executable inside the bundle
+// keeps that name: MCPHandshakeFile.verifyHostExecutable trusts a host process by executable name,
+// and the build scripts address Contents/MacOS/TablePro directly. The bundle directory is renamed
+// at packaging time instead, which a signature does not seal.
+TABLEPRO_APP_NAME = DB VSF
+
+// Where Sparkle looks for updates. Empty on this fork, and deliberately: the bundle identifier is
+// still com.TablePro, so a fork shares the UserDefaults domain of an installed TablePro, including
+// the flag that turns automatic updates on. With the official appcast in place, that app's next
+// release would download over this build and take every change in this checkout with it.
+TABLEPRO_APPCAST_URL =
+
 // Empty by default. scripts/build-release.sh passes a profile UUID on the xcodebuild
 // command line; because only the app target reads this variable, the profile cannot
 // leak into plugin or Swift package targets the way a bare

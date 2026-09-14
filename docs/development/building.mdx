@@ -36,6 +36,36 @@ signing matters even locally: a plugin in the user plugins directory has to carr
 the running app, and the app derives the required team from its own signature. Set the variable in
 `Configs/Secrets.xcconfig` as [Development Setup](/development/setup) describes.
 
+## Building without a developer account
+
+`scripts/build-release.sh` needs a Developer ID certificate, a provisioning profile and an Apple
+notarization account. A fork has none of those. `scripts/build-local.sh` signs ad-hoc instead and
+produces an app and a DMG for the machine that built them:
+
+```bash
+scripts/build-local.sh            # this Mac's architecture
+scripts/build-local.sh x86_64     # or name one
+```
+
+It writes `build/Release/TablePro.app` and `build/Release/TablePro-<version>-<arch>.dmg`. Open the
+DMG and drag the app to Applications. Gatekeeper checks quarantine, and a locally built bundle
+carries none, so the app opens without a warning.
+
+Two things are off in such a build. iCloud sync stops, because CloudKit needs the entitlement that
+names a real team. The shared Keychain access group goes too, and passwords save to the default
+group instead.
+
+Single architecture, so pass `x86_64` on an Intel Mac or to test the Intel slice. Universal builds
+are `scripts/build-release.sh`'s job and need the signing identity.
+
+### Renaming the app
+
+`TABLEPRO_APP_NAME` in `Configs/Base.xcconfig` is the name the app ships under: the Dock, the menu
+bar, the About window, the bundle in Applications, and the DMG. `PRODUCT_NAME` stays `TablePro`, so
+the executable inside the bundle keeps that name and the MCP host check and the build scripts keep
+working. Override it in `Configs/Secrets.xcconfig` to rename a fork without touching a tracked
+file.
+
 ## Compiling every plugin
 
 An app build compiles only the plugin bundles the app embeds, which leaves every registry-only

@@ -67,3 +67,18 @@ verify_sha256() {
         return 1
     }
 }
+
+# The name the app ships under, read from the one place that declares it. Configs/Secrets.xcconfig
+# is included last by Base.xcconfig, so an override there wins here too.
+#
+# Not `tr -d ' '` the way the version is read: that strips the space out of a two-word name.
+tablepro_app_name() {
+    local name="" file
+    for file in "$REPO_ROOT/Configs/Base.xcconfig" "$REPO_ROOT/Configs/Secrets.xcconfig"; do
+        [ -f "$file" ] || continue
+        local found
+        found=$(sed -n 's/^TABLEPRO_APP_NAME[[:space:]]*=[[:space:]]*//p' "$file" | sed 's/[[:space:]]*$//')
+        [ -n "$found" ] && name="$found"
+    done
+    printf '%s' "${name:-TablePro}"
+}
