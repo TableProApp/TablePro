@@ -15,6 +15,7 @@ async-trait.workspace = true
 chrono.workspace = true
 csv.workspace = true
 futures.workspace = true
+num-bigint.workspace = true
 rust_decimal.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true

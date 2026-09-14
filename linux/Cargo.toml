@@ -42,6 +42,7 @@ csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
 libsqlite3-sys = ">=0.30.1, <0.38.0"
+num-bigint = { version = "0.4", default-features = false, features = ["std"] }
 proptest = "1.11"
 rustls-pki-types = { version = "1", features = ["std"] }
 gtk4 = { version = "0.11", features = ["v4_14"] }

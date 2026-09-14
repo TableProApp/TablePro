@@ -10,6 +10,7 @@ pub mod export;
 mod file_endpoint;
 mod file_open_mode;
 pub mod filter;
+pub mod hex;
 mod liveness_policy;
 mod network_endpoint;
 mod query;
@@ -30,6 +31,7 @@ mod transport_class;
 mod transport_error;
 mod transport_kind;
 mod transport_route;
+pub mod value;
 
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;

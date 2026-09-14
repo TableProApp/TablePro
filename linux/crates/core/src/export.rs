@@ -82,10 +82,6 @@ impl Default for CsvOptions {
     }
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 /// Full text of a value for export. Never truncates. `None` for Null.
 pub fn value_to_text(v: &Value) -> Option<String> {
     match v {
@@ -94,7 +90,7 @@ pub fn value_to_text(v: &Value) -> Option<String> {
         Value::Int(i) => Some(i.to_string()),
         Value::Float(f) => Some(f.to_string()),
         Value::Text(s) => Some(s.clone()),
-        Value::Bytes(b) => Some(format!("0x{}", hex_encode(b))),
+        Value::Bytes(b) => Some(format!("0x{}", crate::hex::encode_lower(b))),
         Value::Date(d) => Some(d.format("%Y-%m-%d").to_string()),
         Value::Time(t) => Some(t.format("%H:%M:%S").to_string()),
         Value::DateTime(dt) => Some(dt.format("%Y-%m-%d %H:%M:%S").to_string()),

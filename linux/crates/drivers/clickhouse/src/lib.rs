@@ -728,7 +728,7 @@ fn literal(value: &Value) -> Result<String, DriverError> {
             }
         }
         Value::Text(s) => format!("'{}'", escape_str(s)),
-        Value::Bytes(b) => format!("unhex('{}')", hex_encode(b)),
+        Value::Bytes(b) => format!("unhex('{}')", tablepro_core::hex::encode_lower(b)),
         Value::Date(d) => format!("toDate('{}')", d.format("%Y-%m-%d")),
         Value::Time(t) => format!("'{}'", t.format("%H:%M:%S%.f")),
         Value::DateTime(dt) => format!("toDateTime('{}')", dt.format("%Y-%m-%d %H:%M:%S")),
@@ -752,16 +752,6 @@ fn escape_str(s: &str) -> String {
 /// query as having unbound arguments before it ever reaches the server.
 fn escape_bind_markers(sql: &str) -> String {
     sql.replace('?', "??")
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const LUT: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        out.push(LUT[(b >> 4) as usize] as char);
-        out.push(LUT[(b & 0xf) as usize] as char);
-    }
-    out
 }
 
 /// ClickHouse error codes that mean the credentials were rejected.
