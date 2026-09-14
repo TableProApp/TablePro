@@ -36,6 +36,12 @@ pub enum ConfigError {
         problem: CertificateFileProblem,
     },
 
+    #[error("client certificate file {}: {problem}", .path.display())]
+    ClientIdentityFile {
+        path: PathBuf,
+        problem: CertificateFileProblem,
+    },
+
     #[error("the TLS server name is not a valid DNS name or IP address")]
     InvalidServerName,
 

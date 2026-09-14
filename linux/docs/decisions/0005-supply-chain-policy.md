@@ -48,3 +48,11 @@ ADR 0013 moves SSH to the system `ssh` binary. Four pieces around it are written
 4. **stderr classification**: `stderr_classify.rs` maps OpenSSH messages to typed failures. The strings come from the OpenSSH 10.2 sources and captured fixtures in `crates/ssh/tests/fixtures/stderr`.
 
 **Watch list**: a crate that drives OpenSSH with prompt callbacks and typed errors. OpenSSH changing a classified message fails the fixture tests.
+
+### MySQL CA bundle (`tablepro_net::tls::mysql_ca_bundle_pem`)
+
+sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls verifier. `mysql_ca_bundle_pem` rebuilds the system trust store as PEM through rustls-native-certs and pem-rfc7468, keeps only certificates rustls accepts, and appends the connection's CA file.
+
+**Watch list**: sqlx #4044 and #4045, which let a caller pass a rustls `ClientConfig`. The bundle is deleted in the commit that adopts them.
+
+**Per-engine trust**: PostgreSQL and ClickHouse verify through rustls-platform-verifier with the CA file as an extra root; MySQL uses the PEM bundle; SQL Server uses tiberius' native roots plus one CA certificate. Inside Flatpak only the runtime CA bundle is visible (freedesktop-sdk #1905), so a host-only CA needs the CA file row.

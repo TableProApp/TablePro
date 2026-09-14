@@ -1,0 +1,37 @@
+[package]
+name = "tablepro-net"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "tablepro_net"
+path = "src/lib.rs"
+
+[dependencies]
+tablepro-core = { path = "../core" }
+async-trait.workspace = true
+pem-rfc7468.workspace = true
+rustls = { workspace = true, features = ["logging"] }
+rustls-native-certs.workspace = true
+rustls-pki-types.workspace = true
+rustls-platform-verifier.workspace = true
+socket2.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+http.workspace = true
+hyper-rustls.workspace = true
+hyper-util.workspace = true
+rcgen.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
+tokio-rustls.workspace = true
+tower-service.workspace = true
+
+[lints]
+workspace = true
