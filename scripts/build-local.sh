@@ -125,6 +125,11 @@ APP_PATH="build/DerivedData/Build/Products/${CONFIG}/TablePro.app"
 
 echo "==> Copying the bundle"
 mkdir -p "$BUILD_DIR"
+# Spotlight indexes the built bundle, and Launch Services then offers it beside the installed one
+# and keeps the entry after the file is gone: the DMG staging copy lives for a few seconds and left
+# a permanent second "DB VSF" that opened onto nothing. This marker keeps the whole build tree out
+# of the index, which is where a build tree belongs.
+touch build/.metadata_never_index
 # Removed first: cp -R onto an existing bundle merges into it, so a rebuild would carry the
 # previous build's files into the one being signed.
 rm -rf "${BUILD_DIR:?}/$APP_NAME"
