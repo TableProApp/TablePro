@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Killed remote `VACUUM INTO` snapshot reported as a successful copy.
 - Interrupted remote snapshot files left on the server, now swept on the next fetch.
 - Local working copies of remote databases kept forever, now removed after 30 days unused.
+- Clicks, drags and the hand pointer landing on the wrong table or plan step once a diagram is zoomed.
 
 ### Security
 

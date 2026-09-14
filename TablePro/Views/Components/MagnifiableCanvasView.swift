@@ -120,11 +120,16 @@ final class DiagramViewportController {
     }
 }
 
-struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
+/// The document is an AppKit view, never SwiftUI. SwiftUI inside a magnified scroll view resolves
+/// clicks, hover and drags in unscaled space, measured on macOS 27: at 50% a click on document point
+/// (950, 650) reached SwiftUI as (475, 325). `NSView.convert(_:from:)` accounts for the clip view's
+/// scale, so a document view that owns its own pointer events hits what is under the pointer.
+struct MagnifiableCanvasView<Document: NSView>: NSViewRepresentable {
     let viewport: DiagramViewportController
     let contentSize: CGSize
     var accessibilityIdentifier: String?
-    @ViewBuilder let content: () -> Content
+    let makeDocument: () -> Document
+    let updateDocument: (Document) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -141,31 +146,31 @@ struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
             scrollView.setAccessibilityIdentifier(accessibilityIdentifier)
         }
 
-        let hostingView = NSHostingView(rootView: content())
-        hostingView.translatesAutoresizingMaskIntoConstraints = true
-        hostingView.frame = CGRect(origin: .zero, size: resolvedContentSize)
-        scrollView.documentView = hostingView
+        let document = makeDocument()
+        document.frame = CGRect(origin: .zero, size: resolvedContentSize)
+        updateDocument(document)
+        scrollView.documentView = document
 
-        context.coordinator.hostingView = hostingView
+        context.coordinator.document = document
         context.coordinator.viewport = viewport
         viewport.attach(to: scrollView)
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let hostingView = context.coordinator.hostingView else { return }
-        hostingView.rootView = content()
+        guard let document = context.coordinator.document else { return }
+        updateDocument(document)
 
         let size = resolvedContentSize
-        guard hostingView.frame.size != size else { return }
-        hostingView.frame = CGRect(origin: .zero, size: size)
+        guard document.frame.size != size else { return }
+        document.frame = CGRect(origin: .zero, size: size)
     }
 
     static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
         MainActor.assumeIsolated {
             coordinator.viewport?.detach()
             coordinator.viewport = nil
-            coordinator.hostingView = nil
+            coordinator.document = nil
         }
     }
 
@@ -186,7 +191,7 @@ struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
-        var hostingView: NSHostingView<Content>?
+        var document: Document?
         var viewport: DiagramViewportController?
     }
 }
