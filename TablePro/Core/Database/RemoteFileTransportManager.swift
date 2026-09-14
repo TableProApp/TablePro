@@ -172,6 +172,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         Self.logger.info(
             "Reusing the working copy for \(identity.displayOrigin, privacy: .public): the server has not moved"
         )
+        await store.touch(identity)
         return MaterializedRemoteFile(
             identity: identity,
             workingCopy: workingCopy,

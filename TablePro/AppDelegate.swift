@@ -102,6 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
         Task { await TunnelCommandManager.shared.sweepStalePidsIfNeeded() }
+        Task { await RemoteDatabaseFileStore.shared.pruneAbandoned() }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),

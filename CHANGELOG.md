@@ -55,11 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TiDB's `INFORMATION_SCHEMA` and `PERFORMANCE_SCHEMA` listed as user databases on a MySQL or MariaDB connection.
 - SQL Server database size and table count showing the current database's numbers, and no size at 2 GB or more.
 - ClickHouse databases with no tables missing from the database switcher and database statistics.
+- Stale write-ahead log replayed over a freshly fetched copy of a remote SQLite database.
+- Remote database copy reused after a commit that did not grow its write-ahead log.
+- Killed remote `VACUUM INTO` snapshot reported as a successful copy.
+- Interrupted remote snapshot files left on the server, now swept on the next fetch.
+- Local working copies of remote databases kept forever, now removed after 30 days unused.
 
 ### Security
 
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
+- Remote `VACUUM INTO` snapshot created world-readable beside a database with stricter permissions.
 
 ## [0.74.0] - 2026-09-13
 
