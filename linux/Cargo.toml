@@ -3,8 +3,10 @@ resolver = "2"
 members = [
     "crates/app",
     "crates/core",
+    "crates/session",
     "crates/ssh",
     "crates/storage",
+    "crates/test-support",
     "crates/drivers/clickhouse",
     "crates/drivers/mssql",
     "crates/drivers/mysql",
