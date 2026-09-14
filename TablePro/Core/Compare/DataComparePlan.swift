@@ -144,7 +144,9 @@ internal struct DataComparePlan: Identifiable, Hashable, Sendable {
             keyOrders: KeyOrdering.orders(for: keyColumns, descriptors: keyDescriptors),
             comparedColumns: comparedColumns,
             valueKinds: Dictionary(
-                columns.map { ($0.name.lowercased(), ValueComparisonKind(columnType: $0.sourceColumnType)) },
+                columns.map {
+                    ($0.name.lowercased(), ValueComparisonKind(columnType: $0.sourceColumnType ?? $0.targetColumnType))
+                },
                 uniquingKeysWith: { first, _ in first }
             ),
             digestColumns: columnNames,

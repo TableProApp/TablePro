@@ -25,6 +25,10 @@ internal struct CompareTableScopeEditor: View {
 
     @State private var sourceFilterDraft = ""
     @State private var targetFilterDraft = ""
+    /// Which table the drafts were typed for. Selecting another table changes the plan and resigns
+    /// the field in one update, so a commit that did not name its own table wrote one table's
+    /// half-typed filter onto another.
+    @State private var draftPlanId = ""
     @State private var focusedField: UUID?
     @State private var sourceFieldIdentity = UUID()
     @State private var targetFieldIdentity = UUID()
@@ -252,15 +256,17 @@ internal struct CompareTableScopeEditor: View {
     }
 
     private func commitSourceFilter() {
+        guard draftPlanId == plan.id else { return }
         session.setSourceFilter(sourceFilterDraft, for: plan.id)
     }
 
     private func commitTargetFilter() {
-        guard !plan.scope.usesSameFilterForTarget else { return }
+        guard draftPlanId == plan.id, !plan.scope.usesSameFilterForTarget else { return }
         session.setTargetFilter(targetFilterDraft, for: plan.id)
     }
 
     private func prepare() {
+        draftPlanId = plan.id
         sourceFilterDraft = plan.scope.sourceFilter
         targetFilterDraft = plan.scope.targetFilter ?? ""
         sourceCompletion = completionProvider(for: session.source)

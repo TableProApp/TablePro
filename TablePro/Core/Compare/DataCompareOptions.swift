@@ -93,9 +93,13 @@ internal enum ValueComparisonKind: Hashable, Sendable {
     case temporal
     case other
 
+    /// A driver that reports no type for a column still has two spellings of one instant to
+    /// reconcile. A numeric tolerance stays out of it: it is opt-in for the columns it names.
+    case unknown
+
     internal init(columnType: ColumnType?) {
         guard let columnType else {
-            self = .other
+            self = .unknown
             return
         }
         switch columnType {
@@ -154,14 +158,20 @@ internal struct CellValueComparator {
             let equal = (left - right).magnitude <= options.floatTolerance
             return ValueComparison(isEqual: equal, rule: .floatTolerance)
         case .temporal:
-            guard let left = TimestampValue.parse(lhs), let right = TimestampValue.parse(rhs) else {
-                return ValueComparison(isEqual: false, rule: .exactValue)
-            }
-            let equal = left.equals(right, fractionalDigits: options.timestampFractionalDigits)
-            return ValueComparison(isEqual: equal, rule: .timestampPrecision)
+            return compareInstants(lhs, rhs)
         case .other:
             return ValueComparison(isEqual: false, rule: .exactValue)
+        case .unknown:
+            return compareInstants(lhs, rhs)
         }
+    }
+
+    private func compareInstants(_ lhs: String, _ rhs: String) -> ValueComparison {
+        guard let left = TimestampValue.parse(lhs), let right = TimestampValue.parse(rhs) else {
+            return ValueComparison(isEqual: false, rule: .exactValue)
+        }
+        let equal = left.equals(right, fractionalDigits: options.timestampFractionalDigits)
+        return ValueComparison(isEqual: equal, rule: .timestampPrecision)
     }
 }
 

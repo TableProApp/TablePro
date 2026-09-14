@@ -206,7 +206,7 @@ internal struct DataComparisonShape: Sendable {
     }
 
     internal func valueKind(of column: String) -> ValueComparisonKind {
-        valueKinds[column.lowercased()] ?? .other
+        valueKinds[column.lowercased()] ?? .unknown
     }
 }
 
@@ -261,6 +261,12 @@ internal struct DataDiffEngine {
 
         walk: while true {
             try Task.checkCancellation()
+            /// Both sides ending is an answer about every row, unless a pushed limit is what ended
+            /// them, so the limit is only reported as a stop when there was something left to read.
+            if left == nil, right == nil {
+                stoppedAtRowLimit = source.endedAtRowLimit || target.endedAtRowLimit
+                break walk
+            }
             if let limit = shape.rowLimit, positions >= limit {
                 stoppedAtRowLimit = true
                 break walk

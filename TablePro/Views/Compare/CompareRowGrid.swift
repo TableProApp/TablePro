@@ -42,6 +42,10 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
     private var planId = ""
     private weak var session: CompareSyncSession?
 
+    /// A grid row is a display position, which stops matching the line order as soon as a column's
+    /// value filter narrows the grid, so every row the grid names is resolved back through it.
+    private weak var coordinator: TableViewCoordinator?
+
     internal func ensureLoaded(
         key: LoadKey,
         plan: DataComparePlan,
@@ -123,16 +127,25 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
         return values
     }
 
+    private func lineIndex(forDisplayRow row: Int) -> Int? {
+        let index = coordinator?.tableRowsIndex(forDisplayRow: row) ?? row
+        return lines.indices.contains(index) ? index : nil
+    }
+
     // MARK: - DataGridViewDelegate
 
+    internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
+        coordinator = tableViewCoordinator
+    }
+
     internal func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        guard states.indices.contains(row) else { return nil }
-        return states[row]
+        guard let index = lineIndex(forDisplayRow: row), states.indices.contains(index) else { return nil }
+        return states[index]
     }
 
     internal func dataGridCheckboxState(row: Int, column: Int) -> Bool? {
-        guard column == Self.includeColumn, lines.indices.contains(row) else { return nil }
-        let line = lines[row]
+        guard column == Self.includeColumn, let index = lineIndex(forDisplayRow: row) else { return nil }
+        let line = lines[index]
         guard line.opensEntry, line.entry.kind.isDifference,
               let session, let plan = session.dataPlans.first(where: { $0.id == planId }) else { return nil }
         return session.isRowIncluded(line.entry, in: plan)
@@ -140,8 +153,8 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
 
     internal func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {
         guard column == Self.includeColumn, let session else { return }
-        let entries = rows.compactMap { index -> RowDiffEntry? in
-            guard lines.indices.contains(index), lines[index].opensEntry else { return nil }
+        let entries = rows.compactMap { row -> RowDiffEntry? in
+            guard let index = lineIndex(forDisplayRow: row), lines[index].opensEntry else { return nil }
             return lines[index].entry
         }
         session.setRowsIncluded(isOn, entries: entries, planId: planId)
@@ -184,7 +197,9 @@ internal struct CompareRowGrid: View {
             selectedRowIndices: $selectedRows,
             sortState: .constant(SortState()),
             columnLayout: $columnLayout,
-            contentRevision: key.hashValue
+            /// The exclusions ride along, so including or excluding every listed row from the menu
+            /// repaints the checkboxes rather than leaving them until the next click or scroll.
+            contentRevision: key.hashValue ^ plan.excludedRowKeys.hashValue
         )
         .onChange(of: key) {
             selectedRows = []

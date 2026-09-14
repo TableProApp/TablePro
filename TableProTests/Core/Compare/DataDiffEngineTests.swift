@@ -442,15 +442,17 @@ final class DataDiffEngineTests: XCTestCase {
         XCTAssertEqual(summary.identicalCount, 1, "the same instant at two offsets is not a difference")
     }
 
-    func testAnUndeclaredColumnComparesTimestampTextExactly() async throws {
+    /// A driver that reports no type for a column leaves nothing to decide on, so both rules stay
+    /// available there rather than every timestamp spelling reading as a difference.
+    func testAnUndeclaredColumnStillReconcilesTwoSpellingsOfOneInstant() async throws {
         let summary = try await runDiff(
             source: [diffRow(["id": "1", "created_at": "1999-01-15 08:00:00-08:00"])],
             target: [diffRow(["id": "1", "created_at": "1999-01-15 11:00:00-05:00"])],
             engine: makeDiffEngine(compared: ["created_at"], digest: ["id", "created_at"])
         )
 
-        XCTAssertEqual(summary.updateCount, 1)
-        XCTAssertEqual(summary.entries.first?.cellDifferences.first?.rule, .exactValue)
+        XCTAssertEqual(summary.identicalCount, 1)
+        XCTAssertEqual(summary.updateCount, 0)
     }
 
     // MARK: - Cancellation
@@ -1024,6 +1026,6 @@ final class CellValueComparatorTests: XCTestCase {
         XCTAssertEqual(ValueComparisonKind(columnType: .datetime(rawType: "datetime")), .temporal)
         XCTAssertEqual(ValueComparisonKind(columnType: .text(rawType: "varchar(20)")), .other)
         XCTAssertEqual(ValueComparisonKind(columnType: .blob(rawType: "blob")), .other)
-        XCTAssertEqual(ValueComparisonKind(columnType: nil), .other)
+        XCTAssertEqual(ValueComparisonKind(columnType: nil), .unknown)
     }
 }

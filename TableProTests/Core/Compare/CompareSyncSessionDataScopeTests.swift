@@ -247,7 +247,8 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
 
     // MARK: - After a run
 
-    func testMarkingAppliedKeepsEveryTickAndDropsRowExclusionsAndStatements() throws {
+    /// A row the user refused was never written, so the refusal outlives the run that skipped it.
+    func testMarkingAppliedKeepsEveryTickAndEveryRowExclusionAndDropsTheStatements() throws {
         let session = try makeSession()
         session.adoptDataPlans([
             makePlan(table: "orders", isEnabled: true, excludedRowKeys: ["1"]),
@@ -259,7 +260,8 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
 
         XCTAssertTrue(try plan("public.orders", in: session).isEnabled)
         XCTAssertFalse(try plan("public.users", in: session).isEnabled)
-        XCTAssertTrue(session.dataPlans.allSatisfy { $0.excludedRowKeys.isEmpty })
+        XCTAssertEqual(try plan("public.orders", in: session).excludedRowKeys, ["1"])
+        XCTAssertEqual(try plan("public.users", in: session).excludedRowKeys, ["2"])
         XCTAssertTrue(session.statements.isEmpty)
         XCTAssertTrue(session.isStaleAfterApply)
     }
@@ -516,6 +518,18 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
         XCTAssertEqual(try plan("public.orders", in: session).excludedRowKeys, ["1", "2"])
     }
 
+    /// A capped preview lists only part of the difference, so a key missing from it says nothing
+    /// about whether the user still refuses that row.
+    func testRowExclusionsSurviveAnAnswerWhoseListWasCapped() throws {
+        let session = try makeSession()
+        session.adoptDataPlans([makePlan(table: "orders", excludedRowKeys: ["1", "9"])])
+        let run = makePlan(table: "orders", summary: makeSummary(inserts: ["1"], truncated: true))
+
+        session.applyComparedSummaries(from: [run])
+
+        XCTAssertEqual(try plan("public.orders", in: session).excludedRowKeys, ["1", "9"])
+    }
+
     func testACompareResultForOneTableLeavesAnotherTablesExclusionsAlone() throws {
         let session = try makeSession()
         session.adoptDataPlans([
@@ -624,7 +638,8 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
         inserts: [String] = [],
         updates: [String] = [],
         deletes: [String] = [],
-        identicalCount: Int = 0
+        identicalCount: Int = 0,
+        truncated: Bool = false
     ) -> DataDiffSummary {
         let entries = inserts.map { entry(.insert, key: $0) }
             + updates.map { entry(.update, key: $0) }
@@ -636,7 +651,7 @@ final class CompareSyncSessionDataScopeTests: XCTestCase {
             identicalCount: identicalCount,
             skippedNullKeyCount: 0,
             entries: entries,
-            truncatedEntries: false,
+            truncatedEntries: truncated,
             differenceDigest: entries.map(\.keyIdentity).joined(separator: ",")
         )
     }

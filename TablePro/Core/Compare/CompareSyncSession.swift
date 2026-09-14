@@ -559,20 +559,22 @@ internal final class CompareSyncSession {
                   run.columns == dataPlans[index].columns else { continue }
             dataPlans[index].summary = run.summary
             dataPlans[index].comparisonFailure = run.comparisonFailure
-            let listed = Set((run.summary?.entries ?? []).map(\.keyIdentity))
+            /// A capped preview does not list every difference, so an exclusion that falls outside
+            /// it is kept rather than dropped: forgetting it would write the row the user refused.
+            guard let summary = run.summary, !summary.truncatedEntries else { continue }
+            let listed = Set(summary.entries.map(\.keyIdentity))
             dataPlans[index].excludedRowKeys = dataPlans[index].excludedRowKeys.intersection(listed)
         }
     }
 
     /// After a run the answer describes a target that has since changed, so it is stale rather than
     /// wrong: it stays on screen to be read, and every action that would write again is withdrawn
-    /// until the user compares once more. The tables stay ticked, so that Compare is one press.
+    /// until the user compares once more. The tables stay ticked, so that Compare is one press, and
+    /// a row the user refused stays refused: it was never written, and the next comparison lists it
+    /// again.
     internal func markAppliedAndStale() {
         statements = []
         actions = [:]
-        for index in dataPlans.indices {
-            dataPlans[index].excludedRowKeys = []
-        }
         isStaleAfterApply = true
     }
 
