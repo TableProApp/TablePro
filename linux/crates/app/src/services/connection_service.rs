@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
-use tablepro_ssh::{SshConfig, SshTunnel};
+use tablepro_ssh::russh_tunnel::{SshConfig, SshTunnel};
 use tablepro_storage::{SavedConnection, SavedSshAuth, load_password, load_ssh_passphrase, load_ssh_password};
 
 use super::database_service::{self, ConnectionMetadata, ReconnectParams};
@@ -112,7 +112,7 @@ async fn resolve_saved_ssh(id: uuid::Uuid, saved: &tablepro_storage::SavedSshCon
                 .await
                 .map_err(|e| format!("load ssh password: {e}"))?
                 .ok_or_else(|| "ssh password not in keyring".to_string())?;
-            tablepro_ssh::SshAuth::Password { password: pw }
+            tablepro_ssh::russh_tunnel::SshAuth::Password { password: pw }
         }
         SavedSshAuth::PrivateKey { path, has_passphrase } => {
             let passphrase = if *has_passphrase {
@@ -122,7 +122,7 @@ async fn resolve_saved_ssh(id: uuid::Uuid, saved: &tablepro_storage::SavedSshCon
             } else {
                 None
             };
-            tablepro_ssh::SshAuth::PrivateKey {
+            tablepro_ssh::russh_tunnel::SshAuth::PrivateKey {
                 path: path.clone(),
                 passphrase,
             }

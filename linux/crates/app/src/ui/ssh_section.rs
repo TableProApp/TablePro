@@ -4,7 +4,7 @@ use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 use secrecy::SecretString;
 
-use tablepro_ssh::{SshAuth, SshConfig};
+use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig};
 use tablepro_storage::{SavedSshAuth, SavedSshConfig};
 
 const SSH_AUTH_PASSWORD: u32 = 0;

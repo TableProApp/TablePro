@@ -44,6 +44,7 @@ ADRs are short on purpose. If yours is more than a page, you are probably arguin
 | [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Accepted | Elm-style components scale to TablePro's view count. |
 | [0004](0004-libsecret-secret-storage.md) | libsecret via oo7 for password storage | Accepted | Secret Service API is the universal Linux secret backend. |
 | [0005](0005-supply-chain-policy.md) | Supply-chain policy | Accepted | Maintained crates first; custom code needs recorded evidence and a removal trigger. |
+| [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
 
 ## Adding an ADR
 

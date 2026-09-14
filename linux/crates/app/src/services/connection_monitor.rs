@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use tablepro_core::Connection;
-use tablepro_ssh::SshTunnel;
+use tablepro_ssh::russh_tunnel::SshTunnel;
 
 use super::connection_service;
 use super::database_service::{ConnectionHealth, EntryInner, ReconnectParams};

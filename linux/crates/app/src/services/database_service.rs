@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use tablepro_core::{ConnectOptions, Connection, DatabaseDriver};
-use tablepro_ssh::{SshConfig, SshTunnel};
+use tablepro_ssh::russh_tunnel::{SshConfig, SshTunnel};
 
 use super::connection_monitor;
 

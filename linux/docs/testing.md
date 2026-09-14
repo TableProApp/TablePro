@@ -144,7 +144,7 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
 1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `cargo test --workspace --locked`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. `scripts/ci-local.sh` runs the same steps with the same flags.
-2. **Docker tests**: runs after fast checks pass. One matrix entry per driver package (PostgreSQL, MySQL, SQL Server, ClickHouse) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
+2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, and `tablepro-ssh` against an OpenSSH server container) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
 
