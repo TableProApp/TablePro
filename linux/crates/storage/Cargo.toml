@@ -11,7 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 tablepro-core = { path = "../core" }
-tablepro-ssh = { path = "../ssh" }
 oo7.workspace = true
 secrecy.workspace = true
 serde.workspace = true

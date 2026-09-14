@@ -10,11 +10,8 @@ name = "tablepro_ssh"
 path = "src/lib.rs"
 
 [dependencies]
-async-trait.workspace = true
-futures.workspace = true
 russh.workspace = true
 secrecy.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 tokio-util.workspace = true
