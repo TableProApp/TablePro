@@ -16,10 +16,26 @@ pub enum BuildSqlError {
 
 pub fn quote_ident(driver_id: &str, name: &str) -> String {
     match driver_id {
-        "mysql" | "clickhouse" => format!("`{}`", name.replace('`', "``")),
+        "mysql" => format!("`{}`", name.replace('`', "``")),
+        "clickhouse" => quote_clickhouse_ident(name),
         "mssql" => format!("[{}]", name.replace(']', "]]")),
         _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }
+}
+
+/// ClickHouse's lexer reads a backslash inside backticks as an escape,
+/// so doubling the delimiter alone lets `\`` close the identifier early.
+fn quote_clickhouse_ident(name: &str) -> String {
+    let mut quoted = String::with_capacity(name.len() + 2);
+    quoted.push('`');
+    for ch in name.chars() {
+        if matches!(ch, '\\' | '\'' | '`' | '\t' | '\n') {
+            quoted.push('\\');
+        }
+        quoted.push(ch);
+    }
+    quoted.push('`');
+    quoted
 }
 
 pub fn placeholder_for(driver_id: &str, index: usize) -> String {
@@ -277,13 +293,30 @@ mod tests {
         assert_eq!(quote_ident("sqlite", "users"), "\"users\"");
         assert_eq!(quote_ident("mysql", "users"), "`users`");
         assert_eq!(quote_ident("clickhouse", "users"), "`users`");
-        assert_eq!(quote_ident("clickhouse", "a`b"), "`a``b`");
+        assert_eq!(quote_ident("clickhouse", "a`b"), r"`a\`b`");
     }
 
     #[test]
     fn quote_ident_doubles_embedded_delimiter() {
         assert_eq!(quote_ident("postgres", "foo\"bar"), "\"foo\"\"bar\"");
         assert_eq!(quote_ident("mysql", "foo`bar"), "`foo``bar`");
+    }
+
+    #[test]
+    fn quote_ident_clickhouse_escapes_backslash_and_delimiters() {
+        assert_eq!(quote_ident("clickhouse", r"a\"), r"`a\\`");
+        assert_eq!(
+            quote_ident("clickhouse", r"x\` UNION ALL SELECT 1 --"),
+            r"`x\\\` UNION ALL SELECT 1 --`"
+        );
+        assert_eq!(quote_ident("clickhouse", "a`b"), r"`a\`b`");
+        assert_eq!(quote_ident("clickhouse", "o'k"), r"`o\'k`");
+        assert_eq!(quote_ident("clickhouse", "a\tb\nc"), "`a\\\tb\\\nc`");
+    }
+
+    #[test]
+    fn quote_ident_mysql_still_doubles_backticks() {
+        assert_eq!(quote_ident("mysql", r"a`b\c"), r"`a``b\c`");
     }
 
     #[test]
