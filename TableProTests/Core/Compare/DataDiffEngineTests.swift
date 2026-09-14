@@ -781,11 +781,16 @@ final class DataDiffFilteredComparisonTests: XCTestCase {
         XCTAssertFalse(RowDiffKind.conflict.isDifference)
     }
 
-    func testDeferredKeysAreLookedUpOnTheOppositeSide() async throws {
+    /// The walk keeps one-sided keys, not one-sided rows, so a filtered comparison of a table with
+    /// millions of unmatched rows costs a key each rather than a row each. Both sides are then read
+    /// back by key: the side that held the row no longer has it in hand.
+    func testDeferredKeysAreLookedUpOnBothSides() async throws {
         let run = try await runFiltered()
 
         XCTAssertEqual(run.resolver.calls, [
+            ScriptedKeyResolver.Call(keys: [[.text("2")], [.text("4")]], side: .source),
             ScriptedKeyResolver.Call(keys: [[.text("2")], [.text("4")]], side: .target),
+            ScriptedKeyResolver.Call(keys: [[.text("3")], [.text("5")]], side: .target),
             ScriptedKeyResolver.Call(keys: [[.text("3")], [.text("5")]], side: .source)
         ])
     }
@@ -800,23 +805,49 @@ final class DataDiffFilteredComparisonTests: XCTestCase {
     }
 
     func testTheResolverIsAskedForAtMostTwoHundredKeysAtATime() async throws {
-        let resolver = ScriptedKeyResolver()
+        let sourceRows = (1 ... 450).map { diffIdRow($0) }
+        let targetRows = (1_000 ... 1_200).map { diffIdRow($0) }
+        let resolver = ScriptedKeyResolver(sourceRows: sourceRows, targetRows: targetRows)
         let summary = try await runDiff(
-            source: (1 ... 450).map { diffIdRow($0) },
-            target: (1_000 ... 1_200).map { diffIdRow($0) },
+            source: sourceRows,
+            target: targetRows,
             engine: makeDiffEngine(defersOneSidedRows: true),
             resolver: resolver
         )
 
         XCTAssertEqual(summary.insertCount, 450)
         XCTAssertEqual(summary.deleteCount, 201)
-        XCTAssertEqual(resolver.calls.map(\.keys.count), [200, 200, 50, 200, 1])
-        XCTAssertEqual(resolver.calls.map(\.side), [.target, .target, .target, .source, .source])
+        XCTAssertEqual(resolver.calls.map(\.keys.count), [200, 200, 200, 200, 50, 50, 200, 200, 1, 1])
         XCTAssertEqual(
-            resolver.calls.prefix(3).flatMap(\.keys),
+            resolver.calls.map(\.side),
+            [.source, .target, .source, .target, .source, .target, .target, .source, .target, .source]
+        )
+        XCTAssertEqual(
+            resolver.calls.prefix(6).filter { $0.side == .source }.flatMap(\.keys),
             (1 ... 450).map { [PluginCellValue.text(String($0))] },
             "every deferred key is looked up exactly once, in walk order"
         )
+    }
+
+    /// A key read from a side's own stream that the same side cannot hand back is a row that moved
+    /// under the comparison, or a lookup matching nothing at all. Both are silent, and silence here
+    /// reads as two databases that agree.
+    func testADeferredKeyItsOwnSideCannotReadBackFailsTheComparison() async {
+        do {
+            _ = try await runDiff(
+                source: [diffIdRow(1)],
+                target: [],
+                engine: makeDiffEngine(defersOneSidedRows: true),
+                resolver: ScriptedKeyResolver()
+            )
+            XCTFail("Expected a comparison that lost a deferred row to fail")
+        } catch let error as CompareSyncError {
+            guard case .rowsChangedSinceComparison = error else {
+                return XCTFail("unexpected error \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
     }
 
     func testAFilteredComparisonWithNoResolverThrowsRatherThanGuessing() async {
@@ -845,6 +876,7 @@ final class DataDiffFilteredComparisonTests: XCTestCase {
 
     func testADuplicateKeyAmongTheResolvedRowsThrows() async {
         let resolver = ScriptedKeyResolver(
+            sourceRows: [diffIdRow(2, name: "b")],
             targetRows: [diffIdRow(2, name: "first"), diffIdRow(2, name: "second")]
         )
 

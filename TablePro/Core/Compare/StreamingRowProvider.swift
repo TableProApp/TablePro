@@ -48,6 +48,7 @@ internal final class StreamingRowProvider: DataRowProviding {
     private var bufferIndex = 0
     private var deliveredCount = 0
     private var isFinished = false
+    private var sawRowPastTheLimit = false
 
     internal init(
         stream: AsyncThrowingStream<PluginStreamElement, Error>,
@@ -61,15 +62,21 @@ internal final class StreamingRowProvider: DataRowProviding {
         self.context = context
     }
 
+    /// The read asks for one row more than the limit and never hands that row out, so this is the
+    /// server's own answer to whether anything was left rather than a guess from the row count: a
+    /// table holding exactly the limit is not a truncated read.
     internal var endedAtRowLimit: Bool {
-        guard let rowLimit, isFinished, bufferIndex >= buffer.count else { return false }
-        return deliveredCount >= rowLimit
+        sawRowPastTheLimit
     }
 
     internal func nextRow() async throws -> DataRow? {
         while bufferIndex >= buffer.count {
             guard !isFinished else { return nil }
             try await fillBuffer()
+        }
+        if let rowLimit, deliveredCount >= rowLimit {
+            sawRowPastTheLimit = true
+            return nil
         }
         defer {
             bufferIndex += 1
@@ -145,7 +152,9 @@ internal enum KeyOrderedQuery {
             from: source(table: table, schema: schema, driver: driver, databaseType: databaseType),
             where: conditions.isEmpty ? nil : conditions.joined(separator: " AND "),
             orderBy: orderBy(keyColumns, driver: driver),
-            limit: rowLimit,
+            /// One row past the limit, which the provider reads and never hands out: it is what
+            /// separates a table that ends exactly at the limit from one the limit cut short.
+            limit: rowLimit.map { $0 + 1 },
             dialect: dialect
         )
     }

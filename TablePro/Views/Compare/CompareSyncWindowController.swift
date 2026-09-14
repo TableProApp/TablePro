@@ -559,7 +559,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     private func adopt(_ mode: CompareSyncMode) {
         guard session.mode != mode else { return }
         session.mode = mode
-        session.resetComparison()
+        session.resetComparison(keepingTableScopes: true)
         refreshEndpointChrome()
     }
 

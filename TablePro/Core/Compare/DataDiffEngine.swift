@@ -106,6 +106,11 @@ internal struct DataDiffSummary: Hashable, Sendable {
     internal let stoppedAtRowLimit: Bool
     internal let differenceDigest: String
 
+    /// One comparison's own identity. Two runs that produce the same counts and the same digest are
+    /// still two answers, and a view that caches on the answer has to be able to tell them apart:
+    /// matching rows are counted rather than digested, so both can move while the digest stands.
+    internal let runIdentity: UUID
+
     internal init(
         insertCount: Int,
         updateCount: Int,
@@ -118,7 +123,8 @@ internal struct DataDiffSummary: Hashable, Sendable {
         truncatedEntries: Bool,
         comparedKeyCount: Int = 0,
         stoppedAtRowLimit: Bool = false,
-        differenceDigest: String = ""
+        differenceDigest: String = "",
+        runIdentity: UUID = UUID()
     ) {
         self.insertCount = insertCount
         self.updateCount = updateCount
@@ -132,6 +138,7 @@ internal struct DataDiffSummary: Hashable, Sendable {
         self.comparedKeyCount = comparedKeyCount
         self.stoppedAtRowLimit = stoppedAtRowLimit
         self.differenceDigest = differenceDigest
+        self.runIdentity = runIdentity
     }
 
     internal var differenceCount: Int {
@@ -143,7 +150,7 @@ internal struct DataDiffSummary: Hashable, Sendable {
     }
 
     internal var answerIdentity: String {
-        "\(insertCount)|\(updateCount)|\(deleteCount)|\(identicalCount)|\(conflictCount)|\(differenceDigest)"
+        "\(runIdentity.uuidString)|\(insertCount)|\(updateCount)|\(deleteCount)|\(identicalCount)|\(conflictCount)|\(differenceDigest)"
     }
 
     internal func count(of kind: RowDiffKind) -> Int {
@@ -251,8 +258,11 @@ internal struct DataDiffEngine {
             provider: target, keyColumns: shape.keyColumns, ordering: ordering, side: .target
         )
 
-        var deferredSource: [KeyedRow] = []
-        var deferredTarget: [KeyedRow] = []
+        /// Keys, never rows. A filter that matches a million rows on one side only would otherwise
+        /// hold every one of their columns until the walk ended, which is the whole of what
+        /// streaming both sides exists to avoid.
+        var deferredSource: [[PluginCellValue]] = []
+        var deferredTarget: [[PluginCellValue]] = []
         var positions = 0
         var stoppedAtRowLimit = false
 
@@ -281,7 +291,7 @@ internal struct DataDiffEngine {
                     break walk
                 }
                 if shape.defersOneSidedRows {
-                    deferredTarget.append(targetRow)
+                    deferredTarget.append(targetRow.key)
                 } else {
                     try recorder.record(deleteEntry(for: targetRow))
                 }
@@ -292,7 +302,7 @@ internal struct DataDiffEngine {
                     break walk
                 }
                 if shape.defersOneSidedRows {
-                    deferredSource.append(sourceRow)
+                    deferredSource.append(sourceRow.key)
                 } else {
                     try recorder.record(insertEntry(for: sourceRow))
                 }
@@ -305,14 +315,14 @@ internal struct DataDiffEngine {
                     right = try await targetReader.next(accumulator)
                 case .orderedAscending:
                     if shape.defersOneSidedRows {
-                        deferredSource.append(sourceRow)
+                        deferredSource.append(sourceRow.key)
                     } else {
                         try recorder.record(insertEntry(for: sourceRow))
                     }
                     left = try await sourceReader.next(accumulator)
                 case .orderedDescending:
                     if shape.defersOneSidedRows {
-                        deferredTarget.append(targetRow)
+                        deferredTarget.append(targetRow.key)
                     } else {
                         try recorder.record(deleteEntry(for: targetRow))
                     }
@@ -339,36 +349,54 @@ internal struct DataDiffEngine {
     }
 
     private func resolve(
-        _ rows: [KeyedRow],
+        _ keys: [[PluginCellValue]],
         from side: ComparisonSide,
         resolver: OneSidedRowResolving,
         recorder: EntryRecorder
     ) async throws {
         var start = 0
-        while start < rows.count {
+        while start < keys.count {
             try Task.checkCancellation()
-            let batch = Array(rows[start ..< min(start + Self.resolutionBatchSize, rows.count)])
+            let batch = Array(keys[start ..< min(start + Self.resolutionBatchSize, keys.count)])
             start += batch.count
-            let fetched = try await resolver.rows(matching: batch.map(\.key), on: side.opposite)
-            let counterparts = try keyedAndSorted(fetched, side: side.opposite)
+            let own = try keyedAndSorted(try await resolver.rows(matching: batch, on: side), side: side)
+            guard own.count >= batch.count else {
+                throw Self.vanishedRowsError(count: batch.count - own.count, side: side)
+            }
+            let counterparts = try keyedAndSorted(
+                try await resolver.rows(matching: batch, on: side.opposite), side: side.opposite
+            )
 
             var index = 0
-            for own in batch {
+            for row in own {
                 while index < counterparts.count,
-                      ordering.compare(counterparts[index].key, own.key) == .orderedAscending {
+                      ordering.compare(counterparts[index].key, row.key) == .orderedAscending {
                     index += 1
                 }
                 guard index < counterparts.count,
-                      ordering.compare(counterparts[index].key, own.key) == .orderedSame else {
-                    try recorder.record(side == .source ? insertEntry(for: own) : deleteEntry(for: own))
+                      ordering.compare(counterparts[index].key, row.key) == .orderedSame else {
+                    try recorder.record(side == .source ? insertEntry(for: row) : deleteEntry(for: row))
                     continue
                 }
                 let counterpart = counterparts[index]
                 index += 1
-                let pair = side == .source ? (own, counterpart) : (counterpart, own)
+                let pair = side == .source ? (row, counterpart) : (counterpart, row)
                 try recorder.record(conflictEntry(source: pair.0, target: pair.1))
             }
         }
+    }
+
+    /// A deferred key was read from that side's own stream moments earlier, so a lookup that cannot
+    /// find it again means the rows moved under the comparison, or that the lookup itself matches
+    /// nothing. Both answer with silence, and a comparison that quietly drops differences reads as
+    /// two databases that agree.
+    private static func vanishedRowsError(count: Int, side: ComparisonSide) -> CompareSyncError {
+        .rowsChangedSinceComparison(String(
+            format: side == .source
+                ? String(localized: "%d rows could not be read back from the source by key. Compare again.")
+                : String(localized: "%d rows could not be read back from the target by key. Compare again."),
+            count
+        ))
     }
 
     private func keyedAndSorted(_ rows: [DataRow], side: ComparisonSide) throws -> [KeyedRow] {
@@ -512,9 +540,10 @@ internal extension DataDiffEngine {
             append(entry.keyIdentity)
             for row in [entry.sourceRow, entry.targetRow] {
                 guard let row else {
-                    digest.update(data: Data([0x1D]))
+                    digest.update(data: Data([0x03]))
                     continue
                 }
+                digest.update(data: Data([0x04]))
                 for column in digestColumns {
                     append(column)
                     append(row.value(for: column))
@@ -522,9 +551,15 @@ internal extension DataDiffEngine {
             }
         }
 
+        /// Length-prefixed rather than separated. Row text can hold any byte a separator could use,
+        /// so a sentinel alone lets two different rows frame to the same bytes and hash alike.
         private func append(_ text: String) {
-            digest.update(data: Data(text.utf8))
-            digest.update(data: Data([0x1F]))
+            append(Data(text.utf8))
+        }
+
+        private func append(_ data: Data) {
+            withUnsafeBytes(of: UInt32(data.count).bigEndian) { digest.update(bufferPointer: $0) }
+            digest.update(data: data)
         }
 
         private func append(_ value: PluginCellValue) {
@@ -536,8 +571,7 @@ internal extension DataDiffEngine {
                 append(text)
             case .bytes(let data):
                 digest.update(data: Data([0x02]))
-                append(String(data.count))
-                digest.update(data: data)
+                append(data)
             }
         }
     }
@@ -621,16 +655,18 @@ private final class KeyedRowReader {
 internal final class ArrayRowProvider: DataRowProviding {
     private let rows: [DataRow]
     private let rowLimit: Int?
+    private let holdsRowPastTheLimit: Bool
     private var index = 0
 
     internal init(rows: [DataRow], rowLimit: Int? = nil) {
         self.rows = rowLimit.map { Array(rows.prefix($0)) } ?? rows
         self.rowLimit = rowLimit
+        self.holdsRowPastTheLimit = rowLimit.map { rows.count > $0 } ?? false
     }
 
     internal var endedAtRowLimit: Bool {
-        guard let rowLimit else { return false }
-        return index >= rows.count && rows.count >= rowLimit
+        guard let rowLimit, index >= rows.count else { return false }
+        return holdsRowPastTheLimit && rows.count >= rowLimit
     }
 
     internal func nextRow() async throws -> DataRow? {

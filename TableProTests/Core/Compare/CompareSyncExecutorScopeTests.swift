@@ -91,12 +91,13 @@ private enum ScopeFixture {
 
     static func statement(
         _ sql: String,
+        objectName: String = "dbo.orders",
         expectedRowCount: Int? = nil,
         sessionEffect: SyncSessionEffect? = nil
     ) -> SyncStatement {
         SyncStatement(
             sql: sql,
-            objectName: "dbo.orders",
+            objectName: objectName,
             summary: sql,
             expectedRowCount: expectedRowCount,
             sessionEffect: sessionEffect
@@ -114,6 +115,14 @@ private enum ScopeFixture {
     static func insert(id: Int) -> SyncStatement {
         statement("INSERT INTO dbo.orders (id, total) VALUES (\(id), 5);", expectedRowCount: 1)
     }
+
+    static func auditInsert(id: Int) -> SyncStatement {
+        statement(
+            "INSERT INTO shop.audit_log (id, note) VALUES (\(id), 'x');",
+            objectName: "shop.audit_log",
+            expectedRowCount: 1
+        )
+    }
 }
 
 final class CompareSyncExecutorScopeTests: XCTestCase {
@@ -122,7 +131,7 @@ final class CompareSyncExecutorScopeTests: XCTestCase {
         driver: ScopeRecordingDriver,
         settings: CompareSyncExecutionSettings = CompareSyncExecutionSettings(),
         progress: Progress = Progress(),
-        nonTransactionalObjects: [String] = []
+        nonTransactionalObjects: Set<String> = []
     ) async throws -> CompareSyncRunResult {
         try await CompareSyncExecutor(gate: AlwaysAllowGate()).apply(
             statements: statements,
@@ -419,8 +428,8 @@ final class CompareSyncExecutorScopeTests: XCTestCase {
 
     func testStoppedRunOverANonTransactionalTableReportsWritesLeftInPlace() async throws {
         let driver = ScopeRecordingDriver()
-        let first = ScopeFixture.insert(id: 1)
-        let second = ScopeFixture.insert(id: 2)
+        let first = ScopeFixture.auditInsert(id: 1)
+        let second = ScopeFixture.auditInsert(id: 2)
         driver.rowsAffectedByStatement = [first.sql: 1]
         driver.failingStatements = [second.sql]
 
@@ -438,17 +447,38 @@ final class CompareSyncExecutorScopeTests: XCTestCase {
 
     func testRunThatFailedOnItsFirstStatementLeavesNoWritesInPlace() async throws {
         let driver = ScopeRecordingDriver()
-        let first = ScopeFixture.insert(id: 1)
+        let first = ScopeFixture.auditInsert(id: 1)
         driver.failingStatements = [first.sql]
 
         let result = try await run(
-            [first, ScopeFixture.insert(id: 2)],
+            [first, ScopeFixture.auditInsert(id: 2)],
             driver: driver,
             settings: stopAndRollback(),
             nonTransactionalObjects: ["shop.audit_log"]
         )
 
         XCTAssertTrue(result.rolledBack)
+        XCTAssertFalse(result.rollbackLeftWritesInPlace)
+    }
+
+    /// The warning names what ran, not what the script mentioned. A MyISAM table the run never
+    /// reached has nothing written in it, and naming it sends the user looking for rows that are
+    /// not there.
+    func testANonTransactionalTableTheRunNeverReachedIsNotReported() async throws {
+        let driver = ScopeRecordingDriver()
+        let first = ScopeFixture.insert(id: 1)
+        driver.rowsAffectedByStatement = [first.sql: 1]
+        driver.failingStatements = [ScopeFixture.insert(id: 2).sql]
+
+        let result = try await run(
+            [first, ScopeFixture.insert(id: 2), ScopeFixture.auditInsert(id: 3)],
+            driver: driver,
+            settings: stopAndRollback(),
+            nonTransactionalObjects: ["shop.audit_log"]
+        )
+
+        XCTAssertTrue(result.rolledBack)
+        XCTAssertEqual(result.nonTransactionalObjects, [])
         XCTAssertFalse(result.rollbackLeftWritesInPlace)
     }
 }
@@ -507,9 +537,21 @@ final class CompareSyncExecutorDigestTests: XCTestCase {
 }
 
 final class CompareSyncRunResultRollbackTests: XCTestCase {
-    private func outcome(error: String? = nil, wasSkipped: Bool = false) -> SyncStatementOutcome {
-        let statement = ScopeFixture.insert(id: 1)
-        return SyncStatementOutcome(id: statement.id, statement: statement, error: error, wasSkipped: wasSkipped)
+    /// A statement that ran is what puts rows in a table that cannot roll them back, so the
+    /// outcomes here say whether the target was reached, not only whether it answered.
+    private func outcome(
+        error: String? = nil,
+        wasSkipped: Bool = false,
+        didExecute: Bool? = nil
+    ) -> SyncStatementOutcome {
+        let statement = ScopeFixture.auditInsert(id: 1)
+        return SyncStatementOutcome(
+            id: statement.id,
+            statement: statement,
+            error: error,
+            wasSkipped: wasSkipped,
+            didExecute: didExecute ?? (error == nil && !wasSkipped)
+        )
     }
 
     func testRolledBackRunThatWroteANonTransactionalTableLeftWritesInPlace() {
@@ -554,6 +596,20 @@ final class CompareSyncRunResultRollbackTests: XCTestCase {
         )
 
         XCTAssertFalse(result.rollbackLeftWritesInPlace)
+    }
+
+    /// A statement whose row count came back wider than the script expected is reported as a
+    /// failure, and it still wrote the rows. Reading the error as "nothing happened" is how a
+    /// rolled-back run over a MyISAM table told the user their target was untouched.
+    func testAStatementThatWroteAndThenFailedVerificationLeftWritesInPlace() {
+        let result = CompareSyncRunResult(
+            outcomes: [outcome(error: "too many rows", didExecute: true)],
+            rolledBack: true,
+            cancelled: false,
+            nonTransactionalObjects: ["shop.audit_log"]
+        )
+
+        XCTAssertTrue(result.rollbackLeftWritesInPlace)
     }
 }
 

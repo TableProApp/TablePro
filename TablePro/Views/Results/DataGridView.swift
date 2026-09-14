@@ -543,6 +543,7 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
             firstClickSortDirection: coordinator.firstClickSortDirection,
+            supportsValueFilter: configuration.supportsColumnCommands,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,

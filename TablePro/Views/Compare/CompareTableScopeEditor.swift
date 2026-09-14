@@ -88,7 +88,11 @@ internal struct CompareTableScopeEditor: View {
         .padding(.vertical, 8)
         .disabled(!session.canChangeSetup)
         .onAppear(perform: prepare)
-        .onChange(of: plan.id) { prepare() }
+        .onChange(of: plan.id) {
+            commitSourceFilter()
+            commitTargetFilter()
+            prepare()
+        }
         .onChange(of: plan.scope.sourceFilter) { syncDraftsFromScope() }
         .onChange(of: plan.scope.targetFilter) { syncDraftsFromScope() }
         .onChange(of: focusedField) { previous, current in
@@ -255,14 +259,18 @@ internal struct CompareTableScopeEditor: View {
         )
     }
 
+    /// Committed against the table the draft was typed for, not the one now selected: selecting
+    /// another table resigns the field in the same update that changes the plan.
     private func commitSourceFilter() {
-        guard draftPlanId == plan.id else { return }
-        session.setSourceFilter(sourceFilterDraft, for: plan.id)
+        guard !draftPlanId.isEmpty else { return }
+        session.setSourceFilter(sourceFilterDraft, for: draftPlanId)
     }
 
     private func commitTargetFilter() {
-        guard draftPlanId == plan.id, !plan.scope.usesSameFilterForTarget else { return }
-        session.setTargetFilter(targetFilterDraft, for: plan.id)
+        guard !draftPlanId.isEmpty,
+              session.dataPlans.first(where: { $0.id == draftPlanId })?.scope.usesSameFilterForTarget == false
+        else { return }
+        session.setTargetFilter(targetFilterDraft, for: draftPlanId)
     }
 
     private func prepare() {

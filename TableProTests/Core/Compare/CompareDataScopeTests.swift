@@ -841,15 +841,18 @@ final class CompareSyncProfileScopeCodingTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
-    func testLegacyExcludedColumnsAreReadButNeverWritten() throws {
+    /// Saving or deleting any one comparison rewrites the whole stored array, so a comparison the
+    /// user has not opened yet keeps the columns it was told to leave out. They move onto its table
+    /// scopes the first time its tables load, and the session stops writing them from then on.
+    func testLegacyExcludedColumnsSurviveARewriteUntilTheTablesLoad() throws {
         let data = try JSONEncoder().encode(profile(tableScopes: [:], legacy: ["updated_at"]))
 
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertNil(object["legacyExcludedColumns"])
+        XCTAssertEqual(object["legacyExcludedColumns"] as? [String], ["updated_at"])
         let dataOptions = try XCTUnwrap(object["dataOptions"] as? [String: Any])
-        XCTAssertNil(dataOptions["excludedFromComparison"])
+        XCTAssertNil(dataOptions["excludedFromComparison"], "the option they used to live in is gone")
 
         let decoded = try JSONDecoder().decode(CompareSyncProfile.self, from: data)
-        XCTAssertTrue(decoded.legacyExcludedColumns.isEmpty)
+        XCTAssertEqual(decoded.legacyExcludedColumns, ["updated_at"])
     }
 }

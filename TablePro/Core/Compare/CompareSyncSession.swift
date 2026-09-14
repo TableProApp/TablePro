@@ -449,10 +449,20 @@ internal final class CompareSyncSession {
     /// `lastAction` is what the banner reads, so it is part of the result and is cleared with it.
     /// `hasWrittenToTarget` deliberately survives, because a write already happened and no later
     /// comparison makes that untrue.
-    internal func resetComparison() {
+    ///
+    /// A pair that has not changed keeps every table's scope, because a mode or option change asks
+    /// the same tables a different question rather than naming different tables. A pair that has
+    /// changed drops them along with everything else a table list still waiting to arrive was going
+    /// to be given.
+    internal func resetComparison(keepingTableScopes: Bool = false) {
         /// The setup the work in flight was started for is the one being replaced, so it is stopped
         /// here rather than left holding `runTask`.
         cancelRunningWork()
+        let carriedScopes = keepingTableScopes ? currentTableScopes : [:]
+        let carriedLegacyExclusions = keepingTableScopes ? pendingLegacyExcludedColumns : []
+        pendingSelection = []
+        pendingTableScopes = carriedScopes
+        pendingLegacyExcludedColumns = carriedLegacyExclusions
         report = nil
         sourceSnapshots = [:]
         targetSnapshots = [:]

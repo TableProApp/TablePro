@@ -506,13 +506,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let jsonViewItem = NSMenuItem(
-            title: String(localized: "Show Row as JSON"),
-            action: #selector(showRowAsJSON),
-            keyEquivalent: ""
-        )
-        jsonViewItem.target = self
-        menu.addItem(jsonViewItem)
+        if coordinator.supportsColumnCommands {
+            let jsonViewItem = NSMenuItem(
+                title: String(localized: "Show Row as JSON"),
+                action: #selector(showRowAsJSON),
+                keyEquivalent: ""
+            )
+            jsonViewItem.target = self
+            menu.addItem(jsonViewItem)
+        }
 
         if dataColumnIndex >= 0,
            let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
@@ -539,13 +541,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let exportItem = NSMenuItem(
-            title: String(localized: "Export Results…"),
-            action: #selector(exportResults),
-            keyEquivalent: ""
-        )
-        exportItem.target = self
-        menu.addItem(exportItem)
+        if coordinator.supportsColumnCommands {
+            let exportItem = NSMenuItem(
+                title: String(localized: "Export Results…"),
+                action: #selector(exportResults),
+                keyEquivalent: ""
+            )
+            exportItem.target = self
+            menu.addItem(exportItem)
+        }
 
         if coordinator.delegate?.dataGridCanClearResults() == true {
             let clearResultsItem = NSMenuItem(

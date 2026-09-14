@@ -53,6 +53,24 @@ internal struct SyncStatementOutcome: Identifiable {
     internal let error: String?
     internal let wasSkipped: Bool
 
+    /// Whether the driver ran it, which is not the same as whether it was accepted: a statement that
+    /// changed more rows than it was built for has already changed them by the time it is refused.
+    internal let didExecute: Bool
+
+    internal init(
+        id: UUID,
+        statement: SyncStatement,
+        error: String?,
+        wasSkipped: Bool,
+        didExecute: Bool = false
+    ) {
+        self.id = id
+        self.statement = statement
+        self.error = error
+        self.wasSkipped = wasSkipped
+        self.didExecute = didExecute
+    }
+
     internal var succeeded: Bool {
         error == nil && !wasSkipped
     }
@@ -89,6 +107,12 @@ internal struct CompareSyncRunResult {
         outcomes.filter { $0.succeeded }.count
     }
 
+    /// Everything the target actually ran, refusals included, which is what says whether the target
+    /// was written at all.
+    internal var writtenStatementCount: Int {
+        outcomes.filter { $0.didExecute }.count
+    }
+
     internal var failedCount: Int {
         outcomes.filter { $0.error != nil }.count
     }
@@ -98,7 +122,7 @@ internal struct CompareSyncRunResult {
     }
 
     internal var rollbackLeftWritesInPlace: Bool {
-        rolledBack && !nonTransactionalObjects.isEmpty && executedCount > 0
+        rolledBack && !nonTransactionalObjects.isEmpty && writtenStatementCount > 0
     }
 }
 
@@ -118,7 +142,7 @@ internal actor CompareSyncExecutor {
         target: DatabaseEndpoint,
         driver: any PluginDatabaseDriver,
         progress: Progress,
-        nonTransactionalObjects: [String] = []
+        nonTransactionalObjects: Set<String> = []
     ) async throws -> CompareSyncRunResult {
         let runnable = statements.filter { settings.canRun($0) }
         let heldBack = statements.filter { !settings.canRun($0) }
@@ -174,7 +198,7 @@ internal actor CompareSyncExecutor {
         settings: CompareSyncExecutionSettings,
         driver: any PluginDatabaseDriver,
         progress: Progress,
-        nonTransactionalObjects: [String]
+        nonTransactionalObjects: Set<String>
     ) async throws -> CompareSyncRunResult {
         let usesTransaction = settings.usesTransaction(for: mode, driver: driver)
         if usesTransaction {
@@ -194,8 +218,10 @@ internal actor CompareSyncExecutor {
                 cancelled = true
                 break
             }
+            var didExecute = false
             do {
                 let result = try await driver.execute(query: statement.sql)
+                didExecute = true
                 try Self.verify(statement, rowsAffected: result.rowsAffected)
                 /// A scope is only closed once its closing statement has actually run. Dropping it
                 /// before the call left a failed close with nothing to retry it, and the connection
@@ -209,13 +235,13 @@ internal actor CompareSyncExecutor {
                     break
                 }
                 outcomes.append(SyncStatementOutcome(
-                    id: statement.id, statement: statement, error: nil, wasSkipped: false
+                    id: statement.id, statement: statement, error: nil, wasSkipped: false, didExecute: true
                 ))
             } catch {
                 Self.logger.error("Sync statement failed: \(error.localizedDescription, privacy: .public)")
                 outcomes.append(SyncStatementOutcome(
                     id: statement.id, statement: statement,
-                    error: error.localizedDescription, wasSkipped: false
+                    error: error.localizedDescription, wasSkipped: false, didExecute: didExecute
                 ))
                 if settings.errorHandling != .skipAndContinue {
                     stopped = true
@@ -250,12 +276,15 @@ internal actor CompareSyncExecutor {
             }
         }
 
+        /// Named from what ran, not from what the script mentioned: a table whose statements never
+        /// reached the target has nothing left in it to warn about.
+        let written = Set(outcomes.filter { $0.didExecute }.map { $0.statement.objectName })
         return CompareSyncRunResult(
             outcomes: outcomes,
             rolledBack: shouldRollback,
             cancelled: cancelled,
             commitFailure: commitFailure,
-            nonTransactionalObjects: nonTransactionalObjects
+            nonTransactionalObjects: nonTransactionalObjects.intersection(written).sorted()
         )
     }
 

@@ -27,18 +27,51 @@ internal extension CompareSyncSession {
         return String(localized: "Read-Only. Choose a different connection to write changes to.")
     }
 
-    func nonTransactionalTables(in statements: [SyncStatement]) -> [String] {
+    func nonTransactionalTables(in statements: [SyncStatement]) -> Set<String> {
         guard let target else { return [] }
         let names = Set(statements.map(\.objectName))
-        return dataPlans
-            .filter {
-                names.contains($0.table)
-                    && DataSyncTransactionality.cannotRollBack(
-                        storageEngine: $0.targetStorageEngine, databaseType: target.databaseType
-                    )
-            }
-            .map(\.table)
-            .sorted()
+        return Set(
+            dataPlans
+                .filter {
+                    names.contains($0.id)
+                        && DataSyncTransactionality.cannotRollBack(
+                            storageEngine: $0.targetStorageEngine, databaseType: target.databaseType
+                        )
+                }
+                .map(\.id)
+        )
+    }
+
+    /// What the run did, in the window rather than in the sheet that closed before it started.
+    func reportRunResult(_ result: CompareSyncRunResult, target: DatabaseEndpoint) {
+        if result.rollbackLeftWritesInPlace {
+            errorMessage = String(
+                format: String(
+                    localized: "The run was rolled back, but %@ cannot roll back, so the rows already written there stay. Compare again to see where the target stands."
+                ),
+                ListFormatter.localizedString(byJoining: result.nonTransactionalObjects)
+            )
+            return
+        }
+        if let commitFailure = result.commitFailure {
+            errorMessage = String(
+                format: String(localized: "The statements ran but the transaction could not be committed: %@"),
+                commitFailure
+            )
+            return
+        }
+        guard result.failedCount > 0 else { return }
+        errorMessage = result.rolledBack
+            ? String(
+                format: String(localized: "%d statements failed, so the run was rolled back and %@ is unchanged."),
+                result.failedCount, target.qualifiedDescription
+            )
+            : String(
+                format: String(
+                    localized: "%d statements failed. What already ran stays applied. Compare again to see where the target stands."
+                ),
+                result.failedCount
+            )
     }
 
     // MARK: - Key columns
@@ -207,7 +240,9 @@ internal extension CompareSyncSession {
         var result = plan
         if let pending = pendingTableScopes[plan.id] {
             var scope = pending
-            if scope.keyColumns.isEmpty || scope.keyColumns.contains(where: { plan.column(named: $0) == nil }) {
+            /// An empty stored key is a choice the user made, not a missing value, so only a key
+            /// naming a column this pair no longer shares falls back to the table's own.
+            if scope.keyColumns.contains(where: { plan.column(named: $0) == nil }) {
                 scope.keyColumns = plan.keyColumns
             }
             scope.restrictExclusions(to: plan.columnNames)
@@ -333,7 +368,7 @@ internal extension CompareSyncSession {
 
     /// Before the table list arrives the scopes on record are the ones still waiting to be applied,
     /// so writing the setup down in between does not throw them away.
-    private var currentTableScopes: [String: DataTableScope] {
+    var currentTableScopes: [String: DataTableScope] {
         guard hasLoadedDataPlans else { return pendingTableScopes }
         return Dictionary(dataPlans.map { ($0.id, $0.scope) }, uniquingKeysWith: { first, _ in first })
     }

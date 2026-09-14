@@ -82,7 +82,7 @@ internal final class DataGridCellAccessibilityView: NSView {
     /// and AXConfirm). Reporting it as static text would leave the menu unreachable to a client that
     /// looks for one, which is every client but a sighted pointer.
     override internal func accessibilityRole() -> NSAccessibility.Role? {
-        if coordinator?.presentsCheckboxCell(columnIndex: dataColumn) == true { return .checkBox }
+        if coordinator?.checkboxMark(row: row, columnIndex: dataColumn) != nil { return .checkBox }
         return coordinator?.presentsComboBoxCell(columnIndex: dataColumn) == true ? .comboBox : .staticText
     }
 

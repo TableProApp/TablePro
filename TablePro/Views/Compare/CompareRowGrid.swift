@@ -69,9 +69,20 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
                 String(localized: "Side")
             ] + columns,
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: Self.leadingColumnCount)
-                + plan.columns.map { $0.sourceColumnType ?? .text(rawType: nil) }
+                + plan.columns.map(Self.displayType)
         )
         return tableRows
+    }
+
+    /// One column, two lines, and a type each side may spell differently. A column the two engines
+    /// type alike formats by that type; one they disagree on formats as text, so neither side's
+    /// values are drawn through the other's formatting.
+    private static func displayType(for column: CompareColumn) -> ColumnType {
+        guard let source = column.sourceColumnType else { return column.targetColumnType ?? .text(rawType: nil) }
+        guard let target = column.targetColumnType else { return source }
+        return ValueComparisonKind(columnType: source) == ValueComparisonKind(columnType: target)
+            ? source
+            : .text(rawType: nil)
     }
 
     internal static func lines(for entry: RowDiffEntry) -> [CompareRowGridLine] {
@@ -191,7 +202,8 @@ internal struct CompareRowGrid: View {
             configuration: DataGridConfiguration(
                 databaseType: session.source?.databaseType,
                 showRowNumbers: false,
-                checkboxColumns: [CompareRowGridModel.includeColumn]
+                checkboxColumns: [CompareRowGridModel.includeColumn],
+                supportsColumnCommands: false
             ),
             delegate: model,
             selectedRowIndices: $selectedRows,

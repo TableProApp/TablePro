@@ -33,10 +33,10 @@ internal struct CompareOptionsView: View {
         }
         .onChange(of: session.includedKinds) {
             guard session.mode == .structure else { return }
-            session.resetComparison()
+            session.resetComparison(keepingTableScopes: true)
         }
         .onChange(of: session.structureOptions) {
-            session.resetComparison()
+            session.resetComparison(keepingTableScopes: true)
         }
         .onChange(of: session.dataOptions) { previous, current in
             applyDataOptionChange(from: previous, to: current)

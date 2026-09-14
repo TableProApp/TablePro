@@ -66,6 +66,12 @@ internal struct DataSyncScriptBuilder {
 
     internal func append(_ entry: RowDiffEntry, into statements: inout DataSyncStatements) {
         guard options.writesRows(of: entry.kind) else { return }
+        /// A row whose only difference sits in a column the target computes has nothing to write:
+        /// the statement would set every other column to the value it already holds.
+        if entry.kind == .update, !entry.cellDifferences.isEmpty,
+           !entry.cellDifferences.contains(where: { plan.updatableColumns.contains($0.column) }) {
+            return
+        }
         switch entry.kind {
         case .insert:
             guard let row = entry.sourceRow else { return }
@@ -89,13 +95,13 @@ internal struct DataSyncScriptBuilder {
         let closingSQL = "SET IDENTITY_INSERT \(table) OFF;"
         let open = SyncStatement(
             sql: "SET IDENTITY_INSERT \(table) ON;",
-            objectName: plan.table,
+            objectName: plan.id,
             summary: String(format: String(localized: "Allow explicit identity values in %@"), plan.table),
             sessionEffect: .opens(scope: scope, closingSQL: closingSQL)
         )
         let close = SyncStatement(
             sql: closingSQL,
-            objectName: plan.table,
+            objectName: plan.id,
             summary: String(format: String(localized: "Stop allowing explicit identity values in %@"), plan.table),
             sessionEffect: .closes(scope: scope)
         )
@@ -139,7 +145,7 @@ internal struct DataSyncScriptBuilder {
         let override = identityInsertStyle == .overridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
         return SyncStatement(
             sql: "INSERT INTO \(qualifiedTable) (\(columnList))\(override) VALUES (\(valueList));",
-            objectName: plan.table,
+            objectName: plan.id,
             summary: String(format: String(localized: "Insert row %@ into %@"), entry.keyDescription, plan.table),
             expectedRowCount: 1
         )
@@ -155,7 +161,7 @@ internal struct DataSyncScriptBuilder {
             .joined(separator: ", ")
         return SyncStatement(
             sql: "UPDATE \(qualifiedTable) SET \(assignments) WHERE \(predicate);",
-            objectName: plan.table,
+            objectName: plan.id,
             summary: String(format: String(localized: "Update row %@ in %@"), entry.keyDescription, plan.table),
             expectedRowCount: 1
         )
@@ -165,7 +171,7 @@ internal struct DataSyncScriptBuilder {
         guard let predicate = keyPredicate(row: row) else { return nil }
         return SyncStatement(
             sql: "DELETE FROM \(qualifiedTable) WHERE \(predicate);",
-            objectName: plan.table,
+            objectName: plan.id,
             summary: String(format: String(localized: "Delete row %@ from %@"), entry.keyDescription, plan.table),
             hazards: [SyncHazard(
                 kind: .dataLoss,
