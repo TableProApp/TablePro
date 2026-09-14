@@ -11,7 +11,7 @@ use russh::ChannelMsg;
 use russh::client::{self, Config, Handle};
 use russh::keys::known_hosts::{check_known_hosts_path, learn_known_hosts_path};
 use russh::keys::ssh_key::{HashAlg, PublicKey};
-use russh::keys::{PrivateKeyWithHashAlg, load_secret_key};
+use russh::keys::{PrivateKeyWithHashAlg, PublicKeyOrCertificate, load_secret_key};
 
 const LOCAL_BIND_HOST: &str = "127.0.0.1";
 
@@ -136,12 +136,13 @@ struct ClientHandler {
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(&mut self, key: &PublicKey) -> Result<bool, Self::Error> {
+    async fn check_server_key(&mut self, presented: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
+        let key = host_public_key(presented);
         let fingerprint = key.fingerprint(HashAlg::Sha256).to_string();
         let outcome = verify_or_learn(
             &self.target_host,
             self.target_port,
-            key,
+            &key,
             &self.known_hosts_path,
             &fingerprint,
         );
@@ -150,6 +151,16 @@ impl client::Handler for ClientHandler {
             *slot = Some(outcome);
         }
         Ok(allow)
+    }
+}
+
+/// A host certificate is checked against known_hosts through the key it
+/// certifies, which is what OpenSSH does when no `@cert-authority` line
+/// matches.
+fn host_public_key(presented: &PublicKeyOrCertificate) -> PublicKey {
+    match presented {
+        PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
+        PublicKeyOrCertificate::Certificate(certificate) => PublicKey::from(certificate.public_key().clone()),
     }
 }
 
@@ -374,6 +385,21 @@ mod tests {
 
     fn parse_key(base64: &str) -> PublicKey {
         russh::keys::parse_public_key_base64(base64).expect("valid base64 public key")
+    }
+
+    #[test]
+    fn host_public_key_returns_a_plain_key_unchanged() {
+        let key = parse_key(KEY_A_BASE64);
+        let presented = PublicKeyOrCertificate::PublicKey {
+            key: key.clone(),
+            hash_alg: None,
+        };
+        let resolved = host_public_key(&presented);
+        assert_eq!(resolved, key);
+        assert_eq!(
+            resolved.fingerprint(HashAlg::Sha256).to_string(),
+            key.fingerprint(HashAlg::Sha256).to_string()
+        );
     }
 
     #[test]
