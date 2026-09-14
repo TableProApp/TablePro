@@ -24,9 +24,10 @@ internal enum AppSettingsCategory {
     internal static let ai = "ai"
     internal static let notifications = "notifications"
 
-    /// Never synced, and deliberately so. `sync` carries the switch that turns syncing on, and
-    /// `mcp` carries a port and local server configuration that belongs to one machine.
-    internal static let deviceLocal: Set<String> = ["sync", "mcp"]
+    /// Never synced, and deliberately so. `sync` carries the switch that turns syncing on, `mcp`
+    /// carries a port and local server configuration that belongs to one machine, and
+    /// `secretManager` carries a command naming a CLI tool and a vault login that belong to one.
+    internal static let deviceLocal: Set<String> = ["sync", "mcp", "secretManager"]
 
     internal static let synced: [String] = [
         general, appearance, editor, dataGrid, history, tabs, keyboard, ai, notifications

@@ -12,6 +12,10 @@ enum PasswordSource: Codable, Hashable, Sendable {
     case file(path: String)
     case env(variable: String)
     case command(shell: String)
+    /// The one command in Settings, filled in from this connection. Connections backed by the same
+    /// secret manager differ only by the vault path their own fields spell out, so holding a copy
+    /// of the command on each of them means editing every connection when the vault moves.
+    case sharedTemplate
     case onePassword(reference: String)
     case vault(path: String, field: String)
     case awsSecretsManager(secretId: String, jsonKey: String?)
@@ -23,7 +27,7 @@ enum PasswordSource: Codable, Hashable, Sendable {
     }
 
     private enum Kind: String {
-        case file, env, command, onePassword, vault, awsSecretsManager
+        case file, env, command, sharedTemplate, onePassword, vault, awsSecretsManager
     }
 
     init(from decoder: Decoder) throws {
@@ -36,6 +40,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
             self = .env(variable: try container.decode(String.self, forKey: .variable))
         case Kind.command.rawValue:
             self = .command(shell: try container.decode(String.self, forKey: .shell))
+        case Kind.sharedTemplate.rawValue:
+            self = .sharedTemplate
         case Kind.onePassword.rawValue:
             self = .onePassword(reference: try container.decode(String.self, forKey: .reference))
         case Kind.vault.rawValue:
@@ -69,6 +75,8 @@ enum PasswordSource: Codable, Hashable, Sendable {
         case let .command(shell):
             try container.encode(Kind.command.rawValue, forKey: .kind)
             try container.encode(shell, forKey: .shell)
+        case .sharedTemplate:
+            try container.encode(Kind.sharedTemplate.rawValue, forKey: .kind)
         case let .onePassword(reference):
             try container.encode(Kind.onePassword.rawValue, forKey: .kind)
             try container.encode(reference, forKey: .reference)

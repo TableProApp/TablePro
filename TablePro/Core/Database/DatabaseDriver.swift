@@ -824,7 +824,7 @@ enum DatabaseDriverFactory {
             guard await ConnectionStorage.shared.storeIsTrusted else {
                 throw PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
-            return try await PasswordSourceResolver.resolve(passwordSource)
+            return try await ConnectionPasswordResolver.resolve(passwordSource, for: connection)
         }
         if connection.usePgpass {
             let pgpassHost = connection.preTunnelHost ?? connection.host

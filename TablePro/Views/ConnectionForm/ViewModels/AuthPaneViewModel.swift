@@ -28,7 +28,7 @@ enum PgpassStatus {
 final class AuthPaneViewModel {
     var username: String = ""
     var password: String = ""
-    var promptForPassword: Bool = false
+    var passwordDraft: PasswordSourceDraft = .keychain
     var additionalFieldValues: [String: String] = [:]
     var pgpassStatus: PgpassStatus = .notChecked
 
@@ -68,7 +68,19 @@ final class AuthPaneViewModel {
     }
 
     var effectivePromptForPassword: Bool {
-        promptForPassword && !hidesPassword
+        passwordDraft.promptsForPassword && !hidesPassword
+    }
+
+    /// Nil whenever the engine hides the password field, so a connection that switched to a type
+    /// with no password cannot keep running a secret manager command for a value nothing reads.
+    var effectivePasswordSource: PasswordSource? {
+        hidesPassword ? nil : passwordDraft.passwordSource
+    }
+
+    /// Whether the password itself is TablePro's to store. Everything else either asks for it or
+    /// fetches it, and in both cases holding a copy in the Keychain would outlive the answer.
+    var storesPasswordInKeychain: Bool {
+        passwordDraft.mode == .keychain
     }
 
     var usePgpass: Bool {
@@ -83,6 +95,10 @@ final class AuthPaneViewModel {
             if value.trimmingCharacters(in: .whitespaces).isEmpty {
                 issues.append(String(format: String(localized: "%@ is required"), field.label))
             }
+        }
+
+        if !hidesPassword, let issue = passwordDraft.validationIssue {
+            issues.append(issue)
         }
 
         return issues
@@ -109,7 +125,10 @@ final class AuthPaneViewModel {
 
     func load(from connection: DatabaseConnection, storage: ConnectionStorage) {
         username = connection.username
-        promptForPassword = connection.promptForPassword
+        passwordDraft = PasswordSourceDraft(
+            source: connection.passwordSource,
+            promptsForPassword: connection.promptForPassword
+        )
 
         var values: [String: String] = [:]
         let allFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
@@ -133,7 +152,7 @@ final class AuthPaneViewModel {
 
         additionalFieldValues = values
 
-        if let savedPassword = storage.loadPassword(for: connection.id) {
+        if storesPasswordInKeychain, let savedPassword = storage.loadPassword(for: connection.id) {
             password = savedPassword
         }
     }

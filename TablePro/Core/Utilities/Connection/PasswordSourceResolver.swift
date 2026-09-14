@@ -23,6 +23,8 @@ enum PasswordSourceResolver {
         case commandTimedOut
         case outputTooLarge
         case emptyPassword
+        case templateNotConfigured
+        case templateContextUnavailable
         case invalidSecretJson
         case jsonKeyNotFound(key: String)
         case storeNotTrusted
@@ -54,6 +56,13 @@ enum PasswordSourceResolver {
                 return String(localized: "Password command produced too much output")
             case .emptyPassword:
                 return String(localized: "The password source produced an empty password")
+            case .templateNotConfigured:
+                return String(localized: """
+                    This connection takes its password from the shared secret manager command, \
+                    and no command is set. Add one in Settings > General > Secret Manager.
+                    """)
+            case .templateContextUnavailable:
+                return String(localized: "The shared secret manager command was run without a connection to fill it in.")
             case .invalidSecretJson:
                 return String(localized: "The secret manager did not return valid JSON.")
             case let .jsonKeyNotFound(key):
@@ -68,13 +77,18 @@ enum PasswordSourceResolver {
         }
     }
 
-    static func resolve(_ source: PasswordSource) async throws -> String {
+    static func resolve(
+        _ source: PasswordSource,
+        context: PasswordCommandTemplate.Context? = nil,
+        sharedTemplate: String = ""
+    ) async throws -> String {
         switch source {
         case let .file(path):
             return try resolveFile(path: path)
         case let .env(variable):
             return try resolveEnvironment(variable: variable)
-        case let .command(shell):
+        case .command, .sharedTemplate:
+            let shell = try shellCommand(for: source, context: context, sharedTemplate: sharedTemplate)
             return try await resolveCommand(shell: shell, timeoutSeconds: commandTimeoutSeconds)
         case .onePassword, .vault:
             return try await resolveExternalTool(source)
@@ -85,11 +99,50 @@ enum PasswordSourceResolver {
         }
     }
 
+    /// The command a shell-backed source runs, with its placeholders filled in. A per-connection
+    /// command is expanded too, so `{host}` means the same thing wherever the user writes it.
+    private static func shellCommand(
+        for source: PasswordSource,
+        context: PasswordCommandTemplate.Context?,
+        sharedTemplate: String
+    ) throws -> String {
+        switch source {
+        case let .command(shell):
+            guard let context else { return shell }
+            return PasswordCommandTemplate.expand(shell, with: context)
+        case .sharedTemplate:
+            let template = sharedTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !template.isEmpty else { throw ResolutionError.templateNotConfigured }
+            guard let context else { throw ResolutionError.templateContextUnavailable }
+            return PasswordCommandTemplate.expand(template, with: context)
+        case .file, .env, .onePassword, .vault, .awsSecretsManager:
+            throw ResolutionError.emptyPassword
+        }
+    }
+
+    /// The exact command a source will run, or nil when it runs none. This is what the settings
+    /// and connection form preview, and what the resolved-password cache fingerprints: a command
+    /// the user has since edited must not be answered from a cache entry the old one filled.
+    static func effectiveCommand(
+        for source: PasswordSource,
+        context: PasswordCommandTemplate.Context?,
+        sharedTemplate: String = ""
+    ) -> String? {
+        switch source {
+        case .command, .sharedTemplate:
+            return try? shellCommand(for: source, context: context, sharedTemplate: sharedTemplate)
+        case .onePassword, .vault, .awsSecretsManager:
+            return externalCommand(for: source)
+        case .file, .env:
+            return nil
+        }
+    }
+
     /// The shell command that fetches a secret for CLI-backed sources, or nil for the local sources.
     /// Arguments are single-quoted so a reference can never break out into shell injection.
     static func externalCommand(for source: PasswordSource) -> String? {
         switch source {
-        case .file, .env, .command:
+        case .file, .env, .command, .sharedTemplate:
             return nil
         case let .onePassword(reference):
             return "op read --no-newline \(shellQuote(reference))"

@@ -125,6 +125,7 @@
               "connections/index",
               "connections/connection-form",
               "connections/urls",
+              "connections/password-sources",
               "connections/ssh-tunneling",
               "connections/ssh-profiles",
               "connections/remote-database-files",

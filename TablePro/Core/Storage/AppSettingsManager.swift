@@ -146,6 +146,16 @@ final class AppSettingsManager {
         }
     }
 
+    /// Never marked dirty for sync. The command names a CLI tool and a vault login that belong to
+    /// one machine, which is why a connection's own `PasswordSource` stays out of sync too.
+    var secretManager: SecretManagerSettings {
+        didSet {
+            storage.saveSecretManager(secretManager)
+            guard secretManager != oldValue else { return }
+            Task { await ResolvedPasswordCache.shared.invalidateAll() }
+        }
+    }
+
     var mcp: MCPSettings {
         didSet {
             guard !isValidating else { return }
@@ -242,6 +252,7 @@ final class AppSettingsManager {
         self.sync = storage.loadSync()
         self.mcp = storage.loadMCP()
         self.notifications = storage.loadNotifications()
+        self.secretManager = storage.loadSecretManager()
 
         general.language.apply()
 

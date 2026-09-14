@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
+- Password from 1Password, Vault, AWS Secrets Manager, a shell command, a file, or an environment variable.
+- **Secret Manager** in Settings > General, one placeholder command shared by every connection set to it.
+- In-memory cache for fetched passwords, with a lifetime in Settings > General.
 
 ### Changed
 

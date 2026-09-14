@@ -32,6 +32,7 @@ final class AppSettingsStorage: Sendable {
         static let sync = "com.TablePro.settings.sync"
         static let mcp = "com.TablePro.settings.mcp"
         static let notifications = "com.TablePro.settings.notifications"
+        static let secretManager = "com.TablePro.settings.secretManager"
         static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
         static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
@@ -55,6 +56,16 @@ final class AppSettingsStorage: Sendable {
 
     func saveGeneral(_ settings: GeneralSettings) {
         save(settings, key: Keys.general)
+    }
+
+    // MARK: - Secret Manager Settings
+
+    func loadSecretManager() -> SecretManagerSettings {
+        load(key: Keys.secretManager, default: .default)
+    }
+
+    func saveSecretManager(_ settings: SecretManagerSettings) {
+        save(settings, key: Keys.secretManager)
     }
 
     func migrateStartupBehaviorToReopenLastIfNeeded() {

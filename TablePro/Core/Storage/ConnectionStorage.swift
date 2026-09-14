@@ -275,6 +275,8 @@ final class ConnectionStorage {
             syncTracker.markDeleted(.connection, id: connection.id.uuidString)
         }
         deletePassword(for: connection.id)
+        let deletedId = connection.id
+        Task { await ResolvedPasswordCache.shared.invalidate(deletedId) }
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
         deleteSSLClientKeyPassphrase(for: connection.id)
@@ -334,6 +336,7 @@ final class ConnectionStorage {
         )
         Task {
             for conn in connectionsToDelete {
+                await ResolvedPasswordCache.shared.invalidate(conn.id)
                 await SQLFavoriteManager.shared.removeFavoritesAndFolders(for: conn.id)
                 await QueryHistoryManager.shared.clear(
                     matching: QueryHistoryFilter(scope: .connection(conn.id))

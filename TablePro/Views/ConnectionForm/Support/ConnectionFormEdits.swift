@@ -30,6 +30,9 @@ struct ConnectionFormEdits: Equatable {
     var redisDatabase: Int?
     var startupCommands: String?
     var localOnly: Bool
+    /// Carried by the form rather than inherited from the base record, so clearing a secret
+    /// manager back to Keychain is a change the save can actually express.
+    var passwordSource: PasswordSource?
     var additionalFields: [String: String]
     var ownedAdditionalFieldIDs: Set<String>
 
@@ -65,6 +68,7 @@ struct ConnectionFormEdits: Equatable {
         result.redisDatabase = redisDatabase
         result.startupCommands = startupCommands
         result.localOnly = localOnly
+        result.passwordSource = passwordSource
         result.additionalFields = mergedAdditionalFields(onto: base.additionalFields)
         return result
     }

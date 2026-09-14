@@ -149,6 +149,8 @@ struct GeneralSettingsView: View {
 
             LinkedFoldersSection()
 
+            SecretManagerSection()
+
             TrustedExternalConnectionsSection()
 
             Section {

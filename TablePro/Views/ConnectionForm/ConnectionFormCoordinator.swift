@@ -255,6 +255,20 @@ final class ConnectionFormCoordinator {
         saveConnection(connect: isNew)
     }
 
+    /// What a secret manager command's placeholders are filled from while the form is open: the
+    /// values on screen, not the ones last saved, so the preview and the Fetch Now button describe
+    /// the connection the user is currently editing.
+    var passwordTemplateContext: PasswordCommandTemplate.Context {
+        PasswordCommandTemplate.Context(
+            name: network.name,
+            host: network.resolvedHost,
+            port: network.resolvedPort,
+            username: auth.resolvedUsername,
+            database: network.database,
+            typeId: network.type.pluginTypeId
+        )
+    }
+
     func buildEdits() -> ConnectionFormEdits {
         var fields: [String: String] = [:]
         network.write(into: &fields)
@@ -307,6 +321,7 @@ final class ConnectionFormCoordinator {
             startupCommands: advanced.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
+            passwordSource: auth.effectivePasswordSource,
             additionalFields: fields,
             ownedAdditionalFieldIDs: ownedAdditionalFieldIDs()
         )
@@ -377,11 +392,18 @@ final class ConnectionFormCoordinator {
 
         let connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
-        if auth.effectivePromptForPassword {
+        if auth.storesPasswordInKeychain {
+            if !auth.password.isEmpty {
+                storage.savePassword(auth.password, for: connectionToSave.id)
+            }
+        } else {
             storage.deletePassword(for: connectionToSave.id)
-        } else if !auth.password.isEmpty {
-            storage.savePassword(auth.password, for: connectionToSave.id)
         }
+
+        /// The command may have changed under an unchanged connection id, and an entry the old one
+        /// filled would answer the next connect for as long as its lifetime runs.
+        let savedId = connectionToSave.id
+        Task { await ResolvedPasswordCache.shared.invalidate(savedId) }
 
         if ssh.state.enabled && ssh.state.profileId == nil {
             if (ssh.state.authMethod == .password || ssh.state.authMethod == .keyboardInteractive)
@@ -508,8 +530,7 @@ final class ConnectionFormCoordinator {
         testSucceeded = false
         let window = NSApp.keyWindow
 
-        var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
-        testConn.passwordSource = auth.password.isEmpty ? originalConnection?.passwordSource : nil
+        let testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
@@ -531,7 +552,7 @@ final class ConnectionFormCoordinator {
         persistTestSecrets(
             for: testConn.id,
             password: password,
-            promptForPassword: promptForPassword,
+            storesPasswordInKeychain: auth.storesPasswordInKeychain,
             tunnelStates: tunnelStates,
             sslClientKeyPassphrase: sslClientKeyPassphrase,
             sslClientKeyPath: sslClientKeyPath,
@@ -643,7 +664,7 @@ final class ConnectionFormCoordinator {
     private func persistTestSecrets(
         for testId: UUID,
         password: String,
-        promptForPassword: Bool,
+        storesPasswordInKeychain: Bool,
         tunnelStates: TunnelFormStates,
         sslClientKeyPassphrase: String,
         sslClientKeyPath: String,
@@ -655,7 +676,7 @@ final class ConnectionFormCoordinator {
         let cloudSQLProxyState = tunnelStates.cloudSQLProxy
         let socksProxyState = tunnelStates.socksProxy
 
-        if !password.isEmpty && !promptForPassword {
+        if !password.isEmpty && storesPasswordInKeychain {
             services.connectionStorage.savePassword(password, for: testId)
         }
         if sshState.enabled && sshState.profileId == nil {
@@ -970,7 +991,7 @@ final class ConnectionFormCoordinator {
         auth.username = parsed.username ?? ""
         auth.password = parsed.password ?? ""
         network.database = parsed.database ?? ""
-        auth.promptForPassword = false
+        auth.passwordDraft = .keychain
 
         if network.name.isEmpty {
             let suggestion = parsed.database.map { "\(parsed.type.rawValue) \(parsed.host)/\($0)" }
