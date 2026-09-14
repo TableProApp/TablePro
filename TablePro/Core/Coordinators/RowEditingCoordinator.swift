@@ -166,6 +166,68 @@ final class RowEditingCoordinator {
         return Set(displayIDs.indices.filter { rowIDs.contains(displayIDs[$0]) })
     }
 
+    /// Stages a row inspector field edit exactly as the grid's own cell editor stages one: the
+    /// change, the shared `TableRows` buffer both surfaces read, and the repaint.
+    ///
+    /// The rows are named by `RowID` rather than by the display positions the selection carries,
+    /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
+    /// selection disagrees on the field, where the inspector holds no value for it at all.
+    func stageInspectorFieldEdit(columnIndex: Int, value: PluginCellValue, rowIDs: [RowID]) {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
+        let tabId = tab.id
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        guard tableRows.columns.indices.contains(columnIndex) else { return }
+        let columnName = tableRows.columns[columnIndex]
+        /// Before the rows are touched, not after: a column the server owns is refused when the
+        /// change is recorded, and editing here first would paint a value into the grid that no
+        /// statement will ever carry.
+        guard parent.changeManager.isColumnWritable(columnName) else { return }
+
+        var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
+        var editedRowIDs: Set<RowID> = []
+        for rowID in rowIDs {
+            guard let storageRow = tableRows.index(of: rowID) else { continue }
+            let values = Array(tableRows.rows[storageRow].values)
+            guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }
+            parent.changeManager.recordCellChange(
+                rowID: rowID,
+                columnIndex: columnIndex,
+                columnName: columnName,
+                oldValue: values[columnIndex],
+                newValue: value,
+                originalRow: values
+            )
+            edits.append((row: storageRow, column: columnIndex, value: value))
+            editedRowIDs.insert(rowID)
+        }
+        guard !edits.isEmpty else { return }
+
+        parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits) }
+        parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
+        repaintInspectorEdit(rowIDs: editedRowIDs, columnIndex: columnIndex, in: tableRows)
+    }
+
+    /// `editMany` reports the rows it changed by their position in storage, and the grid reads a
+    /// delta's rows as display positions, so a sort or a value filter would repaint the wrong ones.
+    ///
+    /// Resolved in one pass over the display order rather than a search per row, because that order
+    /// is as long as the result.
+    private func repaintInspectorEdit(rowIDs: Set<RowID>, columnIndex: Int, in tableRows: TableRows) {
+        var positions: Set<CellPosition> = []
+        if let displayIDs = parent.activeGridDisplayIDs {
+            for (displayRow, rowID) in displayIDs.enumerated() where rowIDs.contains(rowID) {
+                positions.insert(CellPosition(row: displayRow, column: columnIndex))
+            }
+        } else {
+            for rowID in rowIDs {
+                guard let displayRow = tableRows.index(of: rowID) else { continue }
+                positions.insert(CellPosition(row: displayRow, column: columnIndex))
+            }
+        }
+        guard !positions.isEmpty else { return }
+        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(.cellsChanged(positions))
+    }
+
     func handleUndoResult(_ result: UndoResult) {
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
 
@@ -185,6 +247,9 @@ final class RowEditingCoordinator {
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
         parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
+        /// The row inspector reads its fields from the `TableRows` this just rewrote, and nothing
+        /// else in `InspectorTrigger` moves on an undo.
+        parent.gridDisplayRevision &+= 1
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
