@@ -1,14 +1,12 @@
-use std::path::PathBuf;
-
 use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 use secrecy::SecretString;
 
 use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig};
-use tablepro_storage::{SavedSshAuth, SavedSshConfig};
+use tablepro_storage::SavedSshConfig;
 
-const SSH_AUTH_PASSWORD: u32 = 0;
-const SSH_AUTH_KEY: u32 = 1;
+use super::ssh_inputs::{SSH_AUTH_PASSWORD, SshRowValues, saved_ssh_from_rows};
+use crate::services::connection_service::{InterimSshAuth, interim_ssh_target};
 
 /// SSH section uses a single `AdwPreferencesGroup` containing one
 /// `AdwExpanderRow`. The expander's enable-switch toggles whether the
@@ -118,85 +116,58 @@ impl SshSection {
     }
 
     pub fn collect(&self) -> Result<SshInputs, String> {
-        let host = self.host.text().to_string();
-        if host.trim().is_empty() {
-            return Err(crate::tr!("SSH host is required"));
-        }
-        let port: u16 = self.port.value() as u16;
-        let username = self.user.text().to_string();
-        if username.trim().is_empty() {
-            return Err(crate::tr!("SSH username is required"));
-        }
+        let passphrase_text = self.passphrase.text();
+        let rows = SshRowValues {
+            host: self.host.text().to_string(),
+            port: self.port.value(),
+            user: self.user.text().to_string(),
+            auth_index: self.auth_combo.selected(),
+            key_path: self.key_path.text().to_string(),
+            has_passphrase_text: !passphrase_text.is_empty(),
+        };
+        let saved = saved_ssh_from_rows(&rows).map_err(|error| error.message())?;
+        let target = interim_ssh_target(&saved).map_err(|error| crate::ui::error_text::ssh_message(&error))?;
 
-        let (auth, saved_auth, secret) = match self.auth_combo.selected() {
-            SSH_AUTH_KEY => {
-                let path = self.key_path.text().to_string();
-                if path.trim().is_empty() {
-                    return Err(crate::tr!("Private key path is required"));
-                }
-                let path_buf = PathBuf::from(path);
-                let raw_passphrase = self.passphrase.text().to_string();
-                let has_passphrase = !raw_passphrase.is_empty();
-                let auth = SshAuth::PrivateKey {
-                    path: path_buf.clone(),
-                    passphrase: if has_passphrase {
-                        Some(SecretString::new(raw_passphrase.clone().into()))
-                    } else {
-                        None
-                    },
-                };
-                let saved_auth = SavedSshAuth::PrivateKey {
-                    path: path_buf,
-                    has_passphrase,
-                };
-                let secret = if has_passphrase {
-                    SshSecretToStore::Passphrase(SecretString::new(raw_passphrase.into()))
-                } else {
-                    SshSecretToStore::None
-                };
-                (auth, saved_auth, secret)
+        let (auth, secret_to_store) = match target.auth {
+            InterimSshAuth::PrivateKey { path, has_passphrase } => {
+                let passphrase = has_passphrase.then(|| SecretString::from(passphrase_text.to_string()));
+                let secret = passphrase
+                    .clone()
+                    .map_or(SshSecretToStore::None, SshSecretToStore::Passphrase);
+                (SshAuth::PrivateKey { path, passphrase }, secret)
             }
-            _ => {
-                let raw_password = self.password.text().to_string();
-                let auth = SshAuth::Password {
-                    password: SecretString::new(raw_password.clone().into()),
-                };
-                let saved_auth = SavedSshAuth::Password;
-                let secret = SshSecretToStore::Password(SecretString::new(raw_password.into()));
-                (auth, saved_auth, secret)
+            InterimSshAuth::Password => {
+                let password = SecretString::from(self.password.text().to_string());
+                (
+                    SshAuth::Password {
+                        password: password.clone(),
+                    },
+                    SshSecretToStore::Password(password),
+                )
             }
         };
 
         Ok(SshInputs {
             cfg: SshConfig {
-                host: host.clone(),
-                port,
-                username: username.clone(),
+                host: target.host,
+                port: target.port,
+                username: target.username,
                 auth,
             },
-            saved: SavedSshConfig {
-                host,
-                port,
-                username,
-                auth: saved_auth,
-            },
-            secret_to_store: secret,
+            saved,
+            secret_to_store,
         })
     }
 }
 
 fn default_ssh_key_path() -> String {
-    let Some(home) = std::env::var_os("HOME") else {
-        return String::new();
-    };
-    let home = PathBuf::from(home).join(".ssh");
-    for candidate in ["id_ed25519", "id_rsa", "id_ecdsa"] {
-        let path = home.join(candidate);
-        if path.exists() {
-            return path.to_string_lossy().into_owned();
-        }
-    }
-    String::new()
+    let ssh_dir = gtk::glib::home_dir().join(".ssh");
+    ["id_ed25519", "id_rsa", "id_ecdsa"]
+        .into_iter()
+        .map(|candidate| ssh_dir.join(candidate))
+        .find(|path| path.exists())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn attach_key_browse_button(key_path: &adw::EntryRow) {
@@ -212,10 +183,6 @@ fn attach_key_browse_button(key_path: &adw::EntryRow) {
             .title(crate::tr!("Select SSH private key"))
             .modal(true)
             .build();
-        // Filter to common SSH key filenames (id_ed25519, id_rsa,
-        // id_ecdsa, *.pem, *.key) so the file picker hides irrelevant
-        // entries — matches the pattern GNOME Settings uses for
-        // certificate pickers.
         let filter = gtk::FileFilter::new();
         filter.set_name(Some(&crate::tr!("SSH keys")));
         for pattern in ["id_*", "*.pem", "*.key"] {
@@ -227,11 +194,9 @@ fn attach_key_browse_button(key_path: &adw::EntryRow) {
         dialog.set_filters(Some(&filters));
         dialog.set_default_filter(Some(&filter));
 
-        if let Some(home) = std::env::var_os("HOME") {
-            let ssh_dir = std::path::PathBuf::from(home).join(".ssh");
-            if ssh_dir.exists() {
-                dialog.set_initial_folder(Some(&gtk::gio::File::for_path(&ssh_dir)));
-            }
+        let ssh_dir = gtk::glib::home_dir().join(".ssh");
+        if ssh_dir.exists() {
+            dialog.set_initial_folder(Some(&gtk::gio::File::for_path(&ssh_dir)));
         }
         let entry = entry.clone();
         let parent = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok());

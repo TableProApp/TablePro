@@ -1,6 +1,7 @@
 use tablepro_core::DriverError;
 #[cfg(test)]
 use tablepro_core::sql_dialect::BuildSqlError;
+use tablepro_ssh::russh_tunnel::SshError;
 
 #[cfg(test)]
 pub fn build_sql_message(error: &BuildSqlError) -> String {
@@ -12,6 +13,15 @@ pub fn build_sql_message(error: &BuildSqlError) -> String {
                 .replace("{expected}", &expected.to_string())
                 .replace("{got}", &got.to_string())
         }
+    }
+}
+
+pub fn ssh_message(error: &SshError) -> String {
+    match error {
+        SshError::RequiresOpenSsh { setting } => {
+            crate::tr!("This connection uses {setting}, which needs a newer TablePro.").replace("{setting}", setting)
+        }
+        other => crate::tr!("SSH tunnel failed: {detail}").replace("{detail}", &other.to_string()),
     }
 }
 

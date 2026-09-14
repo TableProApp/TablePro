@@ -64,6 +64,8 @@ pub enum SshError {
     KnownHosts(String),
     #[error("ssh: {0}")]
     Ssh(#[from] russh::Error),
+    #[error("{setting} needs the OpenSSH transport")]
+    RequiresOpenSsh { setting: &'static str },
 }
 
 pub struct SshTunnel {
@@ -245,10 +247,11 @@ async fn connect_and_auth(cfg: &SshConfig) -> Result<Handle<ClientHandler>, SshE
                 .await?
         }
         SshAuth::PrivateKey { path, passphrase } => {
-            let pp = passphrase.as_ref().map(|s| s.expose_secret().to_string());
-            let key = load_secret_key(path, pp.as_deref()).map_err(|e| SshError::Key {
-                path: path.clone(),
-                source: e,
+            let key = load_secret_key(path, passphrase.as_ref().map(ExposeSecret::expose_secret)).map_err(|e| {
+                SshError::Key {
+                    path: path.clone(),
+                    source: e,
+                }
             })?;
             let hash = session.best_supported_rsa_hash().await?.flatten();
             session
