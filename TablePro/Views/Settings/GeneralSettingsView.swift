@@ -95,6 +95,13 @@ struct GeneralSettingsView: View {
                 Toggle("Show object comments", isOn: $settings.showObjectComments)
                     .help("Shows database object comments next to tables in the sidebar and in grid column headers.")
 
+                Toggle("Show system databases and schemas", isOn: $settings.showSystemContainers)
+                    .accessibilityIdentifier("show-system-containers-toggle")
+                    .help(String(localized: """
+                        Lists system databases such as mysql and information_schema, and system schemas, \
+                        in the sidebar tree and the database filter. Switchers always list them.
+                        """))
+
                 Picker("Row size:", selection: $settings.sidebarRowSize) {
                     ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
                         Text(size.title).tag(size)

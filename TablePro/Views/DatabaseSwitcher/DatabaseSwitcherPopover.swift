@@ -192,7 +192,7 @@ struct DatabaseSwitcherPopover: View {
     /// field's selection rather than a second focusable control. See `FieldDrivenList`.
     private var list: some View {
         FieldDrivenList(
-            sections: [FieldDrivenListSection(id: "databases", items: viewModel.filteredDatabases)],
+            sections: listSections,
             selection: $viewModel.selectedDatabases,
             allowsMultipleSelection: true,
             onPrimaryAction: { name in
@@ -203,6 +203,16 @@ struct DatabaseSwitcherPopover: View {
             row: { row(for: $0) }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// System containers trail in a section of their own. A switcher is where a container is reached
+    /// by name, so it lists every one the server returned, unlike the sidebar tree (#2832).
+    private var listSections: [FieldDrivenListSection<DatabaseMetadata>] {
+        let sections = viewModel.visibleSections
+        return [
+            FieldDrivenListSection(id: "containers", items: sections.user),
+            FieldDrivenListSection(id: "system", title: String(localized: "System"), items: sections.system)
+        ]
     }
 
     private func row(for database: DatabaseMetadata) -> some View {

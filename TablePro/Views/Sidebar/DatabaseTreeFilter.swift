@@ -155,13 +155,20 @@ enum DatabaseTreeFilter {
     static func visibleSchemas(
         _ schemas: [String],
         systemSchemas: Set<String>,
+        activeSchema: String?,
+        showsSystem: Bool,
         searchText: String,
         contentMatches: (String) -> Bool
     ) -> [String] {
-        let nonSystem = schemas.filter { !systemSchemas.contains($0) }
+        let browsable = DatabaseTreeVisibility.visibleSchemas(
+            schemas,
+            systemSchemas: systemSchemas,
+            activeSchema: activeSchema,
+            showsSystem: showsSystem
+        )
         let matched = searchText.isEmpty
-            ? nonSystem
-            : nonSystem.filter { matches(searchText, $0) || contentMatches($0) }
+            ? browsable
+            : browsable.filter { matches(searchText, $0) || contentMatches($0) }
         return deduplicated(matched, by: { $0 })
     }
 

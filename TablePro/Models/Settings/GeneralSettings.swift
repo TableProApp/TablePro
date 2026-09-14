@@ -72,6 +72,10 @@ struct GeneralSettings: Codable, Equatable {
 
     /// Whether sidebar rows show a type icon before the object name
     var showObjectIcons: Bool
+
+    /// Whether the sidebar tree and its database filter list system databases and schemas
+    var showSystemContainers: Bool
+
     /// Whether the window shows the workspace rail listing every open connection and database
     var showWorkspaceRail: Bool
 
@@ -89,6 +93,7 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables: false,
         showObjectComments: true,
         showObjectIcons: true,
+        showSystemContainers: false,
         showWorkspaceRail: true,
         sidebarRowSize: .matchSystem,
         connectionHealthCheck: .every30Seconds
@@ -102,6 +107,7 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables: Bool = false,
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
+        showSystemContainers: Bool = false,
         showWorkspaceRail: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
@@ -113,6 +119,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showRecentTables = showRecentTables
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
+        self.showSystemContainers = showSystemContainers
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
         self.connectionHealthCheck = connectionHealthCheck
@@ -127,6 +134,7 @@ struct GeneralSettings: Codable, Equatable {
         showRecentTables = try container.decodeIfPresent(Bool.self, forKey: .showRecentTables) ?? false
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
         showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
+        showSystemContainers = try container.decodeIfPresent(Bool.self, forKey: .showSystemContainers) ?? false
         showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
         sidebarRowSize = try container.decodeIfPresent(
             SidebarRowSizePreference.self, forKey: .sidebarRowSize

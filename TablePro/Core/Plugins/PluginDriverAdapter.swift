@@ -549,15 +549,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
-        return DatabaseMetadata(
-            id: pluginMeta.name,
-            name: pluginMeta.name,
-            tableCount: pluginMeta.tableCount,
-            sizeBytes: pluginMeta.sizeBytes,
-            lastAccessed: nil,
-            isSystemDatabase: pluginMeta.isSystemDatabase,
-            icon: pluginMeta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill"
-        )
+        return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? {
@@ -632,12 +624,32 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let pluginResult = try await pluginDriver.fetchAllDatabaseMetadata()
-        return pluginResult.map { meta in
-            DatabaseMetadata(id: meta.name, name: meta.name, tableCount: meta.tableCount,
-                             sizeBytes: meta.sizeBytes, lastAccessed: nil,
-                             isSystemDatabase: meta.isSystemDatabase,
-                             icon: meta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill")
-        }
+        let systemNames = systemDatabaseNames
+        return pluginResult.map { Self.databaseMetadata($0, systemDatabaseNames: systemNames) }
+    }
+
+    /// The connection type's own list, added to whatever the driver reports. SQL Server and ClickHouse
+    /// never set the flag, and MySQL leaves it off for a database with no readable tables, so trusting
+    /// the flag alone listed `master` and `msdb` as user databases once the switcher's metadata landed,
+    /// while the sidebar, classifying by the same list as here, kept them apart.
+    private var systemDatabaseNames: Set<String> {
+        Set(PluginMetadataRegistry.shared.snapshot(for: connection.type)?.schema.systemDatabaseNames ?? [])
+    }
+
+    nonisolated static func databaseMetadata(
+        _ pluginMeta: PluginDatabaseMetadata,
+        systemDatabaseNames: Set<String>
+    ) -> DatabaseMetadata {
+        let isSystem = pluginMeta.isSystemDatabase || systemDatabaseNames.contains(pluginMeta.name)
+        return DatabaseMetadata(
+            id: pluginMeta.name,
+            name: pluginMeta.name,
+            tableCount: pluginMeta.tableCount,
+            sizeBytes: pluginMeta.sizeBytes,
+            lastAccessed: nil,
+            isSystemDatabase: isSystem,
+            icon: isSystem ? "gearshape.fill" : "cylinder.fill"
+        )
     }
 
     // MARK: - Query Cancellation

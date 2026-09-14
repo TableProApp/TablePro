@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
+- **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
 
 ### Changed
 
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The update window shows the release highlights, with the full changelog one click away.
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
+- Schema picker lists system schemas last, in place of its Show System Schemas toggle. (#2832)
 
 ### Fixed
 
@@ -43,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline cell editor left open over a different row after a refresh.
 - Row selected by Back or Forward dropped once the table finished loading.
 - Data grid jumping to the top on a later reload after a page change failed.
+- System databases such as `mysql` missing from the database switcher, the tab database picker and Open Quickly. (#2832)
+- SQL Server and ClickHouse system databases listed as user databases once the database switcher finished loading.
 
 ## [0.74.0] - 2026-09-13
 

@@ -29,7 +29,12 @@ struct SidebarTreeView: View {
     }
 
     private var schemas: [String] {
-        schemaService.schemas(for: connectionId).filter { !systemSchemas.contains($0) }
+        DatabaseTreeVisibility.visibleSchemas(
+            schemaService.schemas(for: connectionId),
+            systemSchemas: systemSchemas,
+            activeSchema: coordinator?.toolbarState.currentSchema,
+            showsSystem: settingsManager.general.showSystemContainers
+        )
     }
 
     private var searchText: String {
@@ -74,6 +79,7 @@ struct SidebarTreeView: View {
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: settingsManager.general.showSystemContainers,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

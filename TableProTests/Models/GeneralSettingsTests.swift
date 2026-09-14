@@ -107,6 +107,31 @@ struct GeneralSettingsWorkspaceRailTests {
     }
 }
 
+@Suite("GeneralSettings.showSystemContainers")
+struct GeneralSettingsSystemContainersTests {
+    @Test("Defaults to off")
+    func defaultsOff() {
+        #expect(GeneralSettings.default.showSystemContainers == false)
+        #expect(GeneralSettings().showSystemContainers == false)
+    }
+
+    @Test("Settings saved before the key existed keep system databases hidden in the sidebar")
+    func decodesMissingKeyAsOff() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+        #expect(decoded.showSystemContainers == false)
+    }
+
+    @Test("Round-trips when turned on")
+    func roundTripsEnabled() throws {
+        var settings = GeneralSettings()
+        settings.showSystemContainers = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(decoded.showSystemContainers)
+    }
+}
+
 @Suite("GeneralSettings update-preference removal")
 struct GeneralSettingsUpdatePreferenceTests {
     @Test("A settings blob still carrying automaticallyCheckForUpdates decodes without it")

@@ -38,6 +38,7 @@ internal struct DatabaseTreeMenuContext {
     internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
+    internal let showSystemContainers: Bool
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false

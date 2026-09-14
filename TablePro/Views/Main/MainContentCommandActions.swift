@@ -384,8 +384,14 @@ final class MainContentCommandActions {
             && sidebarLayout == .tree
     }
 
+    /// Asks the same question the sidebar banner does, so Show All Databases is never offered for a
+    /// filter that shows nothing on screen: one naming only system databases while they are hidden.
     var hasDatabaseFilter: Bool {
-        !SharedSidebarState.forConnection(connection.id).databaseFilterSelected.isEmpty
+        DatabaseTreeVisibility.isFiltering(
+            selected: SharedSidebarState.forConnection(connection.id).databaseFilterSelected,
+            databases: DatabaseTreeMetadataService.shared.databases(for: connection.id),
+            showsSystem: AppSettingsManager.shared.general.showSystemContainers
+        )
     }
 
     var sidebarLayout: SidebarLayout {

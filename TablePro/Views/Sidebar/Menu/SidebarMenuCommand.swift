@@ -75,5 +75,6 @@ internal enum SidebarMenuCommand: Equatable {
     case openRedisKey(key: String, keyType: String)
     case toggleObjectIcons
     case toggleObjectComments
+    case toggleSystemContainers
     case setRowSize(SidebarRowSizePreference)
 }
