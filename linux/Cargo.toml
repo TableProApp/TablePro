@@ -52,13 +52,10 @@ lto = "fat"
 codegen-units = 1
 strip = "symbols"
 
-# tiberius 0.12.3 (its latest release) pins libgssapi ^0.4.5. libgssapi 0.4.6's
-# `Buf::deref` calls `slice::from_raw_parts(NULL, 0)` on the empty token a
-# successful Kerberos handshake returns -- undefined behavior that aborts every
-# debug build (`cargo run`). tiberius already fixed this on `main` (merged PR
-# prisma/tiberius#372: bump libgssapi 0.4.5 -> 0.8.x, whose deref is guarded)
-# but has not cut a release; the bug is tracked open as prisma/tiberius#343.
-# Pin the fixed commit until a release lands, then drop this and bump the
-# `tiberius` version above to the release.
+# tiberius 0.12.3 pins libgssapi 0.4, whose `Buf::deref` is undefined behaviour
+# on the empty token of a successful Kerberos login (prisma/tiberius#343), and
+# rustls 0.21 with rustls-webpki 0.101 (RUSTSEC-2026-0098/0099/0104). Upstream
+# main at tiberius-rs/tiberius fixes both and has no release yet. Drop this pin
+# and bump `tiberius` when 0.13 is published.
 [patch.crates-io]
-tiberius = { git = "https://github.com/prisma/tiberius", rev = "a6b4fcdae0de5702427290b89f8d05bc51f3bcfa" }
+tiberius = { git = "https://github.com/tiberius-rs/tiberius", rev = "c1d2e741ee6fe0935091826d91fb5886b6a4082a" }
