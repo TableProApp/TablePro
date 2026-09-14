@@ -38,6 +38,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
+rustls-pki-types = { version = "1", features = ["std"] }
 gtk4 = { version = "0.11", features = ["v4_14"] }
 libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }
 sourceview5 = { version = "0.11", features = ["v5_12"] }
