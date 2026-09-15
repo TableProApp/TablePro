@@ -39,3 +39,4 @@ internal extension Array {
 
 internal typealias DatabaseTreeMenuSection = SidebarMenuSection<SidebarMenuCommand>
 internal typealias FavoritesMenuSection = SidebarMenuSection<FavoritesMenuCommand>
+internal typealias ConnectionTreeMenuSection = SidebarMenuSection<ConnectionTreeMenuCommand>

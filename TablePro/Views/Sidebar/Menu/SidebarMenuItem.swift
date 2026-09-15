@@ -56,3 +56,4 @@ internal extension SidebarMenuItem {
 
 internal typealias DatabaseTreeMenuItem = SidebarMenuItem<SidebarMenuCommand>
 internal typealias FavoritesMenuItem = SidebarMenuItem<FavoritesMenuCommand>
+internal typealias ConnectionTreeMenuItem = SidebarMenuItem<ConnectionTreeMenuCommand>
