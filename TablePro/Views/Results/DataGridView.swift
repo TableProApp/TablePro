@@ -667,6 +667,9 @@ struct DataGridView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
+        /// The detached editor commits through this coordinator, and a mount is built fresh per tab
+        /// switch and per results-mode toggle, so a window left open past one writes nothing.
+        coordinator.dismissPoppedOutCellEditor()
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
         coordinator.flushPendingColumnLayoutPersistence()

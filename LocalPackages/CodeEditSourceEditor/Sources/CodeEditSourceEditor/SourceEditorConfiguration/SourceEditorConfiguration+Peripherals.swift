@@ -16,12 +16,6 @@ extension SourceEditorConfiguration {
         /// show the folding ribbon while hiding line numbers.
         public var showLineNumbers: Bool = true
 
-        /// Whether to show the minimap.
-        public var showMinimap: Bool
-
-        /// Whether to show the reformatting guide.
-        public var showReformattingGuide: Bool
-
         /// Whether to show the folding ribbon. Only available if ``showGutter`` is `true`.
         public var showFoldingRibbon: Bool
 
@@ -55,8 +49,6 @@ extension SourceEditorConfiguration {
         public init(
             showGutter: Bool = true,
             showLineNumbers: Bool = true,
-            showMinimap: Bool = true,
-            showReformattingGuide: Bool = false,
             showFoldingRibbon: Bool = true,
             showStatementRunControls: Bool = false,
             gutterFitsContent: Bool = false,
@@ -67,8 +59,6 @@ extension SourceEditorConfiguration {
         ) {
             self.showGutter = showGutter
             self.showLineNumbers = showLineNumbers
-            self.showMinimap = showMinimap
-            self.showReformattingGuide = showReformattingGuide
             self.showFoldingRibbon = showFoldingRibbon
             self.showStatementRunControls = showStatementRunControls
             self.gutterFitsContent = gutterFitsContent
@@ -85,16 +75,6 @@ extension SourceEditorConfiguration {
             if oldConfig?.showGutter != showGutter {
                 controller.gutterView.isHidden = !showGutter
                 shouldUpdateInsets = true
-            }
-
-            if oldConfig?.showMinimap != showMinimap {
-                controller.minimapView?.isHidden = !showMinimap
-                shouldUpdateInsets = true
-            }
-
-            if oldConfig?.showReformattingGuide != showReformattingGuide {
-                controller.reformattingGuideView.isHidden = !showReformattingGuide
-                controller.reformattingGuideView.updatePosition(in: controller)
             }
 
             if oldConfig?.showLineNumbers != showLineNumbers {

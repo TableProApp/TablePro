@@ -31,13 +31,7 @@ internal struct EditorKeyChord: Sendable, CustomTestStringConvertible {
         EditorKeyChord(name: "Command-[", keyCode: kVK_ANSI_LeftBracket, characters: "[", modifiers: .command),
         EditorKeyChord(name: "Command-]", keyCode: kVK_ANSI_RightBracket, characters: "]", modifiers: .command),
         EditorKeyChord(name: "Command-Shift-D", keyCode: kVK_ANSI_D, characters: "D", modifiers: [.command, .shift]),
-        EditorKeyChord(name: "Command-Shift-K", keyCode: kVK_ANSI_K, characters: "K", modifiers: [.command, .shift]),
-        EditorKeyChord(
-            name: "Command-Control-J",
-            keyCode: kVK_ANSI_J,
-            characters: "j",
-            modifiers: [.command, .control]
-        )
+        EditorKeyChord(name: "Command-Shift-K", keyCode: kVK_ANSI_K, characters: "K", modifiers: [.command, .shift])
     ]
 
     static let editorCommands: [EditorKeyChord] = inputMethodKeys + commandChords
@@ -45,6 +39,12 @@ internal struct EditorKeyChord: Sendable, CustomTestStringConvertible {
     static let foreignCommandChords: [EditorKeyChord] = [
         EditorKeyChord(name: "Command-S", keyCode: kVK_ANSI_S, characters: "s", modifiers: .command),
         EditorKeyChord(name: "Command-C", keyCode: kVK_ANSI_C, characters: "c", modifiers: .command),
+        EditorKeyChord(
+            name: "Command-Control-J",
+            keyCode: kVK_ANSI_J,
+            characters: "j",
+            modifiers: [.command, .control]
+        ),
         EditorKeyChord(
             name: "Command-Option-[",
             keyCode: kVK_ANSI_LeftBracket,

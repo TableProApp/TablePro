@@ -25,8 +25,42 @@ struct InspectorFieldEditStagingTests {
             tableRows.rows[row].values[column]
         }
 
-        func stage(_ value: PluginCellValue, column: Int = 1, rows: [RowID] = [.existing(1)]) {
-            coordinator.stageInspectorFieldEdit(columnIndex: column, value: value, rowIDs: rows)
+        func stage(
+            _ value: PluginCellValue,
+            column: Int = 1,
+            rows: [RowID] = [.existing(1)],
+            continuity: FieldEditContinuity = .discrete
+        ) {
+            coordinator.stageInspectorFieldEdit(
+                columnIndex: column, value: value, rowIDs: rows, continuity: continuity
+            )
+        }
+
+        func type(_ value: PluginCellValue, column: Int = 1, rows: [RowID] = [.existing(1)]) {
+            stage(value, column: column, rows: rows, continuity: .typing)
+        }
+
+        /// A real `MultiRowEditState` wired the way the inspector wires it, so a field edit takes
+        /// the same route from the editor's binding to the staged change.
+        func configuredEditState(rows: [RowID]) -> MultiRowEditState {
+            let state = MultiRowEditState()
+            let selected = rows.compactMap { tableRows.row(withID: $0) }
+            state.configure(
+                selectedRowIndices: Set(selected.indices),
+                rowIDs: selected.map(\.id),
+                allRows: selected.map { $0.values.map(\.asText) },
+                columns: tableRows.columns,
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+            )
+            state.onFieldChanged = { [coordinator] columnIndex, value, continuity in
+                coordinator.stageInspectorFieldEdit(
+                    columnIndex: columnIndex, value: value, rowIDs: rows, continuity: continuity
+                )
+            }
+            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow in
+                coordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+            }
+            return state
         }
     }
 
@@ -143,6 +177,45 @@ struct InspectorFieldEditStagingTests {
         #expect(!fixture.coordinator.changeManager.hasChanges)
     }
 
+    /// `originalValue` is nil both for a stored NULL and for a selection whose rows disagree, and
+    /// sending that nil as one value wrote NULL into every selected row.
+    @Test("clearing a field the selected rows disagree on puts each row's own value back")
+    func clearingAMultiValueFieldRestoresEachRow() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(0), .existing(1)])
+
+        editState.updateField(at: 1, value: "Same")
+        editState.updateField(at: 1, value: "")
+
+        #expect(fixture.value(row: 0, column: 1) == .text("Alice"))
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    @Test("clearing a field the rows agree on still sends the stored value")
+    func clearingASingleValueFieldSendsTheStoredValue() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(1)])
+
+        editState.updateField(at: 1, value: "Zed")
+        editState.updateField(at: 1, value: "Bob")
+
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    @Test("an explicit NULL over rows that disagree still stages")
+    func anExplicitNullStillStages() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(0), .existing(1)])
+
+        editState.setFieldToNull(at: 1)
+
+        #expect(fixture.value(row: 0, column: 1) == .null)
+        #expect(fixture.value(row: 1, column: 1) == .null)
+        #expect(fixture.coordinator.changeManager.hasChanges)
+    }
+
     @Test("a row the buffer does not hold is skipped rather than staged")
     func anUnknownRowIsSkipped() {
         let fixture = makeFixture()
@@ -181,5 +254,132 @@ struct InspectorFieldEditStagingTests {
 
         #expect(fixture.value(row: 2, column: 1) == .text("Zed"))
         #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+    }
+
+    /// A `TextField` bound to a string writes its binding per character, so a typed word reached
+    /// the undo stack one character at a time.
+    @Test("a typed word is one undo step")
+    func typingIsOneUndoStep() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Bobb"))
+        fixture.type(.text("Bobby"))
+        fixture.coordinator.endInspectorEditRun()
+        #expect(fixture.value(row: 1, column: 1) == .text("Bobby"))
+
+        undoManager.undo()
+
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+        #expect(!undoManager.canUndo)
+    }
+
+    @Test("redo puts the last typed value back, not the first keystroke")
+    func redoRestoresTheFinalValue() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Bobb"))
+        fixture.type(.text("Bobby"))
+        fixture.coordinator.endInspectorEditRun()
+        undoManager.undo()
+        undoManager.redo()
+
+        #expect(fixture.value(row: 1, column: 1) == .text("Bobby"))
+    }
+
+    @Test("a word typed across a multi-row selection is one undo step for every row")
+    func multiRowTypingIsOneUndoStep() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Sa"), rows: [.existing(0), .existing(1)])
+        fixture.type(.text("Sam"), rows: [.existing(0), .existing(1)])
+        fixture.coordinator.endInspectorEditRun()
+
+        undoManager.undo()
+
+        #expect(fixture.value(row: 0, column: 1) == .text("Alice"))
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+        #expect(!undoManager.canUndo)
+    }
+
+    /// A row that already held the typed text joins the run on the keystroke that first changes it,
+    /// with its own starting value.
+    @Test("a row that only changes later still comes back with the rest")
+    func aLateJoiningRowIsRestored() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Alice"), rows: [.existing(0), .existing(1)])
+        fixture.type(.text("AliceX"), rows: [.existing(0), .existing(1)])
+        fixture.coordinator.endInspectorEditRun()
+
+        undoManager.undo()
+
+        #expect(fixture.value(row: 0, column: 1) == .text("Alice"))
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    @Test("a word typed back to where it started leaves no undo step")
+    func typingBackToTheStartLeavesNoStep() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Bobby"))
+        fixture.type(.text("Bob"))
+        fixture.coordinator.endInspectorEditRun()
+
+        #expect(!undoManager.canUndo)
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+    }
+
+    @Test("a discrete action ends the run and takes its own step")
+    func aDiscreteActionTakesItsOwnStep() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Bobby"))
+        fixture.stage(.null)
+
+        undoManager.undo()
+        #expect(fixture.value(row: 1, column: 1) == .text("Bobby"))
+
+        undoManager.undo()
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+    }
+
+    @Test("the Edit menu offers Undo while a word is still being typed")
+    func anOpenRunIsUndoable() {
+        let fixture = makeFixture()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        fixture.coordinator.changeManager.undoManagerProvider = { undoManager }
+
+        fixture.type(.text("Bobby"))
+
+        #expect(fixture.coordinator.changeManager.hasCoalescedUndoRun)
+        #expect(!undoManager.canUndo)
+
+        fixture.coordinator.endInspectorEditRun()
+
+        #expect(!fixture.coordinator.changeManager.hasCoalescedUndoRun)
+        #expect(undoManager.canUndo)
     }
 }

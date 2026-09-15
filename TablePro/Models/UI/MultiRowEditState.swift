@@ -68,12 +68,27 @@ struct FieldEditState: Identifiable {
     }
 }
 
+enum FieldEditContinuity {
+    case typing
+    case discrete
+}
+
 /// Manages edit state for multi-row editing in sidebar
 @MainActor @Observable
 final class MultiRowEditState {
     var fields: [FieldEditState] = []
 
-    var onFieldChanged: ((Int, PluginCellValue) -> Void)?
+    /// A field's new value, and whether it arrived a character at a time. Typing is folded into one
+    /// undo step; choosing NULL, DEFAULT, a function or a picker value is its own step.
+    var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
+
+    /// A field the selected rows disagree on, cleared back to nothing. It has no single value to
+    /// send, so it asks for each row's own configured value instead.
+    var onFieldReverted: ((Int, [RowID: PluginCellValue]) -> Void)?
+
+    /// A value window still open over a selection that has moved on. It names the rows it was
+    /// opened for, because the fields it was opened from are gone.
+    var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID]) -> Void)?
 
     private(set) var selectedRowIndices: Set<Int> = []
 
@@ -247,9 +262,43 @@ final class MultiRowEditState {
         fields[index].pendingValue = pending
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        if pending != nil || hadPendingEdit {
-            onFieldChanged?(index, PluginCellValue.fromOptional(pending ?? original))
+        if pending != nil {
+            onFieldChanged?(index, PluginCellValue.fromOptional(pending), .typing)
+        } else if hadPendingEdit {
+            /// `originalValue` is nil for two different situations, and only one of them is a
+            /// value: a stored NULL, and a selection whose rows do not agree. Sending it as one
+            /// value wrote NULL into every selected row when the user cleared a field they all
+            /// disagreed on, which the field then reported as unedited.
+            if fields[index].hasMultipleValues {
+                onFieldReverted?(index, configuredValues(atColumn: index))
+            } else {
+                onFieldChanged?(index, PluginCellValue.fromOptional(original), .typing)
+            }
         }
+    }
+
+    /// What each row held when the selection was configured, which is what a field with no value of
+    /// its own reverts to.
+    private func configuredValues(atColumn index: Int) -> [RowID: PluginCellValue] {
+        var values: [RowID: PluginCellValue] = [:]
+        for (rowID, row) in zip(rowIDs, allRows) where row.indices.contains(index) {
+            values[rowID] = PluginCellValue.fromOptional(row[index])
+        }
+        return values
+    }
+
+    /// A commit from a detached value window, which outlives the selection it was opened from.
+    ///
+    /// While that selection is still the one on screen this is an ordinary field edit. Once it has
+    /// moved the fields no longer describe those rows, so the value goes straight to the rows the
+    /// window was opened for rather than into whatever is selected now.
+    func updateDetachedField(columnIndex: Int, rowIDs: [RowID], value: String?) {
+        guard !rowIDs.isEmpty else { return }
+        if self.rowIDs == rowIDs, fields.indices.contains(columnIndex) {
+            updateField(at: columnIndex, value: value)
+            return
+        }
+        onDetachedFieldChanged?(columnIndex, PluginCellValue.fromOptional(value), rowIDs)
     }
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
@@ -272,7 +321,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = encoded
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .bytes(data))
+        onFieldChanged?(index, .bytes(data), .discrete)
     }
 
     func setFieldToNull(at index: Int) {
@@ -280,7 +329,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = nil
         fields[index].isPendingNull = true
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .null)
+        onFieldChanged?(index, .null, .discrete)
     }
 
     func setFieldToDefault(at index: Int) {
@@ -288,7 +337,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = nil
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = true
-        onFieldChanged?(index, .text("__DEFAULT__"))
+        onFieldChanged?(index, .text("__DEFAULT__"), .discrete)
     }
 
     func setFieldToFunction(at index: Int, function: String) {
@@ -296,7 +345,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = function
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .text(function))
+        onFieldChanged?(index, .text(function), .discrete)
     }
 
     func setFieldToEmpty(at index: Int) {
@@ -310,7 +359,7 @@ final class MultiRowEditState {
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         if fields[index].pendingValue != nil || hadPendingEdit {
-            onFieldChanged?(index, .text(""))
+            onFieldChanged?(index, .text(""), .discrete)
         }
     }
 
@@ -327,6 +376,8 @@ final class MultiRowEditState {
     func releaseData() {
         fields = []
         onFieldChanged = nil
+        onFieldReverted = nil
+        onDetachedFieldChanged = nil
         selectedRowIndices = []
         rowIDs = []
         allRows = []

@@ -30,7 +30,7 @@ final class HighlightProviderStateTest: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         textView = Mock.textView()
-        rangeProvider = MockVisibleRangeProvider(textView: textView, minimapView: nil)
+        rangeProvider = MockVisibleRangeProvider(textView: textView)
         delegate = EmptyHighlightProviderStateDelegate()
     }
 

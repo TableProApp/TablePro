@@ -17,19 +17,14 @@ extension SourceEditorConfiguration {
         /// Determines what character(s) to insert when the tab key is pressed. Defaults to 4 spaces.
         public var indentOption: IndentOption = .spaces(count: 4)
 
-        /// The column to reformat at.
-        public var reformatAtColumn: Int = 80
-
         public init(
             isEditable: Bool = true,
             isSelectable: Bool = true,
-            indentOption: IndentOption = .spaces(count: 4),
-            reformatAtColumn: Int = 80
+            indentOption: IndentOption = .spaces(count: 4)
         ) {
             self.isEditable = isEditable
             self.isSelectable = isSelectable
             self.indentOption = indentOption
-            self.reformatAtColumn = reformatAtColumn
         }
 
         @MainActor
@@ -50,12 +45,6 @@ extension SourceEditorConfiguration {
 
             if oldConfig?.indentOption != indentOption {
                 controller.setUpTextFormation()
-            }
-
-            if oldConfig?.reformatAtColumn != reformatAtColumn {
-                controller.reformattingGuideView.column = reformatAtColumn
-                controller.reformattingGuideView.updatePosition(in: controller)
-                controller.view.updateConstraintsForSubtreeIfNeeded()
             }
         }
     }

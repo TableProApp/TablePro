@@ -56,26 +56,6 @@
     CodeEdit". Vendored fork with local modifications (its Package.swift points CodeEditTextView and CodeEditLanguages
     at local paths). MIT requires the copyright notice and permission notice be reproduced. Confirmed
     linked: 83+ `$s21CodeEditSourceEditor` symbols in the app dylib.'
-- id: codeeditsymbols
-  name: CodeEditSymbols
-  version: 0.2.3
-  spdx: UNVERIFIED
-  copyrights: []
-  homepageURL: https://github.com/CodeEditApp/CodeEditSymbols
-  licenseTextURL: ''
-  source: spm:codeeditsymbols
-  patched: false
-  notes: 'NO LICENCE UPSTREAM. Verified independently on 2026-08-19 by four checks, all agreeing: (1)
-    https://api.github.com/repos/CodeEditApp/CodeEditSymbols -> "license": null (2) https://api.github.com/repos/CodeEditApp/CodeEditSymbols/license
-    -> HTTP 404 Not Found (3) root contents at HEAD (https://api.github.com/repos/CodeEditApp/CodeEditSymbols/contents/)
-    -> .github, .gitignore, Package.resolved, Package.swift, README.md, Sources, Tests. No LICENSE, LICENSE.md,
-    LICENCE, COPYING or NOTICE. (4) root tree at the EXACT resolved revision ae69712b08571c4469c2ed5cd38ad9f19439793e
-    (tag v0.2.3), via git/trees -> same seven entries, still no licence file. The README makes no licence
-    statement either. Repo is not archived (pushed_at 2025-04-10). No SPDX identifier is inferred. THIS
-    IS A BLOCKING COMPLIANCE ITEM: it is linked into the shipping app (700 `$s15CodeEditSymbols` symbols
-    in the app dylib; imported by CodeEditSourceEditor/Sources/CodeEditSourceEditor/Find/PanelView/FindPanelView.swift).
-    Note the resolved tag is `v0.2.3`; querying the API with the bare `0.2.3` returns "No commit found
-    for the ref", which is a lookup artefact and not evidence of anything.'
 - id: codeedittextview
   name: CodeEditTextView
   version: vendored (no upstream tag recorded in the tree)
@@ -363,7 +343,7 @@
     `$s9Rearrange` symbols.'
 - id: sparkle
   name: Sparkle
-  version: 2.9.5
+  version: 2.10.0
   spdx: MIT
   copyrights:
   - Copyright (c) 2006-2013 Andy Matuschak.
@@ -374,7 +354,7 @@
   - Copyright (c) 2014 Petroules Corporation.
   - Copyright (c) 2014 Big Nerd Ranch.
   homepageURL: https://github.com/sparkle-project/Sparkle
-  licenseTextURL: https://github.com/sparkle-project/Sparkle/blob/2.9.5/LICENSE
+  licenseTextURL: https://github.com/sparkle-project/Sparkle/blob/2.10.0/LICENSE
   textFile: texts/sparkle.txt
   source: spm:sparkle
   patched: false
@@ -389,7 +369,7 @@
     (c) 2008-2010 Yuta Mori All Rights Reserved." - portable C Ed25519 from https://github.com/orlp/ed25519,
     Zlib, "Copyright (c) 2015 Orson Peters <orsonpeters@gmail.com>" - SUSignatureVerifier.m, BSD-2-Clause,
     "Copyright (c) 2011 Mark Hamlin." Ships as a dynamically linked framework: Contents/Frameworks/Sparkle.framework,
-    confirmed by otool -L on the app dylib (current version 2.9.5), which is why it contributes no Swift
+    confirmed by otool -L on the app dylib (current version 2.10.0), which is why it contributes no Swift
     mangled symbols to the app dylib.'
 - id: swift-asn1
   name: swift-asn1

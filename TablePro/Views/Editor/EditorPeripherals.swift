@@ -66,7 +66,6 @@ enum EditorPeripherals {
         .init(
             showGutter: lineNumbers,
             showLineNumbers: lineNumbers,
-            showMinimap: false,
             showFoldingRibbon: folding,
             showStatementRunControls: lineNumbers && statementRunControls,
             gutterFitsContent: fitsContent,

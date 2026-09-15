@@ -226,6 +226,11 @@ final class MainContentCoordinator {
     /// AppKit object reached through observation-ignored hops, so it cannot invalidate a view.
     var gridDisplayRevision: Int = 0
 
+    /// Bumped when an inspector edit rewrites the selected row's values, so the inspector's JSON
+    /// rendering re-reads the row. Apart from `gridDisplayRevision`, which drives a full rebuild of
+    /// the field list and takes first responder out of whatever is being typed into.
+    var inspectorRowContentRevision: Int = 0
+
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 

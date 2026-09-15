@@ -20,7 +20,6 @@ extension TextViewController {
         // Filters
 
         setUpOpenPairFilters(pairs: BracketPairs.allValues)
-        setUpTagFilter()
         setUpNewlineTabFilters(indentOption: configuration.behavior.indentOption)
         setUpDeletePairFilters(pairs: BracketPairs.allValues)
         setUpDeleteWhitespaceFilter(indentOption: configuration.behavior.indentOption)
@@ -72,16 +71,6 @@ extension TextViewController {
     private func setUpDeleteWhitespaceFilter(indentOption: IndentOption) {
         let filter = DeleteWhitespaceFilter(indentOption: indentOption)
         textFilters.append(filter)
-    }
-
-    private func setUpTagFilter() {
-        guard let treeSitterClient, language.id.shouldProcessTags() else { return }
-        textFilters.append(TagFilter(
-            language: self.language,
-            indentOption: configuration.behavior.indentOption,
-            lineEnding: textView.layoutManager.detectedLineEnding,
-            treeSitterClient: treeSitterClient
-        ))
     }
 
     /// Determines whether or not a text mutation should be applied.

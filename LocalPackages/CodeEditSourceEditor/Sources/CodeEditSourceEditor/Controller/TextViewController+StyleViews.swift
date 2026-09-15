@@ -38,11 +38,7 @@ extension TextViewController {
         scrollView.scrollerStyle = .overlay
     }
 
-    package func styleMinimapView() {
-        minimapView.postsFrameChangedNotifications = true
-    }
-
-    /// Updates all relevant content insets including the find panel, scroll view, minimap and gutter position.
+    /// Updates all relevant content insets including the find panel, scroll view and gutter position.
     package func updateContentInsets() {
         updateFloatingSubviewInsets()
 
@@ -50,21 +46,14 @@ extension TextViewController {
         if let contentInsets = configuration.layout.contentInsets {
             scrollView.automaticallyAdjustsContentInsets = false
             scrollView.contentInsets = contentInsets
-
-            minimapView.scrollView.automaticallyAdjustsContentInsets = false
-            minimapView.scrollView.contentInsets.top = contentInsets.top
-            minimapView.scrollView.contentInsets.bottom = contentInsets.bottom
         } else {
             scrollView.automaticallyAdjustsContentInsets = true
-            minimapView.scrollView.automaticallyAdjustsContentInsets = true
         }
 
         // `additionalTextInsets` only effects text content.
         let additionalTextInsets = configuration.layout.additionalTextInsets
         scrollView.contentInsets.top += additionalTextInsets?.top ?? 0
         scrollView.contentInsets.bottom += additionalTextInsets?.bottom ?? 0
-        minimapView.scrollView.contentInsets.top += additionalTextInsets?.top ?? 0
-        minimapView.scrollView.contentInsets.bottom += additionalTextInsets?.bottom ?? 0
 
         // Inset the top by the find panel height
         let findInset: CGFloat = if findViewController?.viewModel.isShowingFindPanel ?? false {
@@ -73,7 +62,6 @@ extension TextViewController {
             0
         }
         scrollView.contentInsets.top += findInset
-        minimapView.scrollView.contentInsets.top += findInset
 
         findViewController?.topPadding = configuration.layout.contentInsets?.top
 
@@ -81,24 +69,22 @@ extension TextViewController {
 
         // Update scrollview tiling
         scrollView.reflectScrolledClipView(scrollView.contentView)
-        minimapView.scrollView.reflectScrolledClipView(minimapView.scrollView.contentView)
 
         // The host's insets change the width the text has to fill, and a change on the trailing side alone reaches the
         // text view through no other route.
         textView.updateFrameIfNeeded()
     }
 
-    /// Reserves the gutter's and the minimap's widths on the scroll view. See ``floatingSubviewInsets``.
+    /// Reserves the gutter's width on the scroll view. See ``floatingSubviewInsets``.
     ///
     /// The reservation changes the width the text has to fill, which the text view does not hear about on its own when
     /// only the trailing side moves, so its frame is brought up to date here.
     func updateFloatingSubviewInsets() {
         // Allow this method to be called before ``loadView()``
-        guard scrollView != nil, textView != nil, gutterView != nil, minimapView != nil else { return }
+        guard scrollView != nil, textView != nil, gutterView != nil else { return }
         let insets = floatingSubviewInsets
         guard scrollView.floatingSubviewInsets != insets else { return }
         scrollView.floatingSubviewInsets = insets
         textView.updateFrameIfNeeded()
-        reformattingGuideView?.updatePosition(in: self)
     }
 }

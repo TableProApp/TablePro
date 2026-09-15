@@ -23,18 +23,14 @@ struct ContentView: View {
         cursorPositions: [CursorPosition(line: 1, column: 1)]
     )
     @StateObject private var suggestions: MockCompletionDelegate = MockCompletionDelegate()
-    @StateObject private var jumpToDefinition: MockJumpToDefinitionDelegate = MockJumpToDefinitionDelegate()
 
     @State private var font: NSFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
     @AppStorage("wrapLines") private var wrapLines: Bool = true
     @AppStorage("systemCursor") private var useSystemCursor: Bool = false
 
     @State private var indentOption: IndentOption = .spaces(count: 4)
-    @AppStorage("reformatAtColumn") private var reformatAtColumn: Int = 80
 
     @AppStorage("showGutter") private var showGutter: Bool = true
-    @AppStorage("showMinimap") private var showMinimap: Bool = true
-    @AppStorage("showReformattingGuide") private var showReformattingGuide: Bool = false
     @AppStorage("showFoldingRibbon") private var showFoldingRibbon: Bool = true
     @State private var invisibleCharactersConfig: InvisibleCharactersConfiguration = .empty
     @State private var warningCharacters: Set<UInt16> = []
@@ -60,22 +56,16 @@ struct ContentView: View {
                 language: language,
                 configuration: SourceEditorConfiguration(
                     appearance: .init(theme: theme, font: font, wrapLines: wrapLines),
-                    behavior: .init(
-                        indentOption: indentOption,
-                        reformatAtColumn: reformatAtColumn
-                    ),
+                    behavior: .init(indentOption: indentOption),
                     layout: .init(contentInsets: contentInsets(proxy: proxy)),
                     peripherals: .init(
                         showGutter: showGutter,
-                        showMinimap: showMinimap,
-                        showReformattingGuide: showReformattingGuide,
                         invisibleCharactersConfiguration: invisibleCharactersConfig,
                         warningCharacters: warningCharacters
                     )
                 ),
                 state: $editorState,
-                completionDelegate: suggestions,
-                jumpToDefinitionDelegate: jumpToDefinition
+                completionDelegate: suggestions
             )
             .overlay(alignment: .bottom) {
                 StatusBar(
@@ -88,10 +78,7 @@ struct ContentView: View {
                     language: $language,
                     theme: $theme,
                     showGutter: $showGutter,
-                    showMinimap: $showMinimap,
                     indentOption: $indentOption,
-                    reformatAtColumn: $reformatAtColumn,
-                    showReformattingGuide: $showReformattingGuide,
                     showFoldingRibbon: $showFoldingRibbon,
                     invisibles: $invisibleCharactersConfig,
                     warningCharacters: $warningCharacters

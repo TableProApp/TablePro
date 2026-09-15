@@ -14,7 +14,6 @@ internal enum EditorKeyCommand: Equatable {
     case deleteLine
     case escape
     case showCompletions
-    case jumpToDefinition
     case moveLinesUp
     case moveLinesDown
 
@@ -32,7 +31,7 @@ internal enum EditorKeyCommand: Equatable {
 
     internal var isCommandChord: Bool {
         switch self {
-        case .toggleComment, .outdent, .indent, .duplicateLine, .deleteLine, .jumpToDefinition:
+        case .toggleComment, .outdent, .indent, .duplicateLine, .deleteLine:
             return true
         case .escape, .showCompletions, .moveLinesUp, .moveLinesDown:
             return false
@@ -58,8 +57,6 @@ internal enum EditorKeyCommand: Equatable {
             return .escape
         case (control, " "):
             return .showCompletions
-        case ([command, control], "j"):
-            return .jumpToDefinition
         default:
             return nil
         }

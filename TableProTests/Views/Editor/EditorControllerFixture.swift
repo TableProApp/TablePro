@@ -96,7 +96,7 @@ internal enum EditorControllerFixture {
         )
     }
 
-    private static var theme: EditorTheme {
+    internal static var theme: EditorTheme {
         EditorTheme(
             text: EditorTheme.Attribute(color: .textColor),
             insertionPoint: .textColor,

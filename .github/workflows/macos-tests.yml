@@ -147,7 +147,7 @@ jobs:
       # is broken. Its own suites also fail on main (HighlighterTests, TagEditingTests, plus one
       # that aborts the runner), so this needs fixing at the package level before it can gate.
       - name: Run CodeEditTextView package tests
-        run: swift test --package-path LocalPackages/CodeEditTextView
+        run: swift test --package-path LocalPackages/CodeEditTextView --force-resolved-versions
 
   # Compiles the app, both test bundles and all 31 plugins once, then hands the products to the
   # test jobs. That build used to happen inside the same job that ran the tests, which meant the

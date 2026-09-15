@@ -63,7 +63,7 @@ playground.xcworkspace
 .swiftpm/
 
 .build/
-LocalPackages/*/Package.resolved
+LocalPackages/*/Example/**/Package.resolved
 
 # Coverage profile output
 *.profraw

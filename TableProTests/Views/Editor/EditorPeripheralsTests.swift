@@ -61,12 +61,6 @@ struct EditorPeripheralsTests {
         #expect(EditorPeripherals.preview(folding: true).gutterFitsContent)
     }
 
-    @Test("The minimap is off everywhere")
-    func minimapIsOff() {
-        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showMinimap == false)
-        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).showMinimap == false)
-    }
-
     @Test("Every editor reveals invisible characters unless the reader turned them off")
     func invisibleCharactersAreRevealed() {
         #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showSpecialCharacters)
