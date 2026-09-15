@@ -116,18 +116,39 @@ impl PreferencesDialog {
             alert.set_close_response("cancel");
             let history_for_clear = history_for_clear.clone();
             let tasks = tasks.clone();
-            alert.connect_response(None, move |alert, response| {
-                alert.close();
-                if response == "clear" {
-                    let Some(history) = history_for_clear.clone() else {
-                        return;
-                    };
-                    tasks.spawn_task(async move {
-                        if let Err(error) = history.clear_all().await {
-                            tracing::warn!(%error, "could not clear the query history");
-                        }
-                    });
+            let dialog_for_toast = dialog.clone();
+            // AdwAlertDialog closes itself before it emits, so there is
+            // no close to do here.
+            alert.connect_response(None, move |_, response| {
+                if response != "clear" {
+                    return;
                 }
+                let Some(history) = history_for_clear.clone() else {
+                    return;
+                };
+                let clearing = tasks.spawn_task(async move { history.clear_all().await });
+                let dialog = dialog_for_toast.clone();
+                // A destructive action that reports nothing leaves the
+                // user guessing whether it ran.
+                glib::spawn_future_local(async move {
+                    let message = match clearing.await {
+                        Ok(Ok(removed)) => crate::i18n::ngettext_f(
+                            "{count} query cleared",
+                            "{count} queries cleared",
+                            removed as u32,
+                            &[("count", &removed.to_string())],
+                        ),
+                        Ok(Err(error)) => {
+                            tracing::warn!(%error, "could not clear the query history");
+                            crate::i18n::gettext("The query history could not be cleared.")
+                        }
+                        Err(failure) => {
+                            tracing::warn!(%failure, "the clear-history task failed");
+                            crate::i18n::gettext("The query history could not be cleared.")
+                        }
+                    };
+                    dialog.add_toast(adw::Toast::new(&message));
+                });
             });
             alert.present(Some(&dialog));
         });
@@ -151,6 +172,19 @@ mod tests {
 
     use super::*;
 
+    /// The template lives in the embedded resources, so a test that
+    /// builds the dialog has to register them first. Test order is not
+    /// fixed, so it cannot rely on another test having done it.
+    fn new_dialog(
+        settings: &MemorySettings,
+        storage: &crate::storage::SharedStorage,
+        history: Option<tablepro_storage::QueryHistory>,
+        tasks: &Tasks,
+    ) -> PreferencesDialog {
+        crate::register_test_resources();
+        PreferencesDialog::new(settings.get(), storage, history, tasks)
+    }
+
     fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
         // A temporary root keeps the dialog's storage row and history
         // actions away from the developer's own files.
@@ -169,7 +203,7 @@ mod tests {
 
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
         assert_eq!(imp.page_size_row.title(), "Default page size");
@@ -185,7 +219,7 @@ mod tests {
 
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
         assert_eq!(imp.page_size_row.value(), 500.0);
@@ -204,7 +238,7 @@ mod tests {
 
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
         assert!(!imp.font_row.is_sensitive());
@@ -227,9 +261,132 @@ mod tests {
 
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
-        let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
+        let dialog = new_dialog(&settings, &storage, None, &runtime.tasks());
 
         let subtitle = dialog.imp().storage_row.subtitle().unwrap_or_default();
         assert!(subtitle.contains("history.db"), "{subtitle}");
+    }
+
+    #[gtk4::test]
+    fn clear_history_is_insensitive_until_the_database_opens() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+
+        let starting = new_dialog(&settings, &storage, None, &runtime.tasks());
+
+        assert!(
+            !starting.imp().clear_button.is_sensitive(),
+            "Clear offered to clear a database that is not open"
+        );
+    }
+
+    #[gtk4::test]
+    fn clear_history_shows_toast_and_empties_store() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.TablePro.Devel");
+        let history = open_history(&runtime, &paths);
+        record_one(&runtime, &history);
+        assert_eq!(count(&runtime, &history), 1);
+
+        let dialog = new_dialog(&settings, &storage, Some(history.clone()), &runtime.tasks());
+        assert!(dialog.imp().clear_button.is_sensitive());
+        let window = present_on_a_window(&dialog);
+        dialog.imp().clear_button.emit_clicked();
+        confirm_the_alert(&window);
+
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+            count(&runtime, &history) == 0 && toast_text(&window).is_some()
+        })
+        .unwrap_or_else(|_| {
+            panic!(
+                "clearing left {} entries and said {:?}",
+                count(&runtime, &history),
+                toast_text(&window)
+            )
+        });
+
+        let toast = toast_text(&window).unwrap_or_default();
+        assert!(toast.contains("cleared"), "{toast}");
+        drop(window);
+    }
+
+    /// An AdwDialog needs a real window to present into before its
+    /// toast overlay renders anything.
+    fn present_on_a_window(dialog: &PreferencesDialog) -> adw::Window {
+        let window = adw::Window::new();
+        window.present();
+        dialog.present(Some(&window));
+        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
+            dialog.imp().clear_button.is_mapped()
+        })
+        .expect("the dialog never appeared");
+        window
+    }
+
+    /// What the dialog's toast says, read off the label the overlay
+    /// renders. AdwPreferencesDialog owns the overlay itself and does
+    /// not hand it out.
+    fn toast_text(window: &adw::Window) -> Option<String> {
+        crate::test_support::drain_main_context();
+        crate::test_support::descendants(window)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::Label>().ok())
+            .map(|label| label.label().to_string())
+            .find(|text| text.contains("cleared") || text.contains("could not be cleared"))
+    }
+
+    fn open_history(runtime: &crate::runtime::AppRuntime, paths: &StoragePaths) -> tablepro_storage::QueryHistory {
+        block_on(runtime, tablepro_storage::QueryHistory::open(paths)).expect("open the history")
+    }
+
+    fn record_one(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) {
+        let entry = tablepro_storage::query_history::NewEntry {
+            query: "SELECT 1".to_owned(),
+            driver_id: "postgres".to_owned(),
+            connection_id: uuid::Uuid::new_v4(),
+            connection_name: "local".to_owned(),
+            executed_at: std::time::SystemTime::now(),
+            duration_ms: Some(1),
+            rows_affected: Some(0),
+            outcome: tablepro_storage::query_history::Outcome::Success,
+        };
+        block_on(runtime, history.record(entry)).expect("record");
+    }
+
+    fn count(runtime: &crate::runtime::AppRuntime, history: &tablepro_storage::QueryHistory) -> usize {
+        block_on(
+            runtime,
+            history.search(tablepro_storage::query_history::SearchFilter {
+                limit: 100,
+                ..Default::default()
+            }),
+        )
+        .expect("search")
+        .len()
+    }
+
+    /// The test drives the runtime from outside it, which is the one
+    /// place blocking on it cannot deadlock.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a GTK test has no runtime of its own, so it drives the app's from outside"
+    )]
+    fn block_on<F: std::future::Future>(runtime: &crate::runtime::AppRuntime, future: F) -> F::Output {
+        runtime.tasks().handle().block_on(future)
+    }
+
+    /// Press Clear on the confirmation alert the button raised. The
+    /// alert presents into the window's dialog host, not into the
+    /// preferences dialog, so that is where it is.
+    fn confirm_the_alert(window: &adw::Window) {
+        crate::test_support::drain_main_context();
+        let alert =
+            crate::test_support::first_descendant_of_type::<adw::AlertDialog>(window).expect("the confirmation alert");
+        alert.emit_by_name::<()>("response", &[&"clear"]);
+        crate::test_support::drain_main_context();
     }
 }

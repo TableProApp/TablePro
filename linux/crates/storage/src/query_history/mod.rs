@@ -3,6 +3,7 @@ mod export;
 mod new_entry;
 mod outcome;
 mod prune_report;
+pub mod retention;
 mod search_filter;
 
 use std::path::{Path, PathBuf};
@@ -245,8 +246,7 @@ impl QueryHistory {
     pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
         let mut report = PruneReport::default();
 
-        if retention_days > 0 {
-            let cutoff = SystemTime::now() - std::time::Duration::from_secs(u64::from(retention_days) * 86_400);
+        if let Some(cutoff) = retention::cutoff(retention_days, SystemTime::now()) {
             report.expired = sqlx::query("DELETE FROM history WHERE pinned = 0 AND executed_at < ?")
                 .bind(to_unix(cutoff))
                 .execute(&self.pool)
