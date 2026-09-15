@@ -1,7 +1,11 @@
 use std::rc::Rc;
 
 use tablepro_core::credentials::SecretVault;
+use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionStore, StoragePaths};
+
+use crate::services::column_widths::ColumnWidthStore;
+use crate::services::filter_settings::FilterSettingsStore;
 
 /// Everything the app persists, resolved once at startup and handed to
 /// the root component. Nothing reaches for a global, so a test can point
@@ -11,17 +15,23 @@ pub struct AppStorage {
     paths: StoragePaths,
     connections: ConnectionStore,
     secrets: std::sync::Arc<dyn SecretVault>,
+    column_widths: ColumnWidthStore,
+    filter_settings: FilterSettingsStore,
 }
 
 impl AppStorage {
     /// The vault is injected so a test can substitute one that never
     /// touches the user's keyring.
-    pub fn new(paths: StoragePaths, secrets: std::sync::Arc<dyn SecretVault>) -> Self {
+    pub fn new(paths: StoragePaths, secrets: std::sync::Arc<dyn SecretVault>, tasks: &Tasks) -> Self {
         let connections = ConnectionStore::new(&paths);
+        let column_widths = ColumnWidthStore::load(&paths, tasks);
+        let filter_settings = FilterSettingsStore::load(&paths, tasks);
         Self {
             paths,
             connections,
             secrets,
+            column_widths,
+            filter_settings,
         }
     }
 
@@ -35,6 +45,14 @@ impl AppStorage {
 
     pub fn secrets(&self) -> &std::sync::Arc<dyn SecretVault> {
         &self.secrets
+    }
+
+    pub fn column_widths(&self) -> &ColumnWidthStore {
+        &self.column_widths
+    }
+
+    pub fn filter_settings(&self) -> &FilterSettingsStore {
+        &self.filter_settings
     }
 }
 

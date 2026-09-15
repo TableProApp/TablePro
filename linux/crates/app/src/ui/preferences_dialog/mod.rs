@@ -151,7 +151,7 @@ mod tests {
 
     use super::*;
 
-    fn test_storage() -> crate::storage::SharedStorage {
+    fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
         // A temporary root keeps the dialog's storage row and history
         // actions away from the developer's own files.
         let root = std::env::temp_dir().join(format!("tablepro-prefs-{}", std::process::id()));
@@ -159,6 +159,7 @@ mod tests {
         Rc::new(crate::storage::AppStorage::new(
             paths,
             std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+            tasks,
         ))
     }
 
@@ -166,8 +167,8 @@ mod tests {
     fn preferences_dialog_template_builds() {
         let settings = MemorySettings::new();
 
-        let storage = test_storage();
         let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
         let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
@@ -182,8 +183,8 @@ mod tests {
         settings.get().set_default_page_size(500).expect("store the page size");
         settings.get().set_confirm_destructive(false).expect("store the flag");
 
-        let storage = test_storage();
         let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
         let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
@@ -201,8 +202,8 @@ mod tests {
     fn the_font_row_is_insensitive_while_the_system_font_is_on() {
         let settings = MemorySettings::new();
 
-        let storage = test_storage();
         let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
         let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
         let imp = dialog.imp();
 
@@ -224,8 +225,8 @@ mod tests {
     fn the_storage_row_names_the_history_database() {
         let settings = MemorySettings::new();
 
-        let storage = test_storage();
         let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
         let dialog = PreferencesDialog::new(settings.get(), &storage, None, &runtime.tasks());
 
         let subtitle = dialog.imp().storage_row.subtitle().unwrap_or_default();

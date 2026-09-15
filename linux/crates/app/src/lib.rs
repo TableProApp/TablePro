@@ -85,6 +85,7 @@ fn start() -> Result<(), StartupError> {
     let storage = std::rc::Rc::new(storage::AppStorage::new(
         paths,
         std::sync::Arc::new(tablepro_storage::SecretStore::new(config::secret_schema())),
+        &tasks,
     ));
 
     let registry = Arc::new(build_registry());
