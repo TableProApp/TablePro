@@ -7,6 +7,11 @@ use sqlx::{AssertSqlSafe, Column, Pool, Row, TypeInfo};
 
 use futures::stream::StreamExt;
 
+use tablepro_core::column::{
+    CatalogType, ColumnDefault, ColumnType, ReadForm, ResultColumn, SqlExpression, SqlTypeExpr, classify_type_name,
+    has_dynamic_storage,
+};
+use tablepro_core::value::{BitString, JsonText, OffsetTimestamp, SqlTime, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
     MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
@@ -112,13 +117,17 @@ impl Connection for MysqlConnection {
                     .unwrap_or(None)
                     .filter(|s| !s.is_empty());
                 let generation_expr: Option<String> = r.try_get::<Option<String>, _>(6).unwrap_or(None);
+                let type_name = r.get::<String, _>(1);
                 ColumnInfo {
                     name: r.get::<String, _>(0),
-                    data_type: r.get::<String, _>(1),
+                    column_type: column_type_of(&type_name),
                     nullable: r.get::<String, _>(2) == "YES",
                     primary_key: r.get::<String, _>(3) == "PRI",
                     is_auto_increment: extra.contains("auto_increment"),
-                    default_value,
+                    default: match default_value {
+                        Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
+                        None => ColumnDefault::None,
+                    },
                     // Two false-positives to guard against:
                     //   1. MySQL 8.0.13+ marks expression-default columns
                     //      (e.g. DEFAULT CURRENT_TIMESTAMP) with extra =
@@ -169,34 +178,19 @@ impl Connection for MysqlConnection {
             collected.push(row);
         }
         if collected.is_empty() {
-            return Ok(QueryResult {
-                columns: Vec::new(),
-                rows: Vec::new(),
-                truncated,
-            });
+            return Ok(QueryResult::empty().truncated(truncated));
         }
-        let columns: Vec<ColumnInfo> = collected[0]
+        let columns: Vec<ResultColumn> = collected[0]
             .columns()
             .iter()
-            .map(|c| ColumnInfo {
-                name: c.name().to_string(),
-                data_type: c.type_info().name().to_string(),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default_value: None,
-                is_generated: false,
-            })
+            .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
             .collect();
+        let width = columns.len();
         let data: Vec<Vec<Value>> = collected
             .iter()
-            .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+            .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
             .collect();
-        Ok(QueryResult {
-            columns,
-            rows: data,
-            truncated,
-        })
+        Ok(QueryResult::new(columns, data).truncated(truncated))
     }
 
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
@@ -352,73 +346,129 @@ async fn stream_into_result(pool: &Pool<MySql>, sql: &str, limit: usize) -> Resu
         collected.push(row);
     }
     if collected.is_empty() {
-        return Ok(QueryResult {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            truncated,
-        });
+        return Ok(QueryResult::empty().truncated(truncated));
     }
-    let columns: Vec<ColumnInfo> = collected[0]
+    let columns: Vec<ResultColumn> = collected[0]
         .columns()
         .iter()
-        .map(|c| ColumnInfo {
-            name: c.name().to_string(),
-            data_type: c.type_info().name().to_string(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        })
+        .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
         .collect();
+    let width = columns.len();
     let data: Vec<Vec<Value>> = collected
         .iter()
-        .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+        .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
         .collect();
-    Ok(QueryResult {
-        columns,
-        rows: data,
-        truncated,
-    })
+    Ok(QueryResult::new(columns, data).truncated(truncated))
 }
 
 fn extract_value(row: &MySqlRow, idx: usize) -> Value {
     let type_name = row.columns()[idx].type_info().name().to_ascii_uppercase();
-    match type_name.as_str() {
-        "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT" | "BIGINT" => {
-            row.try_get::<i64, _>(idx).map(Value::Int).unwrap_or(Value::Null)
+    let name = type_name.as_str();
+    match name {
+        "BOOLEAN" => decode(row, idx, name, |v: bool| Some(Value::Bool(v))),
+        "TINYINT" | "SMALLINT" | "INT" | "MEDIUMINT" | "BIGINT" => decode(row, idx, name, |v: i64| Some(Value::Int(v))),
+        // An unsigned BIGINT runs past what a signed one holds, so it
+        // keeps its own type rather than wrapping into a negative.
+        "TINYINT UNSIGNED" | "SMALLINT UNSIGNED" | "INT UNSIGNED" | "MEDIUMINT UNSIGNED" | "BIGINT UNSIGNED"
+        | "YEAR" => decode(row, idx, name, |v: u64| Some(Value::UInt(v))),
+        "FLOAT" => decode(row, idx, name, |v: f32| Some(Value::Float32(v))),
+        "DOUBLE" => decode(row, idx, name, |v: f64| Some(Value::Float64(v))),
+        // DECIMAL travels as text in both protocols, so it is read as
+        // the digits the server sent: a fixed-width decimal type would
+        // round a DECIMAL(65,30) the server holds exactly.
+        "DECIMAL" => decode_text(row, idx, name, |text| text.parse().ok().map(Value::Decimal)),
+        "DATE" => decode(row, idx, name, |v: chrono::NaiveDate| {
+            Some(Value::Date(Temporal::Finite(v)))
+        }),
+        "TIME" => decode(row, idx, name, mysql_time),
+        "DATETIME" => decode(row, idx, name, |v: chrono::NaiveDateTime| {
+            Some(Value::Timestamp(Temporal::Finite(v)))
+        }),
+        "TIMESTAMP" => decode(row, idx, name, |v: chrono::DateTime<chrono::Utc>| {
+            Some(Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(
+                v.fixed_offset(),
+            ))))
+        }),
+        // Read as the server rendered it: parsing the document and
+        // printing it again would reorder the keys and drop spacing.
+        "JSON" => decode_text(row, idx, name, |text| {
+            JsonText::parse(text.to_owned()).ok().map(Value::Json)
+        }),
+        // BIT(M) arrives as the ceil(M/8) bytes that hold it, with no
+        // count of its own, so the byte width is what the value keeps.
+        "BIT" => decode_bytes(row, idx, name, |bytes| {
+            let bit_len = u32::try_from(bytes.len().saturating_mul(8)).ok()?;
+            BitString::from_bytes(bit_len, bytes).ok().map(Value::Bits)
+        }),
+        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "VARBINARY" | "BINARY" | "GEOMETRY" => {
+            decode(row, idx, name, |v: Vec<u8>| Some(Value::Bytes(v)))
         }
-        "FLOAT" | "DOUBLE" => row.try_get::<f64, _>(idx).map(Value::Float).unwrap_or(Value::Null),
-        "DECIMAL" | "NUMERIC" => row
-            .try_get::<rust_decimal::Decimal, _>(idx)
-            .map(Value::Decimal)
-            .unwrap_or(Value::Null),
-        "BOOLEAN" => row.try_get::<bool, _>(idx).map(Value::Bool).unwrap_or(Value::Null),
-        "DATE" => row
-            .try_get::<chrono::NaiveDate, _>(idx)
-            .map(Value::Date)
-            .unwrap_or(Value::Null),
-        "TIME" => row
-            .try_get::<chrono::NaiveTime, _>(idx)
-            .map(Value::Time)
-            .unwrap_or(Value::Null),
-        "DATETIME" => row
-            .try_get::<chrono::NaiveDateTime, _>(idx)
-            .map(Value::DateTime)
-            .unwrap_or(Value::Null),
-        "TIMESTAMP" => row
-            .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
-            .map(Value::TimestampTz)
-            .unwrap_or(Value::Null),
-        "JSON" => row
-            .try_get::<serde_json::Value, _>(idx)
-            .map(Value::Json)
-            .unwrap_or(Value::Null),
-        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "VARBINARY" | "BINARY" => {
-            row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes).unwrap_or(Value::Null)
-        }
-        _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
+        _ => decode(row, idx, name, |v: String| Some(Value::Text(v))),
     }
+}
+
+/// Read one cell, keeping three outcomes apart: a real NULL, a value
+/// the driver read, and one it could not read. A type with no decoder
+/// says so rather than reading as an empty cell the user would take
+/// for a NULL.
+fn decode<'r, T, F>(row: &'r MySqlRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    T: sqlx::Decode<'r, MySql> + sqlx::Type<MySql>,
+    F: FnOnce(T) -> Option<Value>,
+{
+    match row.try_get::<Option<T>, _>(idx) {
+        Ok(Some(raw)) => into_value(raw).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
+    }
+}
+
+/// Read a cell whose bytes are text the server already formatted, such
+/// as DECIMAL and JSON. The type check is skipped because those types
+/// carry text without being text types.
+fn decode_text<F>(row: &MySqlRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    F: FnOnce(&str) -> Option<Value>,
+{
+    match row.try_get_unchecked::<Option<String>, _>(idx) {
+        Ok(Some(text)) => into_value(&text).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
+    }
+}
+
+/// Read a cell as the bytes the server sent, for a type the byte
+/// width itself carries meaning for.
+fn decode_bytes<F>(row: &MySqlRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    F: FnOnce(Vec<u8>) -> Option<Value>,
+{
+    match row.try_get_unchecked::<Option<Vec<u8>>, _>(idx) {
+        Ok(Some(bytes)) => into_value(bytes).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
+    }
+}
+
+/// A value the driver could not read, so the grid says so rather than
+/// showing an empty cell that looks like a NULL.
+fn undecodable(type_name: &str) -> Value {
+    Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+        type_name: type_name.to_owned(),
+        reason: tablepro_core::value::UndecodableReason::UnsupportedType,
+    }))
+}
+
+/// A MySQL TIME spans -838:59:59 to 838:59:59, which is a span rather
+/// than a time of day, so it keeps a type that holds the whole range.
+fn mysql_time(time: sqlx::mysql::types::MySqlTime) -> Option<Value> {
+    let nanos = time.microseconds().checked_mul(1_000)?;
+    // The sign comes from `sign()`: `MySqlTime::is_negative` in sqlx
+    // 0.9 returns `sign.is_positive()`, so it answers backwards.
+    let negative = matches!(time.sign(), sqlx::mysql::types::MySqlTimeSign::Negative);
+    SqlTime::new(negative, time.hours(), time.minutes(), time.seconds(), nanos)
+        .ok()
+        .map(Value::Time)
 }
 
 fn bind_mysql_params<'q>(
@@ -430,16 +480,21 @@ fn bind_mysql_params<'q>(
             Value::Null => q.bind(Option::<&str>::None),
             Value::Bool(b) => q.bind(*b),
             Value::Int(i) => q.bind(*i),
-            Value::Float(f) => q.bind(*f),
+            Value::UInt(i) => q.bind(*i),
+            Value::Float32(f) => q.bind(*f),
+            Value::Float64(f) => q.bind(*f),
             Value::Text(s) => q.bind(s.clone()),
             Value::Bytes(b) => q.bind(b.clone()),
-            Value::Date(d) => q.bind(*d),
-            Value::Time(t) => q.bind(*t),
-            Value::DateTime(dt) => q.bind(*dt),
-            Value::TimestampTz(ts) => q.bind(*ts),
-            Value::Decimal(d) => q.bind(*d),
+            Value::Date(Temporal::Finite(d)) => q.bind(*d),
+            Value::Timestamp(Temporal::Finite(t)) => q.bind(*t),
+            Value::TimestampTz(Temporal::Finite(t)) => q.bind(t.to_datetime().naive_utc()),
             Value::Uuid(u) => q.bind(u.to_string()),
-            Value::Json(j) => q.bind(j.clone()),
+            // Sent as text and cast by the server, which keeps the
+            // scale a fixed-width decimal type would round away.
+            other => match tablepro_core::export::value_to_text(other) {
+                Some(text) => q.bind(text),
+                None => q.bind(Option::<&str>::None),
+            },
         };
     }
     q
@@ -493,5 +548,60 @@ mod tests {
         assert_eq!(quote_ident("users"), "`users`");
         assert_eq!(quote_ident("My Table"), "`My Table`");
         assert_eq!(quote_ident("evil`; DROP TABLE x; --"), "`evil``; DROP TABLE x; --`");
+    }
+}
+
+/// A column type from the name the catalogue gave, classified by the
+/// shared rules. The engine's own spelling is kept for DDL.
+fn column_type_of(type_name: &str) -> ColumnType {
+    let kind = classify_type_name(type_name);
+    ColumnType::new(
+        SqlTypeExpr::from_catalog_text(type_name),
+        kind,
+        CatalogType::Named(SqlTypeExpr::from_catalog_text(type_name)),
+        has_dynamic_storage(kind),
+        ReadForm::Native,
+    )
+}
+
+/// MySQL TIME is a signed duration up to 838 hours, not a time of day,
+/// so it is parsed into a value that can hold the whole range.
+#[cfg(test)]
+mod value_tests {
+    use super::*;
+
+    use sqlx::mysql::types::{MySqlTime, MySqlTimeSign};
+
+    fn wire_time(sign: MySqlTimeSign, hours: u32, minutes: u8, seconds: u8, micros: u32) -> MySqlTime {
+        MySqlTime::new(sign, hours, minutes, seconds, micros).expect("a time the wire holds")
+    }
+
+    #[test]
+    fn a_time_past_a_day_is_kept_whole() {
+        // The server can return 838:59:59, which is not a time of day
+        // and would be lost by a type that only holds one.
+        let Some(Value::Time(time)) = mysql_time(wire_time(MySqlTimeSign::Positive, 838, 59, 59, 0)) else {
+            panic!("the longest MySQL time did not convert");
+        };
+
+        assert_eq!(time.format(None), "838:59:59");
+    }
+
+    #[test]
+    fn a_negative_time_keeps_its_sign() {
+        let Some(Value::Time(time)) = mysql_time(wire_time(MySqlTimeSign::Negative, 12, 30, 0, 0)) else {
+            panic!("a negative time did not convert");
+        };
+
+        assert_eq!(time.format(None), "-12:30:00");
+    }
+
+    #[test]
+    fn a_fractional_second_survives() {
+        let Some(Value::Time(time)) = mysql_time(wire_time(MySqlTimeSign::Positive, 1, 2, 3, 123_456)) else {
+            panic!("a fractional time did not convert");
+        };
+
+        assert_eq!(time.format(Some(6)), "01:02:03.123456");
     }
 }

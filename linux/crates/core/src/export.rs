@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{ColumnInfo, Value};
+use crate::column::ResultColumn;
+use crate::value::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CsvDelimiter {
@@ -88,17 +89,81 @@ pub fn value_to_text(v: &Value) -> Option<String> {
         Value::Null => None,
         Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
         Value::Int(i) => Some(i.to_string()),
-        Value::Float(f) => Some(f.to_string()),
+        Value::UInt(i) => Some(i.to_string()),
+        Value::WideInt(i) => Some(i.to_string()),
+        // Shortest round-trip form, so the text parses back to the
+        // same bits. The non-finite ones have no numeric spelling.
+        Value::Float32(f) => Some(float_text(
+            f64::from(*f),
+            f.is_nan(),
+            f.is_infinite(),
+            f.is_sign_negative(),
+        )),
+        Value::Float64(f) => Some(float_text(*f, f.is_nan(), f.is_infinite(), f.is_sign_negative())),
+        // Full scale: trimming a trailing zero loses the precision
+        // the column declared.
+        Value::Decimal(d) => Some(d.to_string()),
         Value::Text(s) => Some(s.clone()),
         Value::Bytes(b) => Some(format!("0x{}", crate::hex::encode_lower(b))),
-        Value::Date(d) => Some(d.format("%Y-%m-%d").to_string()),
-        Value::Time(t) => Some(t.format("%H:%M:%S").to_string()),
-        Value::DateTime(dt) => Some(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
-        Value::TimestampTz(dt) => Some(dt.to_rfc3339()),
-        Value::Decimal(d) => Some(d.to_string()),
         Value::Uuid(u) => Some(u.to_string()),
-        Value::Json(j) => Some(serde_json::to_string(j).unwrap_or_default()),
+        Value::Json(j) => Some(j.as_str().to_owned()),
+        Value::Date(d) => temporal_text(d, |date| date.format("%Y-%m-%d").to_string()),
+        // The fraction is kept as it came, never rounded to seconds.
+        Value::Time(t) => Some(t.format(None)),
+        Value::TimeTz(t) => Some(format!("{}{}", t.time.format(None), offset_text(t.offset))),
+        Value::Timestamp(t) => temporal_text(t, |stamp| stamp.format("%Y-%m-%d %H:%M:%S%.f").to_string()),
+        // The original offset, not UTC: the row said what zone it was
+        // written in and the export says the same.
+        Value::TimestampTz(t) => temporal_text(t, |stamp| {
+            stamp.to_datetime().format("%Y-%m-%d %H:%M:%S%.f%:z").to_string()
+        }),
+        Value::Interval(i) => Some(i.to_string()),
+        Value::Bits(b) => Some(b.to_string()),
+        Value::Array(values) => Some(array_text(values)),
+        Value::Other(other) => Some(other.text.clone()),
+        // The driver could not read it, so there is no text to write.
+        // The caller reports the cell rather than inventing one.
+        Value::Undecodable(_) => None,
     }
+}
+
+fn float_text(value: f64, is_nan: bool, is_infinite: bool, is_negative: bool) -> String {
+    if is_nan {
+        return "NaN".to_owned();
+    }
+    if is_infinite {
+        return if is_negative { "-Infinity" } else { "Infinity" }.to_owned();
+    }
+    value.to_string()
+}
+
+/// An infinite date or timestamp has a keyword rather than a number.
+fn temporal_text<T>(value: &crate::value::Temporal<T>, finite: impl Fn(&T) -> String) -> Option<String> {
+    match value {
+        crate::value::Temporal::Finite(inner) => Some(finite(inner)),
+        crate::value::Temporal::Infinity => Some("infinity".to_owned()),
+        crate::value::Temporal::NegInfinity => Some("-infinity".to_owned()),
+    }
+}
+
+fn offset_text(offset: chrono::FixedOffset) -> String {
+    let total = offset.local_minus_utc();
+    let sign = if total < 0 { '-' } else { '+' };
+    let minutes = total.abs() / 60;
+    format!("{sign}{:02}:{:02}", minutes / 60, minutes % 60)
+}
+
+/// An array as JSON array text, which is the one spelling every engine
+/// reads back.
+fn array_text(values: &[Value]) -> String {
+    let parts: Vec<String> = values
+        .iter()
+        .map(|value| match value_to_text(value) {
+            Some(text) => serde_json::Value::String(text).to_string(),
+            None => "null".to_owned(),
+        })
+        .collect();
+    format!("[{}]", parts.join(","))
 }
 
 fn is_plain_decimal(s: &str) -> bool {
@@ -247,7 +312,7 @@ fn csv_cell(value: &Value, opts: &CsvOptions) -> String {
         };
     };
     let mut text = collapse_line_breaks(text, opts);
-    let is_numeric = matches!(value, Value::Float(_) | Value::Decimal(_));
+    let is_numeric = matches!(value, Value::Float32(_) | Value::Float64(_) | Value::Decimal(_));
     if opts.decimal == CsvDecimal::Comma && is_numeric && is_plain_decimal(&text) {
         text = text.replace('.', ",");
     }
@@ -282,7 +347,7 @@ fn finish(writer: csv::Writer<Vec<u8>>) -> Result<String, EncodeError> {
     Ok(String::from_utf8(bytes)?)
 }
 
-pub fn render_csv(columns: &[ColumnInfo], rows: &[Vec<Value>], opts: &CsvOptions) -> Result<String, EncodeError> {
+pub fn render_csv(columns: &[ResultColumn], rows: &[Vec<Value>], opts: &CsvOptions) -> Result<String, EncodeError> {
     let mut writer = csv_writer_builder(opts).from_writer(Vec::new());
     if opts.header_row {
         writer.write_record(columns.iter().map(|column| csv_header(&column.name, opts)))?;
@@ -306,7 +371,7 @@ pub fn render_text_csv(header: &[&str], records: &[Vec<String>], opts: &CsvOptio
     finish(writer)
 }
 
-pub fn render_tsv(columns: &[ColumnInfo], rows: &[Vec<Value>], with_headers: bool) -> Result<String, EncodeError> {
+pub fn render_tsv(columns: &[ResultColumn], rows: &[Vec<Value>], with_headers: bool) -> Result<String, EncodeError> {
     let mut writer = tsv_writer_builder().from_writer(Vec::new());
     if with_headers {
         writer.write_record(columns.iter().map(|column| column.name.as_str()))?;
@@ -325,9 +390,12 @@ fn value_to_json(v: &Value) -> serde_json::Value {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),
         Value::Int(i) => serde_json::Value::Number((*i).into()),
-        Value::Float(f) => serde_json::Number::from_f64(*f)
-            .map(serde_json::Value::Number)
-            .unwrap_or(serde_json::Value::Null),
+        Value::UInt(i) => serde_json::Value::Number((*i).into()),
+        // Past what a JSON number holds, so a string keeps the digits
+        // rather than a reader rounding them.
+        Value::WideInt(i) => serde_json::Value::String(i.to_string()),
+        Value::Float32(f) => finite_json_number(f64::from(*f)),
+        Value::Float64(f) => finite_json_number(*f),
         Value::Decimal(d) => {
             let s = d.to_string();
             match s.parse::<serde_json::Number>() {
@@ -335,11 +403,28 @@ fn value_to_json(v: &Value) -> serde_json::Value {
                 Err(_) => serde_json::Value::String(s),
             }
         }
-        Value::Json(j) => j.clone(),
+        // Already JSON: embedding it parsed keeps it a value rather
+        // than a string of one.
+        Value::Json(j) => serde_json::from_str(j.as_str()).unwrap_or(serde_json::Value::Null),
+        Value::Array(values) => serde_json::Value::Array(values.iter().map(value_to_json).collect()),
         other => match value_to_text(other) {
             Some(s) => serde_json::Value::String(s),
             None => serde_json::Value::Null,
         },
+    }
+}
+
+/// JSON has no NaN or Infinity, so those go out as strings rather than
+/// as a null that reads like a missing value.
+fn finite_json_number(value: f64) -> serde_json::Value {
+    match serde_json::Number::from_f64(value) {
+        Some(number) => serde_json::Value::Number(number),
+        None => serde_json::Value::String(float_text(
+            value,
+            value.is_nan(),
+            value.is_infinite(),
+            value.is_sign_negative(),
+        )),
     }
 }
 
@@ -349,7 +434,7 @@ fn value_to_json(v: &Value) -> serde_json::Value {
 /// so a repeat is suffixed `_2`, `_3`, … until it is unique against
 /// every name already taken, including the literal names of later
 /// columns.
-pub fn json_field_names(columns: &[ColumnInfo]) -> Vec<String> {
+pub fn json_field_names(columns: &[ResultColumn]) -> Vec<String> {
     let mut reserved: HashSet<String> = columns.iter().map(|c| c.name.clone()).collect();
     let mut emitted: HashSet<String> = HashSet::with_capacity(columns.len());
     let mut names = Vec::with_capacity(columns.len());
@@ -381,11 +466,11 @@ fn row_to_json_object(names: &[String], row: &[Value]) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
-pub fn row_to_json(columns: &[ColumnInfo], row: &[Value]) -> serde_json::Value {
+pub fn row_to_json(columns: &[ResultColumn], row: &[Value]) -> serde_json::Value {
     row_to_json_object(&json_field_names(columns), row)
 }
 
-pub fn render_json(columns: &[ColumnInfo], rows: &[Vec<Value>]) -> String {
+pub fn render_json(columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
     let names = json_field_names(columns);
     let values: Vec<serde_json::Value> = rows.iter().map(|row| row_to_json_object(&names, row)).collect();
     serde_json::to_string_pretty(&values).unwrap_or_else(|_| "[]".to_string())
@@ -398,7 +483,7 @@ fn markdown_cell(value: &Value) -> String {
         .replace(['\r', '\n'], "<br>")
 }
 
-pub fn render_markdown(columns: &[ColumnInfo], rows: &[Vec<Value>]) -> String {
+pub fn render_markdown(columns: &[ResultColumn], rows: &[Vec<Value>]) -> String {
     let mut lines: Vec<String> = Vec::new();
     let header: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
     lines.push(format!("| {} |", header.join(" | ")));
@@ -419,7 +504,12 @@ fn in_clause_literal(v: &Value) -> Option<String> {
         // the caller rather than written.
         Value::Null | Value::Bytes(_) => None,
         Value::Bool(b) => Some(if *b { "TRUE".to_string() } else { "FALSE".to_string() }),
-        Value::Int(_) | Value::Float(_) | Value::Decimal(_) => value_to_text(v),
+        Value::Int(_)
+        | Value::UInt(_)
+        | Value::WideInt(_)
+        | Value::Float32(_)
+        | Value::Float64(_)
+        | Value::Decimal(_) => value_to_text(v),
         other => value_to_text(other).map(|s| format!("'{}'", s.replace('\'', "''"))),
     }
 }
@@ -450,25 +540,38 @@ pub fn render_in_clause(rows: &[Vec<Value>], col_index: usize) -> InClause {
 #[cfg(test)]
 mod tests {
     use chrono::{NaiveDate, NaiveTime};
-    use rust_decimal::Decimal;
     use std::str::FromStr;
     use uuid::Uuid;
 
+    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextKind};
+    use crate::value::{JsonText, SqlTime, Temporal};
+
     use super::*;
 
-    fn col(name: &str) -> ColumnInfo {
-        ColumnInfo {
-            name: name.into(),
-            data_type: "text".into(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        }
+    fn col(name: &str) -> ResultColumn {
+        ResultColumn::new(
+            name,
+            ColumnType::new(
+                SqlTypeExpr::from_catalog_text("text"),
+                ColumnKind::Text(TextKind::Variable),
+                CatalogType::Unknown,
+                true,
+                ReadForm::Native,
+            ),
+        )
     }
 
-    fn cols(names: &[&str]) -> Vec<ColumnInfo> {
+    fn date(year: i32, month: u32, day: u32) -> Value {
+        Value::Date(Temporal::Finite(
+            NaiveDate::from_ymd_opt(year, month, day).expect("a date"),
+        ))
+    }
+
+    fn json(text: &str) -> Value {
+        Value::Json(JsonText::parse(text.to_owned()).expect("valid json"))
+    }
+
+    fn cols(names: &[&str]) -> Vec<ResultColumn> {
         names.iter().map(|n| col(n)).collect()
     }
 
@@ -478,39 +581,94 @@ mod tests {
         assert_eq!(value_to_text(&Value::Bool(true)), Some("true".to_string()));
         assert_eq!(value_to_text(&Value::Bool(false)), Some("false".to_string()));
         assert_eq!(value_to_text(&Value::Int(42)), Some("42".to_string()));
-        assert_eq!(value_to_text(&Value::Float(1.5)), Some("1.5".to_string()));
+        assert_eq!(value_to_text(&Value::UInt(u64::MAX)), Some(u64::MAX.to_string()));
+        assert_eq!(value_to_text(&Value::Float64(1.5)), Some("1.5".to_string()));
         assert_eq!(value_to_text(&Value::Text("hi".into())), Some("hi".to_string()));
         assert_eq!(
             value_to_text(&Value::Bytes(vec![0xde, 0xad])),
             Some("0xdead".to_string())
         );
+        assert_eq!(value_to_text(&date(2024, 1, 2)), Some("2024-01-02".to_string()));
         assert_eq!(
-            value_to_text(&Value::Date(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap())),
-            Some("2024-01-02".to_string())
-        );
-        assert_eq!(
-            value_to_text(&Value::Time(NaiveTime::from_hms_opt(13, 5, 9).unwrap())),
+            value_to_text(&Value::Time(SqlTime::from_time_of_day(
+                NaiveTime::from_hms_opt(13, 5, 9).expect("a time")
+            ))),
             Some("13:05:09".to_string())
         );
         assert_eq!(
-            value_to_text(&Value::DateTime(
+            value_to_text(&Value::Timestamp(Temporal::Finite(
                 NaiveDate::from_ymd_opt(2024, 1, 2)
-                    .unwrap()
+                    .expect("a date")
                     .and_hms_opt(13, 5, 9)
-                    .unwrap()
-            )),
+                    .expect("a time")
+            ))),
             Some("2024-01-02 13:05:09".to_string())
         );
         assert_eq!(
-            value_to_text(&Value::Decimal(Decimal::from_str("12.30").unwrap())),
-            Some("12.30".to_string())
+            value_to_text(&Value::Decimal("12.30".parse().expect("a decimal"))),
+            Some("12.30".to_string()),
+            "the declared scale was trimmed"
         );
-        let uuid = Uuid::from_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let uuid = Uuid::from_str("550e8400-e29b-41d4-a716-446655440000").expect("a uuid");
         assert_eq!(value_to_text(&Value::Uuid(uuid)), Some(uuid.to_string()));
+        assert_eq!(value_to_text(&json(r#"{"a":1}"#)), Some(r#"{"a":1}"#.to_string()));
+    }
+
+    #[test]
+    fn value_to_text_keeps_fraction_offset_and_full_scale() {
+        let time = SqlTime::new(false, 12, 0, 0, 123_456_000).expect("a time");
+        assert_eq!(value_to_text(&Value::Time(time)), Some("12:00:00.123456".to_owned()));
+
+        let stamp = chrono::DateTime::parse_from_rfc3339("2024-06-15T12:00:00+05:30").expect("a timestamp");
         assert_eq!(
-            value_to_text(&Value::Json(serde_json::json!({"a": 1}))),
-            Some("{\"a\":1}".to_string())
+            value_to_text(&Value::TimestampTz(Temporal::Finite(
+                crate::value::OffsetTimestamp::from_datetime(stamp)
+            ))),
+            Some("2024-06-15 12:00:00+05:30".to_owned()),
+            "the row's own offset was rewritten as UTC"
         );
+
+        assert_eq!(
+            value_to_text(&Value::Decimal("1.0000000000".parse().expect("a decimal"))),
+            Some("1.0000000000".to_owned())
+        );
+    }
+
+    #[test]
+    fn value_to_text_names_the_non_finite_values() {
+        assert_eq!(value_to_text(&Value::Float64(f64::NAN)), Some("NaN".to_owned()));
+        assert_eq!(
+            value_to_text(&Value::Float64(f64::NEG_INFINITY)),
+            Some("-Infinity".to_owned())
+        );
+        assert_eq!(
+            value_to_text(&Value::Date(Temporal::Infinity)),
+            Some("infinity".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_undecodable_value_has_no_text() {
+        let undecodable = Value::Undecodable(Box::new(crate::value::UndecodedValue {
+            type_name: "geography".to_owned(),
+            reason: crate::value::UndecodableReason::UnsupportedType,
+        }));
+
+        assert_eq!(
+            value_to_text(&undecodable),
+            None,
+            "a value the driver could not read was given a text form"
+        );
+    }
+
+    #[test]
+    fn json_non_finite_float_is_string() {
+        let columns = cols(&["v"]);
+        let rows = vec![vec![Value::Float64(f64::INFINITY)]];
+
+        let out = render_json(&columns, &rows);
+
+        assert!(out.contains("\"Infinity\""), "{out}");
     }
 
     fn plain() -> CsvOptions {
@@ -668,10 +826,10 @@ mod tests {
             ..plain()
         };
         let render = |value: Value| render_csv(&columns, &[vec![value]], &opts).unwrap();
-        assert_eq!(render(Value::Float(1.5)), "a\n1,5\n");
-        assert_eq!(render(Value::Float(-1.5)), "a\n-1,5\n");
+        assert_eq!(render(Value::Float64(1.5)), "a\n1,5\n");
+        assert_eq!(render(Value::Float64(-1.5)), "a\n-1,5\n");
         assert_eq!(
-            render(Value::Decimal(Decimal::from_str("12.30").unwrap())),
+            render(Value::Decimal("12.30".parse().expect("a decimal"))),
             "a\n12,30\n"
         );
         assert_eq!(render(Value::Text("1.5".into())), "a\n1.5\n");
@@ -690,7 +848,7 @@ mod tests {
     #[test]
     fn csv_keeps_negative_decimal() {
         let columns = cols(&["a"]);
-        let rows = vec![vec![Value::Decimal(Decimal::from_str("-12.30").unwrap())]];
+        let rows = vec![vec![Value::Decimal("-12.30".parse().expect("a decimal"))]];
         let out = render_csv(&columns, &rows, &CsvOptions::default()).unwrap();
         assert_eq!(out, "\"a\"\n\"-12.30\"\n");
     }
@@ -698,7 +856,7 @@ mod tests {
     #[test]
     fn csv_keeps_negative_float() {
         let columns = cols(&["a"]);
-        let out = render_csv(&columns, &[vec![Value::Float(-1.5)]], &CsvOptions::default()).unwrap();
+        let out = render_csv(&columns, &[vec![Value::Float64(-1.5)]], &CsvOptions::default()).unwrap();
         assert_eq!(out, "\"a\"\n\"-1.5\"\n");
     }
 
@@ -857,8 +1015,8 @@ mod tests {
         let columns = cols(&["i", "f", "d", "s"]);
         let row = vec![
             Value::Int(5),
-            Value::Float(1.5),
-            Value::Decimal(Decimal::from_str("9.99").unwrap()),
+            Value::Float64(1.5),
+            Value::Decimal("9.99".parse().expect("a decimal")),
             Value::Text("hi".into()),
         ];
         let json = row_to_json(&columns, &row);

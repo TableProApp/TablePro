@@ -46,6 +46,7 @@ pub mod value;
 
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;
+pub use column::ColumnInfo;
 pub use config_error::ConfigError;
 pub use connection::{AuthMode, ConnectOptions, Connection};
 pub use driver::DatabaseDriver;
@@ -53,10 +54,18 @@ pub use error::DriverError;
 pub use error_category::ErrorCategory;
 pub use file_endpoint::FileEndpoint;
 pub use file_open_mode::FileOpenMode;
-pub use filter::{BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter_where};
+pub use filter::{
+    BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter, operators_for,
+};
 pub use liveness_policy::LivenessPolicy;
 pub use network_endpoint::NetworkEndpoint;
-pub use query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, MAX_QUERY_ROWS, QueryResult, TableInfo, Value};
+pub use query::{ExecResult, ForeignKeyInfo, IndexInfo, TableInfo};
+pub use query_result::QueryResult;
+pub use value::Value;
+
+/// Default upper bound on rows an arbitrary SQL query materialises.
+/// Paging uses its caller's own limit and is not capped here.
+pub const MAX_QUERY_ROWS: usize = 10_000;
 pub use read_only::ReadOnlyConnection;
 pub use registry::DriverRegistry;
 pub use server_name_override::ServerNameOverride;

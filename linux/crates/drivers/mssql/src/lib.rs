@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use futures::TryStreamExt;
-use rust_decimal::Decimal;
 use secrecy::ExposeSecret;
 use tiberius::{
     AuthMethod, Client, Column, ColumnData, ColumnType, Config, EncryptionLevel, FromSql, QueryItem, ToSql,
@@ -10,7 +9,12 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
+use tablepro_core::column::{
+    CatalogType, ColumnDefault, ColumnType as CoreColumnType, ReadForm, ResultColumn, SqlExpression, SqlTypeExpr,
+    classify_type_name, has_dynamic_storage,
+};
 use tablepro_core::sql_dialect::build_order_and_pagination;
+use tablepro_core::value::{OffsetTimestamp, SqlDecimal, SqlTime, Temporal};
 use tablepro_core::{
     AuthMode, ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo,
     IndexInfo, MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
@@ -386,7 +390,7 @@ async fn run_query(
     let boxes = boxed_params(params);
     let refs: Vec<&dyn ToSql> = boxes.iter().map(|b| &**b as &dyn ToSql).collect();
     let mut stream = client.query(sql, &refs).await.map_err(map_tiberius_error)?;
-    let mut columns: Vec<ColumnInfo> = Vec::new();
+    let mut columns: Vec<ResultColumn> = Vec::new();
     let mut rows: Vec<Vec<Value>> = Vec::new();
     let mut truncated = false;
     let mut seen_result_set = false;
@@ -402,7 +406,7 @@ async fn run_query(
                     break;
                 }
                 seen_result_set = true;
-                columns = meta.columns().iter().map(col_to_info).collect();
+                columns = meta.columns().iter().map(col_to_result_column).collect();
             }
             QueryItem::Row(row) => {
                 if rows.len() >= limit {
@@ -413,11 +417,7 @@ async fn run_query(
             }
         }
     }
-    Ok(QueryResult {
-        columns,
-        rows,
-        truncated,
-    })
+    Ok(QueryResult::new(columns, rows).truncated(truncated))
 }
 
 async fn run_execute(client: &mut MssqlClient, sql: &str, params: &[Value]) -> Result<u64, DriverError> {
@@ -448,32 +448,24 @@ fn boxed_params(params: &[Value]) -> Vec<Box<dyn ToSql>> {
                 Value::Null => Box::new(Option::<String>::None),
                 Value::Bool(b) => Box::new(*b),
                 Value::Int(i) => Box::new(*i),
-                Value::Float(f) => Box::new(*f),
+                Value::Float32(f) => Box::new(*f),
+                Value::Float64(f) => Box::new(*f),
                 Value::Text(s) => Box::new(s.clone()),
                 Value::Bytes(b) => Box::new(b.clone()),
-                Value::Date(d) => Box::new(*d),
-                Value::Time(t) => Box::new(*t),
-                Value::DateTime(dt) => Box::new(*dt),
-                Value::TimestampTz(ts) => Box::new(*ts),
-                Value::Decimal(d) => Box::new(*d),
+                Value::Date(Temporal::Finite(d)) => Box::new(*d),
+                Value::Timestamp(Temporal::Finite(t)) => Box::new(*t),
+                Value::TimestampTz(Temporal::Finite(t)) => Box::new(t.to_datetime().to_utc()),
                 Value::Uuid(u) => Box::new(*u),
-                // TDS has no JSON type; SQL Server stores JSON as nvarchar.
-                Value::Json(j) => Box::new(serde_json::to_string(j).unwrap_or_default()),
+                // Everything else goes as text for the server to
+                // convert, which TDS does for each of these.
+                other => Box::new(tablepro_core::export::value_to_text(other).unwrap_or_default()),
             }
         })
         .collect()
 }
 
-fn col_to_info(c: &Column) -> ColumnInfo {
-    ColumnInfo {
-        name: c.name().to_string(),
-        data_type: column_type_to_string(c.column_type()),
-        nullable: true,
-        primary_key: false,
-        is_auto_increment: false,
-        default_value: None,
-        is_generated: false,
-    }
+fn col_to_result_column(c: &Column) -> ResultColumn {
+    ResultColumn::new(c.name(), column_type_of(&column_type_to_string(c.column_type())))
 }
 
 fn column_data_to_value(cd: &ColumnData<'static>) -> Value {
@@ -483,40 +475,55 @@ fn column_data_to_value(cd: &ColumnData<'static>) -> Value {
         ColumnData::I16(v) => (*v).map(|n| Value::Int(i64::from(n))).unwrap_or(Value::Null),
         ColumnData::I32(v) => (*v).map(|n| Value::Int(i64::from(n))).unwrap_or(Value::Null),
         ColumnData::I64(v) => (*v).map(Value::Int).unwrap_or(Value::Null),
-        ColumnData::F32(v) => (*v).map(|n| Value::Float(f64::from(n))).unwrap_or(Value::Null),
-        ColumnData::F64(v) => (*v).map(Value::Float).unwrap_or(Value::Null),
+        ColumnData::F32(v) => (*v).map(Value::Float32).unwrap_or(Value::Null),
+        ColumnData::F64(v) => (*v).map(Value::Float64).unwrap_or(Value::Null),
         ColumnData::String(v) => v.as_ref().map(|s| Value::Text(s.to_string())).unwrap_or(Value::Null),
         ColumnData::Binary(v) => v.as_ref().map(|b| Value::Bytes(b.to_vec())).unwrap_or(Value::Null),
         ColumnData::Guid(v) => (*v).map(Value::Uuid).unwrap_or(Value::Null),
-        ColumnData::Numeric(_) => Decimal::from_sql(cd)
-            .ok()
-            .flatten()
-            .map(Value::Decimal)
+        // Taken as the scaled integer the wire carries: a fixed-width
+        // decimal type rounds the 38 digits DECIMAL(38,10) holds.
+        ColumnData::Numeric(v) => (*v)
+            .map(|n| Value::Decimal(SqlDecimal::from_scaled_i128(n.value(), u32::from(n.scale()))))
             .unwrap_or(Value::Null),
-        ColumnData::Date(_) => NaiveDate::from_sql(cd)
-            .ok()
-            .flatten()
-            .map(Value::Date)
-            .unwrap_or(Value::Null),
-        ColumnData::Time(_) => NaiveTime::from_sql(cd)
-            .ok()
-            .flatten()
-            .map(Value::Time)
-            .unwrap_or(Value::Null),
-        ColumnData::DateTime(_) | ColumnData::SmallDateTime(_) | ColumnData::DateTime2(_) => {
-            NaiveDateTime::from_sql(cd)
-                .ok()
-                .flatten()
-                .map(Value::DateTime)
-                .unwrap_or(Value::Null)
+        ColumnData::Date(_) => decode::<NaiveDate, _>(cd, "date", |date| Some(Value::Date(Temporal::Finite(date)))),
+        ColumnData::Time(_) => {
+            decode::<NaiveTime, _>(cd, "time", |time| Some(Value::Time(SqlTime::from_time_of_day(time))))
         }
-        ColumnData::DateTimeOffset(_) => DateTime::<Utc>::from_sql(cd)
-            .ok()
-            .flatten()
-            .map(Value::TimestampTz)
-            .unwrap_or(Value::Null),
+        ColumnData::DateTime(_) | ColumnData::SmallDateTime(_) | ColumnData::DateTime2(_) => {
+            decode::<NaiveDateTime, _>(cd, "datetime", |stamp| Some(Value::Timestamp(Temporal::Finite(stamp))))
+        }
+        ColumnData::DateTimeOffset(_) => decode::<DateTime<Utc>, _>(cd, "datetimeoffset", |stamp| {
+            Some(Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(
+                stamp.fixed_offset(),
+            ))))
+        }),
         ColumnData::Xml(v) => v.as_ref().map(|x| Value::Text(x.to_string())).unwrap_or(Value::Null),
     }
+}
+
+/// Read one cell, keeping three outcomes apart: a real NULL, a value
+/// the driver read, and one it could not read. A value with no decoder
+/// says so rather than reading as an empty cell the user would take
+/// for a NULL.
+fn decode<'a, T, F>(cd: &'a ColumnData<'static>, type_name: &str, into_value: F) -> Value
+where
+    T: FromSql<'a>,
+    F: FnOnce(T) -> Option<Value>,
+{
+    match T::from_sql(cd) {
+        Ok(Some(value)) => into_value(value).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
+    }
+}
+
+/// A value the driver could not read, so the grid says so rather than
+/// showing an empty cell that looks like a NULL.
+fn undecodable(type_name: &str) -> Value {
+    Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+        type_name: type_name.to_owned(),
+        reason: tablepro_core::value::UndecodableReason::UnsupportedType,
+    }))
 }
 
 fn column_type_to_string(ct: ColumnType) -> String {
@@ -558,20 +565,23 @@ fn row_to_column_info(row: &[Value]) -> ColumnInfo {
     let scale = as_i64(row.get(4)).unwrap_or(0);
     let is_identity = as_bool(row.get(6)).unwrap_or(false);
     let default_raw = as_text(row.get(8));
+    // An IDENTITY column carries an internal seed and increment, not a
+    // user DEFAULT, so the insert form treats it as the server's.
+    let default = match is_identity {
+        true => ColumnDefault::None,
+        false => match default_raw.map(|d| normalize_mssql_default(&d)) {
+            Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
+            None => ColumnDefault::None,
+        },
+    };
     ColumnInfo {
         name: as_text(row.first()).unwrap_or_default(),
-        data_type: format_mssql_type(&type_name, max_length, precision, scale),
+        column_type: column_type_of(&format_mssql_type(&type_name, max_length, precision, scale)),
         nullable: as_bool(row.get(5)).unwrap_or(true),
         primary_key: as_bool(row.get(9)).unwrap_or(false),
         is_auto_increment: is_identity,
-        // IDENTITY columns carry an internal seed/increment, not a user
-        // DEFAULT — suppress so the inline-insert UI treats them as auto.
-        default_value: if is_identity {
-            None
-        } else {
-            default_raw.map(|d| normalize_mssql_default(&d))
-        },
         is_generated: as_bool(row.get(7)).unwrap_or(false),
+        default,
     }
 }
 
@@ -731,6 +741,19 @@ fn map_tiberius_error(err: tiberius::error::Error) -> DriverError {
         E::Routing { host, port } => DriverError::Internal(format!("server requested routing to {host}:{port}")),
         other => DriverError::Internal(other.to_string()),
     }
+}
+
+/// A column type from the name the catalogue gave, classified by the
+/// shared rules. The engine's own spelling is kept for DDL.
+fn column_type_of(type_name: &str) -> CoreColumnType {
+    let kind = classify_type_name(type_name);
+    CoreColumnType::new(
+        SqlTypeExpr::from_catalog_text(type_name),
+        kind,
+        CatalogType::Named(SqlTypeExpr::from_catalog_text(type_name)),
+        has_dynamic_storage(kind),
+        ReadForm::Native,
+    )
 }
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ futures.workspace = true
 rust_decimal.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
-sqlx = { workspace = true, features = ["postgres", "tls-rustls-aws-lc-rs"] }
+sqlx = { workspace = true, features = ["postgres", "bit-vec", "tls-rustls-aws-lc-rs"] }
 tokio.workspace = true
 uuid.workspace = true
 
@@ -25,7 +25,7 @@ uuid.workspace = true
 tablepro-test-fixtures = { path = "../../test-fixtures" }
 rustls.workspace = true
 secrecy.workspace = true
-sqlx = { workspace = true, features = ["postgres"] }
+sqlx = { workspace = true, features = ["postgres", "bit-vec"] }
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

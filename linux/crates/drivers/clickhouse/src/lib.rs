@@ -4,6 +4,11 @@ use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 
+use tablepro_core::column::{
+    CatalogType, ColumnDefault, ColumnType, ReadForm, ResultColumn, SqlExpression, SqlTypeExpr, classify_type_name,
+    has_dynamic_storage,
+};
+use tablepro_core::value::{JsonText, OffsetTimestamp, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
     MAX_QUERY_ROWS, QueryResult, TableInfo, Value, sql_dialect::quote_ident,
@@ -196,7 +201,7 @@ impl Connection for ClickhouseConnection {
                 ColumnInfo {
                     nullable: type_is_nullable(&r.data_type),
                     name: r.name,
-                    data_type: r.data_type,
+                    column_type: column_type_of(&r.data_type),
                     // A MergeTree sorting key is the closest thing to a
                     // row identifier ClickHouse has, but it is not
                     // unique. The edit path needs *some* key to build a
@@ -204,8 +209,11 @@ impl Connection for ClickhouseConnection {
                     // advertised as unique.
                     primary_key: r.is_in_primary_key != 0,
                     is_auto_increment: false,
-                    default_value,
                     is_generated,
+                    default: match default_value {
+                        Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
+                        None => ColumnDefault::None,
+                    },
                 }
             })
             .collect())
@@ -394,18 +402,11 @@ async fn fetch_result(client: &clickhouse::Client, sql: &str, max_rows: usize) -
     };
     let types: Vec<String> = parse_line(&types_line)?;
 
-    let columns: Vec<ColumnInfo> = names
+    let types_for_decode = types.clone();
+    let columns: Vec<ResultColumn> = names
         .into_iter()
         .zip(types)
-        .map(|(name, data_type)| ColumnInfo {
-            nullable: type_is_nullable(&data_type),
-            name,
-            data_type,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        })
+        .map(|(name, data_type)| ResultColumn::new(name, column_type_of(&data_type)))
         .collect();
 
     let mut rows: Vec<Vec<Value>> = Vec::new();
@@ -421,27 +422,19 @@ async fn fetch_result(client: &clickhouse::Client, sql: &str, max_rows: usize) -
             break;
         }
         let raw: Vec<serde_json::Value> = parse_line(&line)?;
-        let mut row = Vec::with_capacity(columns.len());
-        for (i, col) in columns.iter().enumerate() {
+        let mut row = Vec::with_capacity(types_for_decode.len());
+        for (i, type_name) in types_for_decode.iter().enumerate() {
             let cell = raw.get(i).cloned().unwrap_or(serde_json::Value::Null);
-            row.push(json_to_value(cell, &col.data_type));
+            row.push(json_to_value(cell, type_name));
         }
         rows.push(row);
     }
 
-    Ok(QueryResult {
-        columns,
-        rows,
-        truncated,
-    })
+    Ok(QueryResult::new(columns, rows).truncated(truncated))
 }
 
 fn empty_result() -> QueryResult {
-    QueryResult {
-        columns: Vec::new(),
-        rows: Vec::new(),
-        truncated: false,
-    }
+    QueryResult::empty()
 }
 
 /// Peels the wrappers that do not change how a value is encoded, then
@@ -483,29 +476,31 @@ fn json_to_value(raw: serde_json::Value, type_name: &str) -> Value {
             .map(Value::Bool)
             .or_else(|| raw.as_u64().map(|n| Value::Bool(n != 0)))
             .unwrap_or_else(|| fallback_text(&raw)),
-        "Int8" | "Int16" | "Int32" | "Int64" | "UInt8" | "UInt16" | "UInt32" | "UInt64" => raw
-            .as_i64()
-            .or_else(|| raw.as_u64().and_then(|n| i64::try_from(n).ok()))
-            .or_else(|| raw.as_str().and_then(|s| s.parse::<i64>().ok()))
-            .map(Value::Int)
-            // Int128 / UInt64 past i64::MAX have no lossless `Value`.
-            // Text keeps every digit; Float would round.
-            .unwrap_or_else(|| fallback_text(&raw)),
-        "Float32" | "Float64" => raw
+        // UInt64 and the 128- and 256-bit integers now have variants
+        // that hold them, so nothing falls back to text to keep its
+        // digits.
+        "Int8" | "Int16" | "Int32" | "Int64" | "Int128" | "Int256" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
+        | "UInt128" | "UInt256" => integer_value(&raw),
+        "Float32" => raw
             .as_f64()
             .or_else(|| raw.as_str().and_then(|s| s.parse::<f64>().ok()))
-            .map(Value::Float)
+            .map(|f| Value::Float32(f as f32))
+            .unwrap_or_else(|| fallback_text(&raw)),
+        "Float64" => raw
+            .as_f64()
+            .or_else(|| raw.as_str().and_then(|s| s.parse::<f64>().ok()))
+            .map(Value::Float64)
             .unwrap_or_else(|| fallback_text(&raw)),
         "Decimal" | "Decimal32" | "Decimal64" | "Decimal128" | "Decimal256" => raw
             .as_str()
-            .and_then(|s| s.parse::<rust_decimal::Decimal>().ok())
-            .or_else(|| raw.as_f64().and_then(|f| rust_decimal::Decimal::try_from(f).ok()))
+            .and_then(|s| s.parse().ok())
+            .or_else(|| raw.as_f64().map(|f| f.to_string()).and_then(|s| s.parse().ok()))
             .map(Value::Decimal)
             .unwrap_or_else(|| fallback_text(&raw)),
         "Date" | "Date32" => raw
             .as_str()
             .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-            .map(Value::Date)
+            .map(|date| Value::Date(Temporal::Finite(date)))
             .unwrap_or_else(|| fallback_text(&raw)),
         "DateTime" | "DateTime64" => parse_datetime(&raw),
         "UUID" => raw
@@ -514,7 +509,12 @@ fn json_to_value(raw: serde_json::Value, type_name: &str) -> Value {
             .map(Value::Uuid)
             .unwrap_or_else(|| fallback_text(&raw)),
         "String" | "FixedString" | "Enum8" | "Enum16" | "IPv4" | "IPv6" => fallback_text(&raw),
-        "Array" | "Map" | "Tuple" | "Nested" | "JSON" | "Object" | "Variant" | "Dynamic" => Value::Json(raw),
+        "Array" | "Map" | "Tuple" | "Nested" | "JSON" | "Object" | "Variant" | "Dynamic" => {
+            match JsonText::parse(raw.to_string()) {
+                Ok(json) => Value::Json(json),
+                Err(_) => fallback_text(&raw),
+            }
+        }
         _ => fallback_text(&raw),
     }
 }
@@ -524,12 +524,12 @@ fn parse_datetime(raw: &serde_json::Value) -> Value {
         return fallback_text(raw);
     };
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Value::TimestampTz(dt.with_timezone(&chrono::Utc));
+        return Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(dt)));
     }
     // `%.f` also matches a whole-second timestamp, so one pattern covers
     // both `DateTime` and every `DateTime64` precision.
     if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
-        return Value::DateTime(dt);
+        return Value::Timestamp(Temporal::Finite(dt));
     }
     Value::Text(s.to_string())
 }
@@ -716,28 +716,48 @@ fn literal(value: &Value) -> Result<String, DriverError> {
         Value::Null => "NULL".into(),
         Value::Bool(b) => if *b { "true" } else { "false" }.into(),
         Value::Int(i) => i.to_string(),
-        Value::Float(f) => {
-            // ClickHouse spells these out; silently substituting NULL
-            // would write a different value than the user typed.
-            if f.is_nan() {
-                "nan".into()
-            } else if f.is_infinite() {
-                if f.is_sign_negative() { "-inf" } else { "inf" }.into()
-            } else {
-                f.to_string()
-            }
-        }
+        Value::UInt(i) => i.to_string(),
+        Value::WideInt(i) => i.to_string(),
+        // ClickHouse spells these out; substituting NULL would write a
+        // different value than the user typed.
+        Value::Float32(f) => non_finite_literal(f64::from(*f)).unwrap_or_else(|| f.to_string()),
+        Value::Float64(f) => non_finite_literal(*f).unwrap_or_else(|| f.to_string()),
         Value::Text(s) => format!("'{}'", escape_str(s)),
         Value::Bytes(b) => format!("unhex('{}')", tablepro_core::hex::encode_lower(b)),
-        Value::Date(d) => format!("toDate('{}')", d.format("%Y-%m-%d")),
-        Value::Time(t) => format!("'{}'", t.format("%H:%M:%S%.f")),
-        Value::DateTime(dt) => format!("toDateTime('{}')", dt.format("%Y-%m-%d %H:%M:%S")),
-        Value::TimestampTz(ts) => format!("toDateTime64('{}', 3)", ts.format("%Y-%m-%d %H:%M:%S%.3f")),
-        Value::Decimal(d) => format!("toDecimal128('{d}', {})", d.scale()),
+        Value::Date(Temporal::Finite(d)) => format!("toDate('{}')", d.format("%Y-%m-%d")),
+        Value::Time(t) => format!("'{}'", t.format(None)),
+        Value::Timestamp(Temporal::Finite(t)) => format!("toDateTime('{}')", t.format("%Y-%m-%d %H:%M:%S")),
+        Value::TimestampTz(Temporal::Finite(t)) => {
+            format!("toDateTime64('{}', 3)", t.to_datetime().format("%Y-%m-%d %H:%M:%S%.3f"))
+        }
+        Value::Decimal(d) => format!("toDecimal128('{d}', {})", d.scale().unwrap_or(0)),
         Value::Uuid(u) => format!("toUUID('{u}')"),
-        Value::Json(j) => format!("'{}'", escape_str(&j.to_string())),
+        Value::Json(j) => format!("'{}'", escape_str(j.as_str())),
+        // An infinite date has no literal, and a value the driver could
+        // not read must not be written back as a guess.
+        Value::Undecodable(_) | Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_) => {
+            return Err(DriverError::Internal(format!(
+                "a {} value has no ClickHouse literal",
+                value.variant_name()
+            )));
+        }
+        other => match tablepro_core::export::value_to_text(other) {
+            Some(text) => format!("'{}'", escape_str(&text)),
+            None => "NULL".into(),
+        },
     };
     Ok(rendered)
+}
+
+/// The words ClickHouse uses for the non-finite floats.
+fn non_finite_literal(value: f64) -> Option<String> {
+    if value.is_nan() {
+        return Some("nan".to_owned());
+    }
+    if value.is_infinite() {
+        return Some(if value.is_sign_negative() { "-inf" } else { "inf" }.to_owned());
+    }
+    None
 }
 
 fn escape_str(s: &str) -> String {
@@ -854,12 +874,12 @@ mod tests {
         );
         assert_eq!(
             json_to_value(serde_json::json!("2024-06-15 08:30:00.123"), "DateTime64(3)"),
-            Value::DateTime(
+            Value::Timestamp(Temporal::Finite(
                 chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
                     .unwrap()
                     .and_hms_milli_opt(8, 30, 0, 123)
                     .unwrap()
-            )
+            ))
         );
         assert_eq!(
             json_to_value(serde_json::json!("abc"), "LowCardinality(Nullable(String))"),
@@ -867,12 +887,12 @@ mod tests {
         );
         assert_eq!(
             json_to_value(serde_json::json!("2024-06-15 08:30:00"), "DateTime"),
-            Value::DateTime(
+            Value::Timestamp(Temporal::Finite(
                 chrono::NaiveDate::from_ymd_opt(2024, 6, 15)
                     .unwrap()
                     .and_hms_opt(8, 30, 0)
                     .unwrap()
-            )
+            ))
         );
     }
 
@@ -887,11 +907,11 @@ mod tests {
         assert_eq!(json_to_value(serde_json::Value::Null, "Nullable(String)"), Value::Null);
         assert_eq!(
             json_to_value(serde_json::json!("2024-06-15"), "Date"),
-            Value::Date(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap())
+            Value::Date(Temporal::Finite(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()))
         );
         assert_eq!(
             json_to_value(serde_json::json!([1, 2]), "Array(UInt8)"),
-            Value::Json(serde_json::json!([1, 2]))
+            Value::Json(JsonText::parse("[1,2]".to_owned()).expect("valid json"))
         );
     }
 
@@ -966,9 +986,9 @@ mod tests {
 
     #[test]
     fn non_finite_floats_use_clickhouse_spellings() {
-        assert_eq!(literal(&Value::Float(f64::NAN)).unwrap(), "nan");
-        assert_eq!(literal(&Value::Float(f64::INFINITY)).unwrap(), "inf");
-        assert_eq!(literal(&Value::Float(f64::NEG_INFINITY)).unwrap(), "-inf");
+        assert_eq!(literal(&Value::Float64(f64::NAN)).unwrap(), "nan");
+        assert_eq!(literal(&Value::Float64(f64::INFINITY)).unwrap(), "inf");
+        assert_eq!(literal(&Value::Float64(f64::NEG_INFINITY)).unwrap(), "-inf");
     }
 
     #[test]
@@ -1012,5 +1032,79 @@ mod tests {
             "Code: 47. Unknown identifier: certificate".into(),
         ));
         assert!(matches!(err, DriverError::Query { .. }));
+    }
+}
+
+/// A column type from the name the catalogue gave, classified by the
+/// shared rules. The engine's own spelling is kept for DDL.
+fn column_type_of(type_name: &str) -> ColumnType {
+    let kind = classify_type_name(type_name);
+    ColumnType::new(
+        SqlTypeExpr::from_catalog_text(type_name),
+        kind,
+        CatalogType::Named(SqlTypeExpr::from_catalog_text(type_name)),
+        has_dynamic_storage(kind),
+        ReadForm::Native,
+    )
+}
+
+/// An integer of any width ClickHouse offers, in the smallest variant
+/// that holds it. The wide ones arrive as JSON strings, because a JSON
+/// number cannot carry them.
+fn integer_value(raw: &serde_json::Value) -> Value {
+    if let Some(value) = raw.as_i64() {
+        return Value::Int(value);
+    }
+    if let Some(value) = raw.as_u64() {
+        return Value::UInt(value);
+    }
+    let Some(text) = raw.as_str() else {
+        return fallback_text(raw);
+    };
+    if let Ok(value) = text.parse::<i64>() {
+        return Value::Int(value);
+    }
+    if let Ok(value) = text.parse::<u64>() {
+        return Value::UInt(value);
+    }
+    match text.parse() {
+        Ok(wide) => Value::WideInt(wide),
+        Err(_) => fallback_text(raw),
+    }
+}
+
+#[cfg(test)]
+mod value_tests {
+    use super::*;
+
+    #[test]
+    fn a_uint64_past_i64_keeps_its_digits_as_a_number() {
+        let raw = serde_json::Value::String("18446744073709551615".to_owned());
+
+        assert_eq!(integer_value(&raw), Value::UInt(u64::MAX));
+    }
+
+    #[test]
+    fn an_int128_is_kept_whole() {
+        let widest = "170141183460469231731687303715884105727";
+        let raw = serde_json::Value::String(widest.to_owned());
+
+        let Value::WideInt(value) = integer_value(&raw) else {
+            panic!("a 128-bit integer was not kept as one");
+        };
+        assert_eq!(value.to_string(), widest);
+    }
+
+    #[test]
+    fn a_plain_integer_stays_signed() {
+        assert_eq!(integer_value(&serde_json::json!(-7)), Value::Int(-7));
+        assert_eq!(integer_value(&serde_json::json!(7)), Value::Int(7));
+    }
+
+    #[test]
+    fn text_that_is_not_a_number_falls_back_to_text() {
+        let raw = serde_json::Value::String("nonsense".to_owned());
+
+        assert_eq!(integer_value(&raw), Value::Text("nonsense".to_owned()));
     }
 }

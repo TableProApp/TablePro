@@ -18,7 +18,6 @@ tablepro-core = { path = "../../core" }
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
-rust_decimal.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
 tiberius.workspace = true
@@ -27,6 +26,7 @@ tokio-util = { workspace = true, features = ["compat"] }
 uuid.workspace = true
 
 [dev-dependencies]
+rust_decimal.workspace = true
 secrecy.workspace = true
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["mssql_server"] }

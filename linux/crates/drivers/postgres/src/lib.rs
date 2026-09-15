@@ -3,10 +3,15 @@ use std::time::Duration;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgRow};
-use sqlx::{AssertSqlSafe, Column, Pool, Postgres, Row, TypeInfo};
+use sqlx::{AssertSqlSafe, Column, Pool, Postgres, Row, TypeInfo, ValueRef};
 
 use futures::stream::StreamExt;
 
+use tablepro_core::column::{
+    CatalogType, ColumnDefault, ColumnType, ReadForm, ResultColumn, SqlExpression, SqlTypeExpr, classify_type_name,
+    has_dynamic_storage,
+};
+use tablepro_core::value::{BitString, JsonText, OffsetTimestamp, SqlInterval, SqlTime, Temporal, TimeWithOffset};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
     MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
@@ -145,14 +150,18 @@ impl Connection for PgConnection {
                 } else {
                     raw_default.map(normalize_pg_default)
                 };
+                let type_name = r.get::<String, _>(1);
                 ColumnInfo {
                     name: r.get::<String, _>(0),
-                    data_type: r.get::<String, _>(1),
+                    column_type: column_type_of(&type_name),
                     nullable: r.get::<bool, _>(2),
                     primary_key: r.get::<bool, _>(3),
                     is_auto_increment: is_identity || is_serial,
-                    default_value,
                     is_generated,
+                    default: match default_value {
+                        Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
+                        None => ColumnDefault::None,
+                    },
                 }
             })
             .collect())
@@ -190,34 +199,19 @@ impl Connection for PgConnection {
             collected.push(row);
         }
         if collected.is_empty() {
-            return Ok(QueryResult {
-                columns: Vec::new(),
-                rows: Vec::new(),
-                truncated,
-            });
+            return Ok(QueryResult::empty().truncated(truncated));
         }
-        let columns: Vec<ColumnInfo> = collected[0]
+        let columns: Vec<ResultColumn> = collected[0]
             .columns()
             .iter()
-            .map(|c| ColumnInfo {
-                name: c.name().to_string(),
-                data_type: c.type_info().name().to_string(),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default_value: None,
-                is_generated: false,
-            })
+            .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
             .collect();
+        let width = columns.len();
         let data: Vec<Vec<Value>> = collected
             .iter()
-            .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+            .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
             .collect();
-        Ok(QueryResult {
-            columns,
-            rows: data,
-            truncated,
-        })
+        Ok(QueryResult::new(columns, data).truncated(truncated))
     }
 
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
@@ -374,84 +368,89 @@ async fn stream_into_result(pool: &Pool<Postgres>, sql: &str, limit: usize) -> R
         collected.push(row);
     }
     if collected.is_empty() {
-        return Ok(QueryResult {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            truncated,
-        });
+        return Ok(QueryResult::empty().truncated(truncated));
     }
-    let columns: Vec<ColumnInfo> = collected[0]
+    let columns: Vec<ResultColumn> = collected[0]
         .columns()
         .iter()
-        .map(|c| ColumnInfo {
-            name: c.name().to_string(),
-            data_type: c.type_info().name().to_string(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        })
+        .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
         .collect();
+    let width = columns.len();
     let data: Vec<Vec<Value>> = collected
         .iter()
-        .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+        .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
         .collect();
-    Ok(QueryResult {
-        columns,
-        rows: data,
-        truncated,
-    })
+    Ok(QueryResult::new(columns, data).truncated(truncated))
 }
 
 fn extract_value(row: &PgRow, idx: usize) -> Value {
     let type_name = row.columns()[idx].type_info().name().to_ascii_uppercase();
-    match type_name.as_str() {
-        "BOOL" => row.try_get::<bool, _>(idx).map(Value::Bool).unwrap_or(Value::Null),
-        "INT2" => row
-            .try_get::<i16, _>(idx)
-            .map(|v| Value::Int(v as i64))
-            .unwrap_or(Value::Null),
-        "INT4" => row
-            .try_get::<i32, _>(idx)
-            .map(|v| Value::Int(v as i64))
-            .unwrap_or(Value::Null),
-        "INT8" => row.try_get::<i64, _>(idx).map(Value::Int).unwrap_or(Value::Null),
-        "FLOAT4" => row
-            .try_get::<f32, _>(idx)
-            .map(|v| Value::Float(v as f64))
-            .unwrap_or(Value::Null),
-        "FLOAT8" => row.try_get::<f64, _>(idx).map(Value::Float).unwrap_or(Value::Null),
-        "NUMERIC" => row
-            .try_get::<rust_decimal::Decimal, _>(idx)
-            .map(Value::Decimal)
-            .unwrap_or(Value::Null),
-        "DATE" => row
-            .try_get::<chrono::NaiveDate, _>(idx)
-            .map(Value::Date)
-            .unwrap_or(Value::Null),
-        "TIME" => row
-            .try_get::<chrono::NaiveTime, _>(idx)
-            .map(Value::Time)
-            .unwrap_or(Value::Null),
-        "TIMESTAMP" => row
-            .try_get::<chrono::NaiveDateTime, _>(idx)
-            .map(Value::DateTime)
-            .unwrap_or(Value::Null),
-        "TIMESTAMPTZ" => row
-            .try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
-            .map(Value::TimestampTz)
-            .unwrap_or(Value::Null),
-        "UUID" => row
-            .try_get::<uuid::Uuid, _>(idx)
-            .map(Value::Uuid)
-            .unwrap_or(Value::Null),
-        "JSON" | "JSONB" => row
-            .try_get::<serde_json::Value, _>(idx)
-            .map(Value::Json)
-            .unwrap_or(Value::Null),
-        "BYTEA" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes).unwrap_or(Value::Null),
-        _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
+    let name = type_name.as_str();
+    match name {
+        "BOOL" => decode(row, idx, name, |v: bool| Some(Value::Bool(v))),
+        "INT2" => decode(row, idx, name, |v: i16| Some(Value::Int(i64::from(v)))),
+        "INT4" => decode(row, idx, name, |v: i32| Some(Value::Int(i64::from(v)))),
+        "INT8" => decode(row, idx, name, |v: i64| Some(Value::Int(v))),
+        // A real is kept at its own width: widening it to f64 and back
+        // does not round-trip.
+        "FLOAT4" => decode(row, idx, name, |v: f32| Some(Value::Float32(v))),
+        "FLOAT8" => decode(row, idx, name, |v: f64| Some(Value::Float64(v))),
+        // NUMERIC arrives in the binary form, so it decodes through the
+        // wire type and is reparsed from its own text at full scale.
+        "NUMERIC" => numeric_cell(row, idx, name),
+        "DATE" => decode(row, idx, name, |v: chrono::NaiveDate| {
+            Some(Value::Date(Temporal::Finite(v)))
+        }),
+        "TIME" => decode(row, idx, name, |v: chrono::NaiveTime| {
+            Some(Value::Time(SqlTime::from_time_of_day(v)))
+        }),
+        "TIMETZ" => decode(
+            row,
+            idx,
+            name,
+            |v: sqlx::postgres::types::PgTimeTz<chrono::NaiveTime, chrono::FixedOffset>| {
+                Some(Value::TimeTz(TimeWithOffset {
+                    time: SqlTime::from_time_of_day(v.time),
+                    offset: v.offset,
+                }))
+            },
+        ),
+        "TIMESTAMP" => decode(row, idx, name, |v: chrono::NaiveDateTime| {
+            Some(Value::Timestamp(Temporal::Finite(v)))
+        }),
+        "TIMESTAMPTZ" => decode(row, idx, name, |v: chrono::DateTime<chrono::Utc>| {
+            Some(Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(
+                v.fixed_offset(),
+            ))))
+        }),
+        "UUID" => decode(row, idx, name, |v: uuid::Uuid| Some(Value::Uuid(v))),
+        "JSON" | "JSONB" => json_cell(row, idx, name),
+        "BYTEA" => decode(row, idx, name, |v: Vec<u8>| Some(Value::Bytes(v))),
+        "BIT" | "VARBIT" => decode(row, idx, name, |v: sqlx::types::BitVec| bits_value(&v)),
+        "INTERVAL" => decode(row, idx, name, |v: sqlx::postgres::types::PgInterval| {
+            Some(Value::Interval(SqlInterval {
+                months: v.months,
+                days: v.days,
+                microseconds: v.microseconds,
+            }))
+        }),
+        _ => decode(row, idx, name, |v: String| Some(Value::Text(v))),
+    }
+}
+
+/// Read one cell, keeping three outcomes apart: a real NULL, a value
+/// the driver read, and one it could not read. A type with no decoder
+/// says so rather than reading as an empty cell the user would take
+/// for a NULL.
+fn decode<'r, T, F>(row: &'r PgRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    T: sqlx::Decode<'r, Postgres> + sqlx::Type<Postgres>,
+    F: FnOnce(T) -> Option<Value>,
+{
+    match row.try_get::<Option<T>, _>(idx) {
+        Ok(Some(raw)) => into_value(raw).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
     }
 }
 
@@ -468,16 +467,38 @@ fn bind_pg_params<'q>(
             Value::Null => q.bind(Option::<&str>::None),
             Value::Bool(b) => q.bind(*b),
             Value::Int(i) => q.bind(*i),
-            Value::Float(f) => q.bind(*f),
+            Value::Float32(f) => q.bind(*f),
+            Value::Float64(f) => q.bind(*f),
             Value::Text(s) => q.bind(s.clone()),
             Value::Bytes(b) => q.bind(b.clone()),
-            Value::Date(d) => q.bind(*d),
-            Value::Time(t) => q.bind(*t),
-            Value::DateTime(dt) => q.bind(*dt),
-            Value::TimestampTz(ts) => q.bind(*ts),
-            Value::Decimal(d) => q.bind(*d),
+            Value::Date(Temporal::Finite(d)) => q.bind(*d),
+            Value::Timestamp(Temporal::Finite(t)) => q.bind(*t),
+            Value::TimestampTz(Temporal::Finite(t)) => q.bind(t.to_datetime()),
             Value::Uuid(u) => q.bind(*u),
-            Value::Json(j) => q.bind(j.clone()),
+            // PostgreSQL refuses a text parameter where it wants a
+            // numeric, so these bind as the wire type the column
+            // expects rather than as their text form.
+            Value::Decimal(d) => match to_pg_decimal(d) {
+                Some(decimal) => q.bind(decimal),
+                // Past what the wire type holds. Text reaches the
+                // server, which refuses it with its own message,
+                // rather than a quietly rounded number.
+                None => q.bind(d.to_string()),
+            },
+            Value::Json(j) => match serde_json::from_str::<serde_json::Value>(j.as_str()) {
+                Ok(json) => q.bind(json),
+                Err(_) => q.bind(j.as_str().to_owned()),
+            },
+            Value::Time(t) => match t.to_time_of_day() {
+                Some(time) => q.bind(time),
+                None => q.bind(t.format(None)),
+            },
+            // Everything else is sent as text for the server to parse
+            // from its own output form.
+            other => match tablepro_core::export::value_to_text(other) {
+                Some(text) => q.bind(text),
+                None => q.bind(Option::<&str>::None),
+            },
         };
     }
     q
@@ -617,5 +638,303 @@ mod tests {
         // Already-unquoted (e.g. legacy MySQL-style) — no double-strip.
         assert_eq!(normalize_pg_default("hello".into()), "hello");
         assert_eq!(normalize_pg_default("'unbalanced".into()), "'unbalanced");
+    }
+}
+
+/// A column type from the name the catalogue gave, classified by the
+/// shared rules. The engine's own spelling is kept for DDL.
+fn column_type_of(type_name: &str) -> ColumnType {
+    let kind = classify_type_name(type_name);
+    ColumnType::new(
+        SqlTypeExpr::from_catalog_text(type_name),
+        kind,
+        CatalogType::Named(SqlTypeExpr::from_catalog_text(type_name)),
+        has_dynamic_storage(kind),
+        ReadForm::Native,
+    )
+}
+
+/// A value the driver could not read, so the grid says so rather than
+/// showing an empty cell that looks like a NULL.
+fn undecodable(type_name: &str) -> Value {
+    Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+        type_name: type_name.to_owned(),
+        reason: tablepro_core::value::UndecodableReason::UnsupportedType,
+    }))
+}
+
+/// A decimal in the form the PostgreSQL wire protocol takes.
+///
+/// `None` when the value needs more digits than that type holds, so
+/// the caller can refuse rather than round. Reading is not limited
+/// this way: `numeric_cell` takes the wire form as it arrives.
+fn to_pg_decimal(value: &tablepro_core::value::SqlDecimal) -> Option<rust_decimal::Decimal> {
+    let (mantissa, scale) = value.to_scaled_i128()?;
+    rust_decimal::Decimal::try_from_i128_with_scale(mantissa, scale).ok()
+}
+
+/// A JSON document read back as the server rendered it.
+///
+/// Decoding through a JSON type and printing it again would reorder
+/// the keys and drop the spacing, so the bytes are taken as they
+/// arrive. JSONB's binary form puts a version byte first.
+fn json_cell(row: &PgRow, idx: usize, type_name: &str) -> Value {
+    let Ok(raw) = row.try_get_raw(idx) else {
+        return undecodable(type_name);
+    };
+    if raw.is_null() {
+        return Value::Null;
+    }
+    let Ok(bytes) = raw.as_bytes() else {
+        return undecodable(type_name);
+    };
+    let text = match (raw.format(), type_name) {
+        (sqlx::postgres::PgValueFormat::Binary, "JSONB") => match bytes.split_first() {
+            Some((&JSONB_VERSION, rest)) => rest,
+            _ => return undecodable(type_name),
+        },
+        _ => bytes,
+    };
+    std::str::from_utf8(text)
+        .ok()
+        .and_then(|text| JsonText::parse(text.to_owned()).ok())
+        .map(Value::Json)
+        .unwrap_or_else(|| undecodable(type_name))
+}
+
+const JSONB_VERSION: u8 = 1;
+
+/// A NUMERIC read back at the exact digits the server holds.
+///
+/// Neither fixed-width nor arbitrary-precision decimal decoding is
+/// enough here: the first rounds a number past its own width, and the
+/// second drops the declared scale, so `12345.67890` comes back as
+/// `12345.6789`. The wire form carries both, so it is read directly.
+fn numeric_cell(row: &PgRow, idx: usize, type_name: &str) -> Value {
+    let Ok(raw) = row.try_get_raw(idx) else {
+        return undecodable(type_name);
+    };
+    if raw.is_null() {
+        return Value::Null;
+    }
+    let Ok(bytes) = raw.as_bytes() else {
+        return undecodable(type_name);
+    };
+    let text = match raw.format() {
+        sqlx::postgres::PgValueFormat::Text => std::str::from_utf8(bytes).map(str::to_owned).ok(),
+        sqlx::postgres::PgValueFormat::Binary => numeric_text(bytes),
+    };
+    text.as_deref()
+        .and_then(numeric_value)
+        .unwrap_or_else(|| undecodable(type_name))
+}
+
+/// A NUMERIC in its binary form: the base-10000 digit count, the
+/// position of the first digit, a sign, the declared scale, then the
+/// digits themselves. Rendered here the way the server prints it,
+/// trailing zeros of the scale included.
+fn numeric_text(bytes: &[u8]) -> Option<String> {
+    let header: [u8; 8] = bytes.get(..8)?.try_into().ok()?;
+    let digit_count = usize::from(u16::from_be_bytes([header[0], header[1]]));
+    let weight = i32::from(i16::from_be_bytes([header[2], header[3]]));
+    let sign = u16::from_be_bytes([header[4], header[5]]);
+    let scale = usize::from(u16::from_be_bytes([header[6], header[7]]));
+    match sign {
+        SIGN_POSITIVE | SIGN_NEGATIVE => {}
+        SIGN_NAN => return Some("NaN".to_owned()),
+        SIGN_POSITIVE_INFINITY => return Some("Infinity".to_owned()),
+        SIGN_NEGATIVE_INFINITY => return Some("-Infinity".to_owned()),
+        _ => return None,
+    }
+    let digits: Vec<u16> = (0..digit_count)
+        .map(|position| {
+            let start = 8 + position * 2;
+            let pair: [u8; 2] = bytes.get(start..start + 2)?.try_into().ok()?;
+            Some(u16::from_be_bytes(pair))
+        })
+        .collect::<Option<_>>()?;
+    let digit_at = |position: i32| -> u16 {
+        usize::try_from(position)
+            .ok()
+            .and_then(|at| digits.get(at).copied())
+            .unwrap_or(0)
+    };
+
+    let mut text = String::new();
+    if sign == SIGN_NEGATIVE {
+        text.push('-');
+    }
+    if weight < 0 {
+        text.push('0');
+    } else {
+        for position in 0..=weight {
+            if position == 0 {
+                text.push_str(&digit_at(position).to_string());
+            } else {
+                text.push_str(&format!("{:04}", digit_at(position)));
+            }
+        }
+    }
+    if scale > 0 {
+        let mut fraction = String::with_capacity(scale + 4);
+        let mut position = weight + 1;
+        while fraction.len() < scale {
+            let digit = if position < 0 { 0 } else { digit_at(position) };
+            fraction.push_str(&format!("{digit:04}"));
+            position += 1;
+        }
+        fraction.truncate(scale);
+        text.push('.');
+        text.push_str(&fraction);
+    }
+    Some(text)
+}
+
+const SIGN_POSITIVE: u16 = 0x0000;
+const SIGN_NEGATIVE: u16 = 0x4000;
+const SIGN_NAN: u16 = 0xC000;
+const SIGN_POSITIVE_INFINITY: u16 = 0xD000;
+const SIGN_NEGATIVE_INFINITY: u16 = 0xF000;
+
+/// NUMERIC also carries `NaN` and the infinities, which have no
+/// decimal form.
+fn numeric_value(text: &str) -> Option<Value> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "nan" => Some(Value::Float64(f64::NAN)),
+        "infinity" => Some(Value::Float64(f64::INFINITY)),
+        "-infinity" => Some(Value::Float64(f64::NEG_INFINITY)),
+        _ => text.parse().ok().map(Value::Decimal),
+    }
+}
+
+/// A bit string in the form the wire carries: the bit count, then the
+/// bits packed high end first.
+fn bits_value(bits: &sqlx::types::BitVec) -> Option<Value> {
+    let bit_len = u32::try_from(bits.len()).ok()?;
+    BitString::from_bytes(bit_len, bits.to_bytes()).ok().map(Value::Bits)
+}
+
+#[cfg(test)]
+mod value_tests {
+    use super::*;
+
+    fn numeric_bytes(weight: i16, sign: u16, scale: u16, digits: &[u16]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let count = u16::try_from(digits.len()).unwrap_or(0);
+        bytes.extend_from_slice(&count.to_be_bytes());
+        bytes.extend_from_slice(&weight.to_be_bytes());
+        bytes.extend_from_slice(&sign.to_be_bytes());
+        bytes.extend_from_slice(&scale.to_be_bytes());
+        for digit in digits {
+            bytes.extend_from_slice(&digit.to_be_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn numeric_keeps_its_declared_scale() {
+        // 12345.67890 as the server sends it: 1 | 2345 | 6789 | 0000,
+        // with a declared scale of 5.
+        let bytes = numeric_bytes(1, SIGN_POSITIVE, 5, &[1, 2345, 6789, 0]);
+
+        assert_eq!(numeric_text(&bytes).as_deref(), Some("12345.67890"));
+    }
+
+    #[test]
+    fn a_numeric_wider_than_a_fixed_decimal_survives() {
+        // 30 integer digits and 9 fractional ones, past the 28 a
+        // fixed-width decimal type holds.
+        let bytes = numeric_bytes(
+            7,
+            SIGN_POSITIVE,
+            9,
+            &[12, 3456, 7890, 1234, 5678, 9012, 3456, 7890, 1234, 5678, 9000],
+        );
+
+        let text = numeric_text(&bytes).expect("the wire form reads");
+        assert_eq!(text, "123456789012345678901234567890.123456789");
+        let Some(Value::Decimal(decimal)) = numeric_value(&text) else {
+            panic!("a wide numeric did not parse");
+        };
+        assert_eq!(decimal.to_string(), "123456789012345678901234567890.123456789");
+    }
+
+    #[test]
+    fn a_numeric_below_one_keeps_its_leading_zeros() {
+        // 0.00001234, whose first digit group sits two places past the
+        // decimal point.
+        let bytes = numeric_bytes(-2, SIGN_POSITIVE, 8, &[1234]);
+
+        assert_eq!(numeric_text(&bytes).as_deref(), Some("0.00001234"));
+    }
+
+    #[test]
+    fn a_negative_numeric_keeps_its_sign() {
+        let bytes = numeric_bytes(0, SIGN_NEGATIVE, 2, &[42, 5000]);
+
+        assert_eq!(numeric_text(&bytes).as_deref(), Some("-42.50"));
+    }
+
+    #[test]
+    fn numeric_carries_the_non_finite_values_postgres_allows() {
+        let nan = numeric_text(&numeric_bytes(0, SIGN_NAN, 0, &[]));
+        assert_eq!(nan.as_deref(), Some("NaN"));
+        assert!(matches!(numeric_value("NaN"), Some(Value::Float64(v)) if v.is_nan()));
+
+        let negative = numeric_text(&numeric_bytes(0, SIGN_NEGATIVE_INFINITY, 0, &[]));
+        assert_eq!(negative.as_deref(), Some("-Infinity"));
+        assert_eq!(numeric_value("-Infinity"), Some(Value::Float64(f64::NEG_INFINITY)));
+    }
+
+    #[test]
+    fn a_truncated_numeric_is_refused() {
+        assert_eq!(numeric_text(&[0, 1, 0, 0]), None, "a short header was read anyway");
+        assert_eq!(
+            numeric_text(&numeric_bytes(0, SIGN_POSITIVE, 0, &[1])[..9]),
+            None,
+            "a missing digit was read anyway"
+        );
+    }
+
+    #[test]
+    fn a_bit_string_keeps_its_length() {
+        let mut bits = sqlx::types::BitVec::from_elem(5, false);
+        for position in [0, 2, 3] {
+            bits.set(position, true);
+        }
+
+        let Some(Value::Bits(read)) = bits_value(&bits) else {
+            panic!("a bit string did not convert");
+        };
+
+        assert_eq!(read.bit_len(), 5);
+        assert_eq!(read.to_string(), "10110");
+    }
+}
+
+#[cfg(test)]
+mod decimal_tests {
+    use super::*;
+
+    #[test]
+    fn a_decimal_the_wire_type_holds_converts_exactly() {
+        let value: tablepro_core::value::SqlDecimal = "12345.67890".parse().expect("a decimal");
+
+        let converted = to_pg_decimal(&value).expect("the wire form");
+
+        assert_eq!(converted.to_string(), "12345.67890", "the declared scale was trimmed");
+    }
+
+    #[test]
+    fn a_decimal_wider_than_the_wire_type_is_refused_rather_than_rounded() {
+        // 39 digits, past what the wire type carries.
+        let wide: tablepro_core::value::SqlDecimal = "123456789012345678901234567890123456789"
+            .parse()
+            .expect("a wide decimal");
+
+        assert!(
+            to_pg_decimal(&wide).is_none(),
+            "a number too wide to send exactly was converted anyway"
+        );
     }
 }

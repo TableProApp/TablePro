@@ -57,50 +57,20 @@ impl RowKey {
         if pk_values.is_empty() {
             return None;
         }
-        Some(RowKey::Persisted(pk_values.iter().map(KeyValue::from).collect()))
+        Some(RowKey::Persisted(
+            pk_values.iter().cloned().map(KeyValue::new).collect(),
+        ))
     }
 }
 
-/// Hash- and Eq-friendly mirror of `Value`. Floats are stored as
-/// IEEE-754 bits (so NaN equals NaN for identity purposes — pathological
-/// PK case but defined behaviour). `Decimal` and `Json` are stored as
-/// their canonical string forms because neither type derives `Hash`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum KeyValue {
-    Null,
-    Bool(bool),
-    Int(i64),
-    FloatBits(u64),
-    Text(String),
-    Bytes(Vec<u8>),
-    Date(chrono::NaiveDate),
-    Time(chrono::NaiveTime),
-    DateTime(chrono::NaiveDateTime),
-    TimestampTz(chrono::DateTime<chrono::Utc>),
-    Decimal(String),
-    Uuid(uuid::Uuid),
-    Json(String),
-}
-
-impl From<&Value> for KeyValue {
-    fn from(v: &Value) -> Self {
-        match v {
-            Value::Null => KeyValue::Null,
-            Value::Bool(b) => KeyValue::Bool(*b),
-            Value::Int(i) => KeyValue::Int(*i),
-            Value::Float(f) => KeyValue::FloatBits(f.to_bits()),
-            Value::Text(s) => KeyValue::Text(s.clone()),
-            Value::Bytes(b) => KeyValue::Bytes(b.clone()),
-            Value::Date(d) => KeyValue::Date(*d),
-            Value::Time(t) => KeyValue::Time(*t),
-            Value::DateTime(dt) => KeyValue::DateTime(*dt),
-            Value::TimestampTz(ts) => KeyValue::TimestampTz(*ts),
-            Value::Decimal(d) => KeyValue::Decimal(d.to_string()),
-            Value::Uuid(u) => KeyValue::Uuid(*u),
-            Value::Json(j) => KeyValue::Json(j.to_string()),
-        }
-    }
-}
+/// A key value that hashes and compares.
+///
+/// `ValueIdentity` wraps the value itself rather than a mirror of it:
+/// a float compares by its bits, so NaN is its own key, and a
+/// timestamp compares with its offset. Nothing is flattened to text on
+/// the way in, so the value that goes back into the WHERE clause is
+/// the one the row was read with.
+pub type KeyValue = tablepro_core::value::ValueIdentity;
 
 /// A draft row collected by the tracker. `values` is the full column
 /// vector (length = `columns.len()` at the time of creation). Empty
@@ -712,26 +682,10 @@ fn undo_op_matches_draft(op: &UndoOp, draft_id: u64) -> bool {
     }
 }
 
-/// Lossy KeyValue → Value mapping. Used only by `materialize` to feed
-/// PK values back into SQL params; equality-correctness preserved.
+/// The value a key was built from, to go back into the WHERE clause.
+/// Nothing is lost on the way out, because nothing was on the way in.
 fn keyvalue_to_value(kv: &KeyValue) -> Value {
-    match kv {
-        KeyValue::Null => Value::Null,
-        KeyValue::Bool(b) => Value::Bool(*b),
-        KeyValue::Int(i) => Value::Int(*i),
-        KeyValue::FloatBits(bits) => Value::Float(f64::from_bits(*bits)),
-        KeyValue::Text(s) => Value::Text(s.clone()),
-        KeyValue::Bytes(b) => Value::Bytes(b.clone()),
-        KeyValue::Date(d) => Value::Date(*d),
-        KeyValue::Time(t) => Value::Time(*t),
-        KeyValue::DateTime(dt) => Value::DateTime(*dt),
-        KeyValue::TimestampTz(ts) => Value::TimestampTz(*ts),
-        KeyValue::Decimal(s) => s.parse().map(Value::Decimal).unwrap_or(Value::Text(s.clone())),
-        KeyValue::Uuid(u) => Value::Uuid(*u),
-        KeyValue::Json(s) => serde_json::from_str(s)
-            .map(Value::Json)
-            .unwrap_or(Value::Text(s.clone())),
-    }
+    kv.value().clone()
 }
 
 /// Per-tab registry of trackers. Singleton via `thread_local!` because
@@ -812,17 +766,42 @@ pub fn pending_tabs() -> Vec<Uuid> {
 
 #[cfg(test)]
 mod tests {
+    /// A column carrying the server's spelling and the kind it means,
+    /// which is what these tests exercise.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
+    )]
+    fn test_column(name: &str, type_name: &str) -> tablepro_core::ColumnInfo {
+        let kind = tablepro_core::column::classify_type_name(type_name);
+        tablepro_core::ColumnInfo {
+            name: name.to_owned(),
+            column_type: tablepro_core::column::ColumnType::new(
+                tablepro_core::column::SqlTypeExpr::from_catalog_text(type_name),
+                kind,
+                tablepro_core::column::CatalogType::Unknown,
+                tablepro_core::column::has_dynamic_storage(kind),
+                tablepro_core::column::ReadForm::Native,
+            ),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            is_generated: false,
+            default: tablepro_core::column::ColumnDefault::None,
+        }
+    }
+
     use super::*;
     use tablepro_core::ColumnInfo;
 
     fn pk_col(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "integer".into(),
+            column_type: test_column("", "integer").column_type,
             nullable: false,
             primary_key: true,
             is_auto_increment: true,
-            default_value: None,
+            default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
         }
     }
@@ -830,11 +809,11 @@ mod tests {
     fn data_col(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "text".into(),
+            column_type: test_column("", "text").column_type,
             nullable: false,
             primary_key: false,
             is_auto_increment: false,
-            default_value: None,
+            default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
         }
     }
@@ -960,20 +939,20 @@ mod tests {
         let columns = vec![
             ColumnInfo {
                 name: "a".into(),
-                data_type: "integer".into(),
+                column_type: test_column("", "integer").column_type,
                 nullable: false,
                 primary_key: true,
                 is_auto_increment: false,
-                default_value: None,
+                default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
             },
             ColumnInfo {
                 name: "b".into(),
-                data_type: "integer".into(),
+                column_type: test_column("", "integer").column_type,
                 nullable: true,
                 primary_key: true,
                 is_auto_increment: false,
-                default_value: None,
+                default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
             },
             data_col("name"),
@@ -996,11 +975,11 @@ mod tests {
         let columns = vec![
             ColumnInfo {
                 name: "a".into(),
-                data_type: "integer".into(),
+                column_type: test_column("", "integer").column_type,
                 nullable: true,
                 primary_key: true,
                 is_auto_increment: false,
-                default_value: None,
+                default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
             },
             data_col("name"),

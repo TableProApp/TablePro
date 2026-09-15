@@ -44,6 +44,22 @@ impl ColumnType {
         }
     }
 
+    /// A stand-in for a column whose type is not known yet, used
+    /// while the catalogue is still loading.
+    ///
+    /// It names no server type, so nothing can paste it into DDL: a
+    /// caller that needs the server's own spelling has to wait for the
+    /// catalogue rather than invent one.
+    pub fn unknown() -> Self {
+        Self {
+            name: SqlTypeExpr::from_catalog_text(""),
+            kind: ColumnKind::Other,
+            catalog: CatalogType::Unknown,
+            dynamic_storage: true,
+            read_form: ReadForm::ServerText,
+        }
+    }
+
     /// The fallback for a type no driver placed: the value is the
     /// server's text and the grid treats it as such.
     pub fn untyped_text(name: SqlTypeExpr) -> Self {
@@ -80,6 +96,14 @@ impl ColumnType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_type_names_nothing_the_server_would_recognise() {
+        let unknown = ColumnType::unknown();
+
+        assert_eq!(unknown.name().as_sql(), "");
+        assert_eq!(unknown.kind(), ColumnKind::Other);
+    }
 
     #[test]
     fn untyped_text_reads_as_server_text() {

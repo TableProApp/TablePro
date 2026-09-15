@@ -390,7 +390,7 @@ impl BrowseTab {
             CellPreset::Empty => {
                 let col = self.current_columns.get(col_index);
                 match col {
-                    Some(c) if super::grid::column_accepts_empty(&c.data_type) => Ok(Value::Text(String::new())),
+                    Some(c) if c.column_type.kind().accepts_empty_string() => Ok(Value::Text(String::new())),
                     _ => parse_input_for_column("", col),
                 }
             }
@@ -790,7 +790,7 @@ impl BrowseTab {
                     } else {
                         let row_keys: Vec<KeyValue> = pk_indices
                             .iter()
-                            .map(|&col_idx| (&row.cell_value(col_idx)).into())
+                            .map(|&col_idx| tablepro_core::value::ValueIdentity::new(row.cell_value(col_idx)))
                             .collect();
                         row_keys == *target_keys
                     }
@@ -1798,7 +1798,7 @@ impl SimpleComponent for BrowseTab {
                 // so the headers render even when the page is empty.
                 let mut result = result;
                 if result.columns.is_empty() && !self.current_columns.is_empty() {
-                    result.columns = self.current_columns.clone();
+                    result.columns = result_columns(&self.current_columns);
                 }
                 self.current_result = Some(result);
                 // Defer rendering until columns are also loaded — the
@@ -1821,7 +1821,7 @@ impl SimpleComponent for BrowseTab {
                 if let Some(result) = self.current_result.as_mut()
                     && result.columns.is_empty()
                 {
-                    result.columns = columns.clone();
+                    result.columns = result_columns(&columns);
                 }
                 self.refresh_crud_buttons();
                 // Filter strip rebuilds against the new schema —
@@ -2217,13 +2217,15 @@ impl SimpleComponent for BrowseTab {
                 // here so a paste-induced multi-line value never
                 // reaches the SQL layer. JSON columns aren't
                 // normalised: they need real newlines.
-                let normalized = match self
+                // A column that holds line breaks keeps them; everywhere
+                // else a pasted newline would reach the SQL layer.
+                let keeps_line_breaks = self
                     .current_columns
                     .get(col_index)
-                    .map(|c| classify_type(&c.data_type.to_ascii_lowercase()))
-                {
-                    Some(TypeKind::Json) => new_value,
-                    _ => normalize_single_line_input(&new_value),
+                    .is_some_and(|c| c.column_type.kind().accepts_line_breaks());
+                let normalized = match keeps_line_breaks {
+                    true => new_value,
+                    false => normalize_single_line_input(&new_value),
                 };
                 let col = self.current_columns.get(col_index);
                 let new = match parse_input_for_column(&normalized, col) {
@@ -2347,7 +2349,7 @@ impl SimpleComponent for BrowseTab {
                 if rows.is_empty() {
                     return;
                 }
-                match tablepro_core::export::render_tsv(&self.current_columns, &rows, false) {
+                match tablepro_core::export::render_tsv(&result_columns(&self.current_columns), &rows, false) {
                     Ok(tsv) => {
                         let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
                     }
@@ -2653,204 +2655,23 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
     label.set_visible(true);
 }
 
-/// Parse a user-typed cell value against the column's declared data
-/// type. Returns `Err(message)` when the input is unambiguously wrong
-/// for the column (invalid date, malformed UUID, required field empty,
-/// etc.) so the caller can show a toast and revert the cell.
+/// The value the user typed, as the column's own type.
 ///
-/// Rules:
-/// - Empty + nullable (or has server default) → `Value::Null`. For
-///   drafts this maps to INSERT-skip-column; for UPDATEs on NOT NULL
-///   the DB will surface a clearer error than we can predict here.
-/// - Empty + NOT NULL + no default → reject ("Field is required") —
-///   the only path to bypass is to type a value or use the explicit
-///   "Set to NULL" affordance.
-/// - Non-empty → routed through the per-type parser. Native types
-///   (Bool / Int / Float / Decimal / Date / Time / DateTime /
-///   TimestampTz / Uuid / Json) bind correctly; `Text` is the
-///   fallthrough for unclassified types.
+/// Parsing against the typed column rather than a type-name string is
+/// what makes an out-of-range number a message beside the cell instead
+/// of a failed transaction. An empty cell is NULL only where the
+/// column can hold one.
 fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Result<Value, String> {
     let Some(col) = col else {
         return Ok(Value::Text(text.to_string()));
     };
-    if text.is_empty() {
-        if col.nullable || col.default_value.is_some() {
+    if text.is_empty() && !col.column_type.kind().accepts_empty_string() {
+        if col.nullable || !col.default.is_none() {
             return Ok(Value::Null);
         }
         return Err(crate::i18n::gettext("Field is required"));
     }
-    let dt = col.data_type.to_ascii_lowercase();
-    let trimmed = text.trim();
-    match classify_type(&dt) {
-        TypeKind::Bool => parse_bool_value(trimmed),
-        TypeKind::Int => parse_int_value(trimmed),
-        TypeKind::Float => parse_float_value(trimmed),
-        TypeKind::Decimal => parse_decimal_value(trimmed),
-        TypeKind::Uuid => parse_uuid_value(trimmed),
-        TypeKind::Json => parse_json_value(trimmed),
-        TypeKind::TimestampTz => parse_timestamptz_value(trimmed),
-        TypeKind::DateTime => parse_datetime_value(trimmed),
-        TypeKind::Date => parse_date_value(trimmed),
-        TypeKind::Time => parse_time_value(trimmed),
-        TypeKind::Text => Ok(Value::Text(text.to_string())),
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypeKind {
-    Bool,
-    Int,
-    Float,
-    Decimal,
-    Uuid,
-    Json,
-    TimestampTz,
-    DateTime,
-    Date,
-    Time,
-    Text,
-}
-
-/// Map a lowercased `data_type` string to a coarse `TypeKind`. Order
-/// of checks matters because several SQL types share substrings — for
-/// example `timestamptz` / `timestamp with time zone` must be matched
-/// before bare `timestamp`, and `tinyint(1)` (MySQL bool) must be
-/// matched before generic `tinyint` / `int` patterns.
-fn classify_type(dt: &str) -> TypeKind {
-    // Postgres `format_type()` returns "bit(1)" for length-1 BIT
-    // columns (not the bare "bit" the original guard expected).
-    // Both forms classify as Bool so the cell renders as a checkbox
-    // rather than a text editor that rejects "true"/"false" with
-    // "Invalid integer".
-    if matches!(dt, "bool" | "boolean" | "bit" | "bit(1)" | "tinyint(1)") {
-        return TypeKind::Bool;
-    }
-    if dt.contains("uuid") {
-        return TypeKind::Uuid;
-    }
-    if dt.contains("json") {
-        return TypeKind::Json;
-    }
-    if dt.contains("timestamptz") || dt.contains("with time zone") {
-        return TypeKind::TimestampTz;
-    }
-    if dt.contains("timestamp") || dt.contains("datetime") {
-        return TypeKind::DateTime;
-    }
-    if dt == "date" || (dt.starts_with("date") && !dt.contains("datetime") && !dt.contains("time")) {
-        return TypeKind::Date;
-    }
-    if dt == "time" || dt.starts_with("time(") || dt == "time without time zone" {
-        return TypeKind::Time;
-    }
-    if matches!(dt, "decimal" | "numeric" | "money") || dt.starts_with("decimal(") || dt.starts_with("numeric(") {
-        return TypeKind::Decimal;
-    }
-    if matches!(dt, "float" | "double" | "real" | "double precision") || dt.starts_with("float(") {
-        return TypeKind::Float;
-    }
-    if matches!(
-        dt,
-        "int"
-            | "int2"
-            | "int4"
-            | "int8"
-            | "integer"
-            | "smallint"
-            | "bigint"
-            | "tinyint"
-            | "mediumint"
-            | "serial"
-            | "bigserial"
-            | "smallserial"
-    ) || dt.starts_with("int(")
-        || dt.starts_with("integer(")
-        || dt.starts_with("smallint(")
-        || dt.starts_with("bigint(")
-        || dt.starts_with("tinyint(")
-        || dt.starts_with("mediumint(")
-    {
-        return TypeKind::Int;
-    }
-    TypeKind::Text
-}
-
-fn parse_bool_value(text: &str) -> Result<Value, String> {
-    match text.to_ascii_lowercase().as_str() {
-        "true" | "t" | "1" | "yes" | "y" | "on" => Ok(Value::Bool(true)),
-        "false" | "f" | "0" | "no" | "n" | "off" => Ok(Value::Bool(false)),
-        _ => Err(crate::i18n::gettext("Invalid boolean. Use true/false, yes/no, or 1/0.")),
-    }
-}
-
-fn parse_int_value(text: &str) -> Result<Value, String> {
-    text.parse::<i64>()
-        .map(Value::Int)
-        .map_err(|_| crate::i18n::gettext("Invalid integer"))
-}
-
-fn parse_float_value(text: &str) -> Result<Value, String> {
-    text.parse::<f64>()
-        .map(Value::Float)
-        .map_err(|_| crate::i18n::gettext("Invalid number"))
-}
-
-fn parse_decimal_value(text: &str) -> Result<Value, String> {
-    text.parse::<rust_decimal::Decimal>()
-        .map(Value::Decimal)
-        .map_err(|_| crate::i18n::gettext("Invalid decimal"))
-}
-
-fn parse_uuid_value(text: &str) -> Result<Value, String> {
-    uuid::Uuid::parse_str(text)
-        .map(Value::Uuid)
-        .map_err(|_| crate::i18n::gettext("Invalid UUID. Expected 8-4-4-4-12 hex digits."))
-}
-
-fn parse_json_value(text: &str) -> Result<Value, String> {
-    serde_json::from_str::<serde_json::Value>(text)
-        .map(Value::Json)
-        .map_err(|e| crate::i18n::gettext_f("Invalid JSON: {error}", &[("error", &e.to_string())]))
-}
-
-fn parse_timestamptz_value(text: &str) -> Result<Value, String> {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(text) {
-        return Ok(Value::TimestampTz(dt.with_timezone(&chrono::Utc)));
-    }
-    Err(crate::i18n::gettext(
-        "Invalid timestamp. Use ISO 8601, e.g. 2024-01-15T14:30:00Z.",
-    ))
-}
-
-fn parse_datetime_value(text: &str) -> Result<Value, String> {
-    let formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S%.f",
-        "%Y-%m-%dT%H:%M:%S%.f",
-    ];
-    for fmt in &formats {
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(text, fmt) {
-            return Ok(Value::DateTime(dt));
-        }
-    }
-    Err(crate::i18n::gettext("Invalid datetime. Use YYYY-MM-DD HH:MM:SS."))
-}
-
-fn parse_date_value(text: &str) -> Result<Value, String> {
-    chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-        .map(Value::Date)
-        .map_err(|_| crate::i18n::gettext("Invalid date. Use YYYY-MM-DD."))
-}
-
-fn parse_time_value(text: &str) -> Result<Value, String> {
-    let formats = ["%H:%M:%S", "%H:%M:%S%.f", "%H:%M"];
-    for fmt in &formats {
-        if let Ok(t) = chrono::NaiveTime::parse_from_str(text, fmt) {
-            return Ok(Value::Time(t));
-        }
-    }
-    Err(crate::i18n::gettext("Invalid time. Use HH:MM:SS."))
+    tablepro_core::edit::parse_literal_text(text, &col.column_type).map_err(|error| error.to_string())
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).
@@ -2893,27 +2714,51 @@ struct PendingRevealer {
     pending_label: gtk::Label,
 }
 
+/// The result-column view of a catalogue column list, for a result the
+/// grid renders from the schema it already has.
+fn result_columns(columns: &[tablepro_core::ColumnInfo]) -> std::sync::Arc<[tablepro_core::column::ResultColumn]> {
+    columns.iter().map(|column| column.result_column()).collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{TypeKind, build_persisted_row_key, classify_type, format_thousands, parse_input_for_column};
+    use super::{build_persisted_row_key, format_thousands, parse_input_for_column};
     use crate::services::change_tracker::RowKey;
     use tablepro_core::{ColumnInfo, Value};
 
+    /// A column carrying the server's spelling and the kind it means.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
+    )]
     fn col(data_type: &str, nullable: bool) -> ColumnInfo {
+        let kind = tablepro_core::column::classify_type_name(data_type);
         ColumnInfo {
             name: "x".into(),
-            data_type: data_type.into(),
+            column_type: tablepro_core::column::ColumnType::new(
+                tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                kind,
+                tablepro_core::column::CatalogType::Unknown,
+                tablepro_core::column::has_dynamic_storage(kind),
+                tablepro_core::column::ReadForm::Native,
+            ),
             nullable,
             primary_key: false,
             is_auto_increment: false,
-            default_value: None,
             is_generated: false,
+            default: tablepro_core::column::ColumnDefault::None,
         }
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
+    )]
     fn col_with_default(data_type: &str, default: &str) -> ColumnInfo {
         let mut c = col(data_type, false);
-        c.default_value = Some(default.into());
+        c.default = tablepro_core::column::ColumnDefault::Expression(
+            tablepro_core::column::SqlExpression::from_catalog_text(default),
+        );
         c
     }
 
@@ -2935,36 +2780,20 @@ mod tests {
     }
 
     #[test]
-    fn classify_disambiguates_overlapping_types() {
-        assert_eq!(classify_type("tinyint(1)"), TypeKind::Bool);
-        assert_eq!(classify_type("tinyint"), TypeKind::Int);
-        assert_eq!(classify_type("uuid"), TypeKind::Uuid);
-        assert_eq!(classify_type("jsonb"), TypeKind::Json);
-        assert_eq!(classify_type("timestamptz"), TypeKind::TimestampTz);
-        assert_eq!(classify_type("timestamp with time zone"), TypeKind::TimestampTz);
-        assert_eq!(classify_type("timestamp without time zone"), TypeKind::DateTime);
-        assert_eq!(classify_type("timestamp"), TypeKind::DateTime);
-        assert_eq!(classify_type("datetime"), TypeKind::DateTime);
-        assert_eq!(classify_type("date"), TypeKind::Date);
-        assert_eq!(classify_type("time"), TypeKind::Time);
-        assert_eq!(classify_type("integer"), TypeKind::Int);
-        assert_eq!(classify_type("int4"), TypeKind::Int);
-        assert_eq!(classify_type("bigint"), TypeKind::Int);
-        assert_eq!(classify_type("decimal(10,2)"), TypeKind::Decimal);
-        assert_eq!(classify_type("numeric"), TypeKind::Decimal);
-        assert_eq!(classify_type("double precision"), TypeKind::Float);
-        assert_eq!(classify_type("real"), TypeKind::Float);
-        assert_eq!(classify_type("text"), TypeKind::Text);
-        assert_eq!(classify_type("varchar(255)"), TypeKind::Text);
-        // "interval" must NOT be classified as Int even though it
-        // contains "int".
-        assert_eq!(classify_type("interval"), TypeKind::Text);
+    fn clearing_a_text_cell_stores_the_empty_string() {
+        // A text column has an empty value, so clearing the cell is
+        // that value rather than NULL. There was no way to type it
+        // before.
+        let cleared = parse_input_for_column("", Some(&col("text", true))).expect("an empty string");
+
+        assert_eq!(cleared, Value::Text(String::new()));
     }
 
     #[test]
-    fn empty_on_nullable_yields_null() {
-        let r = parse_input_for_column("", Some(&col("text", true))).unwrap();
-        assert!(matches!(r, Value::Null));
+    fn clearing_a_column_with_no_empty_value_yields_null() {
+        let cleared = parse_input_for_column("", Some(&col("timestamp", true))).expect("a null");
+
+        assert!(matches!(cleared, Value::Null));
     }
 
     #[test]
@@ -2974,10 +2803,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_on_not_null_no_default_is_rejected() {
-        let r = parse_input_for_column("", Some(&col("text", false)));
+    fn empty_on_a_required_column_with_no_empty_value_is_rejected() {
+        let r = parse_input_for_column("", Some(&col("integer", false)));
+
         assert!(r.is_err());
-        assert!(r.unwrap_err().contains("required"));
+        assert!(r.as_ref().is_err_and(|message| message.contains("required")), "{r:?}");
     }
 
     #[test]
@@ -2988,7 +2818,7 @@ mod tests {
         ));
         assert!(matches!(
             parse_input_for_column("3.14", Some(&col("real", false))).unwrap(),
-            Value::Float(_)
+            Value::Float32(_)
         ));
         assert!(matches!(
             parse_input_for_column("99.99", Some(&col("decimal(10,2)", false))).unwrap(),
@@ -2998,9 +2828,11 @@ mod tests {
             parse_input_for_column("yes", Some(&col("boolean", false))).unwrap(),
             Value::Bool(true)
         ));
+        // MySQL spells boolean as tinyint(1), so it parses as the
+        // integer it is and the grid renders 0 and 1.
         assert!(matches!(
             parse_input_for_column("0", Some(&col("tinyint(1)", false))).unwrap(),
-            Value::Bool(false)
+            Value::Int(0)
         ));
     }
 
@@ -3021,12 +2853,9 @@ mod tests {
         assert!(matches!(time_short, Value::Time(_)));
 
         let datetime = parse_input_for_column("2024-01-15 14:30:00", Some(&col("timestamp", false))).unwrap();
-        assert!(matches!(datetime, Value::DateTime(_)));
+        assert!(matches!(datetime, Value::Timestamp(_)));
         let datetime_t = parse_input_for_column("2024-01-15T14:30:00", Some(&col("datetime", false))).unwrap();
-        assert!(matches!(datetime_t, Value::DateTime(_)));
-
-        let ts = parse_input_for_column("2024-01-15T14:30:00Z", Some(&col("timestamptz", false))).unwrap();
-        assert!(matches!(ts, Value::TimestampTz(_)));
+        assert!(matches!(datetime_t, Value::Timestamp(_)));
     }
 
     #[test]
@@ -3036,6 +2865,10 @@ mod tests {
         assert!(parse_input_for_column("{not json", Some(&col("jsonb", false))).is_err());
         assert!(parse_input_for_column("2024/01/15", Some(&col("date", false))).is_err());
         assert!(parse_input_for_column("13:00:99", Some(&col("time", false))).is_err());
+        assert!(
+            parse_input_for_column("128", Some(&col("tinyint", false))).is_err(),
+            "a number past the column's range was accepted"
+        );
         assert!(parse_input_for_column("not-a-date", Some(&col("timestamp", false))).is_err());
         assert!(parse_input_for_column("maybe", Some(&col("boolean", false))).is_err());
     }

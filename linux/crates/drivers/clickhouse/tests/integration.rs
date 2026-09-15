@@ -1,5 +1,6 @@
 use drivers_clickhouse::ClickhouseDriver;
 use tablepro_core::sql_dialect::{build_full_row_update, build_single_cell_update};
+use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, ConnectOptions, DatabaseDriver, Value};
 use testcontainers::core::wait::HttpWaitStrategy;
 use testcontainers::core::{IntoContainerPort, WaitFor};
@@ -233,7 +234,7 @@ async fn parameterised_types_decode_to_typed_values() {
     let result = conn.query("SELECT price, stamp, label FROM typed").await.unwrap();
     assert_eq!(result.rows[0][0], Value::Decimal("12.34".parse().unwrap()));
     assert!(
-        matches!(result.rows[0][1], Value::DateTime(_)),
+        matches!(result.rows[0][1], Value::Timestamp(Temporal::Finite(_))),
         "DateTime64(3) decoded as {:?}",
         result.rows[0][1]
     );
@@ -267,9 +268,9 @@ async fn value_roundtrip_common_types() {
             Value::Int(1),
             Value::Bool(true),
             Value::Int(42),
-            Value::Float(1.5),
+            Value::Float64(1.5),
             Value::Text("hello".into()),
-            Value::Date(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()),
+            Value::Date(Temporal::Finite(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap())),
             Value::Null,
         ],
     )
@@ -285,11 +286,11 @@ async fn value_roundtrip_common_types() {
     assert_eq!(row[0], Value::Int(1));
     assert_eq!(row[1], Value::Bool(true));
     assert_eq!(row[2], Value::Int(42));
-    assert!(matches!(row[3], Value::Float(f) if (f - 1.5).abs() < 1e-9));
+    assert!(matches!(row[3], Value::Float64(f) if (f - 1.5).abs() < 1e-9));
     assert_eq!(row[4], Value::Text("hello".into()));
     assert_eq!(
         row[5],
-        Value::Date(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap())
+        Value::Date(Temporal::Finite(chrono::NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()))
     );
     assert_eq!(row[6], Value::Null);
 }

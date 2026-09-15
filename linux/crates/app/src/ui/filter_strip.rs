@@ -64,228 +64,75 @@ enum ValueShape {
     List,
 }
 
-/// Allowlist of operators per type kind. The dialog narrows the Op
-/// dropdown to this set when the user picks a column. Mirrors the
-/// per-driver classifier in `core::filter::classify` but maps to UI
-/// labels instead of SQL.
-fn operators_for(data_type: &str) -> &'static [OpEntry] {
-    let lower = data_type.to_ascii_lowercase();
-    if lower == "tinyint(1)" || lower == "boolean" || lower == "bool" {
-        return &OPS_BOOL;
-    }
-    if lower == "uuid" {
-        return &OPS_UUID;
-    }
-    if lower == "jsonb" || lower == "json" {
-        return &OPS_UUID; // identity-only set, same shape
-    }
-    if lower.contains("with time zone") || lower.contains("timestamptz") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("timestamp") || lower.contains("datetime") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("date") {
-        return &OPS_NUMERIC;
-    }
-    if lower == "time" || lower.starts_with("time(") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("decimal") || lower.contains("numeric") || lower.contains("double") {
-        return &OPS_NUMERIC;
-    }
-    if lower.contains("real") || lower.contains("float") {
-        return &OPS_NUMERIC;
-    }
-    if lower.starts_with("int")
-        || lower.starts_with("bigint")
-        || lower.starts_with("smallint")
-        || lower.starts_with("tinyint")
-        || lower.contains("serial")
-    {
-        return &OPS_NUMERIC;
-    }
-    &OPS_TEXT
+/// The operators this column allows, with the label and value shape
+/// the dropdown needs for each.
+///
+/// The set itself comes from core, so what the dialog offers and what
+/// the builder accepts cannot drift apart: an operator the user can
+/// pick is one the filter can be built from.
+fn operators_for(column: &ColumnInfo) -> Vec<OpEntry> {
+    tablepro_core::operators_for(column.column_type.kind())
+        .iter()
+        .map(|op| OpEntry {
+            op: *op,
+            label: label_for(*op),
+            shape: shape_for(*op),
+        })
+        .collect()
 }
 
-const OPS_TEXT: [OpEntry; 14] = [
-    OpEntry {
-        op: FilterOp::Eq,
-        label: "equals",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::NotEq,
-        label: "doesn't equal",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Contains,
-        label: "contains",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::StartsWith,
-        label: "starts with",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::EndsWith,
-        label: "ends with",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Like,
-        label: "LIKE",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::NotLike,
-        label: "NOT LIKE",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Ilike,
-        label: "ILIKE (case-insensitive)",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::IsNull,
-        label: "is empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::IsNotNull,
-        label: "is not empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::In,
-        label: "is one of",
-        shape: ValueShape::List,
-    },
-    OpEntry {
-        op: FilterOp::NotIn,
-        label: "is none of",
-        shape: ValueShape::List,
-    },
-    OpEntry {
-        op: FilterOp::Lt,
-        label: "less than (lex)",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Gt,
-        label: "greater than (lex)",
-        shape: ValueShape::Single,
-    },
-];
+fn label_for(op: FilterOp) -> &'static str {
+    match op {
+        FilterOp::Eq => "equals",
+        FilterOp::NotEq => "doesn't equal",
+        FilterOp::Lt => "less than",
+        FilterOp::LtEq => "at most",
+        FilterOp::Gt => "greater than",
+        FilterOp::GtEq => "at least",
+        FilterOp::Contains => "contains",
+        FilterOp::StartsWith => "starts with",
+        FilterOp::EndsWith => "ends with",
+        FilterOp::Like => "matches pattern",
+        FilterOp::NotLike => "doesn't match pattern",
+        FilterOp::Ilike => "matches, ignoring case",
+        FilterOp::IsNull => "is empty",
+        FilterOp::IsNotNull => "is not empty",
+        FilterOp::In => "is one of",
+        FilterOp::NotIn => "is none of",
+        FilterOp::Between => "between",
+    }
+}
 
-const OPS_NUMERIC: [OpEntry; 11] = [
-    OpEntry {
-        op: FilterOp::Eq,
-        label: "=",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::NotEq,
-        label: "≠",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Lt,
-        label: "<",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::LtEq,
-        label: "≤",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Gt,
-        label: ">",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::GtEq,
-        label: "≥",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::Between,
-        label: "between",
-        shape: ValueShape::Pair,
-    },
-    OpEntry {
-        op: FilterOp::IsNull,
-        label: "is empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::IsNotNull,
-        label: "is not empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::In,
-        label: "is one of",
-        shape: ValueShape::List,
-    },
-    OpEntry {
-        op: FilterOp::NotIn,
-        label: "is none of",
-        shape: ValueShape::List,
-    },
-];
+fn shape_for(op: FilterOp) -> ValueShape {
+    match op {
+        FilterOp::IsNull | FilterOp::IsNotNull => ValueShape::None,
+        FilterOp::In | FilterOp::NotIn => ValueShape::List,
+        FilterOp::Between => ValueShape::Pair,
+        _ => ValueShape::Single,
+    }
+}
 
-const OPS_BOOL: [OpEntry; 3] = [
-    OpEntry {
-        op: FilterOp::Eq,
-        label: "=",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::IsNull,
-        label: "is empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::IsNotNull,
-        label: "is not empty",
-        shape: ValueShape::None,
-    },
-];
-
-const OPS_UUID: [OpEntry; 4] = [
-    OpEntry {
-        op: FilterOp::Eq,
-        label: "=",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::NotEq,
-        label: "≠",
-        shape: ValueShape::Single,
-    },
-    OpEntry {
-        op: FilterOp::IsNull,
-        label: "is empty",
-        shape: ValueShape::None,
-    },
-    OpEntry {
-        op: FilterOp::IsNotNull,
-        label: "is not empty",
-        shape: ValueShape::None,
-    },
-];
-
-/// Bytes columns are filtered out of the column dropdown entirely —
-/// no point letting the user pick one when nothing they could type
-/// would compare meaningfully.
+/// A column the user can filter on at all.
+///
+/// A blob is left out of the dropdown: nothing they could type would
+/// compare against one, so offering it would only lead to a filter
+/// that never matches.
 fn is_filterable(col: &ColumnInfo) -> bool {
-    let lower = col.data_type.to_ascii_lowercase();
-    !(lower.contains("bytea") || lower.contains("blob"))
+    !matches!(col.column_type.kind(), tablepro_core::column::ColumnKind::Binary)
+}
+
+/// A column the dialog can fall back on when the schema has not
+/// loaded, so a saved rule still renders with its own name.
+fn placeholder_column(name: &str) -> ColumnInfo {
+    ColumnInfo {
+        name: name.to_owned(),
+        column_type: tablepro_core::column::ColumnType::unknown(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        is_generated: false,
+        default: tablepro_core::column::ColumnDefault::None,
+    }
 }
 
 /// The inline filter editor. BrowseTab owns one of these per tab,
@@ -680,7 +527,7 @@ fn build_rule_row(
             // Reset the operator to the first valid one for the new
             // column type — text-only ops on a new int column would
             // produce SQL the driver rejects at fetch time.
-            let ops = operators_for(&new_col.data_type);
+            let ops = operators_for(new_col);
             rule.op = ops[0].op;
             rule.value = match ops[0].shape {
                 ValueShape::None => None,
@@ -700,16 +547,8 @@ fn build_rule_row(
     let col = columns_snapshot
         .get(initial_col_idx as usize)
         .cloned()
-        .unwrap_or_else(|| ColumnInfo {
-            name: rule.column.clone(),
-            data_type: "text".into(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        });
-    let ops = operators_for(&col.data_type);
+        .unwrap_or_else(|| placeholder_column(&rule.column.clone()));
+    let ops = operators_for(&col);
     let op_labels: Vec<&str> = ops.iter().map(|e| e.label).collect();
     let op_dd = gtk::DropDown::from_strings(&op_labels);
     op_dd.set_valign(gtk::Align::Center);
@@ -734,16 +573,8 @@ fn build_rule_row(
             .iter()
             .find(|c| c.name == rule.column)
             .cloned()
-            .unwrap_or_else(|| ColumnInfo {
-                name: rule.column.clone(),
-                data_type: "text".into(),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default_value: None,
-                is_generated: false,
-            });
-        let ops = operators_for(&col.data_type);
+            .unwrap_or_else(|| placeholder_column(&rule.column.clone()));
+        let ops = operators_for(&col);
         if let Some(entry) = ops.get(new_idx) {
             rule.op = entry.op;
             rule.value = match entry.shape {
@@ -776,7 +607,7 @@ fn build_rule_row(
                 .valign(gtk::Align::Center)
                 .hexpand(true)
                 .build();
-            entry.set_input_purpose(input_purpose_for(&col.data_type));
+            entry.set_input_purpose(input_purpose_for(&col));
             if let Some(FilterValue::Single(s)) = rule.value.as_ref() {
                 entry.set_text(s);
             }
@@ -801,8 +632,8 @@ fn build_rule_row(
                 .placeholder_text(crate::i18n::gettext("To"))
                 .valign(gtk::Align::Center)
                 .build();
-            lo.set_input_purpose(input_purpose_for(&col.data_type));
-            hi.set_input_purpose(input_purpose_for(&col.data_type));
+            lo.set_input_purpose(input_purpose_for(&col));
+            hi.set_input_purpose(input_purpose_for(&col));
             if let Some(FilterValue::Pair(a, b)) = rule.value.as_ref() {
                 lo.set_text(a);
                 hi.set_text(b);
@@ -890,21 +721,10 @@ fn build_rule_row(
     row
 }
 
-fn input_purpose_for(data_type: &str) -> gtk::InputPurpose {
-    let lower = data_type.to_ascii_lowercase();
-    let is_numeric = lower.starts_with("int")
-        || lower.starts_with("bigint")
-        || lower.starts_with("smallint")
-        || lower.starts_with("tinyint")
-        || lower.contains("serial")
-        || lower.contains("decimal")
-        || lower.contains("numeric")
-        || lower.contains("double")
-        || lower.contains("real")
-        || lower.contains("float");
-    if is_numeric {
-        gtk::InputPurpose::Number
-    } else {
-        gtk::InputPurpose::FreeForm
+/// A numeric column gets the number keypad on a touch keyboard.
+fn input_purpose_for(column: &ColumnInfo) -> gtk::InputPurpose {
+    match column.column_type.kind().is_numeric() {
+        true => gtk::InputPurpose::Number,
+        false => gtk::InputPurpose::FreeForm,
     }
 }

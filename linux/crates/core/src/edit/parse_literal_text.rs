@@ -29,9 +29,18 @@ pub fn parse_literal_text(input: &str, column: &ColumnType) -> Result<Value, Edi
 /// Whether a failed parse should fall back to the text as typed.
 ///
 /// Only for kinds whose text form is what the server stores anyway. A
-/// bad number is still a bad number.
+/// bad number is still a bad number, and the server validates JSON, so
+/// saying so now beats a failed transaction later.
 fn keeps_text_on_failure(kind: ColumnKind) -> bool {
-    kind.is_textual() || matches!(kind, ColumnKind::Other | ColumnKind::Network | ColumnKind::Geometry)
+    matches!(
+        kind,
+        ColumnKind::Text(_)
+            | ColumnKind::Enumeration
+            | ColumnKind::Set
+            | ColumnKind::Other
+            | ColumnKind::Network
+            | ColumnKind::Geometry
+    )
 }
 
 fn strict(input: &str, column: &ColumnType) -> Result<Value, EditParseError> {
@@ -362,19 +371,30 @@ mod tests {
     }
 
     #[test]
-    fn a_dynamic_storage_column_keeps_unparseable_text() {
-        // The server decides what it accepts here, so a strict parse
-        // failure is not the app's call to make.
-        let json = column(ColumnKind::Json, true);
+    fn a_column_whose_text_is_what_the_server_stores_keeps_unparseable_text() {
+        // An enum label this build has not seen is still text the
+        // server may accept, so it is not the app's call to refuse.
+        let enumeration = column(ColumnKind::Enumeration, true);
 
         assert_eq!(
-            parse_literal_text("not json", &json),
-            Ok(Value::Text("not json".to_owned()))
+            parse_literal_text("unexpected", &enumeration),
+            Ok(Value::Text("unexpected".to_owned()))
         );
-        assert!(matches!(
-            parse_literal_text("not json", &column(ColumnKind::Json, false)),
-            Err(EditParseError::InvalidJson(_))
-        ));
+    }
+
+    #[test]
+    fn invalid_json_is_refused_rather_than_stored_as_text() {
+        // The server validates JSON, so saying so beside the cell
+        // beats a failed transaction later.
+        for dynamic_storage in [true, false] {
+            assert!(
+                matches!(
+                    parse_literal_text("not json", &column(ColumnKind::Json, dynamic_storage)),
+                    Err(EditParseError::InvalidJson(_))
+                ),
+                "dynamic_storage = {dynamic_storage}"
+            );
+        }
     }
 
     #[test]
