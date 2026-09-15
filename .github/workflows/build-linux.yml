@@ -18,13 +18,14 @@ jobs:
   fast:
     name: Fast checks
     runs-on: ubuntu-24.04
-    # ubuntu-24.04 ships glib 2.80, but libadwaita 1.6 (workspace pin)
-    # transitively requires gio-2.0 >= 2.82. Building inside ubuntu:25.10
-    # gives us glib 2.84, which satisfies the system-deps check. The
-    # integration job stays on the host runner: driver crates depend
-    # only on tablepro-core, so they don't pull in libadwaita.
+    # The host runner ships glib 2.80, but libadwaita 1.6 (workspace pin)
+    # transitively requires gio-2.0 >= 2.82. ubuntu:26.04 gives us GLib
+    # 2.88 plus the meson, appstream and desktop-file-utils packages the
+    # data suite validates with. The integration job stays on the host
+    # runner: driver crates depend only on tablepro-core, so they don't
+    # pull in libadwaita.
     container:
-      image: ubuntu:25.10
+      image: ubuntu:26.04
       env:
         DEBIAN_FRONTEND: noninteractive
     defaults:
@@ -35,13 +36,13 @@ jobs:
         with:
           ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
       - name: Install system dependencies
-        # ubuntu:25.10 is minimal: git for Swatinem/rust-cache key
-        # generation, curl + ca-certificates for rust-toolchain's
-        # rustup install, plus the GTK / libadwaita / sourceview /
-        # libsecret -dev packages the workspace links, plus
-        # libkrb5-dev + clang for the MSSQL driver's integrated
-        # (Kerberos/GSSAPI) auth (libgssapi-sys links gssapi_krb5 and
-        # runs bindgen).
+        # ubuntu:26.04 is minimal: git for Swatinem/rust-cache key
+        # generation and the meson version suffix, curl +
+        # ca-certificates for rust-toolchain's rustup install, then the
+        # meson toolchain, the -dev packages the workspace links, and
+        # the runtime pieces the test suites need (xvfb, dbus,
+        # gnome-keyring for the Secret Service step, openssh-client for
+        # the SSH transport).
         # No sudo (container runs as root by default).
         run: |
           apt-get update
@@ -50,7 +51,13 @@ jobs:
             ca-certificates \
             curl \
             git \
-            pkg-config \
+            pkgconf \
+            meson \
+            ninja-build \
+            gettext \
+            desktop-file-utils \
+            appstream \
+            libglib2.0-bin \
             libgtk-4-dev \
             libadwaita-1-dev \
             libgtksourceview-5-dev \
@@ -59,6 +66,8 @@ jobs:
             libkrb5-dev \
             clang \
             libclang-dev \
+            adwaita-icon-theme \
+            gnome-keyring \
             openssh-client \
             xvfb \
             xauth \
@@ -70,17 +79,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: linux
+      - name: Configure
+        run: meson setup _build -Dprofile=development
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Clippy without default features
+        run: meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
       - name: Build
-        run: cargo build --workspace --locked
+        run: meson compile -C _build
       - name: Tests
-        env:
-          GTK_A11Y: test
-          GSK_RENDERER: cairo
-        run: xvfb-run -a dbus-run-session -- cargo test --workspace --locked
+        run: xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+      - name: Secret Service tests
+        run: |
+          dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
+            && meson devenv -C _build cargo test --locked -p tablepro-storage -- --ignored"
+      - name: Dist
+        run: meson dist -C _build --no-tests --formats xztar
 
   integration:
     name: Docker tests (${{ matrix.package }})

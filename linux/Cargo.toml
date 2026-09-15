@@ -89,7 +89,6 @@ ignore_without_reason = "deny"
 [profile.release]
 lto = "fat"
 codegen-units = 1
-strip = "symbols"
 
 # tiberius 0.12.3 pins libgssapi 0.4, whose `Buf::deref` is undefined behaviour
 # on the empty token of a successful Kerberos login (prisma/tiberius#343), and

@@ -1,0 +1,58 @@
+{
+    "id": "app.tablepro.TablePro.Devel",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "50",
+    "sdk": "org.gnome.Sdk",
+    "sdk-extensions": [
+        "org.freedesktop.Sdk.Extension.rust-stable",
+        "org.freedesktop.Sdk.Extension.llvm22"
+    ],
+    "command": "tablepro",
+    "finish-args": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=fallback-x11",
+        "--socket=wayland",
+        "--device=dri",
+        "--filesystem=home",
+        "--filesystem=/run/.heim_org.h5l.kcm-socket"
+    ],
+    "build-options": {
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin",
+        "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib",
+        "build-args": [
+            "--share=network"
+        ],
+        "env": {
+            "CARGO_HOME": "/run/build/tablepro/cargo",
+            "LIBCLANG_PATH": "/usr/lib/sdk/llvm22/lib"
+        },
+        "test-args": [
+            "--socket=x11",
+            "--share=network"
+        ]
+    },
+    "modules": [
+        {
+            "name": "tablepro",
+            "buildsystem": "meson",
+            "run-tests": true,
+            "config-opts": [
+                "-Dprofile=development",
+                "-Dflatpak=true"
+            ],
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../../",
+                    "skip": [
+                        ".flatpak-builder",
+                        "_build",
+                        "target",
+                        "build-aux/flatpak/.flatpak-builder"
+                    ]
+                }
+            ]
+        }
+    ]
+}

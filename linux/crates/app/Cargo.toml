@@ -13,6 +13,11 @@ path = "src/lib.rs"
 name = "tablepro"
 path = "src/main.rs"
 
+[[test]]
+name = "startup"
+path = "tests/startup.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]

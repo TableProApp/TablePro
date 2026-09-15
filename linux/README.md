@@ -33,13 +33,13 @@ System dependencies:
 
 ```bash
 # Ubuntu / Debian
-sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libsqlite3-dev libkrb5-dev clang libclang-dev
+sudo apt install -y build-essential pkg-config meson ninja-build gettext desktop-file-utils appstream libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libsqlite3-dev libkrb5-dev clang libclang-dev
 
 # Fedora
-sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel sqlite-devel krb5-devel clang clang-devel
+sudo dnf install -y gcc pkg-config meson ninja-build gettext desktop-file-utils appstream gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel sqlite-devel krb5-devel clang clang-devel
 
 # Arch
-sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret sqlite krb5 clang
+sudo pacman -S --needed base-devel pkg-config meson ninja gettext desktop-file-utils appstream gtk4 libadwaita gtksourceview5 openssl libsecret sqlite krb5 clang
 ```
 
 Verify the right versions are present:
@@ -53,8 +53,19 @@ Build and run:
 
 ```bash
 cd linux
-cargo run -p tablepro
+meson setup _build -Dprofile=development
+meson compile -C _build
+./_build/crates/app/tablepro
 ```
+
+`meson devenv -C _build cargo run -p tablepro` runs the same build through
+Cargo. Plain `cargo run -p tablepro` also works and falls back to the
+`app.tablepro.TablePro.Devel` application ID.
+
+Install with `meson install -C _build`, which places the binary, the
+askpass helper, the desktop entry, the D-Bus service, the AppStream
+metainfo and the icons. See
+[ADR 0006](docs/decisions/0006-meson-cargo-build.md).
 
 Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).
 

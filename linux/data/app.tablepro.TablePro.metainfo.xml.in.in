@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@app-id@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+  <!-- Translators: TablePro is the product name and is not translated. -->
+  <name translate="no">TablePro</name>
+  <summary>Work with your databases</summary>
+  <description>
+    <p>
+      TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and
+      ClickHouse. Browse tables, edit rows in place, run SQL with syntax
+      highlighting, and reach servers behind an SSH bastion.
+    </p>
+    <p>It can:</p>
+    <ul>
+      <li>Edit cells in place, with primary-key safety and an undo history</li>
+      <li>Run SQL scripts statement by statement and cancel a slow query</li>
+      <li>Tunnel through an SSH jump host using your own OpenSSH client</li>
+      <li>Verify TLS, keep connections read-only, and reconnect on drop</li>
+      <li>Export results to CSV, TSV, JSON and SQL</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">@app-id@.desktop</launchable>
+  <developer id="app.tablepro">
+    <name translate="no">TablePro Authors</name>
+  </developer>
+  <url type="homepage">https://tablepro.app</url>
+  <url type="bugtracker">https://github.com/TableProApp/TablePro/issues</url>
+  <url type="vcs-browser">https://github.com/TableProApp/TablePro</url>
+  <url type="help">https://docs.tablepro.app</url>
+  <url type="translate">https://github.com/TableProApp/TablePro/tree/main/linux/po</url>
+  <url type="contribute">https://github.com/TableProApp/TablePro/blob/main/linux/CONTRIBUTING.md</url>
+  <translation type="gettext">@gettext-package@</translation>
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
+  <categories>
+    <category>Development</category>
+    <category>Database</category>
+  </categories>
+  <keywords>
+    <keyword>sql</keyword>
+    <keyword>postgres</keyword>
+    <keyword>mysql</keyword>
+    <keyword>sqlite</keyword>
+    <keyword>database</keyword>
+  </keywords>
+  <content_rating type="oars-1.1" />
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <provides>
+    <binary>tablepro</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0" date="2026-04-26">
+      <description>
+        <p>Initial pre-release tracking the production-hardening pass.</p>
+      </description>
+    </release>
+  </releases>
+</component>
