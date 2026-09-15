@@ -221,7 +221,7 @@ extension MainContentView {
         )
 
         guard isSidebarEditable else {
-            trailingPaneState.inspector.editState.onFieldChanged = nil
+            clearSidebarEditHandlers()
             return
         }
 
@@ -233,6 +233,9 @@ extension MainContentView {
                 value: newValue,
                 rowIDs: capturedEditState.rowIDs
             )
+        }
+        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow in
+            capturedCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
         }
     }
 
@@ -276,7 +279,12 @@ extension MainContentView {
 
     private func clearSidebarEditState() {
         trailingPaneState.inspector.editState.fields = []
+        clearSidebarEditHandlers()
+    }
+
+    private func clearSidebarEditHandlers() {
         trailingPaneState.inspector.editState.onFieldChanged = nil
+        trailingPaneState.inspector.editState.onFieldReverted = nil
     }
 
     /// Populate the inspector from the grid that owns a schema selection, and send every
@@ -293,11 +301,12 @@ extension MainContentView {
         trailingPaneState.inspector.editState.configure(schemaFields: row.fields, displayRow: displayRow)
 
         guard row.isEditable else {
-            trailingPaneState.inspector.editState.onFieldChanged = nil
+            clearSidebarEditHandlers()
             return
         }
 
         let capturedCoordinator = coordinator
+        trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(
                 displayRow: displayRow,
