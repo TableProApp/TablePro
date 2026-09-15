@@ -1,22 +1,24 @@
 use std::sync::Arc;
 
+use libadwaita as adw;
 use relm4::RelmApp;
 use thiserror::Error;
 
 use tablepro_core::DriverRegistry;
 
+pub mod config;
 mod i18n;
 mod services;
 #[cfg(test)]
 mod test_support;
 mod ui;
 
-const APP_ID: &str = "app.tablepro.TablePro";
-
 #[derive(Debug, Error)]
 enum StartupError {
     #[error("could not start the query history runtime: {0}")]
     HistoryRuntime(#[source] std::io::Error),
+    #[error("could not register the embedded resources: {0}")]
+    Resources(#[source] glib::Error),
 }
 
 pub fn run() -> glib::ExitCode {
@@ -26,7 +28,9 @@ pub fn run() -> glib::ExitCode {
         .init();
 
     // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
-    unsafe { i18n::init() };
+    if let Err(error) = unsafe { i18n::init() } {
+        tracing::warn!(%error, "translations unavailable; falling back to the source strings");
+    }
 
     match start() {
         Ok(()) => glib::ExitCode::SUCCESS,
@@ -74,7 +78,14 @@ fn start() -> Result<(), StartupError> {
     let registry = Arc::new(build_registry());
     tracing::info!(drivers = registry.len(), "starting tablepro");
 
-    let app = RelmApp::new(APP_ID);
+    gio::resources_register_include!("tablepro.gresource").map_err(StartupError::Resources)?;
+
+    let app = RelmApp::from_app(
+        adw::Application::builder()
+            .application_id(config::APP_ID)
+            .resource_base_path(config::RESOURCE_BASE_PATH)
+            .build(),
+    );
     app.run::<ui::App>(registry);
 
     // Explicit ordered shutdown: `app.run` returned (window closed),
@@ -99,15 +110,37 @@ fn build_registry() -> DriverRegistry {
 
 #[cfg(test)]
 mod tests {
+    use gio::prelude::ApplicationExt;
+
     use super::*;
 
-    #[test]
-    fn app_id_is_valid() {
-        assert!(gtk4::gio::Application::id_is_valid(APP_ID));
+    fn register_resources() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            gio::resources_register_include!("tablepro.gresource").expect("embedded resources");
+        });
     }
 
     #[test]
-    fn app_id_is_the_reverse_dns_name_the_flatpak_files_carry() {
-        assert_eq!(APP_ID, "app.tablepro.TablePro");
+    fn resources_contain_style_css() {
+        register_resources();
+
+        let data = gio::resources_lookup_data(
+            &format!("{}/style.css", config::RESOURCE_BASE_PATH),
+            gio::ResourceLookupFlags::NONE,
+        )
+        .expect("style.css is embedded at the resource base path");
+
+        assert!(String::from_utf8_lossy(&data).contains(".tp-cell-modified"));
+    }
+
+    #[gtk4::test]
+    fn application_uses_explicit_resource_base_path() {
+        let app = adw::Application::builder()
+            .application_id(config::APP_ID)
+            .resource_base_path(config::RESOURCE_BASE_PATH)
+            .build();
+
+        assert_eq!(app.resource_base_path().as_deref(), Some(config::RESOURCE_BASE_PATH));
     }
 }
