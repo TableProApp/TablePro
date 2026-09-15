@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data sync inserts failing on SQL Server identity and PostgreSQL `GENERATED ALWAYS` columns.
 - Text columns compared as timestamps, and keys that differ only in case never synced.
 - Data sync scripts including tables never compared, or rows that changed after comparing.
+- Structure sync scripts written from a schema that changed after it was compared.
 - Apply unavailable for a second sync in the same Compare & Sync window.
 - Choosing a source, target, mode or option during Apply cancelling the running sync.
 - Apply offered for a target switched to Read-Only after it was picked.
