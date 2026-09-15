@@ -4,8 +4,7 @@ use tablepro_core::credentials::SecretVault;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionStore, StoragePaths};
 
-use crate::services::column_widths::ColumnWidthStore;
-use crate::services::filter_settings::FilterSettingsStore;
+use crate::persistence::{ColumnWidthStore, FilterSettingsStore};
 
 /// Everything the app persists, resolved once at startup and handed to
 /// the root component. Nothing reaches for a global, so a test can point
@@ -24,8 +23,8 @@ impl AppStorage {
     /// touches the user's keyring.
     pub fn new(paths: StoragePaths, secrets: std::sync::Arc<dyn SecretVault>, tasks: &Tasks) -> Self {
         let connections = ConnectionStore::new(&paths);
-        let column_widths = ColumnWidthStore::load(&paths, tasks);
-        let filter_settings = FilterSettingsStore::load(&paths, tasks);
+        let column_widths = ColumnWidthStore::load(paths.column_widths_file(), tasks);
+        let filter_settings = FilterSettingsStore::load(paths.filter_settings_file(), tasks);
         Self {
             paths,
             connections,

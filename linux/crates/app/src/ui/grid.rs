@@ -74,22 +74,46 @@ pub enum CellPreset {
 /// callbacks can query the change tracker for pending-state CSS
 /// classes. `tab_id == None` means the grid is read-only / not
 /// associated with a tracked Browse tab (e.g., editor results).
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TabGridContext {
     pub tab_id: Option<uuid::Uuid>,
     pub pk_col_indices: Vec<usize>,
     /// Where a dragged column edge is remembered. `None` for a grid
     /// with nothing to remember it against, such as editor results.
-    pub column_widths: Option<crate::services::column_widths::ColumnWidthStore>,
+    pub column_widths: Option<ColumnWidthBinding>,
 }
 
-impl std::fmt::Debug for TabGridContext {
+/// Which table's widths a grid reads and writes.
+///
+/// The schema is part of it, so `public.users` and `audit.users` keep
+/// their own widths.
+#[derive(Clone)]
+pub struct ColumnWidthBinding {
+    pub store: crate::persistence::ColumnWidthStore,
+    pub connection_id: uuid::Uuid,
+    pub schema: Option<String>,
+    pub table: String,
+}
+
+impl std::fmt::Debug for ColumnWidthBinding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TabGridContext")
-            .field("tab_id", &self.tab_id)
-            .field("pk_col_indices", &self.pk_col_indices)
-            .field("column_widths", &self.column_widths.is_some())
+        f.debug_struct("ColumnWidthBinding")
+            .field("connection_id", &self.connection_id)
+            .field("schema", &self.schema)
+            .field("table", &self.table)
             .finish()
+    }
+}
+
+impl ColumnWidthBinding {
+    fn width(&self, column: &str) -> Option<i32> {
+        self.store
+            .width(self.connection_id, self.schema.as_deref(), &self.table, column)
+    }
+
+    fn record(&self, column: &str, width: i32) {
+        self.store
+            .record(self.connection_id, self.schema.as_deref(), &self.table, column, width);
     }
 }
 
@@ -141,19 +165,13 @@ impl TabGridContext {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "each argument is an independent grid setting chosen by the caller"
-)]
 pub fn build_column_view(
     result: &QueryResult,
     schema_columns: &[ColumnInfo],
-    table: &str,
     sender: relm4::Sender<GridMsg>,
     editable: bool,
     sort: Option<(usize, bool)>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
-    connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
 ) -> (gtk::ColumnView, gtk::MultiSelection) {
     let store = gtk4::gio::ListStore::new::<RowObject>();
@@ -202,10 +220,8 @@ pub fn build_column_view(
             column,
             i,
             cell_editable,
-            table.to_string(),
             sender.clone(),
             sort_sender.clone(),
-            connection_id,
             tab_ctx.clone(),
             default_min_width,
             column_view.downgrade(),
@@ -283,17 +299,14 @@ fn build_column(
     info: &ColumnInfo,
     idx: usize,
     editable: bool,
-    table: String,
     sender: relm4::Sender<GridMsg>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
-    connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
     default_min_width: Option<i32>,
     column_view: glib::WeakRef<gtk::ColumnView>,
     grid_menus: GridMenus,
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
-    let table_for_persist = table;
 
     let column_data_type = info.data_type.clone();
     let column_name = info.name.clone();
@@ -550,8 +563,8 @@ fn build_column(
         let dummy = gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal);
         column.set_sorter(Some(&dummy));
     }
-    if let (Some(id), Some(widths)) = (connection_id, tab_ctx.column_widths.clone()) {
-        if let Some(saved) = widths.width(id, &table_for_persist, &info.name) {
+    if let Some(widths) = tab_ctx.column_widths.clone() {
+        if let Some(saved) = widths.width(&info.name) {
             column.set_fixed_width(saved);
         } else if let Some(min) = default_min_width {
             // No persisted width: seed with the wide-table fallback so
@@ -563,7 +576,7 @@ fn build_column(
         let column_for_save = column.clone();
         let column_name = info.name.clone();
         column.connect_fixed_width_notify(move |_| {
-            widths.record(id, &table_for_persist, &column_name, column_for_save.fixed_width());
+            widths.record(&column_name, column_for_save.fixed_width());
         });
     } else if let Some(min) = default_min_width {
         // Editor result grids run without a connection_id (no
