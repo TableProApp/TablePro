@@ -93,7 +93,7 @@ A filter is a single condition. A semicolon, a comment, or an unclosed quote or 
 
 ### Row limits and filters
 
-With a row limit, the comparison stops after that many keys in key order. Rows past the limit are not read on either side, so none of them is inserted or deleted.
+A row limit reads the first N rows of each side in key order, and every key both sides were read past is compared. Rows past that point are not read, so none of them is inserted or deleted. The review pane names the last key compared: put it in the **Filter** on both sides, as `id > 5000`, to compare the next stretch.
 
 With a filter, a row that matches on one side and exists outside the filter on the other is listed as **Outside Filter** and never written. Widen the filter to sync it.
 
@@ -116,6 +116,8 @@ A data comparison needs both sides open at once. On an engine that pools connect
 Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
 
 A data script is built from a fresh read of both sides. An included table that has not been compared with its current scope holds the script back until it is compared or excluded, and a table whose rows changed since the comparison stops the script with that table named. Compare again, then generate.
+
+A structure script is checked the same way. Both schemas are read again, and an object whose structure moved since the comparison stops the script with that object named rather than writing DDL against a schema that no longer exists.
 
 Script generation needs matching database types, with MySQL and MariaDB counting as one family. A cross-engine pair still compares, read-only: column data types are engine-specific strings, so generating DDL for one engine from another's metadata is not sound.
 

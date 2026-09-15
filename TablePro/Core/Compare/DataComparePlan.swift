@@ -150,7 +150,6 @@ internal struct DataComparePlan: Identifiable, Hashable, Sendable {
                 uniquingKeysWith: { first, _ in first }
             ),
             digestColumns: columnNames,
-            rowLimit: scope.rowLimit,
             defersOneSidedRows: scope.hasFilter
         )
     }

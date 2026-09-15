@@ -190,6 +190,7 @@ internal enum CompareSyncError: LocalizedError {
     case invalidFilter(String)
     case readFailed(String)
     case rowsChangedSinceComparison(String)
+    case objectsChangedSinceComparison(String)
 
     internal var errorDescription: String? {
         switch self {
@@ -201,6 +202,7 @@ internal enum CompareSyncError: LocalizedError {
         case .invalidFilter(let message): return message
         case .readFailed(let message): return message
         case .rowsChangedSinceComparison(let message): return message
+        case .objectsChangedSinceComparison(let message): return message
         }
     }
 }

@@ -106,6 +106,11 @@ internal struct DataDiffSummary: Hashable, Sendable {
     internal let stoppedAtRowLimit: Bool
     internal let differenceDigest: String
 
+    /// The last key both sides were read past, present only when a row limit cut the walk short.
+    /// Everything up to and including it was read on both sides, so it is the point a filter such
+    /// as `id > <key>` resumes from without skipping a key or comparing one twice.
+    internal let resumeKey: [PluginCellValue]?
+
     /// One comparison's own identity. Two runs that produce the same counts and the same digest are
     /// still two answers, and a view that caches on the answer has to be able to tell them apart:
     /// matching rows are counted rather than digested, so both can move while the digest stands.
@@ -124,6 +129,7 @@ internal struct DataDiffSummary: Hashable, Sendable {
         comparedKeyCount: Int = 0,
         stoppedAtRowLimit: Bool = false,
         differenceDigest: String = "",
+        resumeKey: [PluginCellValue]? = nil,
         runIdentity: UUID = UUID()
     ) {
         self.insertCount = insertCount
@@ -138,6 +144,7 @@ internal struct DataDiffSummary: Hashable, Sendable {
         self.comparedKeyCount = comparedKeyCount
         self.stoppedAtRowLimit = stoppedAtRowLimit
         self.differenceDigest = differenceDigest
+        self.resumeKey = resumeKey
         self.runIdentity = runIdentity
     }
 
@@ -191,7 +198,6 @@ internal struct DataComparisonShape: Sendable {
     internal let comparedColumns: [String]
     internal let valueKinds: [String: ValueComparisonKind]
     internal let digestColumns: [String]
-    internal let rowLimit: Int?
     internal let defersOneSidedRows: Bool
 
     internal init(
@@ -200,7 +206,6 @@ internal struct DataComparisonShape: Sendable {
         comparedColumns: [String],
         valueKinds: [String: ValueComparisonKind] = [:],
         digestColumns: [String] = [],
-        rowLimit: Int? = nil,
         defersOneSidedRows: Bool = false
     ) {
         self.keyColumns = keyColumns
@@ -208,7 +213,6 @@ internal struct DataComparisonShape: Sendable {
         self.comparedColumns = comparedColumns
         self.valueKinds = valueKinds
         self.digestColumns = digestColumns
-        self.rowLimit = rowLimit.map { max(1, $0) }
         self.defersOneSidedRows = defersOneSidedRows
     }
 
@@ -266,6 +270,12 @@ internal struct DataDiffEngine {
         var positions = 0
         var stoppedAtRowLimit = false
 
+        /// The walk classifies every key both sides were read past, so the last one it classified is
+        /// the boundary of the region the answer covers: `min` of the two sides' last delivered keys
+        /// once a limit cut one of them short. Counting merged positions against the limit instead
+        /// stopped mid-region and threw away differences both sides had already been read past.
+        var lastClassifiedKey: [PluginCellValue]?
+
         var left = try await sourceReader.next(accumulator)
         var right = try await targetReader.next(accumulator)
 
@@ -275,10 +285,6 @@ internal struct DataDiffEngine {
             /// them, so the limit is only reported as a stop when there was something left to read.
             if left == nil, right == nil {
                 stoppedAtRowLimit = source.endedAtRowLimit || target.endedAtRowLimit
-                break walk
-            }
-            if let limit = shape.rowLimit, positions >= limit {
-                stoppedAtRowLimit = true
                 break walk
             }
 
@@ -295,6 +301,7 @@ internal struct DataDiffEngine {
                 } else {
                     try recorder.record(deleteEntry(for: targetRow))
                 }
+                lastClassifiedKey = targetRow.key
                 right = try await targetReader.next(accumulator)
             case (let sourceRow?, nil):
                 guard !target.endedAtRowLimit else {
@@ -306,11 +313,13 @@ internal struct DataDiffEngine {
                 } else {
                     try recorder.record(insertEntry(for: sourceRow))
                 }
+                lastClassifiedKey = sourceRow.key
                 left = try await sourceReader.next(accumulator)
             case (let sourceRow?, let targetRow?):
                 switch ordering.compare(sourceRow.key, targetRow.key) {
                 case .orderedSame:
                     try recorder.record(matchedEntry(source: sourceRow, target: targetRow))
+                    lastClassifiedKey = sourceRow.key
                     left = try await sourceReader.next(accumulator)
                     right = try await targetReader.next(accumulator)
                 case .orderedAscending:
@@ -319,6 +328,7 @@ internal struct DataDiffEngine {
                     } else {
                         try recorder.record(insertEntry(for: sourceRow))
                     }
+                    lastClassifiedKey = sourceRow.key
                     left = try await sourceReader.next(accumulator)
                 case .orderedDescending:
                     if shape.defersOneSidedRows {
@@ -326,6 +336,7 @@ internal struct DataDiffEngine {
                     } else {
                         try recorder.record(deleteEntry(for: targetRow))
                     }
+                    lastClassifiedKey = targetRow.key
                     right = try await targetReader.next(accumulator)
                 }
             }
@@ -345,7 +356,11 @@ internal struct DataDiffEngine {
             try await resolve(deferredTarget, from: .target, resolver: resolver, recorder: recorder)
         }
 
-        return accumulator.summary(comparedKeyCount: positions, stoppedAtRowLimit: stoppedAtRowLimit)
+        return accumulator.summary(
+            comparedKeyCount: positions,
+            stoppedAtRowLimit: stoppedAtRowLimit,
+            resumeKey: stoppedAtRowLimit ? lastClassifiedKey : nil
+        )
     }
 
     private func resolve(
@@ -518,7 +533,11 @@ internal extension DataDiffEngine {
             entries.append(entry)
         }
 
-        func summary(comparedKeyCount: Int, stoppedAtRowLimit: Bool) -> DataDiffSummary {
+        func summary(
+            comparedKeyCount: Int,
+            stoppedAtRowLimit: Bool,
+            resumeKey: [PluginCellValue]? = nil
+        ) -> DataDiffSummary {
             DataDiffSummary(
                 insertCount: counts[.insert] ?? 0,
                 updateCount: counts[.update] ?? 0,
@@ -531,7 +550,8 @@ internal extension DataDiffEngine {
                 truncatedEntries: truncated,
                 comparedKeyCount: comparedKeyCount,
                 stoppedAtRowLimit: stoppedAtRowLimit,
-                differenceDigest: digest.finalize().map { String(format: "%02x", $0) }.joined()
+                differenceDigest: digest.finalize().map { String(format: "%02x", $0) }.joined(),
+                resumeKey: resumeKey
             )
         }
 

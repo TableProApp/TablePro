@@ -186,6 +186,27 @@ internal struct CompareRowDiffPane: View {
 
     // MARK: - Notices
 
+    /// Names the last key both sides were read past, because that value is what the user puts in
+    /// the table's filter to read the next stretch. Without it a row limit is a dead end: the pane
+    /// says the answer is partial and gives no way to continue it.
+    private func rowLimitNotice(for summary: DataDiffSummary) -> String {
+        guard let resumeKey = summary.resumeKey else {
+            return String(
+                format: String(
+                    localized: "Compared %@ keys in key order. Rows past the limit were not read on either side, and rows with NULL in a key column are not read under a limit."
+                ),
+                summary.comparedKeyCount.formatted()
+            )
+        }
+        return String(
+            format: String(
+                localized: "Compared %1$@ keys in key order, up to %2$@. Filter both sides past that key for the next rows. NULL keys are not read under a limit."
+            ),
+            summary.comparedKeyCount.formatted(),
+            KeyOrdering.description(of: resumeKey)
+        )
+    }
+
     @ViewBuilder
     private func notices(for plan: DataComparePlan) -> some View {
         if let failure = plan.comparisonFailure {
@@ -193,15 +214,7 @@ internal struct CompareRowDiffPane: View {
         }
         if let summary = plan.summary {
             if summary.stoppedAtRowLimit {
-                notice(
-                    String(
-                        format: String(
-                            localized: "Compared the first %@ rows in key order. Rows past the limit were not read, and rows with NULL in a key column are not read under a limit."
-                        ),
-                        summary.comparedKeyCount.formatted()
-                    ),
-                    systemImage: "info.circle.fill"
-                )
+                notice(rowLimitNotice(for: summary), systemImage: "info.circle.fill")
             }
             if summary.truncatedEntries {
                 notice(
