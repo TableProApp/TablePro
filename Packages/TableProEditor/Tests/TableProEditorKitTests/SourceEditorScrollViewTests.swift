@@ -38,16 +38,22 @@ struct SourceEditorScrollViewTests {
         clip.bounds.origin.x
     }
 
+    /// Measured against what the clip view already reported rather than against absolute numbers, the same way
+    /// `legacyScrollerRoomIsKept` does. AppKit adds the scrollers' own room to the trailing and bottom insets,
+    /// and whether that is 0 or 17 is the runner's scroller style rather than anything this is testing: the
+    /// explicit `.overlay` in `init` does not settle it on a headless runner, where both came back 17 higher.
     @Test("The floating views' widths go on top of the scroll view's own insets")
     func reservationAddsToTheScrollViewsInsets() {
         scrollView.contentInsets = NSEdgeInsets(top: 10, left: 4, bottom: 8, right: 2)
+        let computed = clip.contentInsets
+
         scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 40)
 
         let insets = clip.contentInsets
-        #expect(insets.top == 10)
-        #expect(insets.left == 74)
-        #expect(insets.bottom == 8)
-        #expect(insets.right == 42)
+        #expect(insets.top == computed.top)
+        #expect(insets.left == computed.left + 70)
+        #expect(insets.bottom == computed.bottom)
+        #expect(insets.right == computed.right + 40)
     }
 
     @Test("An inset added to the scroll view later is kept alongside the reservation")
