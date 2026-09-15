@@ -83,8 +83,8 @@ fn start() -> Result<(), StartupError> {
     // The database migrates and prunes on open, which is too slow to
     // hold up the first window. The menu item that needs it stays
     // disabled until the service reports Ready.
-    let history =
-        services::history_service::HistoryService::start(paths.clone(), settings.history_retention_days(), &tasks);
+    let retention = services::history_service::publish_retention(&settings);
+    let history = services::history_service::HistoryService::start(paths.clone(), retention, &tasks);
     let storage = std::rc::Rc::new(storage::AppStorage::new(
         paths,
         std::sync::Arc::new(tablepro_storage::SecretStore::new(config::secret_schema())),
