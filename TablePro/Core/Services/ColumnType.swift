@@ -8,6 +8,16 @@
 
 import Foundation
 
+/// Which editor an array's elements get.
+///
+/// A Bool could only say that an array has a per-element editor, never which one, and the two are
+/// not the same control: a scalar element fits a one-line field, a JSON element is a document and
+/// needs the JSON viewer.
+enum ArrayElementEditor: Equatable, Sendable {
+    case scalar
+    case json
+}
+
 /// Represents the semantic type of a database column
 enum ColumnType: Equatable, Sendable {
     case text(rawType: String?)
@@ -161,16 +171,25 @@ enum ColumnType: Equatable, Sendable {
         }
     }
 
-    /// Whether this array's elements can be edited one at a time
-    var supportsElementEditing: Bool {
-        guard let element = arrayElement else { return false }
+    /// The editor this array's elements get, or nil where they cannot be edited one at a time.
+    ///
+    /// A JSON element is included because PostgreSQL's array quoting round-trips it exactly: the
+    /// literal a `jsonb[]` cell carries parses to its elements and re-serializes byte for byte,
+    /// SQL NULL and JSON null included. Binary, spatial and nested arrays stay out.
+    var arrayElementEditor: ArrayElementEditor? {
+        guard let element = arrayElement else { return nil }
         switch element {
         case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .enumType, .set:
-            return true
-        case .json, .blob, .spatial, .array:
-            return false
+            return .scalar
+        case .json:
+            return .json
+        case .blob, .spatial, .array:
+            return nil
         }
     }
+
+    /// Whether this array's elements can be edited one at a time
+    var supportsElementEditing: Bool { arrayElementEditor != nil }
 
     /// Compact lowercase badge label for sidebar
     var badgeLabel: String {
@@ -189,6 +208,25 @@ enum ColumnType: Equatable, Sendable {
             return rawType == "RedisRaw" ? "raw" : "string"
         case .spatial: return "spatial"
         case .array(_, let element): return "\(element.badgeLabel)[]"
+        }
+    }
+
+    /// The same type with the labels the catalog declared, reaching inside an array to its element.
+    ///
+    /// The classifier cannot know them: a column's labels arrive separately in
+    /// `TableRows.columnEnumValues`. Injecting them on the scalar cases alone left an `ENUM[]`
+    /// column's element editor with no vocabulary, so it offered free-form text where the grid
+    /// offers the declared labels.
+    func withAllowedValues(_ values: [String]) -> ColumnType {
+        switch self {
+        case .enumType(let rawType, _):
+            return .enumType(rawType: rawType, values: values)
+        case .set(let rawType, _):
+            return .set(rawType: rawType, values: values)
+        case .array(let rawType, let element):
+            return .array(rawType: rawType, element: element.withAllowedValues(values))
+        case .text, .integer, .decimal, .date, .timestamp, .datetime, .boolean, .blob, .json, .spatial:
+            return self
         }
     }
 

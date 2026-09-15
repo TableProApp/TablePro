@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Query > Clear Query** and **Query > Clear Results**.
 - Result chooser in the status bar, naming the result on screen and offering Pin, Unpin, Close and Close Others.
 - A reason on a dimmed Run, Explain, Format or Favorite saying why it cannot run.
+- Formatted JSON inspection and per-element editing for PostgreSQL `jsonb[]` and `json[]` columns. (#2897)
+- Array element editor in the row inspector.
 
 ### Changed
 
@@ -68,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
 - Empty Elasticsearch and Weaviate exports, which asked the engine for `SELECT * FROM`.

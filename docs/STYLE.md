@@ -203,9 +203,9 @@ Three slots, fixed order: **what you cannot do, what happens instead, what to do
 why.
 
 ```
-no   Arrays of jsonb, bytea, or composite types keep the plain text editor, since
-     their quoting cannot round-trip through a per-element list.
-yes  The list editor covers arrays of simple types. jsonb[], bytea[], composite and
+no   Arrays of bytea or composite types keep the plain text editor, since their
+     quoting cannot round-trip through a per-element list.
+yes  The list editor covers arrays of simple types and of JSON. bytea[], composite and
      multi-dimensional arrays open the text editor instead: edit the {…} literal directly.
 ```
 
