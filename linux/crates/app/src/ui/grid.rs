@@ -74,10 +74,23 @@ pub enum CellPreset {
 /// callbacks can query the change tracker for pending-state CSS
 /// classes. `tab_id == None` means the grid is read-only / not
 /// associated with a tracked Browse tab (e.g., editor results).
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TabGridContext {
     pub tab_id: Option<uuid::Uuid>,
     pub pk_col_indices: Vec<usize>,
+    /// Where a dragged column edge is remembered. `None` for a grid
+    /// with nothing to remember it against, such as editor results.
+    pub column_widths: Option<crate::services::column_widths::ColumnWidthStore>,
+}
+
+impl std::fmt::Debug for TabGridContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TabGridContext")
+            .field("tab_id", &self.tab_id)
+            .field("pk_col_indices", &self.pk_col_indices)
+            .field("column_widths", &self.column_widths.is_some())
+            .finish()
+    }
 }
 
 impl TabGridContext {
@@ -537,8 +550,8 @@ fn build_column(
         let dummy = gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal);
         column.set_sorter(Some(&dummy));
     }
-    if let Some(id) = connection_id {
-        if let Some(saved) = crate::services::column_widths::load(id, &table_for_persist, &info.name) {
+    if let (Some(id), Some(widths)) = (connection_id, tab_ctx.column_widths.clone()) {
+        if let Some(saved) = widths.width(id, &table_for_persist, &info.name) {
             column.set_fixed_width(saved);
         } else if let Some(min) = default_min_width {
             // No persisted width: seed with the wide-table fallback so
@@ -550,10 +563,7 @@ fn build_column(
         let column_for_save = column.clone();
         let column_name = info.name.clone();
         column.connect_fixed_width_notify(move |_| {
-            let width = column_for_save.fixed_width();
-            if width > 0 {
-                crate::services::column_widths::save(id, &table_for_persist, &column_name, width);
-            }
+            widths.record(id, &table_for_persist, &column_name, column_for_save.fixed_width());
         });
     } else if let Some(min) = default_min_width {
         // Editor result grids run without a connection_id (no

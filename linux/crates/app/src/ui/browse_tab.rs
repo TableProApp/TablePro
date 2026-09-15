@@ -30,6 +30,8 @@ pub struct BrowseTabInit {
     pub page_size: u64,
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
+    pub column_widths: crate::services::column_widths::ColumnWidthStore,
+    pub filter_settings: crate::services::filter_settings::FilterSettingsStore,
 }
 
 pub struct BrowseTab {
@@ -39,6 +41,8 @@ pub struct BrowseTab {
     driver_id: String,
     connection_id: Option<Uuid>,
     read_only: bool,
+    column_widths: crate::services::column_widths::ColumnWidthStore,
+    filter_settings: crate::services::filter_settings::FilterSettingsStore,
 
     current_offset: u64,
     page_size: u64,
@@ -340,6 +344,7 @@ impl BrowseTab {
     fn grid_context(&self) -> TabGridContext {
         TabGridContext {
             tab_id: Some(self.tab_id),
+            column_widths: Some(self.column_widths.clone()),
             pk_col_indices: self
                 .current_columns
                 .iter()
@@ -1347,7 +1352,7 @@ impl SimpleComponent for BrowseTab {
         // strip start with the same FilterSet.
         let initial_filter = init
             .connection_id
-            .map(|id| crate::services::filter_settings::load(id, init.schema.as_deref(), &init.table))
+            .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
             .unwrap_or_default();
 
         let suppress_combo_emit = Rc::new(std::cell::Cell::new(true));
@@ -1703,6 +1708,8 @@ impl SimpleComponent for BrowseTab {
             driver_id: init.driver_id,
             connection_id: init.connection_id,
             read_only: init.read_only,
+            column_widths: init.column_widths,
+            filter_settings: init.filter_settings,
             current_offset: init.initial_offset,
             page_size: init.page_size,
             current_sort: init.initial_sort,
@@ -1891,7 +1898,8 @@ impl SimpleComponent for BrowseTab {
                 }
                 self.current_filter = set.clone();
                 if let Some(conn_id) = self.connection_id {
-                    crate::services::filter_settings::save(conn_id, self.schema.as_deref(), &self.table, set.clone());
+                    self.filter_settings
+                        .set_filters(conn_id, self.schema.as_deref(), &self.table, set.clone());
                 }
                 // Filtered counts shift; jump back to page 1 so the
                 // user isn't stranded on offset N where N might be

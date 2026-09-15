@@ -215,11 +215,17 @@ impl App {
         let sender_for_response = sender;
         let connections_for_response = self.storage.connections().clone();
         let secrets_for_response = self.storage.secrets().clone();
+        let column_widths = self.storage.column_widths().clone();
+        let filter_settings = self.storage.filter_settings().clone();
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "delete" {
                 return;
             }
+            // Nothing can reach these once the entry is gone, so they
+            // go with it rather than accumulating in the state files.
+            column_widths.forget_connection(id);
+            filter_settings.forget_connection(id);
             execute_delete_connection(
                 connections_for_response.clone(),
                 secrets_for_response.clone(),

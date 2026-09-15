@@ -380,6 +380,8 @@ impl App {
             page_size,
             initial_offset: offset,
             initial_sort: sort,
+            column_widths: self.storage.column_widths().clone(),
+            filter_settings: self.storage.filter_settings().clone(),
         };
         let browse = BrowseTab::builder()
             .launch(browse_init)
