@@ -1,3 +1,6 @@
+mod format_plan;
+mod significant_tokens;
+
 use std::time::SystemTime;
 
 use relm4::adw::prelude::*;
@@ -585,29 +588,30 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::Format => {
-                // sqlformat is dialect-agnostic — it normalises
-                // whitespace, indents subqueries, uppercases keywords.
-                // Empty buffers no-op; the formatter would just return
-                // an empty string but `set_text` would still bump the
-                // change marker. Cursor lands at start because all
-                // pre-format byte offsets shift; the user can press
-                // Ctrl+Z if they don't like the result.
+                // Formatting runs per statement so anything sqlformat
+                // would change the meaning of stays as the user typed
+                // it, and so the lines between statements survive.
+                // Empty buffers no-op: the formatter returns the same
+                // empty string but `set_text` would still bump the
+                // change marker.
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
                 let text = buffer.text(&start, &end, false).to_string();
                 if text.trim().is_empty() {
                     return;
                 }
-                let opts = sqlformat::FormatOptions {
-                    indent: sqlformat::Indent::Spaces(4),
-                    uppercase: Some(true),
-                    lines_between_queries: 2,
-                    ..sqlformat::FormatOptions::default()
-                };
-                let formatted = sqlformat::format(&text, &sqlformat::QueryParams::None, &opts);
+                let grammar = database_service::instance()
+                    .active_metadata()
+                    .map(|metadata| tablepro_core::dialect::grammar_for(&metadata.driver_id))
+                    .unwrap_or(tablepro_core::sql_syntax::SqlGrammar::PostgreSql);
+                let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
+                let formatted = format_plan::format_script(&text, grammar, settings);
                 if formatted == text {
                     return;
                 }
+                // The cursor lands at the start because every byte
+                // offset before it has moved; Ctrl+Z puts the old text
+                // back.
                 buffer.set_text(&formatted);
             }
         }

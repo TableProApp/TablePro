@@ -61,6 +61,22 @@ impl EngineDialect {
     pub fn driver_id(&self) -> &'static str {
         self.driver_id
     }
+
+    pub fn grammar(&self) -> SqlGrammar {
+        self.grammar
+    }
+}
+
+/// The grammar a driver's SQL is written in, for lexing a script the
+/// user typed.
+pub fn grammar_for(driver_id: &str) -> SqlGrammar {
+    match driver_id {
+        "mysql" => MYSQL.grammar,
+        "sqlite" => SQLITE.grammar,
+        "mssql" => MSSQL.grammar,
+        "clickhouse" => CLICKHOUSE.grammar,
+        _ => POSTGRES.grammar,
+    }
 }
 
 impl SqlDialect for EngineDialect {
