@@ -9,6 +9,7 @@ use tablepro_core::DriverRegistry;
 pub mod config;
 pub mod i18n;
 pub mod logging;
+mod persistence;
 pub mod runtime;
 mod services;
 pub mod session;

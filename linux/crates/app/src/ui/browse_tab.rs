@@ -30,8 +30,8 @@ pub struct BrowseTabInit {
     pub page_size: u64,
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
-    pub column_widths: crate::services::column_widths::ColumnWidthStore,
-    pub filter_settings: crate::services::filter_settings::FilterSettingsStore,
+    pub column_widths: crate::persistence::ColumnWidthStore,
+    pub filter_settings: crate::persistence::FilterSettingsStore,
 }
 
 pub struct BrowseTab {
@@ -41,8 +41,8 @@ pub struct BrowseTab {
     driver_id: String,
     connection_id: Option<Uuid>,
     read_only: bool,
-    column_widths: crate::services::column_widths::ColumnWidthStore,
-    filter_settings: crate::services::filter_settings::FilterSettingsStore,
+    column_widths: crate::persistence::ColumnWidthStore,
+    filter_settings: crate::persistence::FilterSettingsStore,
 
     current_offset: u64,
     page_size: u64,
@@ -344,7 +344,14 @@ impl BrowseTab {
     fn grid_context(&self) -> TabGridContext {
         TabGridContext {
             tab_id: Some(self.tab_id),
-            column_widths: Some(self.column_widths.clone()),
+            column_widths: self
+                .connection_id
+                .map(|connection_id| crate::ui::grid::ColumnWidthBinding {
+                    store: self.column_widths.clone(),
+                    connection_id,
+                    schema: self.schema.clone(),
+                    table: self.table.clone(),
+                }),
             pk_col_indices: self
                 .current_columns
                 .iter()
@@ -1017,12 +1024,10 @@ impl BrowseTab {
         let (column_view, selection) = build_column_view(
             &result,
             &self.current_columns,
-            &self.table,
             self.grid_sender.clone(),
             !self.read_only,
             self.current_sort,
             Some(self.grid_sender.clone()),
-            self.connection_id,
             tab_ctx,
         );
         self.current_selection = Some(selection);

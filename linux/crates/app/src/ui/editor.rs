@@ -819,10 +819,8 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
             let (column_view, _selection) = build_column_view(
                 result,
                 &result.columns,
-                "",
                 grid_sender.clone(),
                 false,
-                None,
                 None,
                 None,
                 TabGridContext::default(),

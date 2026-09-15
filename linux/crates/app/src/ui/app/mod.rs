@@ -750,6 +750,7 @@ impl SimpleComponent for App {
         // route Save through the same SaveCompletedForTab plumbing as
         // a per-tab close so failures abort cleanly.
         let settings_for_close = settings.clone();
+        let storage_for_close = storage.clone();
         let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
         let force_close_for_close = force_close.clone();
         let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>> =
@@ -875,6 +876,19 @@ impl SimpleComponent for App {
                 return glib::Propagation::Stop;
             }
             crate::ui::window_geometry::persist(w, &settings_for_close);
+            // The last column drag or filter change may still be on its
+            // way to disk. The hold keeps the process alive until it
+            // lands, so quitting does not lose it.
+            let hold = w
+                .application()
+                .map(|app| gio::prelude::ApplicationExtManual::hold(&app));
+            let column_widths = storage_for_close.column_widths().flush();
+            let filter_settings = storage_for_close.filter_settings().flush();
+            glib::spawn_future_local(async move {
+                column_widths.await;
+                filter_settings.await;
+                drop(hold);
+            });
             glib::Propagation::Proceed
         });
 
