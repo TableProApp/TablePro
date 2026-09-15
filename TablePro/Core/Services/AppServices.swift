@@ -26,6 +26,7 @@ struct AppServices {
     let groupStorage: GroupStorage
     let tagStorage: TagStorage
     let sshProfileStorage: SSHProfileStorage
+    let credentialProfileStorage: CredentialProfileStorage
     let licenseManager: LicenseManager
     let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
@@ -57,6 +58,7 @@ struct AppServices {
         groupStorage: .shared,
         tagStorage: .shared,
         sshProfileStorage: .shared,
+        credentialProfileStorage: .shared,
         licenseManager: .shared,
         syncMetadataStorage: .shared,
         favoritesExpansionState: .shared,

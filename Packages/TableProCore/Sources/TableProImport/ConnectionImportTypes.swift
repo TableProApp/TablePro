@@ -246,7 +246,8 @@ public enum ConnectionImportDecoder {
             connections: envelope.connections.map { $0.sanitizedForImport() },
             groups: envelope.groups,
             tags: envelope.tags,
-            credentials: envelope.credentials
+            credentials: envelope.credentials,
+            credentialProfiles: envelope.credentialProfiles
         )
     }
 

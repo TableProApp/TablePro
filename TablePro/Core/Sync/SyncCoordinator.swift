@@ -210,6 +210,9 @@ final class SyncCoordinator {
         let sshProfiles = services.sshProfileStorage.loadProfiles()
         changeTracker.markDirty(.sshProfile, ids: sshProfiles.map { $0.id.uuidString })
 
+        let credentialProfiles = services.credentialProfileStorage.loadProfiles()
+        changeTracker.markDirty(.credentialProfile, ids: credentialProfiles.map { $0.id.uuidString })
+
         let favoriteTables = services.favoriteTablesStorage.loadFavorites()
         changeTracker.markDirty(
             .tableFavorite,
@@ -363,6 +366,10 @@ final class SyncCoordinator {
             collectDirtySSHProfiles(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
+        if settings.syncCredentialProfiles {
+            collectDirtyCredentialProfiles(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         if settings.syncSettings {
             let dirtySettingsIds = changeTracker.dirtyRecords(for: .settings)
             for category in dirtySettingsIds {
@@ -509,6 +516,7 @@ final class SyncCoordinator {
         let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
         let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
         let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
+        let credentialTombstoneIds = Set(metadataStorage.tombstones(for: .credentialProfile).map(\.id))
         let tableFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .tableFavorite).map(\.id))
         let databaseFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favoriteDatabase).map(\.id))
         let sqlFavoriteTombstoneIds = Set(metadataStorage.tombstones(for: .favorite).map(\.id))
@@ -538,6 +546,10 @@ final class SyncCoordinator {
                 }
             case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
                 applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
+            case SyncRecordType.credentialProfile.rawValue where settings.syncCredentialProfiles:
+                if !applyRemoteCredentialProfile(record, tombstoneIds: credentialTombstoneIds) {
+                    persistenceFailed = true
+                }
             case SyncRecordType.settings.rawValue where settings.syncSettings:
                 applyRemoteSettings(record)
             case SyncRecordType.tableFavorite.rawValue where settings.syncTableFavorites:
@@ -559,41 +571,19 @@ final class SyncCoordinator {
             }
         }
 
-        var connectionIdsToDelete: Set<UUID> = []
-        var groupIdsToDelete: Set<UUID> = []
-        var tagIdsToDelete: Set<UUID> = []
-        var sshProfileIdsToDelete: Set<UUID> = []
-        var tableFavoriteIdsToDelete: Set<String> = []
-        var sqlFavoriteIdsToDelete: Set<UUID> = []
-        var sqlFolderIdsToDelete: Set<UUID> = []
-
-        for recordID in result.deletedRecordIDs {
-            let name = recordID.recordName
-            if name.hasPrefix("Connection_"),
-               let uuid = UUID(uuidString: String(name.dropFirst("Connection_".count))) {
-                connectionIdsToDelete.insert(uuid)
-                actualConnectionChanges = true
-            } else if name.hasPrefix("Group_"),
-                      let uuid = UUID(uuidString: String(name.dropFirst("Group_".count))) {
-                groupIdsToDelete.insert(uuid)
-                groupsOrTagsChanged = true
-            } else if name.hasPrefix("Tag_"),
-                      let uuid = UUID(uuidString: String(name.dropFirst("Tag_".count))) {
-                tagIdsToDelete.insert(uuid)
-                groupsOrTagsChanged = true
-            } else if name.hasPrefix("SSHProfile_"),
-                      let uuid = UUID(uuidString: String(name.dropFirst("SSHProfile_".count))) {
-                sshProfileIdsToDelete.insert(uuid)
-            } else if name.hasPrefix("FavoriteTable_") {
-                tableFavoriteIdsToDelete.insert(String(name.dropFirst("FavoriteTable_".count)))
-            } else if settings.syncSQLFavorites, name.hasPrefix("FavoriteFolder_"),
-                      let uuid = UUID(uuidString: String(name.dropFirst("FavoriteFolder_".count))) {
-                sqlFolderIdsToDelete.insert(uuid)
-            } else if settings.syncSQLFavorites, name.hasPrefix("Favorite_"),
-                      let uuid = UUID(uuidString: String(name.dropFirst("Favorite_".count))) {
-                sqlFavoriteIdsToDelete.insert(uuid)
-            }
-        }
+        let pendingDeletions = Self.parseDeletions(result.deletedRecordIDs, settings: settings)
+        let connectionIdsToDelete = pendingDeletions.connections
+        let groupIdsToDelete = pendingDeletions.groups
+        let tagIdsToDelete = pendingDeletions.tags
+        let sshProfileIdsToDelete = pendingDeletions.sshProfiles
+        let credentialProfileIdsToDelete = pendingDeletions.credentialProfiles
+        let tableFavoriteIdsToDelete = pendingDeletions.tableFavorites
+        let sqlFavoriteIdsToDelete = pendingDeletions.sqlFavorites
+        let sqlFolderIdsToDelete = pendingDeletions.sqlFolders
+        actualConnectionChanges = actualConnectionChanges || !connectionIdsToDelete.isEmpty
+        groupsOrTagsChanged = groupsOrTagsChanged
+            || !groupIdsToDelete.isEmpty
+            || !tagIdsToDelete.isEmpty
 
         if !connectionIdsToDelete.isEmpty {
             var connections = services.connectionStorage.loadConnections()
@@ -621,6 +611,9 @@ final class SyncCoordinator {
             services.tagStorage.saveTags(tags)
         }
         if !applyRemoteSSHProfileDeletions(sshProfileIdsToDelete) {
+            persistenceFailed = true
+        }
+        if !applyRemoteCredentialProfileDeletions(credentialProfileIdsToDelete) {
             persistenceFailed = true
         }
         for id in tableFavoriteIdsToDelete {
@@ -769,6 +762,128 @@ final class SyncCoordinator {
         guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
         for profile in deleted {
             services.sshProfileStorage.deleteSecrets(for: profile.id)
+        }
+        return true
+    }
+
+    /// The tombstones a pull carried, sorted by the record type their name encodes.
+    ///
+    /// Pure and lifted out of `applyRemoteChanges`, which is the function every new record type
+    /// grows and which SwiftLint caps.
+    private struct PendingDeletions {
+        var connections: Set<UUID> = []
+        var groups: Set<UUID> = []
+        var tags: Set<UUID> = []
+        var sshProfiles: Set<UUID> = []
+        var credentialProfiles: Set<UUID> = []
+        var tableFavorites: Set<String> = []
+        var sqlFavorites: Set<UUID> = []
+        var sqlFolders: Set<UUID> = []
+    }
+
+    private static func parseDeletions(
+        _ recordIDs: [CKRecord.ID],
+        settings: SyncSettings
+    ) -> PendingDeletions {
+        var pending = PendingDeletions()
+        for recordID in recordIDs {
+            let name = recordID.recordName
+            func identifier(after prefix: String) -> UUID? {
+                guard name.hasPrefix(prefix) else { return nil }
+                return UUID(uuidString: String(name.dropFirst(prefix.count)))
+            }
+
+            if let uuid = identifier(after: "Connection_") {
+                pending.connections.insert(uuid)
+            } else if let uuid = identifier(after: "Group_") {
+                pending.groups.insert(uuid)
+            } else if let uuid = identifier(after: "Tag_") {
+                pending.tags.insert(uuid)
+            } else if let uuid = identifier(after: "SSHProfile_") {
+                pending.sshProfiles.insert(uuid)
+            } else if settings.syncCredentialProfiles, let uuid = identifier(after: "CredentialProfile_") {
+                pending.credentialProfiles.insert(uuid)
+            } else if name.hasPrefix("FavoriteTable_") {
+                pending.tableFavorites.insert(String(name.dropFirst("FavoriteTable_".count)))
+            } else if settings.syncSQLFavorites, let uuid = identifier(after: "FavoriteFolder_") {
+                pending.sqlFolders.insert(uuid)
+            } else if settings.syncSQLFavorites, let uuid = identifier(after: "Favorite_") {
+                pending.sqlFavorites.insert(uuid)
+            }
+        }
+        return pending
+    }
+
+    private static func availableProfileName(
+        basedOn name: String,
+        taken profiles: [CredentialProfile]
+    ) -> String {
+        let used = Set(profiles.map { $0.name.lowercased() })
+        for index in 2...99 {
+            let candidate = String(format: String(localized: "%1$@ (%2$lld)"), name, Int64(index))
+            if !used.contains(candidate.lowercased()) { return candidate }
+        }
+        return name
+    }
+
+    /// False when the profile could not be persisted, which withholds the pull token so the record
+    /// arrives again rather than being acknowledged and lost.
+    private func applyRemoteCredentialProfile(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+        let remoteProfile: CredentialProfile
+        do {
+            remoteProfile = try SyncRecordMapper.toCredentialProfile(record)
+        } catch {
+            Self.logger.error(
+                "Skipping remote credential profile \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return true
+        }
+        if tombstoneIds.contains(remoteProfile.id.uuidString) { return true }
+
+        var profiles = services.credentialProfileStorage.loadProfiles()
+        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
+            /// The password mode's payload never crosses the wire, so a `.source` this Mac already
+            /// holds is kept rather than replaced by the `prompt` the remote had to send instead.
+            var merged = remoteProfile
+            if case .source = profiles[index].passwordMode, remoteProfile.passwordMode == .prompt {
+                merged.passwordMode = profiles[index].passwordMode
+            }
+            profiles[index] = merged
+        } else {
+            /// Two Macs can hold same-named profiles with different ids, which is what happens when
+            /// someone recreated one by hand before they synced. The editor forbids duplicate names
+            /// and every picker offers a profile by name alone, so the arriving one is renamed
+            /// rather than landing as an indistinguishable second row.
+            var arriving = remoteProfile
+            if profiles.contains(where: { $0.name.compare(arriving.name, options: .caseInsensitive) == .orderedSame }) {
+                arriving.name = Self.availableProfileName(basedOn: arriving.name, taken: profiles)
+            }
+            profiles.append(arriving)
+        }
+        guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
+        /// The connections linked to it carry a copy of the username, which every raw reader uses.
+        services.credentialProfileStorage.writeUsernameThrough(remoteProfile)
+        return true
+    }
+
+    /// A profile deleted on another Mac hands its credentials to the connections using it here
+    /// too, so they keep connecting rather than losing the password the link took away.
+    private func applyRemoteCredentialProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
+        guard !profileIds.isEmpty else { return true }
+
+        var profiles = services.credentialProfileStorage.loadProfiles()
+        let deleted = profiles.filter { profileIds.contains($0.id) }
+        profiles.removeAll { profileIds.contains($0.id) }
+
+        for profile in deleted where !services.credentialProfileStorage.unlinkConnections(from: profile) {
+            Self.logger.error(
+                "Kept credential profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
+            )
+            return false
+        }
+        guard services.credentialProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
+        for profile in deleted {
+            services.credentialProfileStorage.deleteSecrets(for: profile)
         }
         return true
     }
@@ -1029,6 +1144,28 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .tag) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    private func collectDirtyCredentialProfiles(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyIds = changeTracker.dirtyRecords(for: .credentialProfile)
+        if !dirtyIds.isEmpty {
+            let profiles = services.credentialProfileStorage.loadProfiles()
+            for id in dirtyIds {
+                if let profile = profiles.first(where: { $0.id.uuidString == id }) {
+                    records.append(SyncRecordMapper.toCKRecord(profile, in: zoneID))
+                }
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .credentialProfile) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .credentialProfile, id: tombstone.id, in: zoneID)
             )
         }
     }

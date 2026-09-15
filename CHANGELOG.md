@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Credential profiles, one username and password shared by any number of connections. (#2853)
 - **Profiles** pane in Settings, listing credential profiles and SSH servers with how many connections use each.
 - **Credentials** picker on a connection's Authentication section, with **Save These as a Profile…**.
+- **Credential Profiles** toggle in Settings > Sync, and credential profiles in exported connection bundles.
 - **Download and install updates automatically** in Settings > General.
 - **Last checked** beside **Check for Updates…** in Settings > General.
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
@@ -54,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Imported connections pointing at an SSH profile that is not on the importing Mac.
 - Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.
 - Connections still reaching an SSH profile's old host and username after the profile was edited.
 - SSH profile edits made on another Mac never reaching the connections that use it.

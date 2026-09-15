@@ -109,6 +109,7 @@ final class WelcomeViewModelTests: XCTestCase {
             groupStorage: groupStorage,
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
             licenseManager: live.licenseManager,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
