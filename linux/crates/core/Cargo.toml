@@ -22,12 +22,13 @@ serde.workspace = true
 serde_json.workspace = true
 sqlparser.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["io-util"] }
+tokio = { workspace = true, features = ["io-util", "macros", "rt", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
 uuid.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
 workspace = true
