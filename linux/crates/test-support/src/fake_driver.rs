@@ -42,7 +42,7 @@ impl DatabaseDriver for FakeDriver {
     async fn connect(&self, _opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
         let scripted = lock(&self.connects).pop_front();
         let script = scripted.unwrap_or_else(|| {
-            Err(DriverError::Internal(
+            Err(DriverError::Protocol(
                 "FakeDriver has no scripted connect result".to_owned(),
             ))
         })?;
@@ -61,13 +61,13 @@ mod tests {
     #[tokio::test]
     async fn fake_driver_returns_scripted_connect_error() {
         let driver = FakeDriver::new([
-            Err(DriverError::AuthFailed),
+            Err(DriverError::Auth { diagnostics: None }),
             Ok(ConnectionScript::default().with_ping(Ok(()))),
         ]);
 
         assert!(matches!(
             driver.connect(ConnectOptions::default()).await,
-            Err(DriverError::AuthFailed)
+            Err(DriverError::Auth { diagnostics: None })
         ));
 
         let connection = driver.connect(ConnectOptions::default()).await.unwrap();
@@ -75,7 +75,7 @@ mod tests {
 
         assert!(matches!(
             driver.connect(ConnectOptions::default()).await,
-            Err(DriverError::Internal(_))
+            Err(DriverError::Protocol(_))
         ));
 
         let counters = driver.connection_counters();

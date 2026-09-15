@@ -354,5 +354,5 @@ async fn bad_sql_returns_query_error() {
         .query("SELECT * FROM definitely_missing_table_xyz")
         .await
         .unwrap_err();
-    assert!(matches!(err, tablepro_core::DriverError::Query { .. }));
+    assert!(matches!(err, tablepro_core::DriverError::Server(_)), "got {err:?}");
 }

@@ -219,7 +219,7 @@ async fn ddl_batch_commits_and_rolls_back_as_a_unit() {
         .unwrap_err();
     assert!(matches!(
         err,
-        tablepro_core::DriverError::Transaction { statement_index: 1, .. }
+        tablepro_core::DriverError::RolledBack { statement_index: 1, .. }
     ));
     let cols = conn.fetch_columns(None, "tx_demo").await.unwrap();
     assert_eq!(cols.len(), 2, "the failed batch must roll back the first statement");

@@ -35,7 +35,7 @@ fn next<T>(queue: &mut VecDeque<Result<T, DriverError>>, method: &str) -> Result
 }
 
 fn unscripted(method: &str) -> DriverError {
-    DriverError::Internal(format!("FakeConnection has no scripted {method} result"))
+    DriverError::Protocol(format!("FakeConnection has no scripted {method} result"))
 }
 
 #[async_trait]
@@ -111,14 +111,19 @@ mod tests {
         let connection = FakeConnection::new(
             ConnectionScript::default()
                 .with_list_tables(Ok(Vec::new()))
-                .with_list_tables(Err(DriverError::Disconnected))
+                .with_list_tables(Err(DriverError::ConnectionLost {
+                    during: tablepro_core::LossPhase::Idle,
+                }))
                 .with_ping(Ok(())),
         );
         let counters = connection.counters();
 
         assert_eq!(connection.list_tables().await.unwrap(), Vec::new());
-        assert!(matches!(connection.list_tables().await, Err(DriverError::Disconnected)));
-        assert!(matches!(connection.list_tables().await, Err(DriverError::Internal(_))));
+        assert!(matches!(
+            connection.list_tables().await,
+            Err(DriverError::ConnectionLost { .. })
+        ));
+        assert!(matches!(connection.list_tables().await, Err(DriverError::Protocol(_))));
         connection.ping().await.unwrap();
         assert!(connection.fetch_rows(None, "items", 0, 10).await.is_err());
         Box::new(connection).close().await.unwrap();
