@@ -3,3 +3,11 @@ allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-dbg-in-tests = true
 allow-print-in-tests = true
+
+# Catalogue text goes into DDL verbatim, so only a driver may build one
+# from a string. User input goes through SqlDialect::parse_type or
+# parse_expression first.
+disallowed-methods = [
+    { path = "tablepro_core::column::SqlTypeExpr::from_catalog_text", reason = "catalog text only; validate user input with SqlDialect::parse_type/parse_expression" },
+    { path = "tablepro_core::column::SqlExpression::from_catalog_text", reason = "catalog text only; validate user input with SqlDialect::parse_type/parse_expression" },
+]
