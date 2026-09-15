@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Minimum macOS lowered from 14.0 (Sonoma) to 13.0 (Ventura).
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
 - The update window shows the release highlights, with the full changelog one click away.

@@ -18,7 +18,7 @@ These govern every decision about code, architecture, tooling and process:
 
 ## Project Overview
 
-TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 14.0+, `SWIFT_VERSION = 6.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
+TablePro is a native macOS database client (SwiftUI + AppKit), a fast, lightweight alternative to TablePlus. macOS 13.0+, `SWIFT_VERSION = 6.0` (`Configs/Base.xcconfig`), Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` holds `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/` and `Theme/`
 - **Plugins**: `Plugins/` holds the `.tableplugin` bundles plus the `TableProPluginKit` shared framework.

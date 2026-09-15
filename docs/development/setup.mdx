@@ -6,7 +6,7 @@ description: Clone, configure signing, and build TablePro in Xcode
 The Xcode project is generated and the static libraries are downloaded. A fresh clone carries
 neither, so two scripts run before anything opens in Xcode. Xcode itself has to be 26.0 or newer:
 the app calls SwiftUI's `glassEffect(_:in:)` behind `if #available(macOS 26.0, *)`, and that symbol
-ships in the macOS 26 SDK. The deployment target stays at macOS 14.0, which is what the built app
+ships in the macOS 26 SDK. The deployment target stays at macOS 13.0, which is what the built app
 runs on, not what you build on.
 
 ## Prerequisites
