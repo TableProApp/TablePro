@@ -5,6 +5,7 @@ use crate::connection::Connection;
 use crate::error::DriverError;
 use crate::query::{ExecResult, ForeignKeyInfo, IndexInfo, TableInfo};
 use crate::query_result::QueryResult;
+use crate::read_only_refusal::ReadOnlyRefusal;
 use crate::value::Value;
 
 pub struct ReadOnlyConnection {
@@ -47,15 +48,15 @@ impl Connection for ReadOnlyConnection {
     }
 
     async fn execute(&self, _sql: &str) -> Result<ExecResult, DriverError> {
-        Err(DriverError::ReadOnly)
+        Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
     }
 
     async fn execute_params(&self, _sql: &str, _params: &[Value]) -> Result<ExecResult, DriverError> {
-        Err(DriverError::ReadOnly)
+        Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
     }
 
     async fn execute_in_transaction(&self, _statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
-        Err(DriverError::ReadOnly)
+        Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
     }
 
     async fn fetch_indexes(&self, schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
@@ -150,7 +151,7 @@ mod tests {
         });
         let wrapped = ReadOnlyConnection::wrap(inner);
         let err = wrapped.execute("DELETE FROM t").await.unwrap_err();
-        assert!(matches!(err, DriverError::ReadOnly));
+        assert!(matches!(err, DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)));
     }
 
     #[tokio::test]
@@ -164,6 +165,6 @@ mod tests {
             .execute_params("UPDATE t SET x = ?", &[Value::Int(1)])
             .await
             .unwrap_err();
-        assert!(matches!(err, DriverError::ReadOnly));
+        assert!(matches!(err, DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)));
     }
 }

@@ -11,7 +11,8 @@ use tablepro_core::column::{
 use tablepro_core::value::{JsonText, OffsetTimestamp, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, QueryResult, TableInfo, Value, sql_dialect::quote_ident,
+    LossPhase, MAX_QUERY_ROWS, QueryResult, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TableInfo, TimeoutPhase,
+    TlsFailure, TransportError, Value, sql_dialect::quote_ident,
 };
 
 const DRIVER_ID: &str = "clickhouse";
@@ -74,7 +75,11 @@ impl DatabaseDriver for ClickhouseDriver {
         let probe = client.query("SELECT 1").execute();
         match tokio::time::timeout(PROBE_TIMEOUT, probe).await {
             Ok(result) => result.map_err(map_clickhouse_error)?,
-            Err(_) => return Err(DriverError::ConnectionRefused),
+            Err(_) => {
+                return Err(DriverError::Transport(TransportError::Timeout {
+                    phase: TimeoutPhase::Connect,
+                }));
+            }
         }
 
         let database = if opts.database.is_empty() {
@@ -264,7 +269,7 @@ impl Connection for ClickhouseConnection {
             match self.execute_params(sql, params).await {
                 Ok(r) => affected.push(r.rows_affected),
                 Err(e) => {
-                    return Err(DriverError::Transaction {
+                    return Err(DriverError::RolledBack {
                         statement_index: i,
                         source: Box::new(e),
                     });
@@ -328,7 +333,10 @@ impl Connection for ClickhouseConnection {
         let probe = self.client.query("SELECT 1").execute();
         match tokio::time::timeout(PROBE_TIMEOUT, probe).await {
             Ok(result) => result.map_err(map_clickhouse_error),
-            Err(_) => Err(DriverError::Disconnected),
+            Err(_) => Err(DriverError::Timeout {
+                phase: TimeoutPhase::Probe,
+                server_cancelled: false,
+            }),
         }
     }
 
@@ -382,7 +390,7 @@ impl LineReader {
 }
 
 fn parse_line<T: serde::de::DeserializeOwned>(line: &[u8]) -> Result<T, DriverError> {
-    serde_json::from_slice(line).map_err(|e| DriverError::Internal(format!("clickhouse response parse: {e}")))
+    serde_json::from_slice(line).map_err(|e| DriverError::Protocol(format!("unreadable response: {e}")))
 }
 
 async fn fetch_result(client: &clickhouse::Client, sql: &str, max_rows: usize) -> Result<QueryResult, DriverError> {
@@ -662,7 +670,7 @@ fn bind_placeholders(sql: &str, params: &[Value]) -> Result<String, DriverError>
                 }
                 '?' => {
                     let Some(value) = params.get(next_positional) else {
-                        return Err(DriverError::Internal(format!(
+                        return Err(DriverError::Protocol(format!(
                             "not enough bind parameters: need at least {}",
                             next_positional + 1
                         )));
@@ -683,12 +691,12 @@ fn bind_placeholders(sql: &str, params: &[Value]) -> Result<String, DriverError>
                     }
                     let n: usize = digits
                         .parse()
-                        .map_err(|_| DriverError::Internal(format!("bad placeholder ${digits}")))?;
+                        .map_err(|_| DriverError::Protocol(format!("bad placeholder ${digits}")))?;
                     let Some(index) = n.checked_sub(1) else {
-                        return Err(DriverError::Internal("bind placeholders start at $1".into()));
+                        return Err(DriverError::Protocol("bind placeholders start at $1".to_owned()));
                     };
                     let Some(value) = params.get(index) else {
-                        return Err(DriverError::Internal(format!(
+                        return Err(DriverError::Protocol(format!(
                             "bind parameter ${n} out of range (have {})",
                             params.len()
                         )));
@@ -702,7 +710,7 @@ fn bind_placeholders(sql: &str, params: &[Value]) -> Result<String, DriverError>
     }
 
     if let Some(unused) = used.iter().position(|u| !u) {
-        return Err(DriverError::Internal(format!(
+        return Err(DriverError::Protocol(format!(
             "bind parameter {} of {} was never referenced",
             unused + 1,
             params.len()
@@ -736,7 +744,7 @@ fn literal(value: &Value) -> Result<String, DriverError> {
         // An infinite date has no literal, and a value the driver could
         // not read must not be written back as a guess.
         Value::Undecodable(_) | Value::Date(_) | Value::Timestamp(_) | Value::TimestampTz(_) => {
-            return Err(DriverError::Internal(format!(
+            return Err(DriverError::Protocol(format!(
                 "a {} value has no ClickHouse literal",
                 value.variant_name()
             )));
@@ -777,35 +785,57 @@ fn escape_bind_markers(sql: &str) -> String {
 /// ClickHouse error codes that mean the credentials were rejected.
 /// 192 UNKNOWN_USER, 193 WRONG_PASSWORD, 194 REQUIRED_PASSWORD,
 /// 497 ACCESS_DENIED, 516 AUTHENTICATION_FAILED.
-const AUTH_CODES: [&str; 5] = ["code: 192", "code: 193", "code: 194", "code: 497", "code: 516"];
+/// ClickHouse numbers its errors and prints the number in the message
+/// body, which is the only place the HTTP interface carries it.
+fn clickhouse_code(message: &str) -> Option<i32> {
+    let rest = message.split("Code: ").nth(1)?;
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
 
 fn map_clickhouse_error(err: clickhouse::error::Error) -> DriverError {
-    let msg = err.to_string();
-    let lower = msg.to_lowercase();
+    let message = err.to_string();
     match &err {
-        // Transport failures are the only place a TLS or refused-connect
+        // A transport failure is the only place a TLS or refused-connect
         // diagnosis can come from. Matching those words against a server
         // response would misclassify a query that merely mentions them.
-        clickhouse::error::Error::Network(_) => {
-            if lower.contains("certificate") || lower.contains("tls") || lower.contains("handshake") {
-                DriverError::Tls(msg)
-            } else if lower.contains("connection refused") || lower.contains("connect error") {
-                DriverError::ConnectionRefused
-            } else {
-                DriverError::Disconnected
-            }
-        }
-        clickhouse::error::Error::TimedOut => DriverError::Disconnected,
-        _ => {
-            if AUTH_CODES.iter().any(|code| lower.contains(code)) {
-                DriverError::AuthFailed
-            } else {
-                DriverError::Query {
-                    message: msg,
-                    sqlstate: None,
-                }
-            }
-        }
+        clickhouse::error::Error::Network(_) => network_error(&message),
+        clickhouse::error::Error::TimedOut => DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: false,
+        },
+        _ => server_error(&message),
+    }
+}
+
+fn network_error(message: &str) -> DriverError {
+    let lower = message.to_lowercase();
+    if lower.contains("certificate") || lower.contains("tls") || lower.contains("handshake") {
+        return DriverError::Tls {
+            failure: TlsFailure::Other,
+            detail: message.to_owned(),
+        };
+    }
+    DriverError::ConnectionLost {
+        during: LossPhase::Statement,
+    }
+}
+
+fn server_error(message: &str) -> DriverError {
+    let code = clickhouse_code(message);
+    let diagnostics = ServerDiagnostics::new(code.map(|code| ServerCode::ClickHouse { code }), message.to_owned());
+    match code {
+        // 497 is "not enough privileges", which arrives during connect
+        // when the user exists but cannot read anything.
+        Some(192 | 193 | 194 | 497 | 516) => DriverError::auth(Some(diagnostics)),
+        Some(164) => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
+        Some(394) => DriverError::Cancelled,
+        Some(159) => DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: true,
+        },
+        Some(202 | 203) => DriverError::Busy,
+        _ => DriverError::reported(diagnostics),
     }
 }
 
@@ -963,16 +993,16 @@ mod tests {
     #[test]
     fn unreferenced_parameter_is_an_error() {
         let err = bind_placeholders("SELECT * FROM t WHERE id = ?", &[Value::Int(1), Value::Int(2)]).unwrap_err();
-        assert!(matches!(err, DriverError::Internal(_)));
+        assert!(matches!(err, DriverError::Protocol(_)));
     }
 
     #[test]
     fn missing_parameter_is_an_error() {
         let err = bind_placeholders("SELECT * FROM t WHERE a = ? AND b = ?", &[Value::Int(1)]).unwrap_err();
-        assert!(matches!(err, DriverError::Internal(_)));
+        assert!(matches!(err, DriverError::Protocol(_)));
 
         let err = bind_placeholders("SELECT * FROM t WHERE a = $3", &[Value::Int(1)]).unwrap_err();
-        assert!(matches!(err, DriverError::Internal(_)));
+        assert!(matches!(err, DriverError::Protocol(_)));
     }
 
     #[test]
@@ -1023,15 +1053,39 @@ mod tests {
         let err = map_clickhouse_error(clickhouse::error::Error::BadResponse(
             "Code: 516. Authentication failed: password is incorrect".into(),
         ));
-        assert!(matches!(err, DriverError::AuthFailed));
+
+        assert!(matches!(err, DriverError::Auth { .. }), "got {err:?}");
+        assert_eq!(err.category(), tablepro_core::ErrorCategory::Authentication);
     }
 
     #[test]
-    fn server_error_mentioning_certificate_stays_a_query_error() {
+    fn server_error_mentioning_certificate_stays_a_server_error() {
         let err = map_clickhouse_error(clickhouse::error::Error::BadResponse(
             "Code: 47. Unknown identifier: certificate".into(),
         ));
-        assert!(matches!(err, DriverError::Query { .. }));
+
+        assert!(matches!(err, DriverError::Server(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn a_read_only_refusal_carries_the_servers_code() {
+        let err = map_clickhouse_error(clickhouse::error::Error::BadResponse(
+            "Code: 164. Cannot execute query in readonly mode".into(),
+        ));
+
+        let DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics)) = &err else {
+            panic!("got {err:?}");
+        };
+        assert_eq!(diagnostics.code, Some(ServerCode::ClickHouse { code: 164 }));
+    }
+
+    #[test]
+    fn a_cancelled_query_is_not_a_server_error() {
+        let err = map_clickhouse_error(clickhouse::error::Error::BadResponse(
+            "Code: 394. Query was cancelled".into(),
+        ));
+
+        assert!(matches!(err, DriverError::Cancelled), "got {err:?}");
     }
 }
 

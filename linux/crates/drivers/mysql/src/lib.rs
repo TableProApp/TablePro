@@ -14,7 +14,8 @@ use tablepro_core::column::{
 use tablepro_core::value::{BitString, JsonText, OffsetTimestamp, SqlTime, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
+    LossPhase, MAX_QUERY_ROWS, NetworkEndpoint, QueryResult, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TableInfo,
+    TimeoutPhase, TlsFailure, TransportError, Value,
 };
 
 pub struct MysqlDriver;
@@ -45,12 +46,13 @@ impl DatabaseDriver for MysqlDriver {
             } else {
                 sqlx::mysql::MySqlSslMode::Disabled
             });
+        let endpoint = NetworkEndpoint::new(&opts.host, opts.port)?;
         let pool = MySqlPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(Duration::from_secs(5))
             .connect_with(mysql_opts)
             .await
-            .map_err(map_sqlx_error)?;
+            .map_err(|error| map_connect_error(error, &endpoint))?;
         Ok(Box::new(MysqlConnection { pool }))
     }
 }
@@ -220,7 +222,7 @@ impl Connection for MysqlConnection {
                 Ok(res) => affected.push(res.rows_affected()),
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    return Err(DriverError::Transaction {
+                    return Err(DriverError::RolledBack {
                         statement_index: idx,
                         source: Box::new(map_sqlx_error(e)),
                     });
@@ -511,18 +513,95 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
     }
 }
 
-fn map_sqlx_error(err: sqlx::Error) -> DriverError {
-    use sqlx::Error::*;
+/// A failure during connect, where an unreachable server is the
+/// answer rather than a connection that was lost.
+fn map_connect_error(err: sqlx::Error, endpoint: &NetworkEndpoint) -> DriverError {
     match err {
-        Database(e) => DriverError::Query {
-            message: e.message().to_string(),
-            sqlstate: e.code().map(|c| c.to_string()),
-        },
-        Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => DriverError::ConnectionRefused,
-        Tls(e) => DriverError::Tls(e.to_string()),
-        PoolClosed | PoolTimedOut => DriverError::Disconnected,
-        other => DriverError::Internal(format!("{other}")),
+        sqlx::Error::Io(io) => DriverError::Transport(connect_transport_error(&io, endpoint)),
+        sqlx::Error::PoolTimedOut => DriverError::Transport(TransportError::Timeout {
+            phase: TimeoutPhase::Connect,
+        }),
+        other => map_sqlx_error(other),
     }
+}
+
+fn connect_transport_error(io: &std::io::Error, endpoint: &NetworkEndpoint) -> TransportError {
+    match io.kind() {
+        std::io::ErrorKind::ConnectionRefused => TransportError::Refused {
+            endpoint: endpoint.clone(),
+        },
+        std::io::ErrorKind::TimedOut => TransportError::Timeout {
+            phase: TimeoutPhase::Connect,
+        },
+        _ => TransportError::Unreachable {
+            endpoint: endpoint.clone(),
+            detail: io.to_string(),
+        },
+    }
+}
+
+fn map_sqlx_error(err: sqlx::Error) -> DriverError {
+    match err {
+        sqlx::Error::Database(error) => match error.try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>() {
+            Some(mysql) => server_error(mysql),
+            None => DriverError::server(error.message().to_owned()),
+        },
+        // An I/O failure on an open connection is the connection going
+        // away, whatever the kind says.
+        sqlx::Error::Io(_) => DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        },
+        sqlx::Error::Tls(error) => tls_error(error.as_ref()),
+        // The pool's wait ends only when every connection is busy, so
+        // it is the server having no room rather than a slow network.
+        sqlx::Error::PoolTimedOut => DriverError::Busy,
+        sqlx::Error::PoolClosed | sqlx::Error::WorkerCrashed => DriverError::ConnectionLost {
+            during: LossPhase::Idle,
+        },
+        sqlx::Error::ColumnDecode { index, source } => DriverError::Decode {
+            column: index,
+            detail: source.to_string(),
+        },
+        other => DriverError::Protocol(other.to_string()),
+    }
+}
+
+/// The error numbers that mean something the app acts on. MariaDB
+/// numbers a few of them differently, so both are listed.
+fn server_error(mysql: &sqlx::mysql::MySqlDatabaseError) -> DriverError {
+    let diagnostics = diagnostics_of(mysql);
+    match mysql.number() {
+        1045 => DriverError::auth(Some(diagnostics)),
+        1290 | 1792 => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
+        1317 => DriverError::Cancelled,
+        1205 => DriverError::Timeout {
+            phase: TimeoutPhase::LockWait,
+            server_cancelled: true,
+        },
+        // 3024 on MySQL, 1969 on MariaDB.
+        3024 | 1969 => DriverError::Timeout {
+            phase: TimeoutPhase::Statement,
+            server_cancelled: true,
+        },
+        1040 => DriverError::Busy,
+        _ => DriverError::reported(diagnostics),
+    }
+}
+
+fn diagnostics_of(mysql: &sqlx::mysql::MySqlDatabaseError) -> ServerDiagnostics {
+    ServerDiagnostics::new(
+        Some(ServerCode::MySql {
+            number: mysql.number(),
+            sqlstate: mysql.code().map(str::to_owned),
+        }),
+        mysql.message().to_owned(),
+    )
+}
+
+fn tls_error(error: &(dyn std::error::Error + 'static)) -> DriverError {
+    let (failure, detail) =
+        tablepro_net::tls::classify(error).unwrap_or_else(|| (TlsFailure::Other, error.to_string()));
+    DriverError::Tls { failure, detail }
 }
 
 #[cfg(test)]
@@ -538,9 +617,28 @@ mod tests {
     }
 
     #[test]
-    fn map_io_refused_returns_connection_refused() {
+    fn a_refused_connect_names_the_endpoint_it_tried() {
+        let endpoint = NetworkEndpoint::new("db.internal", 3306).expect("an endpoint");
         let err = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::ConnectionRefused));
-        assert!(matches!(map_sqlx_error(err), DriverError::ConnectionRefused));
+
+        let mapped = map_connect_error(err, &endpoint);
+
+        assert!(
+            matches!(&mapped, DriverError::Transport(TransportError::Refused { endpoint: at }) if at == &endpoint),
+            "got {mapped:?}"
+        );
+    }
+
+    #[test]
+    fn a_dropped_connection_mid_statement_is_not_a_refusal() {
+        let err = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+
+        assert!(matches!(
+            map_sqlx_error(err),
+            DriverError::ConnectionLost {
+                during: LossPhase::Statement
+            }
+        ));
     }
 
     #[test]

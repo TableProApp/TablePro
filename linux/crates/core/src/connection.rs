@@ -82,9 +82,9 @@ pub trait Connection: Send + Sync {
         if params.is_empty() {
             self.query(sql).await
         } else {
-            Err(DriverError::Internal(
-                "query_params is not implemented for this driver".into(),
-            ))
+            Err(DriverError::Unsupported {
+                feature: "parameterised queries",
+            })
         }
     }
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError>;

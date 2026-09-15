@@ -17,7 +17,8 @@ use tablepro_core::sql_dialect::build_order_and_pagination;
 use tablepro_core::value::{OffsetTimestamp, SqlDecimal, SqlTime, Temporal};
 use tablepro_core::{
     AuthMode, ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo,
-    IndexInfo, MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
+    IndexInfo, LossPhase, MAX_QUERY_ROWS, NetworkEndpoint, QueryResult, ReadOnlyRefusal, ServerCode, ServerDiagnostics,
+    TableInfo, TimeoutPhase, TlsFailure, TransportError, Value,
 };
 
 type MssqlClient = Client<Compat<TcpStream>>;
@@ -71,8 +72,12 @@ impl DatabaseDriver for MssqlDriver {
         // acquire_timeout.
         let client = match tokio::time::timeout(CONNECT_TIMEOUT, connecting).await {
             Ok(Ok(opened)) => opened?,
-            Ok(Err(join)) => return Err(DriverError::Internal(join.to_string())),
-            Err(_) => return Err(DriverError::ConnectionRefused),
+            Ok(Err(join)) => return Err(DriverError::Protocol(join.to_string())),
+            Err(_) => {
+                return Err(DriverError::Transport(TransportError::Timeout {
+                    phase: TimeoutPhase::Connect,
+                }));
+            }
         };
 
         Ok(Box::new(MssqlConnection {
@@ -138,10 +143,11 @@ fn dial_host(host: &str) -> &str {
 }
 
 async fn open_client(target: MssqlTarget) -> Result<MssqlClient, DriverError> {
+    let endpoint = NetworkEndpoint::new(&target.dial_host, target.dial_port)?;
     let tcp = TcpStream::connect((target.dial_host.as_str(), target.dial_port))
         .await
-        .map_err(map_io_error)?;
-    tcp.set_nodelay(true).map_err(map_io_error)?;
+        .map_err(|error| map_io_error(error, &endpoint))?;
+    tcp.set_nodelay(true).map_err(|error| map_io_error(error, &endpoint))?;
     Client::connect(target.config, tcp.compat_write())
         .await
         .map_err(map_tiberius_error)
@@ -263,7 +269,7 @@ impl Connection for MssqlConnection {
                 Ok(res) => affected.push(res.total()),
                 Err(e) => {
                     let _ = exec_simple(&mut client, "ROLLBACK").await;
-                    return Err(DriverError::Transaction {
+                    return Err(DriverError::RolledBack {
                         statement_index: idx,
                         source: Box::new(map_tiberius_error(e)),
                     });
@@ -711,35 +717,69 @@ fn as_bool(v: Option<&Value>) -> Option<bool> {
     }
 }
 
-fn map_io_error(e: std::io::Error) -> DriverError {
-    if e.kind() == std::io::ErrorKind::ConnectionRefused {
-        DriverError::ConnectionRefused
-    } else {
-        DriverError::Internal(e.to_string())
-    }
+/// The dial is the only I/O the driver runs before a session exists,
+/// so a failure here names the endpoint it could not reach.
+fn map_io_error(e: std::io::Error, endpoint: &NetworkEndpoint) -> DriverError {
+    DriverError::Transport(match e.kind() {
+        std::io::ErrorKind::ConnectionRefused => TransportError::Refused {
+            endpoint: endpoint.clone(),
+        },
+        std::io::ErrorKind::TimedOut => TransportError::Timeout {
+            phase: TimeoutPhase::Connect,
+        },
+        _ => TransportError::Unreachable {
+            endpoint: endpoint.clone(),
+            detail: e.to_string(),
+        },
+    })
 }
 
 fn map_tiberius_error(err: tiberius::error::Error) -> DriverError {
     use tiberius::error::Error as E;
     match err {
-        E::Io { .. } => DriverError::Disconnected,
-        E::Tls(msg) => DriverError::Tls(msg),
-        E::Server(token) => {
-            // 18456 = "Login failed for user"; surface as an auth failure so
-            // the UI shows the right remediation instead of a raw SQL error.
-            if token.code() == 18456 {
-                DriverError::AuthFailed
-            } else {
-                DriverError::Query {
-                    message: token.message().to_string(),
-                    sqlstate: Some(token.state().to_string()),
-                }
-            }
-        }
+        E::Io { .. } => DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        },
+        E::Tls(detail) => DriverError::Tls {
+            failure: TlsFailure::Other,
+            detail,
+        },
+        E::Server(token) => server_error(&token),
         #[cfg(feature = "kerberos")]
         E::Gssapi(detail) => DriverError::IntegratedAuth(detail),
-        E::Routing { host, port } => DriverError::Internal(format!("server requested routing to {host}:{port}")),
-        other => DriverError::Internal(other.to_string()),
+        E::Routing { host, port } => DriverError::Protocol(format!("the server asked for routing to {host}:{port}")),
+        other => DriverError::Protocol(other.to_string()),
+    }
+}
+
+/// The TDS error numbers that mean something the app acts on.
+fn server_error(token: &tiberius::error::TokenError) -> DriverError {
+    let diagnostics = diagnostics_of(token);
+    match token.code() {
+        18456 => DriverError::auth(Some(diagnostics)),
+        3906 => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
+        1222 => DriverError::Timeout {
+            phase: TimeoutPhase::LockWait,
+            server_cancelled: true,
+        },
+        _ => DriverError::reported(diagnostics),
+    }
+}
+
+fn diagnostics_of(token: &tiberius::error::TokenError) -> ServerDiagnostics {
+    ServerDiagnostics {
+        code: Some(ServerCode::Tds {
+            number: token.code(),
+            state: token.state(),
+            class: token.class(),
+        }),
+        severity: Some(token.class().to_string()),
+        message: token.message().to_owned(),
+        where_context: match token.procedure() {
+            "" => None,
+            procedure => Some(procedure.to_owned()),
+        },
+        ..ServerDiagnostics::default()
     }
 }
 

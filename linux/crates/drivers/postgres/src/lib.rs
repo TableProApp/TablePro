@@ -14,7 +14,8 @@ use tablepro_core::column::{
 use tablepro_core::value::{BitString, JsonText, OffsetTimestamp, SqlInterval, SqlTime, Temporal, TimeWithOffset};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
+    LossPhase, MAX_QUERY_ROWS, NetworkEndpoint, QueryResult, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TableInfo,
+    TimeoutPhase, TlsFailure, TransportError, Value,
 };
 
 pub struct PgDriver;
@@ -49,12 +50,13 @@ impl DatabaseDriver for PgDriver {
             } else {
                 sqlx::postgres::PgSslMode::Disable
             });
+        let endpoint = NetworkEndpoint::new(&opts.host, opts.port)?;
         let pool = PgPoolOptions::new()
             .max_connections(4)
             .acquire_timeout(Duration::from_secs(5))
             .connect_with(pg_opts)
             .await
-            .map_err(map_sqlx_error)?;
+            .map_err(|error| map_connect_error(error, &endpoint))?;
         Ok(Box::new(PgConnection { pool }))
     }
 }
@@ -241,7 +243,7 @@ impl Connection for PgConnection {
                 Ok(res) => affected.push(res.rows_affected()),
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    return Err(DriverError::Transaction {
+                    return Err(DriverError::RolledBack {
                         statement_index: idx,
                         source: Box::new(map_sqlx_error(e)),
                     });
@@ -565,18 +567,103 @@ fn pg_action_char_to_keyword(code: &str) -> Option<String> {
     }
 }
 
-fn map_sqlx_error(err: sqlx::Error) -> DriverError {
-    use sqlx::Error::*;
+/// A failure during connect, where an unreachable server is the
+/// answer rather than a connection that was lost.
+fn map_connect_error(err: sqlx::Error, endpoint: &NetworkEndpoint) -> DriverError {
     match err {
-        Database(e) => DriverError::Query {
-            message: e.message().to_string(),
-            sqlstate: e.code().map(|c| c.to_string()),
-        },
-        Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => DriverError::ConnectionRefused,
-        Tls(e) => DriverError::Tls(e.to_string()),
-        PoolClosed | PoolTimedOut => DriverError::Disconnected,
-        other => DriverError::Internal(format!("{other}")),
+        sqlx::Error::Io(io) => DriverError::Transport(connect_transport_error(&io, endpoint)),
+        sqlx::Error::PoolTimedOut => DriverError::Transport(TransportError::Timeout {
+            phase: TimeoutPhase::Connect,
+        }),
+        other => map_sqlx_error(other),
     }
+}
+
+fn connect_transport_error(io: &std::io::Error, endpoint: &NetworkEndpoint) -> TransportError {
+    match io.kind() {
+        std::io::ErrorKind::ConnectionRefused => TransportError::Refused {
+            endpoint: endpoint.clone(),
+        },
+        std::io::ErrorKind::TimedOut => TransportError::Timeout {
+            phase: TimeoutPhase::Connect,
+        },
+        _ => TransportError::Unreachable {
+            endpoint: endpoint.clone(),
+            detail: io.to_string(),
+        },
+    }
+}
+
+fn map_sqlx_error(err: sqlx::Error) -> DriverError {
+    match err {
+        sqlx::Error::Database(error) => match error.try_downcast_ref::<sqlx::postgres::PgDatabaseError>() {
+            Some(pg) => server_error(pg),
+            None => DriverError::server(error.message().to_owned()),
+        },
+        sqlx::Error::Io(io) => io_error(&io),
+        sqlx::Error::Tls(error) => tls_error(error.as_ref()),
+        // The pool's wait ends only when every connection is busy, so
+        // it is the server having no room rather than a slow network.
+        sqlx::Error::PoolTimedOut => DriverError::Busy,
+        sqlx::Error::PoolClosed | sqlx::Error::WorkerCrashed => DriverError::ConnectionLost {
+            during: LossPhase::Idle,
+        },
+        sqlx::Error::ColumnDecode { index, source } => DriverError::Decode {
+            column: index,
+            detail: source.to_string(),
+        },
+        other => DriverError::Protocol(other.to_string()),
+    }
+}
+
+/// The SQLSTATEs that mean something the app acts on. Everything else
+/// is the server's own answer, passed through with its diagnostics.
+fn server_error(pg: &sqlx::postgres::PgDatabaseError) -> DriverError {
+    let diagnostics = diagnostics_of(pg);
+    match pg.code() {
+        "28P01" | "28000" => DriverError::auth(Some(diagnostics)),
+        "25006" => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
+        "57014" => DriverError::Cancelled,
+        "55P03" => DriverError::Timeout {
+            phase: TimeoutPhase::LockWait,
+            server_cancelled: true,
+        },
+        "53300" => DriverError::Busy,
+        _ => DriverError::reported(diagnostics),
+    }
+}
+
+fn diagnostics_of(pg: &sqlx::postgres::PgDatabaseError) -> ServerDiagnostics {
+    ServerDiagnostics {
+        code: Some(ServerCode::SqlState(pg.code().to_owned())),
+        severity: Some(format!("{:?}", pg.severity())),
+        message: pg.message().to_owned(),
+        detail: pg.detail().map(str::to_owned),
+        hint: pg.hint().map(str::to_owned),
+        position: match pg.position() {
+            Some(sqlx::postgres::PgErrorPosition::Original(at)) => u32::try_from(at).ok(),
+            _ => None,
+        },
+        where_context: pg.r#where().map(str::to_owned),
+        schema: pg.schema().map(str::to_owned),
+        table: pg.table().map(str::to_owned),
+        column: pg.column().map(str::to_owned),
+        constraint: pg.constraint().map(str::to_owned),
+    }
+}
+
+/// An I/O failure on an open connection is the connection going away,
+/// whatever the kind says.
+fn io_error(_io: &std::io::Error) -> DriverError {
+    DriverError::ConnectionLost {
+        during: LossPhase::Statement,
+    }
+}
+
+fn tls_error(error: &(dyn std::error::Error + 'static)) -> DriverError {
+    let (failure, detail) =
+        tablepro_net::tls::classify(error).unwrap_or_else(|| (TlsFailure::Other, error.to_string()));
+    DriverError::Tls { failure, detail }
 }
 
 #[cfg(test)]
@@ -584,9 +671,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn map_io_refused_returns_connection_refused() {
+    fn a_refused_connect_names_the_endpoint_it_tried() {
+        let endpoint = NetworkEndpoint::new("db.internal", 5432).expect("an endpoint");
         let err = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::ConnectionRefused));
-        assert!(matches!(map_sqlx_error(err), DriverError::ConnectionRefused));
+
+        let mapped = map_connect_error(err, &endpoint);
+
+        assert!(
+            matches!(&mapped, DriverError::Transport(TransportError::Refused { endpoint: at }) if at == &endpoint),
+            "got {mapped:?}"
+        );
+        assert_eq!(mapped.category(), tablepro_core::ErrorCategory::Network);
+    }
+
+    #[test]
+    fn a_dropped_connection_mid_statement_is_not_a_refusal() {
+        let err = sqlx::Error::Io(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+
+        let mapped = map_sqlx_error(err);
+
+        assert!(
+            matches!(
+                mapped,
+                DriverError::ConnectionLost {
+                    during: LossPhase::Statement
+                }
+            ),
+            "got {mapped:?}"
+        );
+    }
+
+    #[test]
+    fn a_full_server_is_busy_rather_than_broken() {
+        assert!(matches!(map_sqlx_error(sqlx::Error::PoolTimedOut), DriverError::Busy));
     }
 
     #[test]

@@ -14,7 +14,7 @@ use tablepro_core::column::{
 use tablepro_core::value::{SqlTime, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
+    LossPhase, MAX_QUERY_ROWS, QueryResult, ReadOnlyRefusal, ServerCode, ServerDiagnostics, TableInfo, Value,
 };
 
 pub struct SqliteDriver;
@@ -47,15 +47,16 @@ impl DatabaseDriver for SqliteDriver {
         } else {
             format!("sqlite:{}", opts.database)
         };
+        let path = std::path::PathBuf::from(&opts.database);
         let connect_opts = SqliteConnectOptions::from_str(&url)
-            .map_err(map_sqlx_error)?
+            .map_err(|error| map_file_error(error, &path))?
             .create_if_missing(true);
         let pool = SqlitePoolOptions::new()
             .max_connections(4)
             .acquire_timeout(Duration::from_secs(5))
             .connect_with(connect_opts)
             .await
-            .map_err(map_sqlx_error)?;
+            .map_err(|error| map_file_error(error, &path))?;
         Ok(Box::new(SqliteConnection { pool }))
     }
 }
@@ -229,7 +230,7 @@ impl Connection for SqliteConnection {
                 Ok(res) => affected.push(res.rows_affected()),
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    return Err(DriverError::Transaction {
+                    return Err(DriverError::RolledBack {
                         statement_index: idx,
                         source: Box::new(map_sqlx_error(e)),
                     });
@@ -523,19 +524,92 @@ fn normalize_default_value(raw: String) -> String {
     raw
 }
 
-fn map_sqlx_error(err: sqlx::Error) -> DriverError {
-    use sqlx::Error::*;
-    match err {
-        Database(e) => DriverError::Query {
-            message: e.message().to_string(),
-            sqlstate: e.code().map(|c| c.to_string()),
+/// A failure while opening the database, where the file itself is
+/// usually the answer.
+fn map_file_error(err: sqlx::Error, path: &std::path::Path) -> DriverError {
+    let sqlite = match &err {
+        sqlx::Error::Database(error) => error.try_downcast_ref::<sqlx::sqlite::SqliteError>(),
+        _ => None,
+    };
+    match sqlite.map(primary_code) {
+        Some(SQLITE_CANTOPEN) => DriverError::FileAccessDenied {
+            path: path.to_path_buf(),
         },
-        Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => DriverError::ConnectionRefused,
-        Tls(e) => DriverError::Tls(e.to_string()),
-        PoolClosed | PoolTimedOut => DriverError::Disconnected,
-        other => DriverError::Internal(format!("{other}")),
+        Some(SQLITE_NOTADB) => DriverError::NotADatabase {
+            path: path.to_path_buf(),
+        },
+        _ => map_sqlx_error(err),
     }
 }
+
+fn map_sqlx_error(err: sqlx::Error) -> DriverError {
+    match err {
+        sqlx::Error::Database(error) => match error.try_downcast_ref::<sqlx::sqlite::SqliteError>() {
+            Some(sqlite) => server_error(sqlite),
+            None => DriverError::server(error.message().to_owned()),
+        },
+        sqlx::Error::Io(_) => DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        },
+        // Every connection in the pool is held by a longer write, so
+        // the database is busy rather than gone.
+        sqlx::Error::PoolTimedOut => DriverError::Busy,
+        sqlx::Error::PoolClosed | sqlx::Error::WorkerCrashed => DriverError::ConnectionLost {
+            during: LossPhase::Idle,
+        },
+        sqlx::Error::ColumnDecode { index, source } => DriverError::Decode {
+            column: index,
+            detail: source.to_string(),
+        },
+        other => DriverError::Protocol(other.to_string()),
+    }
+}
+
+/// SQLite reports an extended result code whose low byte is the
+/// primary one, which is what these branches turn on.
+fn server_error(sqlite: &sqlx::sqlite::SqliteError) -> DriverError {
+    let diagnostics = diagnostics_of(sqlite);
+    match primary_code(sqlite) {
+        SQLITE_BUSY | SQLITE_LOCKED => DriverError::Busy,
+        SQLITE_READONLY => DriverError::ReadOnly(ReadOnlyRefusal::server(diagnostics)),
+        SQLITE_INTERRUPT => DriverError::Cancelled,
+        _ => DriverError::reported(diagnostics),
+    }
+}
+
+fn diagnostics_of(sqlite: &sqlx::sqlite::SqliteError) -> ServerDiagnostics {
+    use sqlx::error::DatabaseError;
+
+    let extended = extended_code(sqlite);
+    ServerDiagnostics::new(
+        Some(ServerCode::Sqlite {
+            primary: extended & 0xff,
+            extended,
+        }),
+        sqlite.message().to_owned(),
+    )
+}
+
+fn extended_code(sqlite: &sqlx::sqlite::SqliteError) -> i32 {
+    use sqlx::error::DatabaseError;
+
+    sqlite
+        .code()
+        .and_then(|code| code.parse::<i32>().ok())
+        .unwrap_or(SQLITE_ERROR)
+}
+
+fn primary_code(sqlite: &sqlx::sqlite::SqliteError) -> i32 {
+    extended_code(sqlite) & 0xff
+}
+
+const SQLITE_ERROR: i32 = 1;
+const SQLITE_BUSY: i32 = 5;
+const SQLITE_LOCKED: i32 = 6;
+const SQLITE_READONLY: i32 = 8;
+const SQLITE_INTERRUPT: i32 = 9;
+const SQLITE_CANTOPEN: i32 = 14;
+const SQLITE_NOTADB: i32 = 26;
 
 #[cfg(test)]
 mod tests {
