@@ -1563,7 +1563,7 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             let message = match rows.as_slice() {
                 [row] => GridMsg::CopyToClipboard(
                     row.get(slot.col_index)
-                        .and_then(tablepro_core::export::value_to_text)
+                        .and_then(|value| tablepro_core::export::cell_text(&cols, slot.col_index, value))
                         .unwrap_or_default(),
                 ),
                 many => clipboard_message(tablepro_core::export::render_tsv(&cols, many, false)),
@@ -1657,8 +1657,7 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             let Some(row) = row_at(&cv, slot_position(slot)) else {
                 return;
             };
-            let json = tablepro_core::export::row_to_json(&cols, &tab.effective_cells(&row));
-            let text = serde_json::to_string_pretty(&json).unwrap_or_default();
+            let text = tablepro_core::export::row_to_json(&cols, &tab.effective_cells(&row));
             show_row_json_dialog(&cv, text);
         })
     };

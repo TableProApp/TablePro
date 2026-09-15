@@ -26,7 +26,7 @@ publish = false
 async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "raw_value"] }
 sqlparser = { version = "0.63", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process"] }
 tokio-util = { version = "0.7", default-features = false, features = ["codec", "rt"] }
