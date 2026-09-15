@@ -65,6 +65,7 @@ sqlformat = "0.5"
 
 [dev-dependencies]
 tablepro-test-support = { path = "../test-support" }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 tracing.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 tempfile.workspace = true
