@@ -109,6 +109,26 @@ Everything private goes through `tablepro_storage::fs`:
 These calls block on `fsync`, so async callers run them through
 `spawn_blocking` rather than on the GTK thread.
 
+## Query history schema
+
+`crates/storage/migrations/` holds the schema as sqlx migrations, embedded
+at compile time with `sqlx::migrate!` and run by `QueryHistory::open`.
+
+**An applied migration is never edited.** Each change is a new timestamped
+file with its own fixture test. Editing one in place changes its checksum,
+which makes sqlx refuse every database that already applied it.
+
+A database carrying a version this build has no migration for is refused
+with `StorageError::HistoryNewerThanApp` and nothing is written, so an
+older binary cannot damage a newer file.
+
+`QueryHistory::prune(retention_days)` removes unpinned rows in two passes:
+first anything past the retention window, then anything past
+`MAX_UNPINNED_ENTRIES` (100,000), oldest first. Pinned rows survive both.
+When it deleted anything it runs FTS5 `optimize`, because the delete
+triggers otherwise leave tombstones that grow the index as the table
+shrinks. It returns a `PruneReport { expired, over_cap }`.
+
 ## App preferences with `gio::Settings`
 
 `data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).

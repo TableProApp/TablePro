@@ -18,7 +18,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["fs"] }
 uuid.workspace = true
-sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+sqlx = { workspace = true, features = ["sqlite-unbundled", "migrate", "macros"] }
 chrono.workspace = true
 gio.workspace = true
 glib.workspace = true

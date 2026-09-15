@@ -2,6 +2,7 @@ mod entry;
 mod export;
 mod new_entry;
 mod outcome;
+mod prune_report;
 mod search_filter;
 
 use std::path::{Path, PathBuf};
@@ -17,11 +18,21 @@ use crate::paths::StoragePaths;
 pub use entry::Entry;
 pub use new_entry::NewEntry;
 pub use outcome::Outcome;
+pub use prune_report::PruneReport;
 pub use search_filter::SearchFilter;
 
 use export::{history_csv, outcome_summary};
 
 const MAX_QUERY_BYTES: usize = 1024 * 1024;
+
+/// Unpinned entries kept regardless of the retention window. History is
+/// a convenience, not an archive, and an unbounded table makes every
+/// search slower for everyone.
+const MAX_UNPINNED_ENTRIES: i64 = 100_000;
+
+/// An applied migration is never edited. Each schema change is a new
+/// timestamped file with its own fixture test.
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// The query-history database. Cloning shares the pool, so a clone per
 /// consumer is cheap and they all see the same rows.
@@ -49,7 +60,12 @@ impl QueryHistory {
             .max_connections(1)
             .connect_with(options)
             .await?;
-        apply_schema(&pool).await?;
+        MIGRATOR.run(&pool).await.map_err(|error| match error {
+            // The database carries a version this build does not know,
+            // which means a newer binary created it.
+            sqlx::migrate::MigrateError::VersionMissing(version) => StorageError::HistoryNewerThanApp { version },
+            other => StorageError::HistoryMigration(other),
+        })?;
         Ok(Self { pool, path })
     }
 
@@ -219,18 +235,43 @@ impl QueryHistory {
         Ok(affected as usize)
     }
 
-    pub async fn prune_older_than(&self, retention_days: u32) -> Result<usize, StorageError> {
-        if retention_days == 0 {
-            return Ok(0);
+    /// Drop what the user no longer needs: first anything past the
+    /// retention window, then anything past the entry cap. Pinned rows
+    /// survive both.
+    pub async fn prune(&self, retention_days: u32) -> Result<PruneReport, StorageError> {
+        self.prune_with_cap(retention_days, MAX_UNPINNED_ENTRIES).await
+    }
+
+    pub(crate) async fn prune_with_cap(&self, retention_days: u32, cap: i64) -> Result<PruneReport, StorageError> {
+        let mut report = PruneReport::default();
+
+        if retention_days > 0 {
+            let cutoff = SystemTime::now() - std::time::Duration::from_secs(u64::from(retention_days) * 86_400);
+            report.expired = sqlx::query("DELETE FROM history WHERE pinned = 0 AND executed_at < ?")
+                .bind(to_unix(cutoff))
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
         }
-        let cutoff = SystemTime::now() - std::time::Duration::from_secs(retention_days as u64 * 86_400);
-        let cutoff_unix = to_unix(cutoff);
-        let affected = sqlx::query("DELETE FROM history WHERE pinned = 0 AND executed_at < ?")
-            .bind(cutoff_unix)
-            .execute(&self.pool)
-            .await?
-            .rows_affected();
-        Ok(affected as usize)
+
+        report.over_cap = sqlx::query(
+            "DELETE FROM history WHERE pinned = 0 AND id NOT IN (
+                 SELECT id FROM history WHERE pinned = 0 ORDER BY executed_at DESC, id DESC LIMIT ?
+             )",
+        )
+        .bind(cap)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        // The delete triggers queue tombstones in the FTS index; without
+        // this the index keeps growing even as the table shrinks.
+        if report.removed_anything() {
+            sqlx::query("INSERT INTO history_fts(history_fts) VALUES('optimize')")
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(report)
     }
 
     pub async fn known_connections(&self) -> Result<Vec<(Uuid, String)>, StorageError> {
@@ -303,85 +344,6 @@ impl QueryHistory {
         let entries = self.fetch_by_ids(ids).await?;
         history_csv(&entries)
     }
-}
-
-pub(super) async fn apply_schema(pool: &SqlitePool) -> Result<(), StorageError> {
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS history (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            query           TEXT NOT NULL,
-            driver_id       TEXT NOT NULL,
-            connection_id   TEXT NOT NULL,
-            connection_name TEXT NOT NULL,
-            executed_at     INTEGER NOT NULL,
-            duration_ms     INTEGER,
-            rows_affected   INTEGER,
-            success         INTEGER NOT NULL,
-            cancelled       INTEGER NOT NULL DEFAULT 0,
-            pinned          INTEGER NOT NULL DEFAULT 0,
-            error           TEXT
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
-            query,
-            content='history',
-            content_rowid='id',
-            tokenize='unicode61 remove_diacritics 2'
-        )
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
-            INSERT INTO history_fts(rowid, query) VALUES (new.id, new.query);
-        END
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TRIGGER IF NOT EXISTS history_ad AFTER DELETE ON history BEGIN
-            INSERT INTO history_fts(history_fts, rowid, query) VALUES('delete', old.id, old.query);
-        END
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query(
-        r#"
-        CREATE TRIGGER IF NOT EXISTS history_au AFTER UPDATE OF query ON history BEGIN
-            INSERT INTO history_fts(history_fts, rowid, query) VALUES('delete', old.id, old.query);
-            INSERT INTO history_fts(rowid, query) VALUES (new.id, new.query);
-        END
-        "#,
-    )
-    .execute(pool)
-    .await?;
-
-    sqlx::query("CREATE INDEX IF NOT EXISTS history_executed_at_idx ON history (executed_at DESC)")
-        .execute(pool)
-        .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS history_pinned_idx ON history (pinned DESC, executed_at DESC)")
-        .execute(pool)
-        .await?;
-    sqlx::query("CREATE INDEX IF NOT EXISTS history_connection_idx ON history (connection_id, executed_at DESC)")
-        .execute(pool)
-        .await?;
-
-    Ok(())
 }
 
 fn to_unix(t: SystemTime) -> i64 {
@@ -490,6 +452,137 @@ mod tests {
         assert_ne!(installed.path(), devel.path());
         assert_eq!(from_installed.len(), 1);
         assert!(from_devel.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fresh_database_migrates() {
+        let root = tempfile::tempdir().expect("tempdir");
+
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+
+        let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+            .fetch_one(&history.pool)
+            .await
+            .expect("count migrations");
+        assert_eq!(applied, 1);
+    }
+
+    #[tokio::test]
+    async fn open_twice_is_idempotent() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = paths(&root);
+
+        let first = QueryHistory::open(&paths).await.expect("first open");
+        first.record(entry("SELECT 1", Uuid::nil())).await.expect("record");
+        drop(first);
+        let second = QueryHistory::open(&paths).await.expect("second open");
+
+        let found = second.search(SearchFilter::default()).await.expect("search");
+        assert_eq!(found.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn newer_database_is_refused_without_changes() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = paths(&root);
+        let history = QueryHistory::open(&paths).await.expect("open");
+        // A version this build has no migration for is what a newer
+        // binary leaves behind.
+        sqlx::query("INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time) VALUES (99999999999999, 'from the future', CURRENT_TIMESTAMP, 1, X'00', 0)")
+            .execute(&history.pool)
+            .await
+            .expect("insert a future migration");
+        drop(history);
+
+        let refused = QueryHistory::open(&paths).await;
+
+        assert!(
+            matches!(refused, Err(StorageError::HistoryNewerThanApp { .. })),
+            "{:?}",
+            refused.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn schema_matches_the_expected_objects() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+
+        let names: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_sqlx%' ORDER BY name",
+        )
+        .fetch_all(&history.pool)
+        .await
+        .expect("list objects");
+
+        for expected in [
+            "history",
+            "history_ad",
+            "history_ai",
+            "history_au",
+            "history_connection_idx",
+            "history_executed_at_idx",
+            "history_fts",
+            "history_pinned_idx",
+        ] {
+            assert!(
+                names.iter().any(|name| name == expected),
+                "{expected} missing: {names:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn prune_caps_unpinned_entries_and_keeps_pinned() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        for index in 0..6 {
+            let id = history
+                .record(entry(&format!("SELECT {index}"), Uuid::nil()))
+                .await
+                .expect("record");
+            if index == 0 {
+                history.set_pinned(id, true).await.expect("pin");
+            }
+        }
+
+        let report = history.prune_with_cap(0, 2).await.expect("prune");
+        let left = history.search(SearchFilter::default()).await.expect("search");
+
+        assert_eq!(report.expired, 0);
+        assert_eq!(report.over_cap, 3);
+        assert_eq!(left.len(), 3, "the pinned row plus the cap");
+        assert!(left.iter().any(|entry| entry.pinned), "the pinned row was dropped");
+    }
+
+    #[tokio::test]
+    async fn fts_search_still_matches_after_optimize() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let history = QueryHistory::open(&paths(&root)).await.expect("open");
+        for index in 0..4 {
+            history
+                .record(entry(&format!("SELECT widgets {index}"), Uuid::nil()))
+                .await
+                .expect("record");
+        }
+
+        let report = history.prune_with_cap(0, 2).await.expect("prune");
+        let found = history
+            .search(SearchFilter {
+                needle: Some("widgets".to_owned()),
+                limit: 10,
+                ..SearchFilter::default()
+            })
+            .await
+            .expect("search");
+
+        assert!(report.removed_anything());
+        assert_eq!(found.len(), 2);
+    }
+
+    #[test]
+    fn migrator_embeds_one_migration() {
+        assert_eq!(MIGRATOR.iter().count(), 1);
     }
 
     #[tokio::test]
