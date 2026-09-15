@@ -64,6 +64,16 @@ extension MainContentView {
         }
     }
 
+    func scheduleInspectorContextRefresh() {
+        guard trailingPaneState.inspector.viewMode == .json else { return }
+        inspectorContextRefreshTask?.cancel()
+        inspectorContextRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            updateInspectorContext()
+        }
+    }
+
     func updateInspectorContext() {
         trailingPaneState.inspector.context = RowInspectorContext(
             subject: inspectorSubject,

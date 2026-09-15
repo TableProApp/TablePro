@@ -234,6 +234,9 @@ extension MainContentView {
                 rowIDs: capturedEditState.rowIDs
             )
         }
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs in
+            capturedCoordinator.stageInspectorFieldEdit(columnIndex: columnIndex, value: newValue, rowIDs: rowIDs)
+        }
     }
 
     /// The per-column display formats the grid is applying, in column order.

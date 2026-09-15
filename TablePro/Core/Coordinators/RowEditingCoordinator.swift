@@ -205,6 +205,7 @@ final class RowEditingCoordinator {
         parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits) }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
         repaintInspectorEdit(rowIDs: editedRowIDs, columnIndex: columnIndex, in: tableRows)
+        parent.inspectorRowContentRevision &+= 1
     }
 
     /// `editMany` reports the rows it changed by their position in storage, and the grid reads a
