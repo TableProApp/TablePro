@@ -97,6 +97,12 @@ public class TextLayoutManager: NSObject {
     /// Used to force a complete re-layout using `setNeedsLayout`
     package var needsLayout: Bool = false
 
+    /// The document span whose geometry has changed since a layout pass last reported one.
+    ///
+    /// Accumulated rather than reported as it happens, because geometry cannot be read until the lines it belongs to
+    /// have been laid out again, and because a change made while no pass is running would otherwise be lost.
+    var pendingGeometryInvalidation: NSRange?
+
     package var transactionCounter: Int = 0
     public var isInTransaction: Bool {
         transactionCounter > 0

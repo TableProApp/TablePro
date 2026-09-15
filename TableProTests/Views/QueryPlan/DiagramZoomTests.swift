@@ -62,7 +62,7 @@ struct DiagramZoomTests {
         }
     }
 
-    @Test("a step stops at the ends instead of wrapping or standing still")
+    @Test("a step never passes either end of the zoom range")
     func stepsClampAtTheEnds() {
         #expect(DiagramZoom.stepUp(from: DiagramZoom.maximum) == DiagramZoom.maximum)
         #expect(DiagramZoom.stepDown(from: DiagramZoom.minimum) == DiagramZoom.minimum)
@@ -70,6 +70,50 @@ struct DiagramZoomTests {
         #expect(!DiagramZoom.canStepDown(from: DiagramZoom.minimum))
         #expect(DiagramZoom.canStepUp(from: 1.0))
         #expect(DiagramZoom.canStepDown(from: 1.0))
+    }
+
+    @Test("zoom out stops at the ladder's floor instead of dropping to the minimum")
+    func stepDownStopsAtTheLadderFloor() {
+        let floor = DiagramZoom.ladder[0]
+        #expect(DiagramZoom.stepDown(from: floor) == floor)
+        #expect(!DiagramZoom.canStepDown(from: floor))
+        #expect(!DiagramZoom.canStepDown(from: floor + 0.0001))
+        #expect(DiagramZoom.canStepUp(from: floor))
+    }
+
+    @Test("below the floor, zoom out has nowhere to go and zoom in climbs back onto the ladder")
+    func stepsFromBelowTheFloor() {
+        let fitted: CGFloat = 0.03
+        #expect(DiagramZoom.stepDown(from: fitted) == fitted)
+        #expect(!DiagramZoom.canStepDown(from: fitted))
+        #expect(DiagramZoom.stepUp(from: fitted) == DiagramZoom.ladder[0])
+        #expect(DiagramZoom.canStepUp(from: fitted))
+        #expect(DiagramZoom.stepUp(from: DiagramZoom.minimum) == DiagramZoom.ladder[0])
+    }
+
+    @Test("between the floor and the next rung, zoom out lands on the floor")
+    func stepsDownOntoTheFloor() {
+        #expect(DiagramZoom.canStepDown(from: 0.07))
+        #expect(DiagramZoom.stepDown(from: 0.07) == DiagramZoom.ladder[0])
+    }
+
+    static let sweep: [CGFloat] = [DiagramZoom.minimum, 0.02, 0.03, 0.0499, 0.07, 2.9995, DiagramZoom.maximum]
+        + DiagramZoom.ladder.flatMap { [$0 - 1e-7, $0, $0 + 1e-7] }
+
+    /// The availability checks and the steps share one definition of the next rung, so a button can
+    /// never be enabled for a step that goes nowhere or disabled for one that would move.
+    @Test("a step lands on a rung or stays put, and is available exactly when it moves", arguments: sweep)
+    func stepsAndTheirAvailabilityAgree(value: CGFloat) {
+        let current = DiagramZoom.clamped(value)
+        let down = DiagramZoom.stepDown(from: value)
+        let up = DiagramZoom.stepUp(from: value)
+
+        #expect(down <= current)
+        #expect(up >= current)
+        #expect(DiagramZoom.canStepDown(from: value) == (down < current))
+        #expect(DiagramZoom.canStepUp(from: value) == (up > current))
+        #expect(down == current || DiagramZoom.ladder.contains(down))
+        #expect(up == current || DiagramZoom.ladder.contains(up))
     }
 
     @Test("the floor sits below the ladder so Fit can reach a diagram the buttons cannot")

@@ -5,8 +5,6 @@ struct ERDiagramView: View {
     @Bindable var viewModel: ERDiagramViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.colorScheme) private var colorScheme
-    @State private var currentCursor: NSCursor?
-    @State private var lastPanTranslation: CGSize = .zero
 
     /// The scroll view reports no visible rect until AppKit has laid it out, which happens after
     /// SwiftUI mounts it. The fit retries across a bounded number of main-actor hops rather than
@@ -50,57 +48,48 @@ struct ERDiagramView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    MagnifiableCanvasView(
-                        viewport: viewport,
-                        contentSize: viewModel.cachedCanvasSize,
-                        accessibilityIdentifier: "er-diagram-canvas"
-                    ) {
-                        diagramContent
-                    }
+                    diagramCanvas
                 }
                 ERDiagramToolbar(viewModel: viewModel, viewport: viewport, onExport: exportDiagram)
             }
         }
-        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: exportImage()) }
         .task { await viewModel.loadDiagram() }
         .task(id: viewModel.loadState) { await settleViewport() }
     }
 
-    // MARK: - Diagram Content
+    // MARK: - Diagram Canvas
 
-    private var diagramContent: some View {
-        let canvasSize = viewModel.cachedCanvasSize
+    /// The scene is built here, during `body`, so observation sees every model property it reads;
+    /// the document view only receives the finished value.
+    private var diagramCanvas: some View {
+        let scene = self.scene
+        let actions = canvasActions
+        return MagnifiableCanvasView(
+            viewport: viewport,
+            contentSize: viewModel.cachedCanvasSize,
+            accessibilityIdentifier: "er-diagram-canvas",
+            makeDocument: { ERDiagramSceneView() },
+            updateDocument: { sceneView in
+                sceneView.scene = scene
+                sceneView.actions = actions
+            }
+        )
+    }
 
-        return ERDiagramSceneCanvas(scene: scene)
-            .frame(width: canvasSize.width, height: canvasSize.height)
-            .contentShape(Rectangle())
-            // `.contain`, not the default `.ignore`: ignoring hides every child element, which is
-            // what left the whole schema as one image with a count for a label. The scene view
-            // carries the summary and the per-table elements itself.
-            .accessibilityElement(children: .contain)
-            .onTapGesture { location in
-                viewModel.selectedNodeId = viewModel.nodeId(at: location)
+    private var canvasActions: ERDiagramCanvasActions {
+        let viewModel = viewModel
+        return ERDiagramCanvasActions(
+            nodeAt: { viewModel.nodeId(at: $0) },
+            select: { viewModel.selectedNodeId = $0 },
+            beginDrag: { viewModel.beginDrag(at: $0) },
+            updateDrag: { viewModel.updateDrag(translation: $0, currentPoint: $1) },
+            endDrag: { viewModel.endDrag() },
+            scrollBy: { viewModel.viewport.scrollBy($0) },
+            copyImage: {
+                guard let image = exportImage() else { return }
+                ClipboardService.shared.writeImage(image)
             }
-            .gesture(canvasGesture)
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    guard !viewModel.isDragging else { return }
-                    let desired: NSCursor? = viewModel.nodeId(at: location) != nil ? .openHand : nil
-                    if desired !== currentCursor {
-                        if currentCursor != nil { NSCursor.pop() }
-                        if let cursor = desired { cursor.push() }
-                        currentCursor = desired
-                    }
-                case .ended:
-                    if currentCursor != nil {
-                        NSCursor.pop()
-                        currentCursor = nil
-                    }
-                @unknown default:
-                    break
-                }
-            }
+        )
     }
 
     private var scene: ERDiagramScene {
@@ -117,8 +106,9 @@ struct ERDiagramView: View {
 
     // MARK: - Initial Fit
 
-    /// The first pass fits the whole diagram. Every later one restores what the viewport was left
-    /// on, because an editor-tab switch rebuilds this view against a model that already loaded.
+    /// The first pass fits the whole diagram. A later one, after an editor-tab switch rebuilt this view
+    /// against a model that already loaded, leaves the viewport to the scroll view, which puts back
+    /// the offset it was left on.
     private func settleViewport() async {
         guard viewModel.loadState == .loaded else { return }
         for _ in 0..<Self.fitLayoutAttempts {
@@ -128,8 +118,6 @@ struct ERDiagramView: View {
                 if viewModel.needsInitialFit {
                     viewport.fitToWindow()
                     viewModel.needsInitialFit = false
-                } else {
-                    viewport.restoreScrollPosition()
                 }
                 return
             }
@@ -148,57 +136,6 @@ struct ERDiagramView: View {
             }
         }
         return colors
-    }
-
-    // MARK: - Canvas Gesture (pan + node drag)
-
-    /// The local drag reports document coordinates, which is what hit testing and node dragging
-    /// need. Panning reads the global drag instead, because scrolling the document moves the
-    /// local space underneath the pointer and a local translation would cancel itself out.
-    private var canvasGesture: some Gesture {
-        DragGesture(minimumDistance: 2)
-            .simultaneously(with: DragGesture(minimumDistance: 2, coordinateSpace: .global))
-            .onChanged { value in
-                guard let local = value.first else { return }
-                if !viewModel.isDragging {
-                    viewModel.beginDrag(at: local.startLocation)
-                    if viewModel.draggingNodeId != nil {
-                        if currentCursor != nil { NSCursor.pop() }
-                        NSCursor.closedHand.push()
-                        currentCursor = .closedHand
-                    }
-                }
-
-                if viewModel.draggingNodeId != nil {
-                    let currentPoint = CGPoint(
-                        x: local.startLocation.x + local.translation.width,
-                        y: local.startLocation.y + local.translation.height
-                    )
-                    viewModel.updateDrag(translation: local.translation, currentPoint: currentPoint)
-                    return
-                }
-
-                guard let global = value.second else { return }
-                panCanvas(to: global.translation)
-            }
-            .onEnded { _ in
-                viewModel.endDrag()
-                lastPanTranslation = .zero
-                if currentCursor != nil {
-                    NSCursor.pop()
-                    currentCursor = nil
-                }
-            }
-    }
-
-    private func panCanvas(to translation: CGSize) {
-        let delta = CGSize(
-            width: translation.width - lastPanTranslation.width,
-            height: translation.height - lastPanTranslation.height
-        )
-        lastPanTranslation = translation
-        let magnification = max(viewport.magnification, 0.01)
-        viewport.scrollBy(CGSize(width: -delta.width / magnification, height: -delta.height / magnification))
     }
 
     // MARK: - Export Rendering

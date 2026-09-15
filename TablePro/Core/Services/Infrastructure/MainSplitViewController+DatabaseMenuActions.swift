@@ -26,8 +26,8 @@ extension MainSplitViewController {
             anchoredTo: MainWindowToolbar.connection,
             subject: .connection,
             contentSize: ConnectionSwitcherPopover.contentSize
-        ) { dismiss in
-            ConnectionSwitcherPopover(dismiss: dismiss)
+        ) { [selectedConnectionId] dismiss in
+            ConnectionSwitcherPopover(dismiss: dismiss, currentConnectionId: selectedConnectionId)
         }
     }
 

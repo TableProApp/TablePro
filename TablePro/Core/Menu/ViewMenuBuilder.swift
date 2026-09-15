@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProConnectionLibrary
 
 /// Items whose title describes a two-state toggle are built with the "Show" variant.
 /// `validateMenuItem(_:)` flips them, which is where AppKit documents a title swap
@@ -48,6 +49,7 @@ enum ViewMenuBuilder {
                 String(localized: "Show Favorites"),
                 action: #selector(MainSplitViewController.showFavoritesSidebarTab(_:))
             ),
+            connectionSortSubmenu(),
             MenuItemFactory.separator,
             sidebarLayoutSubmenu(),
             MenuItemFactory.item(
@@ -141,14 +143,14 @@ enum ViewMenuBuilder {
             ),
             MenuItemFactory.separator,
             MenuItemFactory.item(
-                String(localized: "Increase Text Size"),
-                action: #selector(MainSplitViewController.increaseEditorTextSize(_:)),
+                String(localized: "Zoom In"),
+                action: #selector(ZoomCommandResponding.zoomIn(_:)),
                 keyEquivalent: "=",
                 modifiers: .command
             ),
             MenuItemFactory.item(
-                String(localized: "Decrease Text Size"),
-                action: #selector(MainSplitViewController.decreaseEditorTextSize(_:)),
+                String(localized: "Zoom Out"),
+                action: #selector(ZoomCommandResponding.zoomOut(_:)),
                 keyEquivalent: "-",
                 modifiers: .command
             ),
@@ -187,6 +189,20 @@ enum ViewMenuBuilder {
     /// Driven from the enum rather than from a hand copy of its cases, so a mode cannot reach the
     /// status-bar switcher while having no menu item and therefore no keyboard route.
     private static let allModes: [ResultsViewMode] = ResultsViewMode.allCases
+
+    private static func connectionSortSubmenu() -> NSMenuItem {
+        MenuItemFactory.submenu(
+            String(localized: "Sort Connections By"),
+            items: WelcomeSortOption.allCases.map { option in
+                let item = MenuItemFactory.item(
+                    option.title,
+                    action: #selector(WelcomeWindowController.sortConnectionList(_:))
+                )
+                item.representedObject = option.mode.rawValue
+                return item
+            }
+        )
+    }
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
         MenuItemFactory.submenu(String(localized: "Sidebar Layout"), items: [

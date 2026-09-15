@@ -34,6 +34,12 @@ actor RemoteFileTransportManager: TunnelManaging {
     private var materialized: [UUID: MaterializedRemoteFile] = [:]
     private var sessions: [UUID: LibSSH2SFTPSession] = [:]
 
+    /// The server a cached session was opened against, so a session is not reused after the
+    /// connection is edited to point at a different host, port, user or key. The path and the
+    /// access mode are cleared first, because they name the file, not the server, and a live session
+    /// to the right server serves any file on it.
+    private var sessionServerKeys: [UUID: SSHConfiguration] = [:]
+
     // MARK: - TunnelManaging
 
     func hasTunnel(connectionId: UUID) async -> Bool {
@@ -46,7 +52,7 @@ actor RemoteFileTransportManager: TunnelManaging {
     /// would make a disconnect the moment their work disappears, which is why
     /// `RemoteDatabaseFileStore.abandonedCopies()` exists to find it again.
     func closeTunnel(connectionId: UUID) async throws {
-        sessions.removeValue(forKey: connectionId)?.close()
+        discardSession(for: connectionId)
         if let file = materialized.removeValue(forKey: connectionId) {
             Self.logger.info(
                 "Released the working copy for \(file.identity.displayOrigin, privacy: .public)"
@@ -87,30 +93,34 @@ actor RemoteFileTransportManager: TunnelManaging {
         // the user typed. Two connections naming `~/app.db` and `/home/deploy/app.db` are the same
         // file, and locking on the raw text lets them write one directory concurrently.
         let session = try await self.session(for: connectionId, config: config, credentials: credentials)
-        let resolvedIdentity = try Self.resolvingHome(identity, on: session)
-        let fileName = Self.workingCopyName(for: resolvedIdentity)
 
-        return try await store.withExclusiveAccess(to: resolvedIdentity) {
-            if !forceRefetch,
-               let reused = try await self.reusableCopy(
-                   for: resolvedIdentity, fileName: fileName, session: session, store: store
-               ) {
-                await self.remember(reused, for: connectionId)
-                return reused
-            }
+        /// Any failure after the session is cached discards it, not only a failed transfer. A stat, a
+        /// realpath, or a manifest write that throws leaves a session that is dead (the peer dropped)
+        /// or pointed at a file that is gone, and reusing it makes every retry fail the same way
+        /// until relaunch. This is the discard the fetch path used to make alone.
+        do {
+            let resolvedIdentity = try Self.resolvingHome(identity, on: session)
+            let fileName = Self.workingCopyName(for: resolvedIdentity)
 
-            let directory = try await store.prepareDirectory(for: resolvedIdentity)
+            return try await store.withExclusiveAccess(to: resolvedIdentity) {
+                if !forceRefetch,
+                   let reused = try await self.reusableCopy(
+                       for: resolvedIdentity, fileName: fileName, session: session, store: store
+                   ) {
+                    await self.remember(reused, for: connectionId)
+                    return reused
+                }
 
-            let plan = RemoteDatabaseFileTransfer.plan(
-                session: session,
-                remotePath: resolvedIdentity.path,
-                layout: layout
-            )
+                let directory = try await store.prepareDirectory(for: resolvedIdentity)
 
-            let cancelFlag = CancellationFlag()
-            let result: RemoteFetchResult
-            do {
-                result = try await withTaskCancellationHandler {
+                let plan = RemoteDatabaseFileTransfer.plan(
+                    session: session,
+                    remotePath: resolvedIdentity.path,
+                    layout: layout
+                )
+
+                let cancelFlag = CancellationFlag()
+                let result = try await withTaskCancellationHandler {
                     try RemoteDatabaseFileTransfer.fetch(
                         session: session,
                         identity: resolvedIdentity,
@@ -124,20 +134,20 @@ actor RemoteFileTransportManager: TunnelManaging {
                 } onCancel: {
                     cancelFlag.cancel()
                 }
-            } catch {
-                await self.discardSession(for: connectionId)
-                throw error
-            }
-            try await store.writeManifest(result.manifest, for: resolvedIdentity)
+                try await store.writeManifest(result.manifest, for: resolvedIdentity)
 
-            let file = MaterializedRemoteFile(
-                identity: resolvedIdentity,
-                workingCopy: result.workingCopy,
-                manifest: result.manifest,
-                plan: result.plan
-            )
-            await self.remember(file, for: connectionId)
-            return file
+                let file = MaterializedRemoteFile(
+                    identity: resolvedIdentity,
+                    workingCopy: result.workingCopy,
+                    manifest: result.manifest,
+                    plan: result.plan
+                )
+                await self.remember(file, for: connectionId)
+                return file
+            }
+        } catch {
+            await self.discardSession(for: connectionId)
+            throw error
         }
     }
 
@@ -172,6 +182,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         Self.logger.info(
             "Reusing the working copy for \(identity.displayOrigin, privacy: .public): the server has not moved"
         )
+        await store.touch(identity)
         return MaterializedRemoteFile(
             identity: identity,
             workingCopy: workingCopy,
@@ -198,6 +209,17 @@ actor RemoteFileTransportManager: TunnelManaging {
     /// server, or dead, and every retry fails the same way until the app restarts.
     private func discardSession(for connectionId: UUID) {
         sessions.removeValue(forKey: connectionId)?.close()
+        sessionServerKeys.removeValue(forKey: connectionId)
+    }
+
+    /// The session-identifying half of an SSH configuration: the server and its credentials, with the
+    /// file path and access mode removed. Two configurations with the same key reach the same server
+    /// and can share a session.
+    static func serverKey(_ config: SSHConfiguration) -> SSHConfiguration {
+        var key = config
+        key.remoteFilePath = ""
+        key.remoteFileAccess = .readOnlyCopy
+        return key
     }
 
     private func session(
@@ -205,13 +227,18 @@ actor RemoteFileTransportManager: TunnelManaging {
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials
     ) async throws -> LibSSH2SFTPSession {
-        if let existing = sessions[connectionId] { return existing }
+        let key = Self.serverKey(config)
+        if let existing = sessions[connectionId], sessionServerKeys[connectionId] == key {
+            return existing
+        }
+        discardSession(for: connectionId)
         let session = try await LibSSH2SFTPSession.open(
             config: config,
             credentials: credentials,
             label: connectionId.uuidString
         )
         sessions[connectionId] = session
+        sessionServerKeys[connectionId] = key
         return session
     }
 

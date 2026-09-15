@@ -6,6 +6,7 @@
 //  document space. These pin the hit testing, the node drag and the persisted coordinates.
 //
 
+import AppKit
 import CoreGraphics
 import Foundation
 @testable import TablePro
@@ -201,6 +202,135 @@ struct ERDiagramDragTests {
         viewModel.updateDrag(translation: CGSize(width: -120, height: -80), currentPoint: CGPoint(x: 480, y: 420))
 
         #expect(viewModel.position(for: nodeId) == CGPoint(x: 480, y: 420))
+    }
+
+    private final class FlippedDocument: NSView {
+        override var isFlipped: Bool { true }
+    }
+
+    /// A scroll view shaped like the diagram's: a flipped document sized from the model's canvas, as
+    /// `MagnifiableCanvasView` sizes it.
+    private func attachViewport(
+        to viewModel: ERDiagramViewModel,
+        visible: CGSize = CGSize(width: 500, height: 400),
+        magnification: CGFloat = 1.0
+    ) -> DiagramScrollView {
+        let scrollView = DiagramScrollView(frame: CGRect(origin: .zero, size: visible))
+        scrollView.allowsMagnification = true
+        scrollView.minMagnification = DiagramZoom.minimum
+        scrollView.maxMagnification = DiagramZoom.maximum
+        scrollView.documentView = FlippedDocument(frame: CGRect(origin: .zero, size: viewModel.cachedCanvasSize))
+        viewModel.viewport.attach(to: scrollView)
+        scrollView.magnification = magnification
+        return scrollView
+    }
+
+    /// The pointer is held in the left edge band with the view already at its left edge, and in the
+    /// bottom band with room to scroll down. Every tick asks for both axes and AppKit grants one, so a
+    /// table that followed the scroll it asked for slid left under a still pointer.
+    @Test(
+        "An auto-panned table moves only as far as the view actually scrolled",
+        .enabled(if: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    )
+    func autoPanFollowsTheAppliedScroll() async throws {
+        let viewModel = makeViewModel()
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 150, y: 330))
+        let scrollView = attachViewport(to: viewModel)
+        #expect(scrollView.contentView.bounds.origin == .zero)
+
+        viewModel.beginDrag(at: CGPoint(x: 45, y: 330))
+        viewModel.updateDrag(translation: CGSize(width: -15, height: 50), currentPoint: CGPoint(x: 30, y: 380))
+        #expect(viewModel.position(for: nodeId) == CGPoint(x: 135, y: 380))
+
+        try await Task.sleep(for: .milliseconds(150))
+
+        let scrolled = scrollView.contentView.bounds.origin
+        #expect(scrolled.x == 0)
+        #expect(scrolled.y > 0)
+        let position = viewModel.position(for: nodeId)
+        #expect(position.x == 135)
+        #expect(abs(position.y - (380 + scrolled.y)) < 0.001)
+    }
+
+    /// At 25% the edge band reaches 160 document points in, further past a table grabbed by its right
+    /// edge than the 80 points of canvas beyond it, so the view had nowhere to scroll.
+    @Test(
+        "Auto-pan grows the canvas ahead of the view so it keeps scrolling at a low zoom",
+        .enabled(if: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    )
+    func autoPanGrowsTheCanvasAtLowZoom() async throws {
+        let viewModel = makeViewModel()
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 2_300, y: 300))
+        let scrollView = attachViewport(to: viewModel, magnification: 0.25)
+        viewModel.viewport.scrollBy(CGSize(width: 10_000, height: 0))
+        let edge = scrollView.contentView.bounds.origin.x
+        #expect(edge == viewModel.cachedCanvasSize.width - 2_000)
+
+        viewModel.beginDrag(at: CGPoint(x: 2_400, y: 300))
+        viewModel.updateDrag(translation: CGSize(width: -30, height: 0), currentPoint: CGPoint(x: 2_370, y: 300))
+        let held = viewModel.position(for: nodeId)
+
+        try await Task.sleep(for: .milliseconds(150))
+
+        let scrolled = scrollView.contentView.bounds.origin.x - edge
+        #expect(scrolled > 0)
+        #expect(abs(viewModel.position(for: nodeId).x - (held.x + scrolled)) < 0.001)
+        #expect(scrollView.documentView?.frame.size == viewModel.cachedCanvasSize)
+        viewModel.endDrag()
+        ERDiagramPositionStorage.shared.clear(connectionId: viewModel.connectionId, schemaKey: "app.default")
+    }
+
+    @Test("Dropping a dragged table sizes the canvas back down to the tables")
+    func endDragFitsTheCanvasToTheTables() {
+        let viewModel = makeViewModel()
+        defer { ERDiagramPositionStorage.shared.clear(connectionId: viewModel.connectionId, schemaKey: "app.default") }
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 400, y: 300))
+
+        viewModel.beginDrag(at: CGPoint(x: 400, y: 300))
+        viewModel.updateDrag(translation: CGSize(width: 3_000, height: 0), currentPoint: CGPoint(x: 3_400, y: 300))
+        #expect(viewModel.cachedCanvasSize.width > 3_400)
+        viewModel.updateDrag(translation: .zero, currentPoint: CGPoint(x: 400, y: 300))
+        viewModel.endDrag()
+
+        #expect(viewModel.cachedCanvasSize.width > viewModel.nodeRect(for: nodeId).maxX)
+        #expect(viewModel.cachedCanvasSize.width < 1_000)
+    }
+
+    /// At 25% the pane shows four times its size in document points, far more than the tables need.
+    @Test("Dropping a table while zoomed out sizes the canvas to the tables, not to the pane")
+    func endDragZoomedOutFitsTheTables() {
+        let viewModel = makeViewModel()
+        defer { ERDiagramPositionStorage.shared.clear(connectionId: viewModel.connectionId, schemaKey: "app.default") }
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 400, y: 300))
+        let scrollView = attachViewport(to: viewModel, magnification: 0.25)
+        #expect(scrollView.documentVisibleRect.width > 1_000)
+
+        viewModel.beginDrag(at: CGPoint(x: 400, y: 300))
+        viewModel.updateDrag(translation: CGSize(width: 100, height: 0), currentPoint: CGPoint(x: 500, y: 300))
+        viewModel.endDrag()
+
+        #expect(viewModel.cachedCanvasSize.width > viewModel.nodeRect(for: nodeId).maxX)
+        #expect(viewModel.cachedCanvasSize.width < 1_000)
+        #expect(viewModel.cachedCanvasSize.height < 1_000)
+    }
+
+    @Test("Dropping a table never shrinks the canvas past what is on screen")
+    func endDragKeepsTheVisibleCanvas() {
+        let viewModel = makeViewModel()
+        defer { ERDiagramPositionStorage.shared.clear(connectionId: viewModel.connectionId, schemaKey: "app.default") }
+        let nodeId = placeNode(in: viewModel, at: CGPoint(x: 400, y: 300))
+        let scrollView = attachViewport(to: viewModel)
+
+        viewModel.beginDrag(at: CGPoint(x: 400, y: 300))
+        viewModel.updateDrag(translation: CGSize(width: 2_000, height: 0), currentPoint: CGPoint(x: 2_400, y: 300))
+        scrollView.documentView?.setFrameSize(viewModel.cachedCanvasSize)
+        viewModel.viewport.scrollBy(CGSize(width: 10_000, height: 0))
+        let visibleMaxX = scrollView.documentVisibleRect.maxX
+        viewModel.updateDrag(translation: CGSize(width: 1_800, height: 0), currentPoint: CGPoint(x: 2_200, y: 300))
+        viewModel.endDrag()
+
+        #expect(viewModel.nodeRect(for: nodeId).maxX < visibleMaxX - 100)
+        #expect(viewModel.cachedCanvasSize.width == visibleMaxX)
     }
 
     @Test("A saved layout loads back at the same document coordinates")

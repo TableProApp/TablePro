@@ -87,6 +87,7 @@ final class DataGridColumnPool {
         isEditable: Bool,
         hiddenColumnNames: Set<String>,
         firstClickSortDirection: SortDirection,
+        supportsValueFilter: Bool = true,
         widthCalculator: (String, Int) -> CGFloat
     ) -> Bool {
         attach(to: tableView)
@@ -116,7 +117,8 @@ final class DataGridColumnPool {
                     comment: comment,
                     width: resolvedWidth,
                     isEditable: isEditable,
-                    firstClickSortDirection: firstClickSortDirection
+                    firstClickSortDirection: firstClickSortDirection,
+                    supportsValueFilter: supportsValueFilter
                 )
                 let hidden = hiddenFromLayout.contains(columnName) || hiddenColumnNames.contains(columnName)
                 if hidden {
@@ -261,7 +263,8 @@ final class DataGridColumnPool {
         comment: String?,
         width: CGFloat,
         isEditable: Bool,
-        firstClickSortDirection: SortDirection
+        firstClickSortDirection: SortDirection,
+        supportsValueFilter: Bool = true
     ) {
         if !(column.headerCell is SortableHeaderCell) || column.headerCell.stringValue != name {
             let cell = SortableHeaderCell(textCell: name)
@@ -269,6 +272,7 @@ final class DataGridColumnPool {
             cell.alignment = column.headerCell.alignment
             column.headerCell = cell
         }
+        (column.headerCell as? SortableHeaderCell)?.supportsValueFilter = supportsValueFilter
 
         var tooltip: String
         if let typeName = columnType?.rawType ?? columnType?.displayName {

@@ -17,9 +17,11 @@ enum UserTypeRowLogic {
         switch type.kind {
         case .enumeration where !type.enumLabels.isEmpty:
             lines.append(type.enumLabels.joined(separator: ", "))
-        case .composite where !type.fields.isEmpty:
-            lines.append(type.fields.map { "\($0.name) \($0.type)" }.joined(separator: ", "))
-        case .domain, .range:
+        case .composite, .tableType:
+            if !type.fields.isEmpty {
+                lines.append(type.fields.map { "\($0.name) \($0.type)" }.joined(separator: ", "))
+            }
+        case .domain, .range, .aliasType:
             if let baseType = type.baseType, !baseType.isEmpty { lines.append(baseType) }
         default:
             break

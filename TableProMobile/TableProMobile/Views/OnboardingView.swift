@@ -168,11 +168,7 @@ struct OnboardingView: View {
     private func syncFromiCloud() {
         isSyncing = true
         syncTask = Task {
-            await appState.syncCoordinator.sync(
-                localConnections: appState.connections,
-                localGroups: appState.groups,
-                localTags: appState.tags
-            )
+            await appState.syncCoordinator.sync()
             guard !Task.isCancelled else { return }
             isSyncing = false
             completeOnboarding()

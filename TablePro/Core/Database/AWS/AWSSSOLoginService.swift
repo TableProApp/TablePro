@@ -8,7 +8,20 @@ enum AWSSSOLoginService {
     /// Two spellings are in use: the Cassandra and RDS drivers declare `awsAuth`, DynamoDB
     /// declares `awsAuthMethod`. Both mean the same thing here.
     static func usesSSO(_ fields: [String: String]) -> Bool {
-        fields["awsAuth"] == "sso" || fields["awsAuthMethod"] == "sso"
+        if fields["awsAuth"] == "sso" || fields["awsAuthMethod"] == "sso" { return true }
+        guard fields["awsAuth"] == "profile" || fields["awsAuthMethod"] == "profile" else { return false }
+        return signInProfileName(forProfile: profileName(from: fields)) != nil
+    }
+
+    /// The profile that actually holds the IAM Identity Center session, which is the profile itself
+    /// for a direct SSO profile and the source profile for an assume-role chain rooted on one.
+    static func signInProfileName(forProfile profileName: String) -> String? {
+        AWSCredentialResolver.singleSignOnProfile(rootedAt: profileName)
+    }
+
+    static func signInProfileName(from fields: [String: String]) -> String {
+        let named = profileName(from: fields)
+        return signInProfileName(forProfile: named) ?? named
     }
 
     static func profileName(from fields: [String: String]) -> String {
@@ -25,7 +38,8 @@ enum AWSSSOLoginService {
         }
     }
 
-    static func signIn(profileName: String) async throws {
+    static func signIn(profileName requestedProfile: String) async throws {
+        let profileName = signInProfileName(forProfile: requestedProfile) ?? requestedProfile
         guard let configContents = AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath) else {
             throw AWSSSOError.configReadFailed
         }

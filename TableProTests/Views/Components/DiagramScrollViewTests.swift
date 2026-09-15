@@ -48,6 +48,30 @@ struct DiagramScrollViewTests {
         DiagramScrollZoom.factor(for: DiagramScrollZoom.Input(event))
     }
 
+    private final class SettlingDocument: NSView, DiagramViewportSettling {
+        var settles = 0
+
+        func viewportDidSettle() {
+            settles += 1
+        }
+    }
+
+    @Test("The document hears once, and only after the scroll view has a size, that its viewport settled")
+    func documentSettlesOnceWithASize() {
+        let scrollView = DiagramScrollView(frame: .zero)
+        let document = SettlingDocument(frame: CGRect(x: 0, y: 0, width: 1_000, height: 800))
+        scrollView.documentView = document
+        scrollView.tile()
+        #expect(document.settles == 0)
+
+        scrollView.setFrameSize(CGSize(width: 600, height: 400))
+        scrollView.tile()
+        scrollView.setFrameSize(CGSize(width: 700, height: 500))
+        scrollView.tile()
+
+        #expect(document.settles == 1)
+    }
+
     @Test("A Command wheel notch zooms the diagram")
     func commandWheelZooms() throws {
         let fixture = makeFixture()

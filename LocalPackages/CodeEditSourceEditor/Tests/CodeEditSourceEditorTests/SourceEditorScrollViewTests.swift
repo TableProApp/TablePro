@@ -152,6 +152,81 @@ struct SourceEditorScrollViewTests {
         #expect(origin == 500)
     }
 
+    @Test("Laying the scroll view out again leaves a view scrolled just past the leading edge where it is")
+    func retilingKeepsAPositionNearTheLeadingEdge() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        document.scroll(NSPoint(x: -40, y: 0))
+        #expect(origin == -40)
+
+        scrollView.tile()
+
+        #expect(origin == -40)
+    }
+
+    @Test("A view scrolled just past the leading edge keeps its position when the gutter widens")
+    func gutterWideningKeepsAPositionNearTheLeadingEdge() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        document.scroll(NSPoint(x: -40, y: 0))
+
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 78, right: 0)
+
+        #expect(origin == -40)
+    }
+
+    @Test("A view at the leading edge follows a gutter that is hidden and shown again")
+    func leadingEdgeFollowsAHiddenGutter() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+
+        scrollView.floatingSubviewInsets = .zero
+        #expect(origin == 0)
+
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        #expect(origin == -70)
+    }
+
+    @Test("A scrolled view keeps its position when the gutter is hidden and shown again")
+    func scrolledViewKeepsItsPositionAcrossAHiddenGutter() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        document.scroll(NSPoint(x: 500, y: 0))
+
+        scrollView.floatingSubviewInsets = .zero
+        #expect(origin == 500)
+
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        #expect(origin == 500)
+    }
+
+    @Test("A scrolled view keeps its position when the trailing reservation changes")
+    func scrolledViewKeepsItsPositionWhenTheTrailingReservationChanges() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+        document.scroll(NSPoint(x: 500, y: 0))
+
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 140)
+
+        #expect(origin == 500)
+    }
+
+    @Test("The clip view goes on working out its own insets after a reservation and a tile")
+    func clipViewKeepsAdjustingItsOwnInsets() {
+        scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 40)
+
+        scrollView.tile()
+
+        #expect(clip.automaticallyAdjustsContentInsets)
+        #expect(clip.contentInsets.left == 70)
+        #expect(clip.contentInsets.right == 40)
+    }
+
+    @Test("A scroll view made without a frame, the way the editor makes it, reserves on its own clip view")
+    func plainInitializerInstallsTheReservingClipView() {
+        let editorScrollView = SourceEditorScrollView()
+
+        editorScrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 0)
+
+        #expect(editorScrollView.contentView is SourceEditorClipView)
+        #expect(editorScrollView.contentView.contentInsets.left == 70)
+    }
+
     @Test("Revealing the start of the document stops beside the gutter")
     func revealStopsAtTheReservation() {
         scrollView.floatingSubviewInsets = HorizontalEdgeInsets(left: 70, right: 40)

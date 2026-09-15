@@ -102,30 +102,12 @@ struct ImportFromAppPreviewStep: View {
     }
 
     private func performImport() {
-        var resolutions: [UUID: ImportResolution] = [:]
-        for item in preview.items {
-            if selectedIds.contains(item.id) {
-                switch item.status {
-                case .ready, .warnings, .unsupportedType:
-                    resolutions[item.id] = .importNew
-                case .duplicate:
-                    resolutions[item.id] = duplicateResolutions[item.id] ?? .importAsCopy
-                }
-            } else {
-                resolutions[item.id] = .skip
-            }
-        }
-
-        let result = ConnectionExportService.performImport(preview, resolutions: resolutions)
-
-        if preview.envelope.credentials != nil {
-            ConnectionExportService.restoreCredentials(
-                from: preview.envelope,
-                connectionIdMap: result.newConnectionIdMap
-            )
-        }
-
+        let importedCount = ConnectionImportCommit.perform(
+            preview: preview,
+            selectedIds: selectedIds,
+            duplicateResolutions: duplicateResolutions
+        )
         dismiss()
-        onImported?(result.importedCount)
+        onImported?(importedCount)
     }
 }

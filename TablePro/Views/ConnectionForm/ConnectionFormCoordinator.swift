@@ -357,7 +357,7 @@ final class ConnectionFormCoordinator {
         guard let original = originalConnection, original.id == id else {
             return DatabaseConnection(id: id, name: "")
         }
-        return original
+        return storage.loadConnection(id: id) ?? original
     }
 
     private func saveConnection(connect: Bool) {
@@ -375,7 +375,7 @@ final class ConnectionFormCoordinator {
             edits.additionalFields.removeValue(forKey: field.id)
         }
 
-        let connectionToSave = edits.applied(to: baseConnection(id: finalId))
+        var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
         if auth.effectivePromptForPassword {
             storage.deletePassword(for: connectionToSave.id)
@@ -415,6 +415,10 @@ final class ConnectionFormCoordinator {
 
         var savedConnections = storage.loadConnections()
         if isNew {
+            connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                in: savedConnections,
+                groupId: connectionToSave.groupId
+            )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
@@ -432,6 +436,12 @@ final class ConnectionFormCoordinator {
             guard let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) else {
                 saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
                 return
+            }
+            if savedConnections[index].groupId != connectionToSave.groupId {
+                connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                    in: savedConnections,
+                    groupId: connectionToSave.groupId
+                )
             }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {

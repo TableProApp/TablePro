@@ -43,6 +43,8 @@ extension TextLayoutManager: NSTextStorageDelegate {
             return
         }
 
+        invalidateGeometry(from: editedRange.location)
+
         let insertedStringRange = NSRange(location: editedRange.location, length: editedRange.length - delta)
         removeLayoutLinesIn(range: insertedStringRange)
         insertNewLines(for: editedRange)

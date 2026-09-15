@@ -52,6 +52,31 @@ public enum AWSSSOError: Error, LocalizedError, Equatable {
     case responseDecodeFailed(profile: String)
     case credentialsAlreadyExpired(profile: String)
 
+    public var profileName: String? {
+        switch self {
+        case .configReadFailed, .sessionMissingFields:
+            return nil
+        case .profileNotFound(let profile),
+             .profileMissingFields(let profile),
+             .profileMissingUrlOrRegion(let profile),
+             .tokenCacheNotFound(let profile),
+             .tokenCacheMalformed(let profile),
+             .tokenExpired(let profile),
+             .urlBuildFailed(let profile),
+             .invalidResponse(let profile),
+             .sessionUnauthorized(let profile),
+             .responseDecodeFailed(let profile),
+             .credentialsAlreadyExpired(let profile):
+            return profile
+        case .sessionNotFound(let profile, _),
+             .networkFailure(let profile, _),
+             .portalError(let profile, _):
+            return profile
+        case .roleNotAccessible:
+            return nil
+        }
+    }
+
     public var errorDescription: String? {
         switch self {
         case .configReadFailed:
@@ -238,7 +263,8 @@ public enum AWSSSO {
         session: URLSession,
         now: Date = Date()
     ) async throws -> AWSSSORoleCredentials {
-        var components = URLComponents(string: "https://portal.sso.\(settings.region).amazonaws.com/federation/credentials")
+        let portalHost = AWSPartition.host(service: "portal.sso", region: settings.region)
+        var components = URLComponents(string: "https://\(portalHost)/federation/credentials")
         components?.queryItems = [
             URLQueryItem(name: "account_id", value: settings.accountId),
             URLQueryItem(name: "role_name", value: settings.roleName)

@@ -90,9 +90,14 @@ struct ValueFontTests {
         #expect(source.contains("case .json, .phpSerialized, .image:"))
     }
 
-    /// Everything outside the inspector has no shared root to inherit from: a popover, a pop-out window
-    /// and the Compare pane are each their own presentation, and an `NSViewRepresentable` never sees a
-    /// SwiftUI `.font` at all. Each of these therefore resolves it by name.
+    /// Everything outside the inspector has no shared root to inherit from: a popover and a pop-out
+    /// window are each their own presentation, and an `NSViewRepresentable` never sees a SwiftUI
+    /// `.font` at all. Each of these therefore resolves it by name.
+    ///
+    /// The Compare rows pane is not among them any more. It draws its values through `DataGridView`,
+    /// which takes its cell font from `ThemeEngine.dataGridFonts` in `DataGridCellPalette`, and that
+    /// is the same setting `valueFont` returns. A pane that no longer renders a value itself has
+    /// nothing to name.
     @Test("Every value view outside the inspector resolves the value font")
     func standaloneValueViewsResolveTheValueFont() throws {
         let paths = [
@@ -116,7 +121,6 @@ struct ValueFontTests {
             "TablePro/Views/Results/JSONTreeView.swift",
             "TablePro/Views/Results/PhpTreeView.swift",
             "TablePro/Views/Results/PhpViewerView.swift",
-            "TablePro/Views/Compare/CompareRowDiffPane.swift",
         ]
 
         var offenders: [String] = []

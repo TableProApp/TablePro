@@ -8,14 +8,17 @@ import TableProPluginKit
 
 extension DatabaseConnection {
     var connectionSubtitle: String {
-        var components: [String] = [endpointDescription]
+        var subtitle = endpointDescription
         if let database = databaseDescriptor {
-            components.append(database)
+            let isPath = subtitle.hasPrefix("/") || subtitle.hasPrefix("~")
+            subtitle = isPath
+                ? String(format: String(localized: "%1$@ on %2$@"), database, subtitle)
+                : subtitle + "/" + database
         }
         if let via = sshViaDescriptor {
-            components.append(via)
+            subtitle += " " + via
         }
-        return components.joined(separator: " · ")
+        return subtitle
     }
 
     var endpointDescription: String {
@@ -62,7 +65,7 @@ extension DatabaseConnection {
             return trimmed.isEmpty ? nil : trimmed
         case .databaseIndex:
             guard let index = redisDatabase else { return nil }
-            return String(format: String(localized: "db %d"), index)
+            return String(index)
         case .filePath:
             return nil
         @unknown default:

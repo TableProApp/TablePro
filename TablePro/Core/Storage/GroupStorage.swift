@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProSyncTransport
 
 internal enum GroupStorageError: LocalizedError, Equatable {
@@ -56,7 +57,7 @@ internal final class GroupStorage {
     private var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = .standard,
+        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         syncTracker: SyncChangeTracker = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
@@ -124,17 +125,18 @@ internal final class GroupStorage {
         }
     }
 
-    /// Add a new group (duplicate check scoped to siblings, enforces depth cap and cycle prevention)
+    /// Add a new group at the end of its parent (duplicate check scoped to siblings, enforces depth
+    /// cap and cycle prevention)
     internal func addGroup(_ group: ConnectionGroup) throws {
         var groups = loadGroups()
         try validatePlacement(of: group, in: groups)
+        try validateUniqueName(group.name, parentId: group.parentId, excluding: [group.id], in: groups)
 
-        let siblings = groups.filter { $0.parentId == group.parentId }
-        guard !siblings.contains(where: { $0.name.lowercased() == group.name.lowercased() }) else {
-            throw GroupStorageError.duplicateName(group.name)
-        }
-
-        groups.append(group)
+        var placed = group
+        placed.sortOrder = LibraryOrdering.nextSortOrder(
+            after: groups.filter { $0.parentId == group.parentId }.map(\.sortOrder)
+        )
+        groups.append(placed)
         guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
         notifyChanged()
     }
@@ -150,6 +152,78 @@ internal final class GroupStorage {
         }
 
         groups[index] = group
+        guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
+        notifyChanged()
+    }
+
+    internal func mutateGroup(id: UUID, _ mutate: (inout ConnectionGroup) -> Void) throws {
+        var groups = loadGroups()
+        guard let index = groups.firstIndex(where: { $0.id == id }) else {
+            throw GroupStorageError.groupNotFound
+        }
+        let original = groups[index]
+        var updated = original
+        mutate(&updated)
+        guard updated != original else { return }
+
+        if updated.parentId != original.parentId {
+            try validatePlacement(of: updated, in: groups)
+        }
+        let nameChanged = updated.name.lowercased() != original.name.lowercased()
+        if nameChanged || updated.parentId != original.parentId {
+            try validateUniqueName(updated.name, parentId: updated.parentId, excluding: [id], in: groups)
+        }
+
+        groups[index] = updated
+        guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
+        notifyChanged()
+    }
+
+    internal func moveGroups(_ ids: [UUID], toParent parentId: UUID?, before: UUID?) throws {
+        var groups = loadGroups()
+        let existing = Set(groups.map(\.id))
+        var seen: Set<UUID> = []
+        let moving = ids.filter { existing.contains($0) && seen.insert($0).inserted }
+        guard !moving.isEmpty else { throw GroupStorageError.groupNotFound }
+
+        let graph = LibraryGroupGraph(groups: groups)
+        for id in moving {
+            if let problem = graph.placementProblem(id, under: parentId) {
+                throw Self.error(for: problem)
+            }
+        }
+
+        let movingSet = Set(moving)
+        for id in moving {
+            guard let name = groups.first(where: { $0.id == id })?.name else { continue }
+            let clashes = groups.contains { other in
+                !movingSet.contains(other.id)
+                    && graph.parentId(of: other.id) == parentId
+                    && other.name.lowercased() == name.lowercased()
+            }
+            if clashes { throw GroupStorageError.duplicateName(name) }
+        }
+
+        let siblingIds = graph.sortedChildIds(of: parentId, mode: .manual).filter { !movingSet.contains($0) }
+        let ranks: [UUID: Int]
+        if let before, siblingIds.contains(before) {
+            ranks = LibraryOrdering.ranks(for: LibraryOrdering.reordered(siblingIds, moving: moving, before: before))
+        } else {
+            let siblingSet = Set(siblingIds)
+            let start = LibraryOrdering.nextSortOrder(
+                after: groups.filter { siblingSet.contains($0.id) }.map(\.sortOrder)
+            )
+            ranks = Dictionary(uniqueKeysWithValues: moving.enumerated().map { ($0.element, start + $0.offset) })
+        }
+
+        for index in groups.indices {
+            if movingSet.contains(groups[index].id) {
+                groups[index].parentId = parentId
+            }
+            if let rank = ranks[groups[index].id] {
+                groups[index].sortOrder = rank
+            }
+        }
         guard saveGroups(groups) else { throw GroupStorageError.storeUnreadable }
         notifyChanged()
     }
@@ -192,24 +266,28 @@ internal final class GroupStorage {
     @discardableResult
     internal func repairHierarchy() -> Bool {
         let groups = loadGroups()
-        let repaired = groupsWithReachableParents(groups)
-        guard repaired != groups else { return false }
+        let cyclic = LibraryGroupGraph.cyclicGroupIds(in: groups)
+        guard !cyclic.isEmpty else { return false }
 
-        Self.logger.error("Rooting \(cyclicGroupIds(groups).count, privacy: .public) groups left on a parent cycle")
+        Self.logger.error("Rooting \(cyclic.count, privacy: .public) groups left on a parent cycle")
+        let repaired = groups.map { group -> ConnectionGroup in
+            guard cyclic.contains(group.id) else { return group }
+            var rooted = group
+            rooted.parentId = nil
+            return rooted
+        }
         return saveGroups(repaired)
     }
 
-    /// Delete a group and all descendant groups, nil-out groupId on affected connections
-    /// The delete set comes from the graph the list draws, not the raw stored one. A group left on
-    /// a cycle is drawn at the top level, and each member of that cycle is a descendant of the
-    /// other in the raw graph, so deleting one displayed root used to take the other with it.
-    internal func deleteGroup(_ group: ConnectionGroup) {
-        var groups = groupsWithReachableParents(loadGroups())
-        let descendantIds = collectAllDescendantGroupIds(groupId: group.id, groups: groups)
-        let allIdsToDelete = descendantIds.union([group.id])
+    /// Delete a group and all descendant groups, nil-out groupId on affected connections.
+    @discardableResult
+    internal func deleteGroup(_ group: ConnectionGroup) -> Bool {
+        var groups = loadGroups()
+        let graph = LibraryGroupGraph(groups: groups)
+        let allIdsToDelete = graph.descendantIds(of: group.id).union([group.id])
 
         groups.removeAll { allIdsToDelete.contains($0.id) }
-        guard saveGroups(groups) else { return }
+        guard saveGroups(groups) else { return false }
 
         for deletedId in allIdsToDelete {
             syncTracker.markDeleted(.group, id: deletedId.uuidString)
@@ -230,6 +308,7 @@ internal final class GroupStorage {
             }
         }
         notifyChanged()
+        return true
     }
 
     /// Get group by ID
@@ -246,11 +325,32 @@ internal final class GroupStorage {
     }
 
     private func validatePlacement(of group: ConnectionGroup, in groups: [ConnectionGroup]) throws {
-        guard !wouldCreateCircle(movingGroupId: group.id, toParentId: group.parentId, groups: groups) else {
-            throw GroupStorageError.wouldCreateCycle
+        guard let problem = LibraryGroupGraph(groups: groups).placementProblem(group.id, under: group.parentId) else {
+            return
         }
-        guard canPlaceGroup(group.id, under: group.parentId, groups: groups) else {
-            throw GroupStorageError.depthExceeded
+        throw Self.error(for: problem)
+    }
+
+    private func validateUniqueName(
+        _ name: String,
+        parentId: UUID?,
+        excluding ids: Set<UUID>,
+        in groups: [ConnectionGroup]
+    ) throws {
+        let clashes = groups.contains { other in
+            !ids.contains(other.id) && other.parentId == parentId && other.name.lowercased() == name.lowercased()
+        }
+        guard !clashes else { throw GroupStorageError.duplicateName(name) }
+    }
+
+    private static func error(for problem: LibraryGroupGraph.PlacementProblem) -> GroupStorageError {
+        switch problem {
+        case .cycle:
+            return .wouldCreateCycle
+        case .depthExceeded:
+            return .depthExceeded
+        case .missingParent:
+            return .groupNotFound
         }
     }
 }

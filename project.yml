@@ -233,7 +233,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -452,6 +452,8 @@ targets:
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
@@ -652,7 +654,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
