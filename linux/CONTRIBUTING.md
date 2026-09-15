@@ -8,23 +8,32 @@ System packages — see [README.md](README.md) for distro-specific commands. Aft
 
 ```bash
 cd linux
-cargo build                    # debug build
-cargo run -p tablepro          # run the app
+meson setup _build -Dprofile=development
+meson compile -C _build        # builds tablepro and tablepro-askpass
+meson test -C _build           # unit, gtk and data suites
+meson devenv -C _build cargo test   # cargo against the configured app ID
 cargo fmt --all                # format
 ```
+
+`cargo build` and `cargo run -p tablepro` still work for a quick edit. They
+fall back to the `app.tablepro.TablePro.Devel` application ID, so a
+development build never writes over an installed one.
 
 ### Fast-job commands
 
 The fast job in `.github/workflows/build-linux.yml` runs these steps in this order:
 
 ```bash
+meson setup _build -Dprofile=development
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo build --workspace --locked
-GTK_A11Y=test GSK_RENDERER=cairo xvfb-run -a dbus-run-session -- cargo test --workspace --locked
+meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
+meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
+meson compile -C _build
+xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
+meson dist -C _build --no-tests --formats xztar
 ```
 
-Inside a desktop session, `GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked` runs the same tests without xvfb.
+Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
 CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
 

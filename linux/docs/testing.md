@@ -27,17 +27,26 @@ mod tests {
 }
 ```
 
-Run every test that needs no external service. GTK tests need a display and the GTK test accessibility backend:
+Run every test that needs no external service through meson, which sets the
+environment each suite needs:
 
 ```bash
-GTK_A11Y=test dbus-run-session -- cargo test --workspace --locked
+meson setup _build -Dprofile=development
+dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-This runs unit tests, GTK tests, doc tests and every test target. Tests that need Docker or a Secret Service are ignored. Without a display (SSH, containers), run the command the CI fast job uses:
+Three suites: `unit` is `cargo test --workspace --exclude tablepro`, `gtk`
+is `cargo test -p tablepro` with `GSK_RENDERER=cairo` and `GTK_A11Y=test`,
+and `data` runs `desktop-file-validate` and `appstreamcli validate`.
+Tests that need Docker or a Secret Service are ignored. Without a display
+(SSH, containers), prefix with xvfb the way the CI fast job does:
 
 ```bash
-GTK_A11Y=test GSK_RENDERER=cairo xvfb-run -a dbus-run-session -- cargo test --workspace --locked
+xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 ```
+
+For a single crate, `meson devenv -C _build cargo test -p <crate>` runs
+Cargo with the same environment.
 
 ## Integration tests
 
@@ -167,7 +176,7 @@ There is no app-level end-to-end test yet. Driving the GTK app under `xvfb-run` 
 
 GitHub Actions (`.github/workflows/build-linux.yml`), Ubuntu runner, two jobs:
 
-1. **Fast checks**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --locked`, `xvfb-run -a dbus-run-session -- cargo test --workspace --locked` with `GTK_A11Y=test` and `GSK_RENDERER=cairo`. Runs in an `ubuntu:25.10` container, which ships the glib version libadwaita 1.6 needs. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
+1. **Fast checks**: `meson setup`, `cargo fmt --all -- --check`, clippy with and without default features, `meson compile`, `xvfb-run -a dbus-run-session -- meson test --print-errorlogs`, a Secret Service step under `gnome-keyring-daemon`, then `meson dist`. Runs in an `ubuntu:26.04` container, which ships GLib 2.88 plus the meson, appstream and desktop-file-utils packages. [CONTRIBUTING.md](../CONTRIBUTING.md#fast-job-commands) lists the same commands.
 2. **Docker tests**: runs after fast checks pass. One matrix entry per package with docker tests (the PostgreSQL, MySQL, SQL Server and ClickHouse drivers, `tablepro-ssh` against an OpenSSH server container, and `tablepro-test-fixtures` for the fixtures themselves) runs that package's ignored docker tests through cargo-nextest on the host runner's Docker.
 
 PRs only merge when both jobs are green.
