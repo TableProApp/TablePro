@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <object class="AdwShortcutsDialog" id="shortcuts_dialog">
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">General</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Open SQL editor</property>
+            <property name="accelerator">&lt;Primary&gt;e</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Refresh table</property>
+            <property name="accelerator">F5</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Open Preferences</property>
+            <property name="accelerator">&lt;Primary&gt;comma</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Open Query History</property>
+            <property name="accelerator">&lt;Primary&gt;h</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Save pending changes</property>
+            <property name="accelerator">&lt;Primary&gt;s</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Undo pending change</property>
+            <property name="accelerator">&lt;Primary&gt;z</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Redo pending change</property>
+            <property name="accelerator">&lt;Primary&gt;y</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Show keyboard shortcuts</property>
+            <property name="accelerator">&lt;Primary&gt;question</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Quit</property>
+            <property name="accelerator">&lt;Primary&gt;q</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Browse table</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Edit focused cell</property>
+            <property name="accelerator">F2 Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Cancel edit</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Move to next cell, committing an edit</property>
+            <property name="accelerator">Tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Move to previous cell, committing an edit</property>
+            <property name="accelerator">&lt;Shift&gt;Tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Move between cells</property>
+            <property name="accelerator">Left Right</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Toggle boolean cell</property>
+            <property name="accelerator">space</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Insert row</property>
+            <property name="accelerator">&lt;Primary&gt;n</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Delete selected row</property>
+            <property name="accelerator">Delete</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Set focused cell to NULL</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;n</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Filter rows</property>
+            <property name="accelerator">&lt;Primary&gt;f</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Select all rows</property>
+            <property name="accelerator">&lt;Primary&gt;a</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Extend row selection to the clicked row</property>
+            <property name="accelerator">&lt;Shift&gt;Pointer_Button1</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Toggle the clicked row in the selection</property>
+            <property name="accelerator">&lt;Primary&gt;Pointer_Button1</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Clear the multi-row selection</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Copy selected rows as TSV</property>
+            <property name="accelerator">&lt;Primary&gt;c</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Previous page</property>
+            <property name="accelerator">Page_Up</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Next page</property>
+            <property name="accelerator">Page_Down</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Jump to the first row of the page</property>
+            <property name="accelerator">&lt;Primary&gt;Home</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Jump to the last row of the page</property>
+            <property name="accelerator">&lt;Primary&gt;End</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Save pending edits</property>
+            <property name="accelerator">&lt;Primary&gt;s</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Undo the last change</property>
+            <property name="accelerator">&lt;Primary&gt;z</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Redo the last change</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;z</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">SQL editor</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Run query</property>
+            <property name="accelerator">&lt;Primary&gt;Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Run the statement at the cursor</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Cancel the running query</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Toggle line comment</property>
+            <property name="accelerator">&lt;Primary&gt;slash</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">New editor tab</property>
+            <property name="accelerator">&lt;Primary&gt;t</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Close the current tab or window</property>
+            <property name="accelerator">&lt;Primary&gt;w</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Next editor tab</property>
+            <property name="accelerator">&lt;Primary&gt;Tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Previous editor tab</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;Tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Reopen the last closed tab</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;t</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Format SQL</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;f</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Table structure</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Save pending DDL</property>
+            <property name="accelerator">&lt;Primary&gt;s</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Undo the DDL change</property>
+            <property name="accelerator">&lt;Primary&gt;z</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Redo the DDL change</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;z</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwShortcutsSection">
+        <property name="title" translatable="yes">Dialogs</property>
+        <child>
+          <object class="AdwShortcutsItem">
+            <property name="title" translatable="yes">Close the dialog</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

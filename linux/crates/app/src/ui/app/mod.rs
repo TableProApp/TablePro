@@ -65,7 +65,7 @@ pub struct App {
     connections_factory: FactoryVecDeque<ConnectionRow>,
     connections_popover: gtk::Popover,
     health_state: Option<ConnectionHealth>,
-    row_op_spinner: gtk::Spinner,
+    row_op_spinner: adw::Spinner,
     read_only_badge: gtk::Label,
     table_search: gtk::SearchEntry,
     /// Outer Stack inside `content_holder` — swaps between `"empty"`
@@ -315,7 +315,6 @@ pub enum AppMsg {
     ForceDisconnect,
     PollHealth,
     RefreshPage,
-    ShowShortcuts,
     ShowAbout,
     ShowPreferences,
     /// Sort flipped on tab_id's grid for column idx.
@@ -605,7 +604,7 @@ impl SimpleComponent for App {
                     },
 
                     #[name = "row_op_spinner"]
-                    pack_end = &gtk::Spinner {
+                    pack_end = &adw::Spinner {
                         set_visible: false,
                         set_margin_end: 6,
                         set_tooltip_text: Some(crate::tr!("Saving…").as_str()),
@@ -1372,7 +1371,6 @@ impl SimpleComponent for App {
             }
             AppMsg::PollHealth => self.on_poll_health(),
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
-            AppMsg::ShowShortcuts => self.on_show_shortcuts(),
             AppMsg::ShowAbout => self.on_show_about(),
             AppMsg::ShowPreferences => super::preferences::present(&self.window),
             AppMsg::ExportResults { result, name } => {
@@ -1409,7 +1407,7 @@ fn primary_menu_model() -> gio::Menu {
     prefs_section.append(Some(&crate::tr!("Preferences")), Some("win.preferences"));
     menu.append_section(None, &prefs_section);
     let app_section = gio::Menu::new();
-    app_section.append(Some(&crate::tr!("Keyboard Shortcuts")), Some("win.shortcuts"));
+    app_section.append(Some(&crate::tr!("Keyboard Shortcuts")), Some("app.shortcuts"));
     app_section.append(Some(&crate::tr!("About TablePro")), Some("win.about"));
     app_section.append(Some(&crate::tr!("Quit")), Some("win.quit"));
     menu.append_section(None, &app_section);
@@ -1436,7 +1434,6 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         .build();
 
     group.add_action_entries([
-        input_action!("shortcuts", AppMsg::ShowShortcuts),
         input_action!("about", AppMsg::ShowAbout),
         quit,
         input_action!("open-editor", AppMsg::NewEditorTab),
@@ -1466,8 +1463,6 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     let primary_shift = ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK;
     let controller = gtk::ShortcutController::new();
     controller.set_scope(gtk::ShortcutScope::Global);
-    controller.add_shortcut(make_shortcut(Key::question, primary, "win.shortcuts"));
-    controller.add_shortcut(make_shortcut(Key::slash, primary, "win.shortcuts"));
     controller.add_shortcut(make_shortcut(Key::q, primary, "win.quit"));
     controller.add_shortcut(make_shortcut(Key::w, primary, "win.close-current"));
     controller.add_shortcut(make_shortcut(Key::e, primary, "win.open-editor"));
@@ -1494,120 +1489,46 @@ fn make_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType, action: 
         .build()
 }
 
-fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWindow {
-    let window = gtk::ShortcutsWindow::builder()
-        .modal(true)
-        .transient_for(parent)
-        .build();
-    let section = gtk::ShortcutsSection::builder().section_name("application").build();
+#[cfg(test)]
+mod tests {
+    use glib::prelude::Cast;
+    use gtk::prelude::*;
 
-    let general = gtk::ShortcutsGroup::builder().title(crate::tr!("General")).build();
-    general.append(&shortcut_entry("<Primary>e", &crate::tr!("Open SQL editor")));
-    general.append(&shortcut_entry("F5", &crate::tr!("Refresh table")));
-    general.append(&shortcut_entry("<Primary>comma", &crate::tr!("Open Preferences")));
-    general.append(&shortcut_entry("<Primary>h", &crate::tr!("Open Query History")));
-    general.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending changes")));
-    general.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo pending change")));
-    general.append(&shortcut_entry("<Primary>y", &crate::tr!("Redo pending change")));
-    general.append(&shortcut_entry(
-        "<Primary>question",
-        &crate::tr!("Show keyboard shortcuts"),
-    ));
-    general.append(&shortcut_entry("<Primary>q", &crate::tr!("Quit")));
-    // Ctrl+W is documented in the SQL editor section because it's
-    // context-sensitive (close current tab when in editor, close window
-    // otherwise). Listing it twice with different labels confused readers.
-    section.append(&general);
+    use super::*;
 
-    let browse = gtk::ShortcutsGroup::builder().title(crate::tr!("Browse table")).build();
-    browse.append(&shortcut_entry("F2", &crate::tr!("Edit focused cell")));
-    browse.append(&shortcut_entry("Return", &crate::tr!("Edit focused cell")));
-    browse.append(&shortcut_entry("Escape", &crate::tr!("Cancel edit")));
-    browse.append(&shortcut_entry(
-        "Tab",
-        &crate::tr!("Move to next cell (commits if editing)"),
-    ));
-    browse.append(&shortcut_entry(
-        "<Shift>Tab",
-        &crate::tr!("Move to previous cell (commits if editing)"),
-    ));
-    browse.append(&shortcut_entry("Left", &crate::tr!("Move to previous cell")));
-    browse.append(&shortcut_entry("Right", &crate::tr!("Move to next cell")));
-    browse.append(&shortcut_entry("space", &crate::tr!("Toggle boolean cell")));
-    browse.append(&shortcut_entry("<Primary>n", &crate::tr!("Insert row")));
-    browse.append(&shortcut_entry("Delete", &crate::tr!("Delete selected row")));
-    browse.append(&shortcut_entry(
-        "<Primary><Shift>n",
-        &crate::tr!("Set focused cell to NULL"),
-    ));
-    browse.append(&shortcut_entry("<Primary>f", &crate::tr!("Filter rows")));
-    browse.append(&shortcut_entry("<Primary>a", &crate::tr!("Select all rows")));
-    browse.append(&shortcut_entry(
-        "<Shift>Pointer_Button1",
-        &crate::tr!("Extend row selection to clicked row"),
-    ));
-    browse.append(&shortcut_entry(
-        "<Primary>Pointer_Button1",
-        &crate::tr!("Toggle clicked row in selection"),
-    ));
-    browse.append(&shortcut_entry("Escape", &crate::tr!("Clear multi-row selection")));
-    browse.append(&shortcut_entry("<Primary>c", &crate::tr!("Copy selected rows as TSV")));
-    browse.append(&shortcut_entry("Page_Up", &crate::tr!("Previous page")));
-    browse.append(&shortcut_entry("Page_Down", &crate::tr!("Next page")));
-    browse.append(&shortcut_entry(
-        "<Primary>Home",
-        &crate::tr!("Jump to first row of page"),
-    ));
-    browse.append(&shortcut_entry("<Primary>End", &crate::tr!("Jump to last row of page")));
-    browse.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending edits")));
-    browse.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo last change")));
-    browse.append(&shortcut_entry("<Primary><Shift>z", &crate::tr!("Redo last change")));
-    section.append(&browse);
+    fn shortcut_action_names(window: &adw::ApplicationWindow) -> Vec<String> {
+        let controllers = window.observe_controllers();
+        let mut names = Vec::new();
+        for index in 0..controllers.n_items() {
+            let Some(controller) = controllers.item(index).and_downcast::<gtk::ShortcutController>() else {
+                continue;
+            };
+            for position in 0..controller.n_items() {
+                let Some(shortcut) = controller.item(position).and_downcast::<gtk::Shortcut>() else {
+                    continue;
+                };
+                if let Some(action) = shortcut.action().and_downcast::<gtk::NamedAction>() {
+                    names.push(action.action_name().to_string());
+                }
+            }
+        }
+        names
+    }
 
-    let editor = gtk::ShortcutsGroup::builder().title(crate::tr!("SQL editor")).build();
-    editor.append(&shortcut_entry("<Primary>Return", &crate::tr!("Run query")));
-    editor.append(&shortcut_entry(
-        "<Primary><Shift>Return",
-        &crate::tr!("Run statement at cursor"),
-    ));
-    editor.append(&shortcut_entry("Escape", &crate::tr!("Cancel running query")));
-    editor.append(&shortcut_entry("<Primary>slash", &crate::tr!("Toggle line comment")));
-    editor.append(&shortcut_entry("<Primary>t", &crate::tr!("New editor tab")));
-    editor.append(&shortcut_entry(
-        "<Primary>w",
-        &crate::tr!("Close current tab or window"),
-    ));
-    editor.append(&shortcut_entry("<Primary>Tab", &crate::tr!("Next editor tab")));
-    editor.append(&shortcut_entry(
-        "<Primary><Shift>Tab",
-        &crate::tr!("Previous editor tab"),
-    ));
-    editor.append(&shortcut_entry(
-        "<Primary><Shift>t",
-        &crate::tr!("Reopen last closed tab"),
-    ));
-    editor.append(&shortcut_entry("<Primary><Shift>f", &crate::tr!("Format SQL")));
-    section.append(&editor);
+    #[gtk4::test]
+    fn window_actions_exclude_shortcuts() {
+        let app = adw::Application::builder()
+            .application_id(crate::config::APP_ID)
+            .build();
+        let window = adw::ApplicationWindow::new(&app);
 
-    let structure = gtk::ShortcutsGroup::builder()
-        .title(crate::tr!("Table structure"))
-        .build();
-    structure.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending DDL")));
-    structure.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo DDL change")));
-    structure.append(&shortcut_entry("<Primary><Shift>z", &crate::tr!("Redo DDL change")));
-    section.append(&structure);
+        install_window_shortcuts(&window);
+        let names = shortcut_action_names(&window);
 
-    let dialogs = gtk::ShortcutsGroup::builder().title(crate::tr!("Dialogs")).build();
-    dialogs.append(&shortcut_entry("Escape", &crate::tr!("Close dialog")));
-    section.append(&dialogs);
-
-    window.add_section(&section);
-    window
-}
-
-fn shortcut_entry(accel: &str, title: &str) -> gtk::ShortcutsShortcut {
-    gtk::ShortcutsShortcut::builder()
-        .accelerator(accel)
-        .title(title)
-        .build()
+        assert!(names.iter().any(|name| name == "win.quit"), "{names:?}");
+        assert!(
+            !names.iter().any(|name| name == "win.shortcuts"),
+            "AdwApplication owns app.shortcuts now: {names:?}"
+        );
+    }
 }

@@ -33,11 +33,12 @@ endif
 
 version = meson.project_version() + version_suffix
 
-# Floors match what the crates link today. W8-16 raises them with the
-# GNOME 50 bump.
-dependency('gtk4', version: '>= 4.14')
-dependency('libadwaita-1', version: '>= 1.6')
-dependency('gtksourceview-5', version: '>= 5.12')
+# GNOME 50 floor; see docs/decisions/0015-gnome-50-platform-floor.md.
+dependency('glib-2.0', version: '>= 2.88')
+dependency('gio-2.0', version: '>= 2.88')
+dependency('gtk4', version: '>= 4.22')
+dependency('libadwaita-1', version: '>= 1.9')
+dependency('gtksourceview-5', version: '>= 5.18')
 dependency('sqlite3', version: '>= 3.46')
 
 if get_option('kerberos')

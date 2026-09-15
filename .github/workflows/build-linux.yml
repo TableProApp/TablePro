@@ -58,6 +58,7 @@ jobs:
             desktop-file-utils \
             appstream \
             libglib2.0-bin \
+            libxml2-utils \
             libgtk-4-dev \
             libadwaita-1-dev \
             libgtksourceview-5-dev \

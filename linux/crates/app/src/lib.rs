@@ -111,6 +111,7 @@ fn build_registry() -> DriverRegistry {
 #[cfg(test)]
 mod tests {
     use gio::prelude::ApplicationExt;
+    use glib::prelude::ObjectExt;
 
     use super::*;
 
@@ -132,6 +133,19 @@ mod tests {
         .expect("style.css is embedded at the resource base path");
 
         assert!(String::from_utf8_lossy(&data).contains(".tp-cell-modified"));
+    }
+
+    #[gtk4::test]
+    fn shortcuts_dialog_resource_builds() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        register_resources();
+
+        let builder = gtk4::Builder::from_resource(&format!("{}/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
+        let dialog = builder
+            .object::<adw::ShortcutsDialog>("shortcuts_dialog")
+            .expect("shortcuts_dialog is an AdwShortcutsDialog");
+
+        assert_eq!(dialog.type_().name(), "AdwShortcutsDialog");
     }
 
     #[gtk4::test]
