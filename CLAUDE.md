@@ -339,7 +339,9 @@ These are **non-negotiable**, never skip them:
 
 4. **Tests**: Every change with testable behavior must include or update unit/function tests. UI and user-flow changes should add or update `TableProUITests` UI automation where the flow runs deterministically; if it can't, note why in the PR description. When tests fail, fix the source code, never adjust tests to match incorrect output. Tests define expected behavior.
 
-5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance. `.swiftlint.yml` sets `included: [TablePro, Packages]`, so a bare run covers the app and every local package, including `TableProPluginKit` through the symlink in `TableProCore`. It still does not see the rest of `Plugins/` or the app's test bundles: pass those paths explicitly when your change is outside that scope, or the run passes while your code is broken.
+5. **Lint after changes**: Run `swiftlint lint --strict` to verify compliance. `.swiftlint.yml` sets `included: [TablePro, Packages]`, so a bare run covers the app and every local package, including `TableProPluginKit` through the symlink in `TableProCore`. It still does not see the rest of `Plugins/`, `TableProTests/` or `TableProUITests/`.
+
+    **Reaching those takes file paths, not directory paths.** SwiftLint applies `included:` to a directory argument and not to a file argument, so `swiftlint lint --strict TableProTests` reports zero violations having linted nothing at all: measured, that command finds 0 and `TableProTests/**/*.swift` finds 1,227. Glob to files for a change outside `included:`, e.g. `swiftlint lint --strict $(git show --name-only --format= HEAD | grep '\.swift$')`. `verify.sh lint` names any directory it was handed and then dropped, so a clean result is not read as coverage it never had.
 
 6. **Commit messages**: Follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). Single line only, no description body. Format: `<type>(<scope>): <description>`. Scope is optional but preferred when the change has a clear domain. Use `!` after type or scope for breaking changes (e.g. `refactor(ai-providers)!: drop OpenAI legacy completion endpoint`).
 
