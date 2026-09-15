@@ -422,6 +422,7 @@ targets:
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
       - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBOperations.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
@@ -555,6 +556,7 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift
       - Plugins/KafkaDriverPlugin/KafkaConnection.swift
+      - Plugins/KafkaDriverPlugin/KafkaDeleteTopicsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift

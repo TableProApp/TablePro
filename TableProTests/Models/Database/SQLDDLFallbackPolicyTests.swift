@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProPluginKit
 import Testing
 

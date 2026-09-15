@@ -109,6 +109,12 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
+    /// Export reads the collection through the driver's own paging rather than through a
+    /// fabricated `SELECT * FROM "<collection>"`, which this driver has no parser for.
+    func defaultExportQuery(table: String) -> String? {
+        WeaviateOperations.encodeExport(collection: table)
+    }
+
     // MARK: - Table Operations
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {

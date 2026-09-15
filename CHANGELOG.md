@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Delete for a Kafka topic, and `DROP TOPIC` in the Kafka query editor.
+- Delete for a DynamoDB table.
 - Credential profiles, one username and password shared by any number of connections. (#2853)
 - **Profiles** pane in Settings, listing credential profiles and SSH servers with how many connections use each.
 - **Credentials** picker on a connection's Authentication section, with **Save These as a Profile…**.
@@ -70,6 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
+- Empty Elasticsearch and Weaviate exports, which asked the engine for `SELECT * FROM`.
+- Drop Table and Truncate Table offered on every iOS engine, including Redis keys.
 - Delete and Truncate offered on engines that have no statement for them.
 - Truncate on a Redis database emptying whichever database the connection was on.
 - Base64 text instead of the request in the Typesense drop and truncate confirmation.

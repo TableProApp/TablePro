@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 
@@ -11,6 +12,14 @@ struct TableListView: View {
 
     private var activeSchema: String? {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
+    }
+
+    /// Truncate and Drop write literal `TRUNCATE TABLE` / `DROP TABLE` below, so they are only
+    /// offered where that is a statement the engine could run. On Redis the rows are keys and the
+    /// driver tokenises the text as a Redis command, so `DROP TABLE "session:42"` came back as an
+    /// unknown command after promising a delete.
+    private var engineSpeaksSQLDDL: Bool {
+        SQLDDLFallbackPolicy.allowsGeneratedDDL(databaseTypeId: connection.type.rawValue)
     }
 
     /// Scoped to the connection: one shared key leaves a filter from another connection applied
@@ -78,7 +87,7 @@ struct TableListView: View {
                             }
 
                             let isView = table.type == .view || table.type == .materializedView
-                            if !isView && !connection.safeModeLevel.blocksWrites {
+                            if !isView && !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL {
                                 Divider()
 
                                 Button(role: .destructive) {
@@ -192,7 +201,6 @@ struct TableListView: View {
             Text(errorMessage)
         }
     }
-
 }
 
 private struct TableRow: View {
@@ -226,8 +234,8 @@ private struct TableRow: View {
     private func formatRowCount(_ count: Int) -> String {
         if count >= 1_000_000 {
             return String(format: "%.1fM", Double(count) / 1_000_000)
-        } else if count >= 1000 {
-            return String(format: "%.1fK", Double(count) / 1000)
+        } else if count >= 1_000 {
+            return String(format: "%.1fK", Double(count) / 1_000)
         }
         return "\(count)"
     }

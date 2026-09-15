@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
 

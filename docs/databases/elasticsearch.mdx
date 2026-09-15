@@ -47,6 +47,8 @@ Grid edits become REST calls keyed by `_id`: `POST /index/_update/{id}`, `PUT /i
 
 Deleting an index from the sidebar sends `DELETE /<index>`, the request the confirmation shows.
 
+Export reads the whole index with a point-in-time and `search_after`, so it is not capped at the 10,000-document result window.
+
 ## Query DSL console
 
 <Frame caption="Query DSL console with a search result grid">

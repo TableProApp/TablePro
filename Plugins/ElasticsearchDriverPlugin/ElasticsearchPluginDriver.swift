@@ -202,6 +202,12 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         )
     }
 
+    /// Export reads the index through the driver's own paging rather than through a fabricated
+    /// `SELECT * FROM "<index>"`, which this driver rejects.
+    func defaultExportQuery(table: String) -> String? {
+        ElasticsearchOperations.encodeExport(index: table)
+    }
+
     // MARK: - Table Operations
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {

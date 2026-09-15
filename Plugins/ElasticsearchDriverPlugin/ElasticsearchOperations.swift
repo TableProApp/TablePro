@@ -20,6 +20,28 @@ enum ElasticsearchOperations {
         return "DELETE \(path)"
     }
 
+    static let exportTag = "ELASTICSEARCH_EXPORT:"
+
+    /// The statement Export asks the driver for, naming one index and nothing else.
+    ///
+    /// A tag rather than a console request, because Export must read the whole index and a console
+    /// request carries a `size` that would cap it. `streamRows` decodes this and pages with a
+    /// point-in-time and `search_after`, yielding each batch, so a large index never has to fit in
+    /// memory at once. Without it the app fabricates `SELECT * FROM "<index>"`, which this driver
+    /// answers with "Enter a request like: GET /my-index/_search" and the file comes out empty.
+    static func encodeExport(index: String) -> String {
+        "\(exportTag)\(Data(index.utf8).base64EncodedString())"
+    }
+
+    static func decodeExport(_ query: String) -> String? {
+        guard query.hasPrefix(exportTag),
+              let data = Data(base64Encoded: String(query.dropFirst(exportTag.count))),
+              let index = String(data: data, encoding: .utf8),
+              !index.isEmpty
+        else { return nil }
+        return index
+    }
+
     /// Only an index. Elasticsearch has no views or materialized views, so anything else the app
     /// asks about is not something this engine can drop.
     static func isIndexObject(_ objectType: String) -> Bool {

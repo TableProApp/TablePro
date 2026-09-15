@@ -151,6 +151,10 @@ internal struct DescribeTableResponse: Decodable {
     let Table: TableDescription
 }
 
+/// DeleteTable answers with the table's description as it enters DELETING. Nothing here reads it:
+/// the sidebar refreshes from ListTables, and the useful part of the reply is that it succeeded.
+internal struct DeleteTableResponse: Decodable {}
+
 internal struct TableDescription: Decodable {
     let TableName: String
     let KeySchema: [KeySchemaElement]?
@@ -336,6 +340,13 @@ internal final class DynamoDBConnection: @unchecked Sendable {
     func describeTable(tableName: String) async throws -> DescribeTableResponse {
         let body: [String: Any] = ["TableName": tableName]
         return try await request(target: "DynamoDB_20120810.DescribeTable", body: body)
+    }
+
+    /// DeleteTable answers as soon as the table enters DELETING, not once it is gone, so a listing
+    /// taken straight afterwards can still show it.
+    func deleteTable(tableName: String) async throws -> DeleteTableResponse {
+        let body: [String: Any] = ["TableName": tableName]
+        return try await request(target: "DynamoDB_20120810.DeleteTable", body: body)
     }
 
     func scan(
