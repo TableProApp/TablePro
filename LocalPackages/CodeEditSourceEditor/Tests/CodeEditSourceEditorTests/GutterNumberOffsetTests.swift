@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// Where the line number is actually painted, read back off the gutter.
 ///

@@ -31,7 +31,7 @@ struct EmphasisManagerTests {
 
         // No emphasis layers remain
         #expect(textView.layer?.sublayers?.count == nil)
-        #expect(textView.emphasisManager?.getEmphases(for: "e").count == 0)
+        #expect(textView.emphasisManager?.getEmphases(for: "e").isEmpty == true)
     }
 
     @Test()

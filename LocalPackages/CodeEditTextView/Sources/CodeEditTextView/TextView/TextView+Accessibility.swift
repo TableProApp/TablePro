@@ -84,8 +84,7 @@ extension TextView {
     override open func accessibilitySelectedTextRange() -> NSRange {
         guard let selection = selectionManager
             .textSelections
-            .sorted(by: { $0.range.lowerBound < $1.range.lowerBound })
-            .first else {
+            .min(by: { $0.range.lowerBound < $1.range.lowerBound }) else {
             return .notFound
         }
         if selection.range.isEmpty {

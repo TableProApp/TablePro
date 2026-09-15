@@ -6,13 +6,13 @@
 //
 
 import AppKit
-import SwiftUI
-import Combine
 import CodeEditTextView
+import Combine
+import SwiftUI
 
-extension SourceEditor {
+public extension SourceEditor {
     @MainActor
-    public class Coordinator: NSObject {
+    class Coordinator: NSObject {
         private weak var controller: TextViewController?
         let phase = RepresentableSyncPhase()
         let textSync: TextBindingSync

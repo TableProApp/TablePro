@@ -1,7 +1,7 @@
-import Testing
 import AppKit
-import CodeEditTextView
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import Testing
 
 @MainActor
 struct FindPanelTests {

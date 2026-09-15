@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 1/18/24.
 //
 
-import Foundation
 import CodeEditTextView
+import Foundation
 import SwiftTreeSitter
 
 extension TextView {

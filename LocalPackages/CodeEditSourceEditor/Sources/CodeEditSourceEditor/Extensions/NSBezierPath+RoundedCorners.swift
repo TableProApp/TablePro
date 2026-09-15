@@ -12,20 +12,19 @@ import AppKit
 
 extension NSBezierPath {
     struct Corners: OptionSet {
-        public let rawValue: Int
+        let rawValue: Int
 
-        public init(rawValue: Corners.RawValue) {
+        init(rawValue: Int) {
             self.rawValue = rawValue
         }
 
-        public static let topLeft = Corners(rawValue: 1 << 0)
-        public static let bottomLeft = Corners(rawValue: 1 << 1)
-        public static let topRight = Corners(rawValue: 1 << 2)
-        public static let bottomRight = Corners(rawValue: 1 << 3)
-        public static let all: Corners = Corners(rawValue: 0b1111)
+        static let topLeft = Corners(rawValue: 1 << 0)
+        static let bottomLeft = Corners(rawValue: 1 << 1)
+        static let topRight = Corners(rawValue: 1 << 2)
+        static let bottomRight = Corners(rawValue: 1 << 3)
+        static let all = Corners(rawValue: 0b1111)
     }
 
-    // swiftlint:disable:next function_body_length
     convenience init(rect: CGRect, roundedCorners corners: Corners, cornerRadius: CGFloat) {
         self.init()
 

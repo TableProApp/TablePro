@@ -42,7 +42,7 @@ struct SpecialCharacterLayoutTests {
     func backspaceIsInvisibleWithoutTheStyle() throws {
         let fragment = try onlyFragment(typeset("A\u{8}SELECT", style: nil))
         #expect(fragment.specialCharacters.isEmpty)
-        #expect(fragment._xPos(for: 2) - fragment._xPos(for: 1) < 0.5)
+        #expect(fragment.xPosition(for: 2) - fragment.xPosition(for: 1) < 0.5)
     }
 
     @Test("A backspace reserves a labelled box of its own width")
@@ -52,17 +52,17 @@ struct SpecialCharacterLayoutTests {
         #expect(fragment.specialCharacters.count == 1)
         #expect(mark.offset == 1)
         #expect(mark.character == .marker(label: "BS"))
-        let boxWidth = fragment._xPos(for: 2) - fragment._xPos(for: 1)
+        let boxWidth = fragment.xPosition(for: 2) - fragment.xPosition(for: 1)
         #expect(boxWidth == SpecialCharacterMetrics.markerWidth(label: "BS", font: font))
         #expect(boxWidth > characterWidth)
-        #expect(abs(fragment._xPos(for: 1) - characterWidth) < 0.5)
+        #expect(abs(fragment.xPosition(for: 1) - characterWidth) < 0.5)
     }
 
     @Test("Text after a marker moves right by the box, so nothing is drawn on top of it")
     func textAfterMarkerIsOffset() throws {
         let plain = try onlyFragment(typeset("ASELECT", style: nil))
         let marked = try onlyFragment(typeset("A\u{8}SELECT"))
-        let boxWidth = marked._xPos(for: 2) - marked._xPos(for: 1)
+        let boxWidth = marked.xPosition(for: 2) - marked.xPosition(for: 1)
         #expect(abs(marked.width - (plain.width + boxWidth)) < 0.5)
     }
 
@@ -71,7 +71,7 @@ struct SpecialCharacterLayoutTests {
         let fragment = try onlyFragment(typeset("a\u{A0}b"))
         let mark = try #require(fragment.specialCharacters.first)
         #expect(mark.character == .blankSpace)
-        #expect(abs((fragment._xPos(for: 2) - fragment._xPos(for: 1)) - characterWidth) < 0.5)
+        #expect(abs((fragment.xPosition(for: 2) - fragment.xPosition(for: 1)) - characterWidth) < 0.5)
     }
 
     @Test("A tag character outside the BMP gets one box and no caret stop between its two halves")
@@ -81,13 +81,13 @@ struct SpecialCharacterLayoutTests {
         #expect(mark.character == .marker(label: "E0041"))
         #expect(mark.offset == 1)
         #expect(mark.length == 2)
-        let boxWidth = fragment._xPos(for: 3) - fragment._xPos(for: 1)
+        let boxWidth = fragment.xPosition(for: 3) - fragment.xPosition(for: 1)
         #expect(boxWidth == SpecialCharacterMetrics.markerWidth(label: "E0041", font: font))
         guard case .text(let line) = fragment.contents.first?.data else {
             Issue.record("Expected a text run")
             return
         }
-        let start = fragment._xPos(for: 1)
+        let start = fragment.xPosition(for: 1)
         for step in 0...10 {
             let point = CGPoint(x: start + boxWidth * CGFloat(step) / 10, y: 0)
             #expect(CTLineGetStringIndexForPosition(line, point) != 2)
@@ -106,7 +106,7 @@ struct SpecialCharacterLayoutTests {
     @Test("With marks off, a right-to-left override still cannot reorder the text")
     func overrideIsNeutralizedWithoutTheStyle() throws {
         let fragment = try onlyFragment(typeset("A\u{202E}BCD", style: nil))
-        let positions = (0...5).map { fragment._xPos(for: $0) }
+        let positions = (0...5).map { fragment.xPosition(for: $0) }
         #expect(positions == positions.sorted())
     }
 
@@ -115,8 +115,8 @@ struct SpecialCharacterLayoutTests {
         let fragment = try onlyFragment(typeset("A\u{8}B\u{A0}C\u{E0041}D"))
         #expect(fragment.specialCharacters.count == 3)
         for mark in fragment.specialCharacters {
-            #expect(abs(mark.minX - fragment._xPos(for: mark.offset)) < 0.5)
-            #expect(abs(mark.maxX - fragment._xPos(for: mark.offset + mark.length)) < 0.5)
+            #expect(abs(mark.minX - fragment.xPosition(for: mark.offset)) < 0.5)
+            #expect(abs(mark.maxX - fragment.xPosition(for: mark.offset + mark.length)) < 0.5)
             #expect(mark.maxX > mark.minX)
         }
     }
@@ -130,7 +130,7 @@ struct SpecialCharacterLayoutTests {
     @Test("A right-to-left override is shown instead of reversing the text after it")
     func overrideDoesNotReorder() throws {
         let fragment = try onlyFragment(typeset("A\u{202E}BCD"))
-        let positions = (0...5).map { fragment._xPos(for: $0) }
+        let positions = (0...5).map { fragment.xPosition(for: $0) }
         #expect(positions == positions.sorted())
     }
 

@@ -1,9 +1,9 @@
-import XCTest
 @testable import CodeEditTextView
+import XCTest
 
 fileprivate extension CGFloat {
     func approxEqual(_ value: CGFloat) -> Bool {
-        return abs(self - value) < 0.05
+        abs(self - value) < 0.05
     }
 }
 
@@ -11,8 +11,7 @@ extension UUID: @retroactive Identifiable {
     public var id: UUID { self }
 }
 
-final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this type_body_length
-
+final class TextLayoutLineStorageTests: XCTestCase {
     /// Creates a balanced height=3 tree useful for testing and debugging.
     /// - Returns: A new tree.
     fileprivate func createBalancedTree() -> TextLineStorage<TextLine> {
@@ -40,8 +39,8 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
             let leftSubtreeData = checkChildren(node.left)
             let rightSubtreeData = checkChildren(node.right)
 
-            XCTAssert(leftSubtreeData.length == node.leftSubtreeOffset, "Left subtree length incorrect")
-            XCTAssert(leftSubtreeData.count == node.leftSubtreeCount, "Left subtree node count incorrect")
+            XCTAssertEqual(leftSubtreeData.length, node.leftSubtreeOffset, "Left subtree length incorrect")
+            XCTAssertEqual(leftSubtreeData.count, node.leftSubtreeCount, "Left subtree node count incorrect")
             XCTAssert(leftSubtreeData.height.approxEqual(node.leftSubtreeHeight), "Left subtree height incorrect")
 
             let subtreeWidth = max(node.width, leftSubtreeData.maxWidth, rightSubtreeData.maxWidth)
@@ -57,14 +56,14 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
 
         let rootData = checkChildren(tree.root)
 
-        XCTAssert(rootData.count == tree.count, "Node count incorrect")
-        XCTAssert(rootData.length == tree.length, "Length incorrect")
+        XCTAssertEqual(rootData.count, tree.count, "Node count incorrect")
+        XCTAssertEqual(rootData.length, tree.length, "Length incorrect")
         XCTAssert(rootData.height.approxEqual(tree.height), "Height incorrect")
         XCTAssertEqual(rootData.maxWidth, tree.maxWidth, "Max width incorrect")
 
         var lastIdx = -1
         for line in tree {
-            XCTAssert(lastIdx == line.index - 1, "Incorrect index found")
+            XCTAssertEqual(lastIdx, line.index - 1, "Incorrect index found")
             lastIdx = line.index
         }
     }
@@ -74,9 +73,9 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
 
         // Single Element
         tree.insert(line: TextLine(), atOffset: 0, length: 1, height: 50.0)
-        XCTAssert(tree.length == 1, "Tree length incorrect")
-        XCTAssert(tree.count == 1, "Tree count incorrect")
-        XCTAssert(tree.height == 50.0, "Tree height incorrect")
+        XCTAssertEqual(tree.length, 1, "Tree length incorrect")
+        XCTAssertEqual(tree.count, 1, "Tree count incorrect")
+        XCTAssertEqual(tree.height, 50.0, "Tree height incorrect")
         XCTAssert(tree.root?.right == nil && tree.root?.left == nil, "Somehow inserted an extra node.")
         try assertTreeMetadataCorrect(tree)
 
@@ -143,69 +142,68 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
             let originalCount = tree.count
             let originalLength = tree.length
             tree.update(atOffset: Int.random(in: 0..<tree.length), delta: delta, deltaHeight: deltaHeight)
-            XCTAssert(originalCount == tree.count, "Tree count should not change on update")
-            XCTAssert(originalHeight + deltaHeight == tree.height, "Tree height incorrect")
-            XCTAssert(originalLength + delta == tree.length, "Tree length incorrect")
+            XCTAssertEqual(originalCount, tree.count, "Tree count should not change on update")
+            XCTAssertEqual(originalHeight + deltaHeight, tree.height, "Tree height incorrect")
+            XCTAssertEqual(originalLength + delta, tree.length, "Tree length incorrect")
             try assertTreeMetadataCorrect(tree)
         }
     }
 
-    // swiftlint:disable:next function_body_length
     func test_delete() throws {
         var tree = TextLineStorage<TextLine>()
 
         // Single Element
         tree.insert(line: TextLine(), atOffset: 0, length: 1, height: 1.0)
-        XCTAssert(tree.length == 1, "Tree length incorrect")
+        XCTAssertEqual(tree.length, 1, "Tree length incorrect")
         tree.delete(lineAt: 0)
-        XCTAssert(tree.length == 0, "Tree failed to delete single node")
-        XCTAssert(tree.root == nil, "Tree root should be nil")
+        XCTAssertEqual(tree.length, 0, "Tree failed to delete single node")
+        XCTAssertNil(tree.root, "Tree root should be nil")
         try assertTreeMetadataCorrect(tree)
 
         // Delete first
 
         tree = createBalancedTree()
         tree.delete(lineAt: 0)
-        XCTAssert(tree.count == 14, "Tree length incorrect")
-        XCTAssert(tree.first?.range.length == 2, "Failed to delete leftmost node")
+        XCTAssertEqual(tree.count, 14, "Tree length incorrect")
+        XCTAssertEqual(tree.first?.range.length, 2, "Failed to delete leftmost node")
         try assertTreeMetadataCorrect(tree)
 
         // Delete last
 
         tree = createBalancedTree()
         tree.delete(lineAt: tree.length - 1)
-        XCTAssert(tree.count == 14, "Tree length incorrect")
-        XCTAssert(tree.last?.range.length == 14, "Failed to delete rightmost node")
+        XCTAssertEqual(tree.count, 14, "Tree length incorrect")
+        XCTAssertEqual(tree.last?.range.length, 14, "Failed to delete rightmost node")
         try assertTreeMetadataCorrect(tree)
 
         // Delete mid leaf
 
         tree = createBalancedTree()
         tree.delete(lineAt: 45)
-        XCTAssert(tree.root?.right?.left?.length == 11, "Failed to remove node 10")
-        XCTAssert(tree.root?.right?.leftSubtreeOffset == 20, "Failed to update metadata on parent of node 10")
-        XCTAssert(tree.root?.right?.left?.right == nil, "Failed to replace node 10 with node 11")
-        XCTAssert(tree.count == 14, "Tree length incorrect")
+        XCTAssertEqual(tree.root?.right?.left?.length, 11, "Failed to remove node 10")
+        XCTAssertEqual(tree.root?.right?.leftSubtreeOffset, 20, "Failed to update metadata on parent of node 10")
+        XCTAssertNil(tree.root?.right?.left?.right, "Failed to replace node 10 with node 11")
+        XCTAssertEqual(tree.count, 14, "Tree length incorrect")
         try assertTreeMetadataCorrect(tree)
 
         tree = createBalancedTree()
         tree.delete(lineAt: 66)
-        XCTAssert(tree.root?.right?.length == 13, "Failed to remove node 12")
-        XCTAssert(tree.root?.right?.leftSubtreeOffset == 30, "Failed to update metadata on parent of node 13")
-        XCTAssert(tree.root?.right?.left?.right?.left == nil, "Failed to replace node 12 with node 13")
-        XCTAssert(tree.count == 14, "Tree length incorrect")
+        XCTAssertEqual(tree.root?.right?.length, 13, "Failed to remove node 12")
+        XCTAssertEqual(tree.root?.right?.leftSubtreeOffset, 30, "Failed to update metadata on parent of node 13")
+        XCTAssertNil(tree.root?.right?.left?.right?.left, "Failed to replace node 12 with node 13")
+        XCTAssertEqual(tree.count, 14, "Tree length incorrect")
         try assertTreeMetadataCorrect(tree)
 
         // Delete root
 
         tree = createBalancedTree()
-        tree.delete(lineAt: tree.root!.leftSubtreeOffset + 1)
-        XCTAssert(tree.root?.color == .black, "Root color incorrect")
-        XCTAssert(tree.root?.right?.left?.left == nil, "Replacement node was not moved to root")
-        XCTAssert(tree.root?.leftSubtreeCount == 7, "Replacement node was not given correct metadata.")
-        XCTAssert(tree.root?.leftSubtreeHeight == 7.0, "Replacement node was not given correct metadata.")
-        XCTAssert(tree.root?.leftSubtreeOffset == 28, "Replacement node was not given correct metadata.")
-        XCTAssert(tree.count == 14, "Tree length incorrect")
+        tree.delete(lineAt: try XCTUnwrap(tree.root).leftSubtreeOffset + 1)
+        XCTAssertEqual(tree.root?.color, .black, "Root color incorrect")
+        XCTAssertNil(tree.root?.right?.left?.left, "Replacement node was not moved to root")
+        XCTAssertEqual(tree.root?.leftSubtreeCount, 7, "Replacement node was not given correct metadata.")
+        XCTAssertEqual(tree.root?.leftSubtreeHeight, 7.0, "Replacement node was not given correct metadata.")
+        XCTAssertEqual(tree.root?.leftSubtreeOffset, 28, "Replacement node was not given correct metadata.")
+        XCTAssertEqual(tree.count, 14, "Tree length incorrect")
         try assertTreeMetadataCorrect(tree)
 
         // Delete a bunch of random
@@ -216,7 +214,7 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
             while !tree.isEmpty {
                 lastCount -= 1
                 tree.delete(lineAt: Int.random(in: 0..<tree.count))
-                XCTAssert(tree.count == lastCount, "Tree length incorrect")
+                XCTAssertEqual(tree.count, lastCount, "Tree length incorrect")
                 var last = -1
                 for line in tree {
                     XCTAssert(line.range.length > last, "Out of order after deletion")
@@ -296,7 +294,7 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
     /// Rotations and the two-child delete are where a width aggregate goes wrong, and a hand-written case reaches only
     /// the few shapes it was written for.
     func test_widthAggregateMatchesAModelThroughRandomEdits() throws {
-        var generator = SeededGenerator(seed: 2709)
+        var generator = SeededGenerator(seed: 2_709)
         let tree = TextLineStorage<TextLine>()
         var model: [(length: Int, width: CGFloat)] = []
 
@@ -388,7 +386,7 @@ final class TextLayoutLineStorageTests: XCTestCase { // swiftlint:disable:this t
         }
     }
 
-    func test_transplantWithExistingLeftNodes() throws { // swiftlint:disable:this function_body_length
+    func test_transplantWithExistingLeftNodes() throws {
         typealias Storage = TextLineStorage<UUID>
         typealias Node = TextLineStorage<UUID>.Node
         // Test that when transplanting a node with no left nodes, with a node with left nodes, that

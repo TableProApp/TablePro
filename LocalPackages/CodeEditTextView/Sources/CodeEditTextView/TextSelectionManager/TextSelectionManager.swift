@@ -21,17 +21,16 @@ public protocol TextSelectionManagerDelegate: AnyObject {
 public class TextSelectionManager: NSObject {
     // MARK: - Properties
 
-    // swiftlint:disable:next line_length
-    public static let selectionChangedNotification: Notification.Name = Notification.Name("com.CodeEdit.TextSelectionManager.TextSelectionChangedNotification")
+    public static let selectionChangedNotification = Notification.Name("com.CodeEdit.TextSelectionManager.TextSelectionChangedNotification")
 
-    public var insertionPointColor: NSColor = NSColor.labelColor {
+    public var insertionPointColor = NSColor.labelColor {
         didSet {
             textSelections.compactMap({ $0.view as? CursorView }).forEach { $0.color = insertionPointColor }
         }
     }
     public var highlightSelectedLine: Bool = true
-    public var selectedLineBackgroundColor: NSColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
-    public var selectionBackgroundColor: NSColor = NSColor.selectedTextBackgroundColor
+    public var selectedLineBackgroundColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
+    public var selectionBackgroundColor = NSColor.selectedTextBackgroundColor
     public var useSystemCursor: Bool = false {
         didSet {
             updateSelectionViews()
@@ -45,7 +44,7 @@ public class TextSelectionManager: NSObject {
         }
     }
 
-    internal(set) public var textSelections: [TextSelection] = []
+    public internal(set) var textSelections: [TextSelection] = []
     weak var layoutManager: TextLayoutManager?
     weak var textStorage: NSTextStorage?
     weak var textView: TextView?

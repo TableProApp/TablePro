@@ -8,13 +8,13 @@
 import AppKit
 import TextStory
 
-extension TextView {
+public extension TextView {
     /// Replace the characters in the given ranges with the given string.
     /// - Parameters:
     ///   - ranges: The ranges to replace
     ///   - string: The string to insert in the ranges.
     ///   - skipUpdateSelection: Skips the selection update step
-    public func replaceCharacters(
+    func replaceCharacters(
         in ranges: [NSRange],
         with string: String,
         skipUpdateSelection: Bool = false
@@ -32,7 +32,7 @@ extension TextView {
         for range in ranges.sorted(by: { $0.location > $1.location }) where valid(range: range, string: string) {
             delegate?.textView(self, willReplaceContentsIn: range, with: string)
 
-            _undoManager?.registerMutation(
+            editorUndoManager?.registerMutation(
                 TextMutation(string: string as String, range: range, limit: textStorage.length)
             )
             textStorage.replaceCharacters(
@@ -70,7 +70,7 @@ extension TextView {
     ///   - range: The range to replace.
     ///   - string: The string to insert in the range.
     ///   - skipUpdateSelection: Skips the selection update step
-    public func replaceCharacters(
+    func replaceCharacters(
         in range: NSRange,
         with string: String,
         skipUpdateSelection: Bool = false
@@ -92,7 +92,7 @@ extension TextView {
     /// - Note: The selections are iterated in reverse order, so modifications to earlier selections won't affect later
     ///   ones. The method automatically calls `notifyAfterEdit()` on the `selectionManager` after all
     ///   selections are processed.
-    public func editSelections(callback: (TextView, TextSelectionManager.TextSelection) -> Void) {
+    func editSelections(callback: (TextView, TextSelectionManager.TextSelection) -> Void) {
         for textSelection in selectionManager.textSelections.reversed() {
             callback(self, textSelection)
         }

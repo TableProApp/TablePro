@@ -1,6 +1,6 @@
 import AppKit
-import Testing
 @testable import CodeEditTextView
+import Testing
 
 /// Input services, accessibility clients and the view's own marked-text bookkeeping all hand the
 /// text view ranges computed against a document that may since have changed. `NSString` and

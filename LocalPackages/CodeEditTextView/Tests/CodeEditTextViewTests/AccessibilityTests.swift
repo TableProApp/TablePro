@@ -5,9 +5,9 @@
 //  Created by Khan Winter on 7/17/25.
 //
 
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 @MainActor
 @Suite
@@ -17,7 +17,7 @@ struct AccessibilityTests {
 
     init() {
         textView = TextView(string: sampleText)
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.updateFrameIfNeeded()
     }
 
@@ -92,7 +92,7 @@ struct AccessibilityTests {
 
     @Test
     func accessibilityRangeForInvalidIndex() {
-        let range = textView.accessibilityRange(for: 1000)
+        let range = textView.accessibilityRange(for: 1_000)
         #expect(range == .notFound)
     }
 
@@ -205,7 +205,7 @@ struct AccessibilityTests {
 
     @Test
     func accessibilityLineForInvalidIndex() {
-        let lineIndex = textView.accessibilityLine(for: 1000)
+        let lineIndex = textView.accessibilityLine(for: 1_000)
         #expect(lineIndex == -1)
     }
 

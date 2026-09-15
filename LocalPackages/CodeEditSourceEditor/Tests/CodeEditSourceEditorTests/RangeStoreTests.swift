@@ -1,9 +1,9 @@
-import Testing
 @testable import CodeEditSourceEditor
+import Testing
 
 extension RangeStore {
-    var length: Int { _guts.summary.length }
-    var count: Int { _guts.count }
+    var length: Int { rope.summary.length }
+    var runCount: Int { rope.count }
 }
 
 @Suite
@@ -13,7 +13,7 @@ struct RangeStoreTests {
     @Test
     func initWithLength() {
         for _ in 0..<100 {
-            let length = Int.random(in: 0..<1000)
+            let length = Int.random(in: 0..<1_000)
             let store = Store(documentLength: length)
             #expect(store.length == length)
         }
@@ -26,7 +26,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 10..<12, withCount: 0)
         #expect(store.length == 98, "Failed to remove correct range")
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -34,7 +34,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 95..<100, withCount: 0)
         #expect(store.length == 95, "Failed to remove correct range")
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -50,7 +50,7 @@ struct RangeStoreTests {
         )
         store.storageUpdated(replacedCharactersIn: 9..<10, withCount: 0)
         #expect(store.length == 9, "Failed to remove correct range")
-        #expect(store.count == 2)
+        #expect(store.runCount == 2)
     }
 
     @Test
@@ -58,7 +58,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 0..<15, withCount: 0)
         #expect(store.length == 85, "Failed to remove correct range")
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -66,7 +66,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 0..<100, withCount: 0)
         #expect(store.length == 0, "Failed to remove correct range")
-        #expect(store.count == 0, "Failed to remove all runs")
+        #expect(store.runCount == 0, "Failed to remove all runs")
     }
 
     @Test
@@ -74,7 +74,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 45..<45, withCount: 10)
         #expect(store.length == 110)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -82,7 +82,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 100..<100, withCount: 10)
         #expect(store.length == 110)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -90,7 +90,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 0..<0, withCount: 10)
         #expect(store.length == 110)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -98,7 +98,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 0)
         store.storageUpdated(replacedCharactersIn: 0..<0, withCount: 10)
         #expect(store.length == 10)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -106,7 +106,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 45..<50, withCount: 10)
         #expect(store.length == 105)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -114,7 +114,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 95..<100, withCount: 10)
         #expect(store.length == 105)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -122,7 +122,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 0..<5, withCount: 10)
         #expect(store.length == 105)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     @Test
@@ -130,7 +130,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.storageUpdated(replacedCharactersIn: 0..<100, withCount: 10)
         #expect(store.length == 10)
-        #expect(store.count == 1, "Failed to coalesce")
+        #expect(store.runCount == 1, "Failed to coalesce")
     }
 
     // MARK: - Styles
@@ -140,7 +140,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.set(value: .init(capture: .comment, modifiers: [.static]), for: 45..<50)
         #expect(store.length == 100)
-        #expect(store.count == 3)
+        #expect(store.runCount == 3)
 
         let runs = store.runs(in: 0..<100)
         #expect(runs.count == 3)
@@ -162,7 +162,7 @@ struct RangeStoreTests {
         var store = Store(documentLength: 100)
         store.set(value: .init(capture: .comment, modifiers: [.static]), for: 45..<50)
         #expect(store.length == 100)
-        #expect(store.count == 3)
+        #expect(store.runCount == 3)
 
         let runs = store.runs(in: 47..<100)
         #expect(runs.count == 2)
@@ -230,11 +230,11 @@ struct RangeStoreTests {
                 "Run \($0.offset) has incorrect length: \($0.element.length). Expected \(lengths[$0.offset])"
             )
             #expect(
-                $0.element.value?.capture == captures[$0.offset], // swiftlint:disable:next line_length
+                $0.element.value?.capture == captures[$0.offset],
                 "Run \($0.offset) has incorrect capture: \(String(describing: $0.element.value?.capture)). Expected \(String(describing: captures[$0.offset]))"
             )
             #expect(
-                $0.element.value?.modifiers == modifiers[$0.offset], // swiftlint:disable:next line_length
+                $0.element.value?.modifiers == modifiers[$0.offset],
                 "Run \($0.offset) has incorrect modifiers: \(String(describing: $0.element.value?.modifiers)). Expected \(modifiers[$0.offset])"
             )
         }
@@ -288,7 +288,7 @@ struct RangeStoreTests {
             return start..<end
         }
 
-        for _ in 0..<1000 {
+        for _ in 0..<1_000 {
             runsInAlwaysBoundedByRange(range())
         }
     }

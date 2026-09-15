@@ -63,7 +63,7 @@ public final class EmphasisManager {
 
     private var emphasisGroups: [String: [EmphasisLayer]] = [:]
     private let activeColor: NSColor = .findHighlightColor
-    private let inactiveColor: NSColor = NSColor.lightGray.withAlphaComponent(0.4)
+    private let inactiveColor = NSColor.lightGray.withAlphaComponent(0.4)
     private var originalSelectionColor: NSColor?
     private var hasPendingGeometryUpdates = false
     let toolTips = EmphasisToolTips()

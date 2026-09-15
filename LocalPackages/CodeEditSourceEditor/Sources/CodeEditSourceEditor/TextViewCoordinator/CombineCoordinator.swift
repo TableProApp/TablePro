@@ -5,9 +5,9 @@
 //  Created by Khan Winter on 5/19/24.
 //
 
-import Foundation
-import Combine
 import CodeEditTextView
+import Combine
+import Foundation
 
 /// A ``TextViewCoordinator`` class that publishes text changes and selection changes using Combine publishers.
 ///

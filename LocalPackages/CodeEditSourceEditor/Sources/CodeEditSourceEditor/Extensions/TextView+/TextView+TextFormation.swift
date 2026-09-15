@@ -5,19 +5,18 @@
 //  Created by Khan Winter on 10/14/23.
 //
 
-import Foundation
 import CodeEditTextView
-import TextStory
+import Foundation
 import TextFormation
+import TextStory
 
 extension TextView: @retroactive TextStoring {}
 extension TextView: @retroactive TextInterface {
     public var selectedRange: NSRange {
         get {
-            return selectionManager
+            selectionManager
                 .textSelections
-                .sorted(by: { $0.range.lowerBound < $1.range.lowerBound })
-                .first?
+                .min(by: { $0.range.lowerBound < $1.range.lowerBound })?
                 .range ?? .zero
         }
         set {
@@ -30,7 +29,7 @@ extension TextView: @retroactive TextInterface {
     }
 
     public func substring(from range: NSRange) -> String? {
-        return textStorage.substring(from: range)
+        textStorage.substring(from: range)
     }
 
     /// Applies the mutation to the text view.
@@ -40,7 +39,7 @@ extension TextView: @retroactive TextInterface {
     /// - Parameter mutation: The mutation to apply.
     public func applyMutation(_ mutation: TextMutation) {
         guard !mutation.isEmpty else { return }
-        _undoManager?.registerMutation(mutation)
+        editorUndoManager?.registerMutation(mutation)
         textStorage.replaceCharacters(in: mutation.range, with: mutation.string)
         selectionManager.didReplaceCharacters(
             in: mutation.range,

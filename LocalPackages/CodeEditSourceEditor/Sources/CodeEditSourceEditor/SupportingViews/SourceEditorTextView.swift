@@ -104,5 +104,4 @@ final class SourceEditorTextView: TextView {
         }
         context.restoreGState()
     }
-
 }

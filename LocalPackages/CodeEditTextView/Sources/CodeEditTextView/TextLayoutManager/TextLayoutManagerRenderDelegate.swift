@@ -12,7 +12,7 @@ import AppKit
 ///
 /// All methods on this protocol are optional, and default to the default behavior.
 public protocol TextLayoutManagerRenderDelegate: AnyObject {
-    func prepareForDisplay( // swiftlint:disable:this function_parameter_count
+    func prepareForDisplay(
         textLine: TextLine,
         displayData: TextLine.DisplayData,
         range: NSRange,
@@ -29,7 +29,7 @@ public protocol TextLayoutManagerRenderDelegate: AnyObject {
 }
 
 public extension TextLayoutManagerRenderDelegate {
-    func prepareForDisplay( // swiftlint:disable:this function_parameter_count
+    func prepareForDisplay(
         textLine: TextLine,
         displayData: TextLine.DisplayData,
         range: NSRange,
@@ -55,6 +55,6 @@ public extension TextLayoutManagerRenderDelegate {
     }
 
     func characterXPosition(in lineFragment: LineFragment, for offset: Int) -> CGFloat {
-        lineFragment._xPos(for: offset)
+        lineFragment.xPosition(for: offset)
     }
 }

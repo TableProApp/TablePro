@@ -8,7 +8,7 @@
 import Foundation
 import SwiftTreeSitter
 
-extension TextViewController {
+package extension TextViewController {
     /// Tears down and rebuilds the highlighter for the text view's current storage.
     ///
     /// Ends with an explicit `invalidate()` so the rebuilt highlighter queries the
@@ -16,7 +16,7 @@ extension TextViewController {
     /// triggers (an edit, a frame change, or an invalidation); after a mid-session
     /// storage swap such as `setText`, none of those is guaranteed to fire, and
     /// without this the document stays unstyled until the next layout change.
-    package func setUpHighlighter() {
+    func setUpHighlighter() {
         if let highlighter {
             textView.removeStorageDelegate(highlighter)
             self.highlighter = nil
@@ -39,7 +39,7 @@ extension TextViewController {
     /// providers early.
     ///
     /// - Parameter newProviders: All the new providers.
-    package func setHighlightProviders(_ newProviders: [HighlightProviding]) {
+    func setHighlightProviders(_ newProviders: [HighlightProviding]) {
         highlighter?.setProviders(newProviders)
         highlightProviders = newProviders
     }

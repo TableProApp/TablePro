@@ -10,7 +10,7 @@ import AppKit
 extension NSColor {
     convenience init(light: NSColor, dark: NSColor) {
         self.init(name: nil) { appearance in
-            return switch appearance.bestMatch(from: [.aqua, .darkAqua]) {
+            switch appearance.bestMatch(from: [.aqua, .darkAqua]) {
             case .darkAqua:
                 dark
             default:

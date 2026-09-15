@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditTextView
+import XCTest
 
 class KillRingTests: XCTestCase {
     func test_killRingYank() {

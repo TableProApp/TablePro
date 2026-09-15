@@ -42,7 +42,7 @@ final class HighlighterTests: XCTestCase {
     }
 
     class SentryStorageDelegate: NSObject, NSTextStorageDelegate {
-        var editedIndices: IndexSet = IndexSet()
+        var editedIndices = IndexSet()
 
         func textStorage(
             _ textStorage: NSTextStorage,
@@ -59,7 +59,7 @@ final class HighlighterTests: XCTestCase {
     override func setUp() {
         attributeProvider = MockAttributeProvider()
         textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
     }
 
     @MainActor
@@ -77,7 +77,7 @@ final class HighlighterTests: XCTestCase {
         }
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText("Hello World!")
         let highlighter = Mock.highlighter(
             textView: textView,
@@ -122,7 +122,7 @@ final class HighlighterTests: XCTestCase {
         let highlightProvider1 = MockHighlightProvider(queryResponse: { .success([]) })
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText("Hello World!")
         let highlighter = Mock.highlighter(
             textView: textView,
@@ -146,7 +146,7 @@ final class HighlighterTests: XCTestCase {
 
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText("Hello World!")
 
         let highlighter = Mock.highlighter(
@@ -173,7 +173,7 @@ final class HighlighterTests: XCTestCase {
 
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText("Hello World!")
 
         let highlighter = Mock.highlighter(
@@ -204,7 +204,7 @@ final class HighlighterTests: XCTestCase {
 
             let attributeProvider = MockAttributeProvider()
             let textView = Mock.textView()
-            textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+            textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
             textView.setText("Hello World!")
 
             let highlighter = Mock.highlighter(
@@ -281,7 +281,7 @@ final class HighlighterTests: XCTestCase {
     func test_editDoesNotHighlightDocumentOverMaxLength() {
         let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText(String(repeating: "a", count: 64))
 
         let highlighter = Mock.highlighter(
@@ -305,7 +305,7 @@ final class HighlighterTests: XCTestCase {
     func test_editHighlightsDocumentUnderMaxLength() {
         let highlightProvider = MockHighlightProvider(queryResponse: { .success([]) })
         let textView = Mock.textView()
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.setText("SELECT 1;")
 
         let highlighter = Mock.highlighter(

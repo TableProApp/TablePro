@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 8/20/24.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 public extension TextSelectionManager {
     class TextSelection: Hashable, Equatable {

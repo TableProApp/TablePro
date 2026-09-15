@@ -69,7 +69,7 @@ public enum EditorHighlighting {
 ///
 @MainActor
 class Highlighter: NSObject {
-    static private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "Highlighter")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "Highlighter")
 
     /// The current language of the editor.
     private var language: CodeLanguage
@@ -89,7 +89,7 @@ class Highlighter: NSObject {
     /// Counts upwards to provide unique IDs for new highlight providers.
     private var providerIdCounter: Int
 
-    public var maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
+    var maxHighlightableLength: Int = EditorHighlighting.maxHighlightableCharacters
 
     // MARK: - Init
 
@@ -114,7 +114,7 @@ class Highlighter: NSObject {
 
         styleContainer.delegate = self
         visibleRangeProvider.delegate = self
-        self.highlightProviders = providers.enumerated().map { (idx, provider) in
+        self.highlightProviders = providers.enumerated().map { idx, provider in
             HighlightProviderState(
                 id: providerIds[idx],
                 delegate: styleContainer,
@@ -129,17 +129,17 @@ class Highlighter: NSObject {
     // MARK: - Public
 
     /// Invalidates all text in the editor. Useful for updating themes.
-    public func invalidate() {
+    func invalidate() {
         highlightProviders.forEach { $0.invalidate() }
     }
 
-    public func invalidate(_ set: IndexSet) {
+    func invalidate(_ set: IndexSet) {
         highlightProviders.forEach { $0.invalidate(set) }
     }
 
     /// Sets the language and causes a re-highlight of the entire text.
     /// - Parameter language: The language to update to.
-    public func setLanguage(language: CodeLanguage) {
+    func setLanguage(language: CodeLanguage) {
         guard let textView = self.textView else { return }
 
         // Remove all current highlights. Makes the language setting feel snappier and tells the user we're doing
@@ -161,7 +161,7 @@ class Highlighter: NSObject {
     ///
     /// - Note: Each provider will be identified by it's object ID.
     /// - Parameter providers: All providers to use.
-    public func setProviders(_ providers: [HighlightProviding]) {
+    func setProviders(_ providers: [HighlightProviding]) {
         guard let textView else { return }
         self.styleContainer.updateStorageLength(newLength: textView.textStorage.length)
 

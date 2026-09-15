@@ -21,7 +21,7 @@ open class CursorView: NSView {
     /// The timer observer.
     private var observer: NSObjectProtocol?
 
-    open override var isFlipped: Bool {
+    override open var isFlipped: Bool {
         true
     }
 

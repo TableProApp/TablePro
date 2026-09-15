@@ -1,6 +1,6 @@
 import AppKit
-import Testing
 @testable import CodeEditTextView
+import Testing
 
 /// The line storage is updated from the edited range and can be longer than the string it indexes
 /// while an edit is still in flight. Slicing the storage with a range from the far side of that

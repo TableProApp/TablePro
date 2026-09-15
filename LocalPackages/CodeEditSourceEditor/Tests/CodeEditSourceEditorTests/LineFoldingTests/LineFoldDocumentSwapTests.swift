@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// A recalculation deliberately carries collapse state across by depth and start offset, which is what keeps a region
 /// folded while the reader types above it. Replacing the document makes those offsets meaningless, so the collapse
@@ -20,8 +20,8 @@ struct LineFoldDocumentSwapTests {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.loadView()
         controller.textView.string = "A\nB\nC\nD\nE\nF\n"
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         model = try #require(controller.gutterView.foldingRibbon.model)
         model.foldCache = LineFoldStorage(
             documentLength: controller.textView.textStorage.length,

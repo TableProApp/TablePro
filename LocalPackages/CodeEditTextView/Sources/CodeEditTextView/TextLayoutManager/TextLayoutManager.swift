@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 6/21/23.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 /// The text layout manager manages laying out lines in a code document.
 public class TextLayoutManager: NSObject {
@@ -66,13 +66,13 @@ public class TextLayoutManager: NSObject {
     public weak var renderDelegate: TextLayoutManagerRenderDelegate? {
         didSet {
             // Rebuild using potentially overridden behavior.
-            _estimateLineHeight = nil
+            cachedLineHeightEstimate = nil
             lineStorage.removeAll()
             prepareTextLines()
         }
     }
 
-    public let attachments: TextAttachmentManager = TextAttachmentManager()
+    public let attachments = TextAttachmentManager()
 
     /// When `false`, this layout manager ignores text storage edits. Used to suspend a secondary layout manager that
     /// is not currently visible (such as a hidden minimap) so it does not rebuild its line storage on every edit.
@@ -89,7 +89,7 @@ public class TextLayoutManager: NSObject {
 
     weak var textStorage: NSTextStorage?
     public var lineStorage: TextLineStorage<TextLine> = TextLineStorage()
-    var markedTextManager: MarkedTextManager = MarkedTextManager()
+    var markedTextManager = MarkedTextManager()
     let viewReuseQueue: ViewReuseQueue<LineFragmentView, LineFragment.ID> = ViewReuseQueue()
     let lineFragmentRenderer: LineFragmentRenderer
 
@@ -110,7 +110,7 @@ public class TextLayoutManager: NSObject {
 
     /// Guard variable for an assertion check in debug builds.
     /// Ensures that layout calls are not overlapping, potentially causing layout issues.
-    var layoutLock: NSLock = NSLock()
+    var layoutLock = NSLock()
 
     weak var layoutView: NSView?
 
@@ -174,7 +174,7 @@ public class TextLayoutManager: NSObject {
     /// Prepares the layout manager for use.
     /// Parses the text storage object into lines and builds the `lineStorage` object from those lines.
     func prepareTextLines() {
-        guard lineStorage.count == 0, let textStorage else { return }
+        guard lineStorage.isEmpty, let textStorage else { return }
         #if DEBUG
         // Grab some performance information if debugging.
         var info = mach_timebase_info()
@@ -218,10 +218,10 @@ public class TextLayoutManager: NSObject {
     /// Takes into account ``TextLayoutManager/lineHeightMultiplier``.
     /// - Returns: The estimated line height.
     public func estimateLineHeight() -> CGFloat {
-        if let _estimateLineHeight {
-            return _estimateLineHeight
+        if let cachedLineHeightEstimate {
+            return cachedLineHeightEstimate
         } else if let estimate = renderDelegate?.estimatedLineHeight() {
-            _estimateLineHeight = estimate
+            cachedLineHeightEstimate = estimate
             return estimate
         } else {
             let string = NSAttributedString(string: "0", attributes: delegate?.layoutManagerTypingAttributes() ?? [:])
@@ -232,14 +232,14 @@ public class TextLayoutManager: NSObject {
             var leading: CGFloat = 0
             CTLineGetTypographicBounds(ctLine, &ascent, &descent, &leading)
             let height = (ascent + descent + leading) * lineHeightMultiplier
-            _estimateLineHeight = height
+            cachedLineHeightEstimate = height
             return height
         }
     }
 
     /// The last known line height estimate. If  set to `nil`, will be recalculated the next time
     /// ``TextLayoutManager/estimateLineHeight()`` is called.
-    private var _estimateLineHeight: CGFloat?
+    private var cachedLineHeightEstimate: CGFloat?
 
     deinit {
         lineStorage.removeAll()

@@ -5,9 +5,9 @@
 //  Created by Austin Condiff on 3/12/25.
 //
 
-import SwiftUI
-import Combine
 import CodeEditTextView
+import Combine
+import SwiftUI
 
 class FindPanelViewModel: ObservableObject {
     enum Notifications {
@@ -46,7 +46,7 @@ class FindPanelViewModel: ObservableObject {
 
     /// The height of the find panel.
     var panelHeight: CGFloat {
-        return mode == .replace ? 54 : 28
+        mode == .replace ? 54 : 28
     }
 
     /// The number of current find matches.

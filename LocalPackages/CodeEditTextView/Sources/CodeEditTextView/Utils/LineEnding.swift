@@ -41,9 +41,10 @@ public enum LineEnding: String, CaseIterable {
                   let lineEnding = LineEnding(line: lineString) else {
                 continue
             }
-            histogram[lineEnding] = histogram[lineEnding]! + 1
+            let occurrences = (histogram[lineEnding] ?? 0) + 1
+            histogram[lineEnding] = occurrences
             // after finding 15 lines of a line ending we assume it's correct.
-            if histogram[lineEnding]! >= 15 {
+            if occurrences >= 15 {
                 shouldContinue = false
             }
         }

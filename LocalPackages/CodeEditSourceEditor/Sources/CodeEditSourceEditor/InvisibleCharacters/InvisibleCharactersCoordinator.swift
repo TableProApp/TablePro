@@ -28,7 +28,7 @@ final class InvisibleCharactersCoordinator: InvisibleCharactersDelegate {
     ///
     /// Indicates characters that the user may not have meant to insert, such as a zero-width space: `(0x200D)` or a
     /// non-standard quote character: `“ (0x201C)`.
-    public var warningCharacters: Set<UInt16> {
+    var warningCharacters: Set<UInt16> {
         didSet {
             updateTriggerCharacters()
         }

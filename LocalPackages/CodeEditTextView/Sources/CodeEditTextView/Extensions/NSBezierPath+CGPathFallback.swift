@@ -7,9 +7,9 @@
 
 import AppKit
 
-extension NSBezierPath {
+public extension NSBezierPath {
     /// Converts the `NSBezierPath` instance into a `CGPath`, providing a fallback method for compatibility(macOS < 14).
-    public var cgPathFallback: CGPath {
+    var cgPathFallback: CGPath {
         let path = CGMutablePath()
         var points = [CGPoint](repeating: .zero, count: 3)
 

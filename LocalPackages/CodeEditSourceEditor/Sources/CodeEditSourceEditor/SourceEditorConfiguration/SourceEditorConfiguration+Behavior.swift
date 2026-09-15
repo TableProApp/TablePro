@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 6/16/25.
 //
 
-extension SourceEditorConfiguration {
-    public struct Behavior: Equatable {
+public extension SourceEditorConfiguration {
+    struct Behavior: Equatable {
         /// Controls whether the text view allows the user to edit text.
         public var isEditable: Bool = true
 

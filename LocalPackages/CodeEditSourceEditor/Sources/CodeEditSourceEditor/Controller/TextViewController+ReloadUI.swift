@@ -13,6 +13,5 @@ extension TextViewController {
 
         styleScrollView()
         styleTextView()
-
     }
 }

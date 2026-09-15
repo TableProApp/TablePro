@@ -60,7 +60,7 @@ public class LanguageLayer: Hashable {
     var ranges: [NSRange]
 
     func copy() -> LanguageLayer {
-        return LanguageLayer(
+        LanguageLayer(
             id: id,
             tsLanguage: tsLanguage,
             parser: parser,
@@ -72,7 +72,7 @@ public class LanguageLayer: Hashable {
     }
 
     public static func == (lhs: LanguageLayer, rhs: LanguageLayer) -> Bool {
-        return lhs.id == rhs.id && lhs.ranges == rhs.ranges
+        lhs.id == rhs.id && lhs.ranges == rhs.ranges
     }
 
     public func hash(into hasher: inout Hasher) {

@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 /// Regression tests for IME commits (Pinyin / Rime / any system that uses marked text).
 ///

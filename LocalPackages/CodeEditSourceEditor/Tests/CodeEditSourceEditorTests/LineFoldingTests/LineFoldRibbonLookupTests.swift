@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// The ribbon draws one chevron per line that opens a fold, and that chevron has to fold the largest block starting
 /// there. A statement and the parenthesised body inside it commonly begin on the same line, so without a rule the
@@ -19,8 +19,8 @@ struct LineFoldRibbonLookupTests {
     init() {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.textView.string = "A\nB\nC\nD\nE\nF\n"
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         ribbon = LineFoldRibbonView(controller: controller)
     }
 
@@ -74,7 +74,7 @@ struct LineFoldRibbonLookupTests {
         // past the last line. Resolving that to nothing lost every chevron at the bottom of a document.
         let range = try #require(
             ribbon.documentRange(
-                covering: NSRect(x: 0, y: 0, width: 14, height: 5000),
+                covering: NSRect(x: 0, y: 0, width: 14, height: 5_000),
                 layoutManager: controller.textView.layoutManager
             )
         )

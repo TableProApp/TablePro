@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 class MockRenderDelegate: TextLayoutManagerRenderDelegate {
     var prepareForDisplay: ((
@@ -13,7 +13,7 @@ class MockRenderDelegate: TextLayoutManagerRenderDelegate {
 
     var estimatedLineHeightOverride: (() -> CGFloat)?
 
-    func prepareForDisplay( // swiftlint:disable:this function_parameter_count
+    func prepareForDisplay(
         textLine: TextLine,
         displayData: TextLine.DisplayData,
         range: NSRange,
@@ -51,7 +51,7 @@ struct OverridingLayoutManagerRenderingTests {
 
     init() throws {
         textView = TextView(string: "A\nB\nC\nD")
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textStorage = textView.textStorage
         layoutManager = try #require(textView.layoutManager)
         mockDelegate = MockRenderDelegate()
@@ -81,8 +81,8 @@ struct OverridingLayoutManagerRenderingTests {
             }
         }
 
-        layoutManager.invalidateLayoutForRect(NSRect(x: 0, y: 0, width: 1000, height: 1000))
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.invalidateLayoutForRect(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         // 4 lines, each 2px tall
         #expect(layoutManager.lineStorage.height == 8.0)
@@ -90,7 +90,7 @@ struct OverridingLayoutManagerRenderingTests {
         // Edit some text
 
         textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "0\n1\r\n2\r")
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         #expect(layoutManager.lineCount == 7)
         #expect(layoutManager.lineStorage.height == 14.0)

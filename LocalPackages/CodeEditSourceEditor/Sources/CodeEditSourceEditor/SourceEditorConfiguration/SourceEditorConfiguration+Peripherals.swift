@@ -7,8 +7,8 @@
 
 import CodeEditTextView
 
-extension SourceEditorConfiguration {
-    public struct Peripherals: Equatable {
+public extension SourceEditorConfiguration {
+    struct Peripherals: Equatable {
         /// Whether to show the gutter.
         public var showGutter: Bool = true
 

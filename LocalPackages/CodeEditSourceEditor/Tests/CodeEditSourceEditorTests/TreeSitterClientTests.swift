@@ -1,6 +1,6 @@
-import XCTest
-import CodeEditTextView
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import XCTest
 
 // swiftlint:disable all
 

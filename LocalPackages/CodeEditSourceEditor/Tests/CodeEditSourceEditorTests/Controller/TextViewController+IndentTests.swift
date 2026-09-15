@@ -5,10 +5,10 @@
 //  Created by Ludwig, Tom on 08.10.24.
 //
 
-import XCTest
 @testable import CodeEditSourceEditor
 @testable import CodeEditTextView
 import CustomDump
+import XCTest
 
 final class TextViewControllerIndentTests: XCTestCase {
     var controller: TextViewController!

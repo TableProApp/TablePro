@@ -5,8 +5,8 @@
 //  Created by Elias Wahl on 15.03.23.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 extension TextViewController {
     /// Sets new cursor positions.

@@ -46,7 +46,7 @@ extension TextView {
     private func insertMultipleString(_ strings: [String]) {
         let selectedRanges = selectionManager.textSelections.map(\.range)
 
-        guard selectedRanges.count > 0 else { return }
+        guard !selectedRanges.isEmpty else { return }
 
         for idx in (0..<selectedRanges.count).reversed() {
             guard idx < strings.count else { break }

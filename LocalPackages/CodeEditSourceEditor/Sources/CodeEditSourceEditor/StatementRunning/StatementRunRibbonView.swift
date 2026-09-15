@@ -96,7 +96,7 @@ class StatementRunRibbonView: NSView {
 
     weak var controller: TextViewController?
 
-    override public var isFlipped: Bool {
+    override var isFlipped: Bool {
         true
     }
 

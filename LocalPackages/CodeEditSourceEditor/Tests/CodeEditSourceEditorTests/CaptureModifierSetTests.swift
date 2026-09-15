@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditSourceEditor
+import XCTest
 
 final class CaptureModifierSetTests: XCTestCase {
     func test_init() {

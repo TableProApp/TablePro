@@ -58,7 +58,6 @@ public enum CaptureModifier: Int8, CaseIterable, Sendable {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     public static func fromString(_ string: String) -> CaptureModifier? {
         switch string {
         case "declaration":

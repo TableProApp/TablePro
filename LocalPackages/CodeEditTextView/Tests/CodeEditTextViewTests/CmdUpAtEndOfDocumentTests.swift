@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 /// Regression tests for vertical cursor moves when the cursor sits at the end of a line,
 /// including the end of the document. Standard macOS NSTextView behavior:
@@ -12,9 +12,9 @@ import AppKit
 struct CmdUpAtEndOfDocumentTests {
     private func makeLaidOutTextView(_ text: String) -> TextView {
         let textView = TextView(string: text)
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.updateFrameIfNeeded()
-        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         return textView
     }
 

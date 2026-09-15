@@ -33,6 +33,6 @@ extension IndexSet {
 
     /// Returns true if self contains all of the integers in range.
     func contains(integersIn range: NSRange) -> Bool {
-        return self.contains(integersIn: range.intRange)
+        self.contains(integersIn: range.intRange)
     }
 }

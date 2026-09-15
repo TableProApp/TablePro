@@ -19,7 +19,7 @@ extension RangeStore {
         /// - Parameter other: The range to compare to.
         /// - Returns: The result of the comparison.
         func compareValue(_ other: Self) -> Bool {
-            return if let lhs = value, let rhs = other.value {
+            if let lhs = value, let rhs = other.value {
                 lhs == rhs
             } else if let lhs = value {
                 lhs.isEmpty

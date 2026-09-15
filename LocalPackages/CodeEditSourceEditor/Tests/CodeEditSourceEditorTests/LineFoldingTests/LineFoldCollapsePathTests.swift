@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// A fold can be toggled from the gutter's chevron or by clicking the placeholder that stands in for it, and the two
 /// used to record the change in different ways: only one of them relaid out the text and redrew the gutter. Both now
@@ -20,8 +20,8 @@ struct LineFoldCollapsePathTests {
     init() throws {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.textView.string = "A\nB\nC\nD\nE\nF\n"
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         ribbon = LineFoldRibbonView(controller: controller)
         model = try #require(ribbon.model)
         model.foldCache = LineFoldStorage(

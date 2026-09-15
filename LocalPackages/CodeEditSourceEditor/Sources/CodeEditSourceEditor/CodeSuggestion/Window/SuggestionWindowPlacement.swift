@@ -54,8 +54,8 @@ internal enum SuggestionWindowPlacement {
         screenFrame: NSRect,
         editorFrame: NSRect?
     ) -> CGFloat {
-        let anchorX = cursorRect.origin.x - SuggestionController.WINDOW_PADDING
-            - CodeSuggestionLabelView.HORIZONTAL_PADDING - font.pointSize
+        let anchorX = cursorRect.origin.x - SuggestionController.windowPadding
+            - CodeSuggestionLabelView.horizontalPadding - font.pointSize
 
         let leftLimit = max(screenFrame.minX, editorFrame?.minX ?? screenFrame.minX)
         let rightLimit = min(screenFrame.maxX, editorFrame?.maxX ?? screenFrame.maxX)

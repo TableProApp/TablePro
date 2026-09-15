@@ -5,8 +5,8 @@
 //  Created by Elias Wahl on 17.03.23.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 extension NSFont {
     var rulerFont: NSFont {

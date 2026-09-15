@@ -3,10 +3,10 @@
 //  CodeEditSourceEditor
 //
 
-import Testing
 import AppKit
-import CodeEditTextView
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import Testing
 
 /// The fold calculator pulls lines from the provider 50 at a time, threading the running depth between calls. A local
 /// variable used to shadow that state and drop it at every chunk boundary, so depth silently reset to zero on the 51st
@@ -37,8 +37,8 @@ struct LineFoldChunkBoundaryTests {
     init() {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.textView.string = (0..<120).map { "line \($0)" }.joined(separator: "\n")
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 4000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 4000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 4_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 4_000))
     }
 
     @Test("Depth carries across the 50 line chunk boundary")

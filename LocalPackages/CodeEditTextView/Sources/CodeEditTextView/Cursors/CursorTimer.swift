@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 1/16/24.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 class CursorTimer {
     /// # Properties

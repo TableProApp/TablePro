@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditTextView
+import XCTest
 
 final class TextSelectionManagerTests: XCTestCase {
     var textStorage: NSTextStorage!
@@ -36,12 +36,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: decomposeCharacters[idx]
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -61,12 +63,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: decomposeCharacters[idx]
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -85,12 +89,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -110,12 +116,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -135,12 +143,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -159,12 +169,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -183,12 +195,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }
@@ -207,12 +221,14 @@ final class TextSelectionManagerTests: XCTestCase {
                 decomposeCharacters: false
             )
 
-            XCTAssert(
-                range.location == expectedRanges[idx].0,
+            XCTAssertEqual(
+                range.location,
+                expectedRanges[idx].0,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
-            XCTAssert(
-                range.length == expectedRanges[idx].1,
+            XCTAssertEqual(
+                range.length,
+                expectedRanges[idx].1,
                 "Invalid Location. Testing location \(locations[idx]). Expected \(expectedRanges[idx]). Got \(range)"
             )
         }

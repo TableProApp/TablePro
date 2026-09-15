@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditSourceEditor
+import XCTest
 
 // swiftlint:disable all
 final class CodeEditSourceEditorTests: XCTestCase {

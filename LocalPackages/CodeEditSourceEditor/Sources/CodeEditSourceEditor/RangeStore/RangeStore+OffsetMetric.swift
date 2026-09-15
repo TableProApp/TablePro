@@ -16,7 +16,7 @@ extension RangeStore {
         }
 
         func index(at offset: Int, in element: RangeStore.StoredRun) -> Int {
-            return offset
+            offset
         }
     }
 }

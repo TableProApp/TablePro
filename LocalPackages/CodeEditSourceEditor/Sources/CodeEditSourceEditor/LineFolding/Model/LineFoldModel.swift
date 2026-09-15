@@ -23,7 +23,7 @@ class LineFoldModel: NSObject, NSTextStorageDelegate, ObservableObject {
 
     /// An ordered tree of fold ranges in a document. Can be traversed using ``FoldRange/parent``
     /// and ``FoldRange/subFolds``.
-    @Published var foldCache: LineFoldStorage = LineFoldStorage(documentLength: 0)
+    @Published var foldCache = LineFoldStorage(documentLength: 0)
     private var calculator: LineFoldCalculator
 
     private var textChangedStream: AsyncStream<Void>
