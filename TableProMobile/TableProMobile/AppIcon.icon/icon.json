@@ -1,20 +1,20 @@
 {
   "fill" : {
-    "automatic-gradient" : "srgb:0.00000,0.44706,1.00000,1.00000"
+    "automatic-gradient" : "srgb:0.18039,0.33333,0.20000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
           "fill" : {
-            "solid" : "srgb:0.00000,0.94902,0.81961,1.00000"
+            "solid" : "srgb:0.97255,0.64314,0.47843,1.00000"
           },
           "image-name" : "disc.svg",
           "name" : "disc"
         },
         {
           "fill" : {
-            "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+            "solid" : "srgb:0.98824,0.96863,0.94118,1.00000"
           },
           "image-name" : "cylinder.svg",
           "name" : "cylinder"

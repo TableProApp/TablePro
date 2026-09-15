@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- App icon: a blue and cyan database mark, in light, dark and tinted appearances.
+- App icon: a cream and coral database mark on forest green, in light, dark and tinted appearances.
 - Database icons drawn at one size everywhere, down from 18pt to 15pt in lists.
 - **View > Zoom In** and **Zoom Out** (`Cmd+=`, `Cmd+-`) in place of Increase and Decrease Text Size, zooming a focused ER or query plan diagram.
 - Updates download in the background and install when you quit, instead of asking each time.
