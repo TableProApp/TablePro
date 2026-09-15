@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="tablepro">
+  <enum id="app.tablepro.TablePro.CsvDelimiter">
+    <value nick="comma" value="0"/>
+    <value nick="semicolon" value="1"/>
+    <value nick="tab" value="2"/>
+    <value nick="pipe" value="3"/>
+  </enum>
+
+  <enum id="app.tablepro.TablePro.CsvQuote">
+    <value nick="always" value="0"/>
+    <value nick="if-needed" value="1"/>
+    <value nick="never" value="2"/>
+  </enum>
+
+  <enum id="app.tablepro.TablePro.CsvLineBreak">
+    <value nick="lf" value="0"/>
+    <value nick="crlf" value="1"/>
+    <value nick="cr" value="2"/>
+  </enum>
+
+  <enum id="app.tablepro.TablePro.CsvDecimal">
+    <value nick="period" value="0"/>
+    <value nick="comma" value="1"/>
+  </enum>
+
+  <schema id="app.tablepro.TablePro" path="/app/tablepro/TablePro/">
+    <key name="window-width" type="i">
+      <default>1200</default>
+      <range min="360" max="32767"/>
+      <summary>Window width</summary>
+      <description>Width of the main window in logical pixels.</description>
+    </key>
+
+    <key name="window-height" type="i">
+      <default>760</default>
+      <range min="294" max="32767"/>
+      <summary>Window height</summary>
+      <description>Height of the main window in logical pixels.</description>
+    </key>
+
+    <key name="is-maximized" type="b">
+      <default>false</default>
+      <summary>Window is maximized</summary>
+      <description>Whether the main window was maximized when it last closed.</description>
+    </key>
+
+    <key name="default-page-size" type="u">
+      <default>1000</default>
+      <range min="100" max="100000"/>
+      <summary>Rows per page</summary>
+      <description>How many rows a table page fetches at a time.</description>
+    </key>
+
+    <key name="confirm-destructive" type="b">
+      <default>true</default>
+      <summary>Confirm destructive actions</summary>
+      <description>Ask before dropping a table, deleting rows, or discarding pending edits.</description>
+    </key>
+
+    <key name="history-retention-days" type="u">
+      <default>30</default>
+      <range min="0" max="365"/>
+      <summary>Query history retention in days</summary>
+      <description>Unpinned history entries older than this are pruned at startup. Zero keeps everything.</description>
+    </key>
+
+    <key name="query-timeout-secs" type="u">
+      <default>60</default>
+      <range min="0" max="3600"/>
+      <summary>Query timeout in seconds</summary>
+      <description>How long the editor waits before cancelling a running query. Zero disables the timeout.</description>
+    </key>
+
+    <key name="use-system-font" type="b">
+      <default>true</default>
+      <summary>Use the system monospace font</summary>
+      <description>Whether the SQL editor follows the desktop monospace font instead of a custom one.</description>
+    </key>
+
+    <key name="custom-font" type="s">
+      <default>'Monospace 12'</default>
+      <summary>Custom editor font</summary>
+      <description>Pango font description the SQL editor uses when the system font is turned off.</description>
+    </key>
+
+    <key name="style-scheme" type="s">
+      <default>'Adwaita'</default>
+      <summary>Editor style scheme</summary>
+      <description>GtkSourceView style scheme id for the SQL editor.</description>
+    </key>
+
+    <key name="csv-null-to-empty" type="b">
+      <default>true</default>
+      <summary>Write NULL as an empty field</summary>
+      <description>Whether a CSV export writes NULL as an empty field rather than the text NULL.</description>
+    </key>
+
+    <key name="csv-line-break-to-space" type="b">
+      <default>false</default>
+      <summary>Replace line breaks with spaces</summary>
+      <description>Whether a CSV export flattens line breaks inside a value into single spaces.</description>
+    </key>
+
+    <key name="csv-header-row" type="b">
+      <default>true</default>
+      <summary>Write a header row</summary>
+      <description>Whether a CSV export starts with the column names.</description>
+    </key>
+
+    <key name="csv-sanitize-formulas" type="b">
+      <default>true</default>
+      <summary>Neutralise spreadsheet formulas</summary>
+      <description>Whether a CSV export prefixes values starting with =, +, - or @ so a spreadsheet does not run them.</description>
+    </key>
+
+    <key name="csv-delimiter" enum="app.tablepro.TablePro.CsvDelimiter">
+      <default>'comma'</default>
+      <summary>CSV field delimiter</summary>
+      <description>Character that separates fields in a CSV export.</description>
+    </key>
+
+    <key name="csv-quote" enum="app.tablepro.TablePro.CsvQuote">
+      <default>'if-needed'</default>
+      <summary>CSV quoting</summary>
+      <description>When a CSV export wraps a field in quotes.</description>
+    </key>
+
+    <key name="csv-line-break" enum="app.tablepro.TablePro.CsvLineBreak">
+      <default>'lf'</default>
+      <summary>CSV line ending</summary>
+      <description>Line ending a CSV export writes between records.</description>
+    </key>
+
+    <key name="csv-decimal" enum="app.tablepro.TablePro.CsvDecimal">
+      <default>'period'</default>
+      <summary>CSV decimal separator</summary>
+      <description>Character a CSV export uses between the whole and fractional parts of a number.</description>
+    </key>
+  </schema>
+</schemalist>

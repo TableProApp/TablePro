@@ -20,9 +20,12 @@ tokio = { workspace = true, features = ["fs"] }
 uuid.workspace = true
 sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 chrono.workspace = true
+gio.workspace = true
+glib.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+tablepro-core = { path = "../core" }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 

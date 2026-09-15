@@ -5208,6 +5208,8 @@ name = "tablepro-storage"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "gio",
+ "glib",
  "oo7",
  "secrecy",
  "serde",

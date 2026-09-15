@@ -25,4 +25,7 @@ pub enum StorageError {
 
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::EncodeError),
+
+    #[error("settings error: {0}")]
+    Settings(#[from] crate::settings::SettingsError),
 }

@@ -76,6 +76,7 @@ devenv.set('TABLEPRO_LIBEXECDIR', cargo_target_dir / cargo_profile_dir)
 meson.add_devenv(devenv)
 
 gnome.post_install(
+  glib_compile_schemas: true,
   gtk_update_icon_cache: true,
   update_desktop_database: true,
 )
