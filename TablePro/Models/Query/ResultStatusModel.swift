@@ -90,6 +90,11 @@ struct ResultStatusModel: Equatable {
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
         controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
 
+        /// A plan keeps the bar so it stays choosable and pinnable, and gives up everything the bar
+        /// says about rows. It has none, and reporting "No rows" under a plan states something
+        /// false about the statement that produced it.
+        guard !snapshot.isQueryPlan else { return controls }
+
         /// A table tab describes a table whether or not its rows have arrived, so its controls are
         /// decided by what the tab IS, never by what its buffer currently holds. Retargeting empties
         /// that buffer before the replacing fetch starts, and deriving presence from it made the

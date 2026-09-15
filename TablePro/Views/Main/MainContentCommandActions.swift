@@ -1220,6 +1220,34 @@ final class MainContentCommandActions {
         EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
+    /// Emptying the editor and discarding the results are two commands, not one.
+    ///
+    /// They used to be a single trash button whose tooltip and accessibility label both said
+    /// "Clear Query" while it also cleared the results, the execution record and collapsed the
+    /// results pane. Neither half had a menu-bar command, so neither could be undone, reached by
+    /// keyboard, or announced for what it was.
+    func clearQuery() {
+        guard let coordinator,
+              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
+              tab.tabType == .query else { return }
+        coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
+        coordinator.toolbarState.hasQueryText = false
+        coordinator.scheduleDraftSave()
+    }
+
+    var canClearQuery: Bool {
+        guard let tab = coordinator?.tabManager.selectedTab, tab.tabType == .query else { return false }
+        return !tab.content.query.isEmpty
+    }
+
+    func clearResults() {
+        coordinator?.clearActiveQueryResults()
+    }
+
+    var canClearResults: Bool {
+        coordinator?.canClearActiveQueryResults ?? false
+    }
+
     func removeInvisibleCharacters() {
         EditorEventRouter.shared.performRemoveInvisibleCharactersForKeyWindow()
     }
@@ -1257,10 +1285,11 @@ final class MainContentCommandActions {
 
     // MARK: - UI Operations (Group A — Called Directly)
 
+    /// History is a trailing-pane surface, so the command that shows it is the same shape as the
+    /// two beside it. `HistoryPanelState.isVisible` is written by the pane rather than here, which
+    /// is what keeps the flag describing what the window shows instead of racing it.
     func toggleHistoryPanel() {
-        guard let connectionId = coordinator?.connectionId else { return }
-        let state = HistoryPanelState.forConnection(connectionId)
-        state.isVisible.toggle()
+        coordinator?.trailingPaneProxy?.toggleHistory()
     }
 
     func toggleRightSidebar() {

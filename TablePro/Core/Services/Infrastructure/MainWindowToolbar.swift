@@ -233,6 +233,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             _ = self?.coordinator?.toolbarState.hasDataPendingChanges
             _ = self?.coordinator?.toolbarState.safeModeLevel
             _ = self?.coordinator?.toolbarState.currentDatabase
+            _ = self?.coordinator?.toolbarState.isQueryTab
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self,
@@ -365,6 +366,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// `addRow`, `restorePreviousValues`, `quickSwitcher` and `newTab` are absent on purpose: they
     /// ride a group as subitems and the delegate vends no standalone item for any of them, so
     /// listing one here would offer the customization palette a tile it cannot build.
+    ///
     internal static let allowedItemIdentifiers: [NSToolbarItem.Identifier] = defaultItemIdentifiers + [
         previewSQL,
         results,

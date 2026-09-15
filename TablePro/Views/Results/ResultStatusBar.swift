@@ -43,6 +43,12 @@ struct ResultStatusBar: View {
     /// this window is. It had no surface at all between the centred toolbar item going and this.
     let isRefreshingSchema: Bool
     @Binding var viewMode: ResultsViewMode
+    /// The result-set chooser, absent when the tab holds at most one result.
+    let resultSetMenu: ResultSetMenuModel
+    let onActivateResultSet: (UUID) -> Void
+    let onToggleResultSetPin: (UUID) -> Void
+    let onCloseResultSet: (UUID) -> Void
+    let onCloseOtherResultSets: (UUID) -> Void
     let onToggleFilters: () -> Void
     let onFetchAll: (() -> Void)?
     let onStructureAdd: () -> Void
@@ -80,6 +86,16 @@ struct ResultStatusBar: View {
         HStack(spacing: StatusBarChrome.clusterSpacing) {
             if model.controls.showsModeSwitcher {
                 modeSwitcher(presentation)
+            }
+            if !resultSetMenu.isEmpty {
+                ResultSetMenu(
+                    model: resultSetMenu,
+                    isSpelledOut: presentation.resultSetMenuIsSpelledOut,
+                    onActivate: onActivateResultSet,
+                    onTogglePin: onToggleResultSetPin,
+                    onClose: onCloseResultSet,
+                    onCloseOthers: onCloseOtherResultSets
+                )
             }
             if model.controls.showsReadout {
                 readoutCluster

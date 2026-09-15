@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
 - Acknowledgements entries for the four tree-sitter grammars the SQL editor ships.
 - **Edit > Find > Find and Replace…** (`Cmd+Option+F`) and **Use Selection for Find** (`Cmd+E`) in the SQL editor.
+- **Run** split button in the query editor, with Run All Statements, Run Without Limit, Clear Query and Clear Results on its menu.
+- **Stop** in the query editor while a query is running.
+- **Query > Clear Query** and **Query > Clear Results**.
+- Result chooser in the status bar, naming the result on screen and offering Pin, Unpin, Close and Close Others.
+- A reason on a dimmed Run, Explain, Format or Favorite saying why it cannot run.
 
 ### Changed
 
@@ -50,14 +55,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection rows without colored dots, on the Mac and on iOS.
 - SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
+- Query history opens in the trailing pane beside the inspector and the assistant, with its entry list above its detail.
+- Query editor command bar with one control size, the container picker leading and the commands trailing.
 
 ### Removed
 
 - CodeEditSymbols, a dependency the editor linked and never called, from the app and from Acknowledgements.
 - `Ctrl+Cmd+J` from the editor's reserved shortcuts, so it can be bound in Settings > Keyboard.
+- Result tab strip above the query results, and the "Query" heading above the editor.
+- Trash button that cleared the query and the results under one name.
+- Query history drawer under the editor and results.
 
 ### Fixed
 
+- Stale error banner over a pinned result after clearing the results of a failed query.
 - Imported connections pointing at an SSH profile that is not on the importing Mac.
 - Syntax highlighting falling a second or two behind while typing quickly in the SQL editor.
 - Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.

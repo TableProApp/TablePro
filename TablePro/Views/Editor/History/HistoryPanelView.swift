@@ -53,11 +53,24 @@ struct HistoryPanelView: View {
         }
     }
 
+    /// List above, detail below.
+    ///
+    /// It was list beside detail, which needed 260 + 280 of width and so could only ever live in a
+    /// band across the bottom of the window. The trailing pane it moved into is one shared
+    /// `NSSplitViewItem` with a 270pt floor, and raising that floor was measured and rejected: it
+    /// force-grows the pane past the width the reader chose and takes the difference from the
+    /// content. Rotating the split is what makes the same two panes fit, and it costs nothing,
+    /// because a query is a tall thing to read and a list of them is a narrow one.
+    ///
+    /// The autosave name moves with the orientation. The stored value is a divider offset along the
+    /// axis, so restoring a horizontal position into a vertical split puts the divider somewhere
+    /// the reader never put it.
     private func panel(_ viewModel: HistoryPanelViewModel) -> some View {
         AutosavingSplitView(
-            autosaveName: "com.TablePro.queryHistory.listDetail",
-            primaryMinimum: 260,
-            secondaryMinimum: 280,
+            autosaveName: "com.TablePro.queryHistory.listOverDetail",
+            isVertical: false,
+            primaryMinimum: 150,
+            secondaryMinimum: 180,
             collapsesPrimaryWhenTight: false
         ) {
             HistoryListPane(

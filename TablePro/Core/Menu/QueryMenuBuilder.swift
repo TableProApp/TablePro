@@ -34,6 +34,19 @@ enum QueryMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,
+            /// Two commands because they are two effects. The editor's trash button did both under
+            /// the single name "Clear Query", so neither was announced for what it was and neither
+            /// had a menu-bar route, which is what the HIG requires before a toolbar item may carry
+            /// it. They take no default shortcut: both are destructive and infrequent.
+            MenuItemFactory.item(
+                String(localized: "Clear Query"),
+                action: #selector(MainSplitViewController.clearQuery(_:))
+            ),
+            MenuItemFactory.item(
+                String(localized: "Clear Results"),
+                action: #selector(MainSplitViewController.clearResults(_:))
+            ),
+            MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Explain Query"),
                 action: #selector(MainSplitViewController.explainQuery(_:)),

@@ -717,6 +717,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
         workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace))
+        workspace.panes.history.rootView = AnyView(buildHistoryView(for: workspace))
         refreshTabStripPane(of: workspace)
         workspace.panes.markRendered(workspace.paneRenderKey)
         guard isShowing(workspace) else { return }
@@ -897,6 +898,16 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         }
     }
 
+    @ViewBuilder
+    private func buildHistoryView(for workspace: ConnectionWorkspace) -> some View {
+        if workspace.resolvedPane == .content,
+           let coordinator = workspace.sessionState?.coordinator {
+            HistoryPanelView(coordinator: coordinator)
+        } else {
+            TrailingPaneUnavailableView(surface: .history)
+        }
+    }
+
     /// Rebuilds the trailing surfaces alone. `commandActions` is read eagerly by both, and it only
     /// exists once the detail pane has appeared, which is after `rebuildPanes()` has already built
     /// them against a nil value. Rebuilding the detail pane too would remount the very view that
@@ -905,6 +916,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         guard let selected = workspaces.selected else { return }
         selected.panes.inspector.rootView = AnyView(buildInspectorView(for: selected))
         selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected))
+        selected.panes.history.rootView = AnyView(buildHistoryView(for: selected))
     }
 
     /// Parents whichever surface the selected workspace is showing.
@@ -1006,6 +1018,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         isTrailingPaneOpen && resolvedTrailingSurface == .assistant
     }
 
+    var isHistoryVisible: Bool {
+        isTrailingPaneOpen && resolvedTrailingSurface == .history
+    }
+
     func showInspector() {
         reveal(.inspector)
     }
@@ -1013,6 +1029,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     func showAssistant() {
         guard AppSettingsManager.shared.ai.enabled else { return }
         reveal(.assistant)
+    }
+
+    func showHistory() {
+        reveal(.history)
     }
 
     /// Auto-show follows a grid click, which is not a request for a different surface. Revealing
@@ -1025,7 +1045,23 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     func hideTrailingPane() {
         inspectorSplitItem?.animator().isCollapsed = true
+        syncHistoryPanelVisibility()
         recomputeWindowMinSize()
+    }
+
+    /// Keeps `HistoryPanelState.isVisible` saying what the window is actually showing.
+    ///
+    /// The flag is not redundant with the surface. It is what `HistoryPanelView`'s `.task(id:)`
+    /// keys its activation on, so the view model only builds and starts querying while history is
+    /// on screen, and it is what the Find Past Queries tip reads to know it has been answered.
+    /// Leaving it behind when history moved into the trailing pane would have left the panel
+    /// mounted and inert, which is the shape of a pane that renders nothing forever.
+    private func syncHistoryPanelVisibility() {
+        guard let connectionId = workspaces.selected?.connectionId else { return }
+        let showing = isTrailingPaneOpen && resolvedTrailingSurface == .history
+        let state = HistoryPanelState.forConnection(connectionId)
+        guard state.isVisible != showing else { return }
+        state.isVisible = showing
     }
 
     /// Puts the hosted child back in step with what the settings now allow.
@@ -1044,6 +1080,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         rebuildTrailingPanes()
         showSelectedTrailingPane()
         inspectorSplitItem?.animator().isCollapsed = false
+        syncHistoryPanelVisibility()
         recomputeWindowMinSize()
     }
 

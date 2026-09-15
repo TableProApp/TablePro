@@ -129,6 +129,10 @@ final class ConnectionToolbarState {
     /// Whether the current editor has non-empty query text
     var hasQueryText: Bool = false
 
+    /// Whether the selected tab is a query tab. `isTableTab` cannot answer this: a structure,
+    /// dashboard or diagram tab is neither, and the Run item has to be disabled on all of them.
+    var isQueryTab: Bool = false
+
     /// SQL statements rendered in the SQL preview sheet
     var previewStatements: [String] = []
 

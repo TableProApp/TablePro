@@ -33,6 +33,8 @@ internal struct TrailingPaneUnavailableView: View {
             return String(localized: "Row fields appear once the connection is up")
         case .assistant:
             return String(localized: "The assistant answers once the connection is up")
+        case .history:
+            return String(localized: "Past queries appear once the connection is up")
         }
     }
 }

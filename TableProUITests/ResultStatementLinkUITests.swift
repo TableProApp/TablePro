@@ -23,21 +23,22 @@ final class ResultStatementLinkUITests: UITestCase {
     SELECT 3;
     """
 
-    func testResultTabsAreNamedAfterTheirStatements() throws {
+    func testResultsAreNamedAfterTheirStatements() throws {
         let app = try runScript()
 
-        let tabs = app.buttons.matching(identifier: "result-tab")
-        XCTAssertEqual(tabs.count, 3, "Three statements must produce three result tabs")
+        let menu = openChooser(in: app)
+        let items = menu.menuItems
+        let labels = (0 ..< items.count).map { items.element(boundBy: $0).label }
 
-        let labels = (0..<tabs.count).map { tabs.element(boundBy: $0).label }
         XCTAssertTrue(
             labels.contains { $0.contains("monthly totals") },
             "A statement with a leading comment is named after it, got \(labels)"
         )
         XCTAssertFalse(
-            labels.allSatisfy { $0.hasPrefix("Result ") },
+            labels.filter { $0.hasPrefix("Result ") }.count == 3,
             "Results must not all fall back to the positional name, got \(labels)"
         )
+        app.typeKey(.escape, modifierFlags: [])
     }
 
     /// Selecting a result must stay survivable: it switches the grid, moves the caret, and leaves the query intact.
@@ -50,13 +51,26 @@ final class ResultStatementLinkUITests: UITestCase {
         let before = (editor.value as? String) ?? ""
         XCTAssertFalse(before.isEmpty, "The editor must hold the script that was run")
 
-        let tabs = app.buttons.matching(identifier: "result-tab")
-        XCTAssertTrue(waitUntilHittable(tabs.element(boundBy: 2), timeout: 10))
-        tabs.element(boundBy: 2).click()
-        tabs.element(boundBy: 0).click()
-        tabs.element(boundBy: 0).click()
+        for index in [2, 0, 0] {
+            let menu = openChooser(in: app)
+            let item = menu.menuItems.element(boundBy: index)
+            XCTAssertTrue(waitUntilHittable(item, timeout: 10))
+            item.click()
+        }
 
         XCTAssertEqual((editor.value as? String) ?? "", before, "Selecting results must not change the query")
+    }
+
+    /// Opens the status bar's result-set chooser and returns the pull-down it presents. The menu is
+    /// scoped to the window because the menu-bar menus hang off `MenuBar`, and a just-opened menu
+    /// has no accessibility identifier on the CI runner's macOS build.
+    private func openChooser(in app: XCUIApplication) -> XCUIElement {
+        let chooser = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        XCTAssertTrue(waitUntilHittable(chooser, timeout: 15), "The status bar must offer the result chooser")
+        chooser.click()
+        return app.windows.firstMatch.menus.firstMatch
     }
 
     // MARK: - Harness
@@ -74,9 +88,13 @@ final class ResultStatementLinkUITests: UITestCase {
         app.menuBars.firstMatch.menuBarItems["Query"].click()
         app.menuBars.firstMatch.menuItems["Execute All Statements"].click()
 
+        let chooser = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        XCTAssertTrue(chooser.waitToExist(timeout: 20), "The script must produce a result per statement")
         XCTAssertTrue(
-            app.buttons.matching(identifier: "result-tab").element(boundBy: 2).waitToExist(timeout: 20),
-            "The script must produce a result per statement"
+            waitForPredicate(timeout: 15) { chooser.label.contains("3") },
+            "Three statements must produce three results, got \(chooser.label)"
         )
         return app
     }
