@@ -9,8 +9,7 @@ import TableProConnectionLibrary
 
 @MainActor
 internal final class WelcomeWindowController: NSWindowController, NSWindowDelegate {
-    private static let defaultContentSize = NSSize(width: 860, height: 540)
-    internal static let minimumContentSize = NSSize(width: 720, height: 460)
+    internal static let contentSize = NSSize(width: 900, height: 600)
 
     internal static var frameAutosaveName: NSWindow.FrameAutosaveName {
         NSWindow.FrameAutosaveName(SplitViewAutosaveName.current(WindowIdentifier.welcome))
@@ -34,8 +33,8 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     private init(viewModel: WelcomeViewModel) {
         self.viewModel = viewModel
         let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            contentRect: NSRect(origin: .zero, size: Self.contentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -54,14 +53,15 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         window.toolbarStyle = .unified
 
         window.contentViewController = WelcomeSplitViewController(viewModel: viewModel)
-        window.contentMinSize = Self.minimumContentSize
+        window.contentMinSize = Self.contentSize
+        window.contentMaxSize = Self.contentSize
         super.init(window: window)
         window.delegate = self
 
         if !window.setFrameUsingName(Self.frameAutosaveName) {
-            window.setContentSize(Self.defaultContentSize)
             window.center()
         }
+        window.setContentSize(Self.contentSize)
     }
 
     @available(*, unavailable)
@@ -70,15 +70,6 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
     }
 
     // MARK: - NSWindowDelegate
-
-    internal func windowDidResize(_ notification: Notification) {
-        guard let window, !window.inLiveResize else { return }
-        window.saveFrame(usingName: Self.frameAutosaveName)
-    }
-
-    internal func windowDidEndLiveResize(_ notification: Notification) {
-        window?.saveFrame(usingName: Self.frameAutosaveName)
-    }
 
     internal func windowDidMove(_ notification: Notification) {
         window?.saveFrame(usingName: Self.frameAutosaveName)
