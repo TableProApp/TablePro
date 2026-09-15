@@ -129,10 +129,20 @@ public final class TreeSitterClient: HighlightProviding {
         }
 
         executor.cancelAll(below: .all)
+        pendingEdits.mutate { edits in
+            edits = []
+        }
         if forceSyncOperation {
             executor.execSync(operation)
         } else {
-            executor.execAsync(priority: .reset, operation: operation, onCancel: {})
+            executor.execAsync(
+                priority: .reset,
+                operation: {
+                    operation()
+                    return true
+                },
+                onCancel: {}
+            )
         }
     }
 
@@ -172,8 +182,9 @@ public final class TreeSitterClient: HighlightProviding {
             return
         }
 
-        let operation = { [weak self] in
-            return self?.applyEdit(edit: edit) ?? IndexSet()
+        let operation: () -> IndexSet? = { [weak self] in
+            guard let self else { return IndexSet() }
+            return self.applyEdit(edit: edit)
         }
 
         let execAsync = Self.shouldExecuteAsync(
@@ -184,18 +195,16 @@ public final class TreeSitterClient: HighlightProviding {
 
         if !execAsync || forceSyncOperation {
             let result = executor.execSync(operation)
-            if case .success(let invalidatedRanges) = result {
+            if case .success(let invalidatedRanges) = result, let invalidatedRanges {
                 DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
                 return
             }
         }
 
         if !forceSyncOperation {
-            // Only cancel pending highlight queries (.access), not edits.
-            // Cancelling edits causes them to accumulate in pendingEdits,
-            // making the next parse even slower. Let edits queue and apply
-            // incrementally instead.
-            executor.cancelAll(below: .edit)
+            // A keystroke supersedes the parse the one before it started, so that parse is cancelled rather than
+            // left to finish. Its edit goes back on `pendingEdits` and the next parse applies the burst at once.
+            executor.cancelAll(below: .reset)
             executor.execAsync(
                 priority: .edit,
                 operation: {
@@ -203,8 +212,9 @@ public final class TreeSitterClient: HighlightProviding {
                     // main thread in `parserTimeout` slices and releases it between them, so running
                     // it inside would hold main for the whole parse. Only `completion` hops, because
                     // it is `@MainActor` and drives the highlight state machine.
-                    let invalidatedRanges = operation()
+                    guard let invalidatedRanges = operation() else { return false }
                     DispatchQueue.dispatchMainIfNot { completion(.success(invalidatedRanges)) }
+                    return true
                 },
                 onCancel: { [weak self] in
                     self?.pendingEdits.mutate { edits in
@@ -265,6 +275,7 @@ public final class TreeSitterClient: HighlightProviding {
                 priority: .access,
                 operation: {
                     DispatchQueue.dispatchMainIfNot { completion(.success(operation())) }
+                    return true
                 },
                 onCancel: {
                     DispatchQueue.dispatchMainIfNot {

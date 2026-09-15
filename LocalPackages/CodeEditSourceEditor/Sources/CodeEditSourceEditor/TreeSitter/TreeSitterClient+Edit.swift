@@ -16,8 +16,10 @@ extension TreeSitterClient {
     /// before setting the client's state.
     ///
     /// - Parameter edit: The edit to apply to the internal tree sitter state.
-    /// - Returns: The set of ranges invalidated by the edit operation.
-    func applyEdit(edit: InputEdit) -> IndexSet {
+    /// - Returns: The set of ranges invalidated by the edit operation, or `nil` when the edit was abandoned before
+    ///            its state was committed. A cancelled parse leaves the client exactly as it found it, so the caller
+    ///            must re-queue the edit rather than report it applied.
+    func applyEdit(edit: InputEdit) -> IndexSet? {
         guard let state = state?.copy(), let readBlock, let readCallback else { return IndexSet() }
         let pendingEdits = pendingEdits.value() // Grab pending edits.
         let edits = pendingEdits + [edit]
@@ -27,7 +29,7 @@ extension TreeSitterClient {
 
         // Loop through all layers, apply edits & find changed byte ranges.
         for (idx, layer) in state.layers.enumerated().reversed() {
-            if Task.isCancelled { return IndexSet() }
+            if Task.isCancelled { return nil }
 
             if layer.id != state.primaryLayer.id {
                 applyEditTo(layer: layer, edits: edits)
@@ -49,7 +51,7 @@ extension TreeSitterClient {
             invalidatedRanges.insert(ranges: ranges)
         }
 
-        if Task.isCancelled { return IndexSet() }
+        if Task.isCancelled { return nil }
 
         // Update the state object for any new injections that may have been caused by this edit.
         invalidatedRanges.formUnion(state.updateInjectedLayers(
@@ -58,7 +60,7 @@ extension TreeSitterClient {
             touchedLayers: touchedLayers
         ))
 
-        if Task.isCancelled { return IndexSet() }
+        if Task.isCancelled { return nil }
 
         self.state = state // Apply the copied state
         self.pendingEdits.mutate { edits in // Clear the queue

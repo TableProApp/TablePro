@@ -89,8 +89,15 @@ final package class TreeSitterExecutor {
     /// - Parameters:
     ///   - priority: The priority given to the operation. Defaults to ``TreeSitterExecutor/Priority/access``.
     ///   - operation: The operation to execute. It is up to the caller to exit _ASAP_ if the task is cancelled.
+    ///                Returns whether it ran to completion; an operation that bailed out on cancellation returns
+    ///                `false` and `onCancel` is called instead.
     ///   - onCancel: A callback called if the operation was cancelled.
-    func execAsync(priority: Priority = .access, operation: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    ///
+    /// Exactly one of `operation` and `onCancel` reports the outcome. The operation itself is the only thing that
+    /// knows whether it committed its work before the cancellation landed, so it answers rather than being asked:
+    /// reading `Task.isCancelled` after the fact cannot tell a parse that finished from one that abandoned halfway,
+    /// and calling both delivers a success and a failure for the same edit.
+    func execAsync(priority: Priority = .access, operation: @escaping () -> Bool, onCancel: @escaping () -> Void) {
         // Critical section, modifying the queue
         lock.lock()
         defer { lock.unlock() }
@@ -112,9 +119,7 @@ final package class TreeSitterExecutor {
                 return
             }
 
-            operation()
-
-            if Task.isCancelled {
+            if !operation() {
                 onCancel()
             }
 
@@ -128,6 +133,7 @@ final package class TreeSitterExecutor {
         return try await withCheckedThrowingContinuation { continuation in
             execAsync(priority: priority) {
                 continuation.resume(returning: operation())
+                return true
             } onCancel: {
                 continuation.resume(throwing: CancellationError())
             }

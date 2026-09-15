@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Imported connections pointing at an SSH profile that is not on the importing Mac.
+- Syntax highlighting falling a second or two behind while typing quickly in the SQL editor.
 - Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.
 - Connections still reaching an SSH profile's old host and username after the profile was edited.
 - SSH profile edits made on another Mac never reaching the connections that use it.

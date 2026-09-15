@@ -25,7 +25,7 @@ final class TreeSitterClientTests: XCTestCase {
         range: NSRange,
         completion: @escaping (Result<IndexSet, Error>) -> Void
     ) {
-        let delta = string.isEmpty ? -range.length : range.length
+        let delta = (string as NSString).length - range.length
         textView.replaceString(in: range, with: string)
         client.applyEdit(textView: textView, range: range, delta: delta, completion: completion)
     }
