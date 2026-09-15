@@ -88,7 +88,7 @@ impl FactoryComponent for SidebarRow {
                 set_margin_bottom: 6,
 
                 gtk::Image {
-                    set_icon_name: Some("view-list-symbolic"),
+                    set_icon_name: Some(crate::ui::icons::VIEW_LIST),
                     set_pixel_size: 16,
                 },
 

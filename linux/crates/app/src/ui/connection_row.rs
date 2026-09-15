@@ -51,7 +51,7 @@ impl FactoryComponent for ConnectionRow {
             connect_activated => ConnectionRowMsg::Open,
 
             add_suffix = &gtk::Button {
-                set_icon_name: "user-trash-symbolic",
+                set_icon_name: crate::ui::icons::USER_TRASH,
                 set_valign: gtk::Align::Center,
                 set_tooltip_text: Some(crate::tr!("Remove connection").as_str()),
                 add_css_class: "flat",

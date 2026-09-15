@@ -516,7 +516,7 @@ impl SimpleComponent for SqlEditor {
                 let cancelled_page = adw::StatusPage::builder()
                     .title(crate::tr!("Query cancelled"))
                     .description(crate::tr!("The running query was stopped."))
-                    .icon_name("process-stop-symbolic")
+                    .icon_name(crate::ui::icons::PROCESS_STOP)
                     .vexpand(true)
                     .build();
                 self.results_holder.append(&cancelled_page);
@@ -542,7 +542,7 @@ impl SimpleComponent for SqlEditor {
                 let page = adw::StatusPage::builder()
                     .title(crate::tr!("Query timed out"))
                     .description(&reason)
-                    .icon_name("dialog-warning-symbolic")
+                    .icon_name(crate::ui::icons::DIALOG_WARNING)
                     .vexpand(true)
                     .build();
                 self.results_holder.append(&page);
@@ -804,7 +804,7 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
             adw::StatusPage::builder()
                 .title(crate::tr!("Statement {n} executed").replace("{n}", &(idx + 1).to_string()))
                 .description(crate::tr!("No rows returned · {ms} ms").replace("{ms}", &ms))
-                .icon_name("emblem-default-symbolic")
+                .icon_name(crate::ui::icons::SUCCESS)
                 .vexpand(true)
                 .build()
                 .upcast()
@@ -812,14 +812,14 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
         StatementOutcomeKind::Error(msg) => adw::StatusPage::builder()
             .title(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
             .description(msg)
-            .icon_name("dialog-error-symbolic")
+            .icon_name(crate::ui::icons::DIALOG_ERROR)
             .vexpand(true)
             .build()
             .upcast(),
         StatementOutcomeKind::NotRun => adw::StatusPage::builder()
             .title(crate::tr!("Statement {n} not run").replace("{n}", &(idx + 1).to_string()))
             .description(crate::tr!("Skipped because an earlier statement failed."))
-            .icon_name("media-playback-stop-symbolic")
+            .icon_name(crate::ui::icons::MEDIA_PLAYBACK_STOP)
             .vexpand(true)
             .build()
             .upcast(),
@@ -844,7 +844,7 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome], grid_sender
         let placeholder = adw::StatusPage::builder()
             .title(crate::tr!("Empty query"))
             .description(crate::tr!("Type a SQL statement and press Run."))
-            .icon_name("text-x-generic-symbolic")
+            .icon_name(crate::ui::icons::TEXT_X_GENERIC)
             .vexpand(true)
             .build();
         holder.append(&placeholder);
@@ -863,9 +863,9 @@ fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome], grid_sender
     for (idx, o) in outcomes.iter().enumerate() {
         let widget = build_outcome_widget(o, idx, grid_sender);
         let icon = match &o.kind {
-            StatementOutcomeKind::Rows(_) => "view-grid-symbolic",
-            StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
-            StatementOutcomeKind::NotRun => "emblem-synchronizing-symbolic",
+            StatementOutcomeKind::Rows(_) => crate::ui::icons::VIEW_GRID,
+            StatementOutcomeKind::Error(_) => crate::ui::icons::DIALOG_ERROR,
+            StatementOutcomeKind::NotRun => crate::ui::icons::STATEMENT_PENDING,
         };
         let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(idx, o), icon);
         if !o.sql_preview.is_empty() {

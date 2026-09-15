@@ -3,5 +3,7 @@
   <gresource prefix="/app/tablepro/TablePro">
     <file compressed="true">style.css</file>
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
   </gresource>
 </gresources>

@@ -63,7 +63,7 @@ impl App {
         // this is the only way to create an editor tab from the UI.
         // Browse tabs come from sidebar clicks.
         let new_query_button = gtk::Button::builder()
-            .icon_name("tab-new-symbolic")
+            .icon_name(crate::ui::icons::TAB_NEW)
             .tooltip_text(crate::tr!("New query (Ctrl+E)"))
             .valign(gtk::Align::Center)
             .build();

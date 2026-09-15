@@ -9,6 +9,7 @@ mod export_dialog;
 mod filter_strip;
 mod grid;
 mod history_dialog;
+pub(crate) mod icons;
 mod preferences;
 mod row_object;
 mod sidebar_row;

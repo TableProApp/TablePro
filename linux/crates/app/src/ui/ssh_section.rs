@@ -172,7 +172,7 @@ fn default_ssh_key_path() -> String {
 
 fn attach_key_browse_button(key_path: &adw::EntryRow) {
     let button = gtk::Button::builder()
-        .icon_name("document-open-symbolic")
+        .icon_name(crate::ui::icons::DOCUMENT_OPEN)
         .tooltip_text(crate::tr!("Browse for private key"))
         .valign(gtk::Align::Center)
         .build();

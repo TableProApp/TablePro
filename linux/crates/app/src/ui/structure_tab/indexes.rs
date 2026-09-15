@@ -44,7 +44,7 @@ pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSe
     }
 
     let remove_button = gtk::Button::builder()
-        .icon_name("user-trash-symbolic")
+        .icon_name(crate::ui::icons::USER_TRASH)
         .tooltip_text(crate::tr!("Remove index"))
         .valign(gtk::Align::Center)
         .build();
