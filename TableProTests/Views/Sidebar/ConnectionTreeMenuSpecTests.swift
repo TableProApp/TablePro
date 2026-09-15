@@ -116,17 +116,17 @@ struct ConnectionTreeMenuSpecTests {
         }
     }
 
-    @Test("A folder offers rename and delete, with delete last")
+    @Test("A folder offers a new connection and a delete, with delete last")
     func groupMenu() {
         let found = commands(ConnectionTreeMenuSpec.sections(for: .init(clicked: .group(group))))
-        #expect(found.contains(.renameGroup(group)))
+        #expect(found.first == .newConnection)
         #expect(found.last == .deleteGroup(group))
     }
 
-    @Test("Clicking below the last row offers the two ways to add something")
+    @Test("Clicking below the last row offers the one way to add something")
     func backgroundMenu() {
         let found = commands(ConnectionTreeMenuSpec.sections(for: .init(clicked: nil)))
-        #expect(found == [.newConnection, .newGroup])
+        #expect(found == [.newConnection])
     }
 
     @Test("Only New Connection carries a shortcut its menu-bar twin actually has")
@@ -134,7 +134,7 @@ struct ConnectionTreeMenuSpecTests {
         #expect(ConnectionTreeMenuCommand.newConnection.shortcutAction == .newConnection)
         for command: ConnectionTreeMenuCommand in [
             .connect(id), .disconnect(id), .edit(id), .duplicate(id), .delete(id),
-            .copyConnectionString(id), .newGroup, .renameGroup(group), .deleteGroup(group),
+            .copyConnectionString(id), .deleteGroup(group),
         ] {
             #expect(command.shortcutAction == nil)
         }

@@ -101,7 +101,6 @@ internal enum ConnectionTreeMenuSpec {
         [
             ConnectionTreeMenuSection( [
                 .command(String(localized: "New Connection…"), .newConnection),
-                .command(String(localized: "Rename"), .renameGroup(group)),
             ]),
             ConnectionTreeMenuSection( [
                 .command(String(localized: "Delete"), .deleteGroup(group)),
@@ -113,7 +112,6 @@ internal enum ConnectionTreeMenuSpec {
         [
             ConnectionTreeMenuSection( [
                 .command(String(localized: "New Connection…"), .newConnection),
-                .command(String(localized: "New Group…"), .newGroup),
             ]),
         ]
     }

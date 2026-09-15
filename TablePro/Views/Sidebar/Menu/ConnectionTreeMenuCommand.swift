@@ -19,8 +19,9 @@ internal enum ConnectionTreeMenuCommand: Equatable {
     case moveToGroup(connectionId: UUID, groupId: UUID?)
 
     case newConnection
-    case newGroup
-    case renameGroup(ConnectionGroup)
+    /// No `newGroup` or `renameGroup` yet, and deliberately: naming a folder belongs in an inline
+    /// rename on the row, the way `FavoritesRenameSession` does it, and an item that opens a dialog
+    /// that does not exist is worse than an absent one.
     case deleteGroup(ConnectionGroup)
 }
 
