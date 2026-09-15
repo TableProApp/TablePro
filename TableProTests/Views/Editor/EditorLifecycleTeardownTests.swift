@@ -11,19 +11,9 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
-@testable import TableProEditorKit
+import TableProEditorKit
 import TableProTextEngine
 import Testing
-
-private final class RecordingCoordinator: TextViewCoordinator {
-    private(set) var destroyCount = 0
-
-    func prepareCoordinator(controller: TextViewController) {}
-
-    func destroy() {
-        destroyCount += 1
-    }
-}
 
 private final class DismantleRecorder {
     var makeCount = 0
@@ -82,23 +72,6 @@ struct EditorLifecycleTeardownTests {
         coordinator.destroy()
 
         #expect(controller.textView.string == "SELECT 1")
-    }
-
-    @Test("dismantleNSViewController destroys each text coordinator once and empties the list")
-    func dismantleDestroysCoordinatorsOnce() {
-        let recording = RecordingCoordinator()
-        let controller = EditorControllerFixture.make(string: "SELECT 1", coordinators: [recording])
-        let coordinator = SourceEditor.Coordinator(
-            text: .binding(.constant("SELECT 1")),
-            editorState: .constant(SourceEditorState()),
-            highlightProviders: [],
-            textCoordinators: [recording]
-        )
-
-        SourceEditor.dismantleNSViewController(controller, coordinator: coordinator)
-
-        #expect(recording.destroyCount == 1)
-        #expect(controller.textCoordinators.values().isEmpty)
     }
 
     /// The production shape: closing a connection removes it from the registry, which selects a

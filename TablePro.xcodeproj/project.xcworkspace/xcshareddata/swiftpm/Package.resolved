@@ -1,4 +1,5 @@
 {
+  "originHash" : "69dbdfbad9beb7ad22f52968e7dd42ac0f80f460ec8408de16041501970ff3c5",
   "pins" : [
     {
       "identity" : "bigint",
@@ -78,15 +79,6 @@
       "state" : {
         "revision" : "6f70fa9eab24c1fd982af18c281c4525d05e3095",
         "version" : "4.2.0"
-      }
-    },
-    {
-      "identity" : "swift-custom-dump",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/swift-custom-dump",
-      "state" : {
-        "revision" : "e9c34fd54ece006b491a0e6d23fe9a6024b9a828",
-        "version" : "1.7.0"
       }
     },
     {
@@ -207,15 +199,6 @@
       }
     },
     {
-      "identity" : "xctest-dynamic-overlay",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",
-      "state" : {
-        "revision" : "8f6abcf4c8950e2679d5b2fee4ca284fd7c34886",
-        "version" : "1.11.0"
-      }
-    },
-    {
       "identity" : "yams",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/jpsim/Yams",
@@ -234,5 +217,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }

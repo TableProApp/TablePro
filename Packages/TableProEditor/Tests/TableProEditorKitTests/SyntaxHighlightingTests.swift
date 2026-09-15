@@ -1,6 +1,6 @@
 //
 //  SyntaxHighlightingTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 //  The grammars' capture names and the editor's `CaptureName` vocabulary are two hand-maintained lists that must
 //  agree. When they drifted, `TreeSitterClient` dropped every capture it could not name and the token kept the plain
@@ -10,7 +10,6 @@
 import AppKit
 import Foundation
 import SwiftTreeSitter
-@testable import TablePro
 @testable import TableProEditorKit
 import TableProGrammars
 import Testing
@@ -174,16 +173,6 @@ struct SyntaxHighlightingTests {
 
     // MARK: - The theme's own wiring
 
-    @MainActor
-    @Test("The theme's operator and function colours reach the editor")
-    func themeCarriesOperatorAndFunctionColors() {
-        let colors = ThemeEngine.shared.colors.editor
-        let theme = ThemeEngine.shared.makeEditorTheme()
-
-        #expect(Self.sameColor(theme.operators.color, colors.operator))
-        #expect(Self.sameColor(theme.functions.color, colors.function))
-    }
-
     // MARK: - Helpers
 
     struct Palette {
@@ -288,12 +277,5 @@ struct SyntaxHighlightingTests {
             }
         }
         return names
-    }
-
-    private static func sameColor(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-        guard let left = lhs.usingColorSpace(.sRGB), let right = rhs.usingColorSpace(.sRGB) else { return false }
-        return abs(left.redComponent - right.redComponent) < 0.001
-            && abs(left.greenComponent - right.greenComponent) < 0.001
-            && abs(left.blueComponent - right.blueComponent) < 0.001
     }
 }

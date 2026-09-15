@@ -7,7 +7,7 @@
 //
 
 import AppKit
-@testable import TableProEditorKit
+import TableProEditorKit
 import TableProGrammars
 import TableProTextEngine
 

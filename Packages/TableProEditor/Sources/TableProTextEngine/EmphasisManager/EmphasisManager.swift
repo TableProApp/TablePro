@@ -179,6 +179,16 @@ public final class EmphasisManager {
         emphasisGroups[id, default: []].map(\.emphasis)
     }
 
+    /// The tool tip an emphasis presents at a point in the text view, or `nil` where none is registered.
+    ///
+    /// Emphases own their tool tips, and AppKit only ever asks the owner. This is how anything outside the
+    /// manager reads what the editor would actually show under the pointer.
+    public func toolTip(at point: CGPoint) -> String? {
+        guard let textView else { return nil }
+        let text = toolTips.view(textView, stringForToolTip: 0, point: point, userData: nil)
+        return text.isEmpty ? nil : text
+    }
+
     private func registerToolTip(for emphasisLayer: EmphasisLayer) {
         guard emphasisLayer.emphasis.toolTip != nil, emphasisLayer.isAttached else { return }
         toolTips.register(

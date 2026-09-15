@@ -1,6 +1,6 @@
 //
 //  SQLEditorLongLineScrollTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 
 import AppKit
@@ -17,7 +17,7 @@ struct SQLEditorLongLineScrollTests {
 
     @Test("Undoing a long paste narrows the editor and brings back the start of every line")
     func undoingALongPasteReturnsToTheLineStarts() throws {
-        let controller = EditorControllerFixture.make(string: query)
+        let controller = Mock.loadedTextViewController(string: query)
         let end = (query as NSString).length
         let narrowWidth = controller.textView.frame.width
 
@@ -36,7 +36,7 @@ struct SQLEditorLongLineScrollTests {
 
     @Test("The start of a line is never left under the gutter")
     func lineStartClearsTheGutter() throws {
-        let controller = EditorControllerFixture.make(string: pastedRow + "\n" + query)
+        let controller = Mock.loadedTextViewController(string: pastedRow + "\n" + query)
         controller.textView.scroll(NSPoint(x: 1_000_000, y: 0))
 
         let lineStart = (pastedRow as NSString).length + 1
@@ -52,7 +52,7 @@ struct SQLEditorLongLineScrollTests {
 
     @Test("A long line scrolled a few points in stays there when the editor is laid out again (#2841)")
     func positionNearTheLineStartSurvivesLayout() throws {
-        let controller = EditorControllerFixture.make(string: pastedRow + "\n" + query)
+        let controller = Mock.loadedTextViewController(string: pastedRow + "\n" + query)
         controller.textView.layoutManager.layoutLines()
         controller.scrollPosition = CGPoint(x: 20, y: 0)
         try #require(abs(controller.scrollPosition.x - 20) <= 0.5, "Scrolled to \(controller.scrollPosition.x)")

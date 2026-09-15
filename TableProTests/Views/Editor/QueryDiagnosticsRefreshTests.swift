@@ -7,8 +7,8 @@ import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
-@testable import TableProEditorKit
-@testable import TableProTextEngine
+import TableProEditorKit
+import TableProTextEngine
 import Testing
 
 @MainActor
@@ -87,15 +87,17 @@ struct QueryDiagnosticsRefreshTests {
         #expect(underlines(in: controller).isEmpty)
     }
 
-    @Test("A tab switch pushed through the text binding re-checks the incoming tab")
-    func tabSwitchThroughBinding() async {
+    /// A tab switch replaces the whole document, which is what `SourceEditor`'s binding does for the editor.
+    /// The binding plumbing itself is the editor's, and `SourceEditorBindingSyncTests` covers it; what belongs
+    /// here is that a second replacement re-checks rather than leaving the first document's answer behind.
+    @Test("A second replacement re-checks the incoming document")
+    func secondReplacementIsChecked() async {
         let (coordinator, controller) = makeEditor()
         defer { coordinator.destroy() }
-        let sync = TextBindingSync(text: .binding(.constant("")), phase: RepresentableSyncPhase())
-        sync.applyRepresentableText("SELECT 1)", controller: controller)
+        controller.setText("SELECT 1)")
         #expect(await waitForUnderlines(in: controller) == [NSRange(location: 8, length: 1)])
 
-        sync.applyRepresentableText("SELECT name FROM t /* open", controller: controller)
+        controller.setText("SELECT name FROM t /* open")
 
         #expect(underlines(in: controller).isEmpty)
         #expect(await waitForUnderlines(in: controller) == [NSRange(location: 19, length: 2)])
@@ -271,14 +273,5 @@ struct QueryDiagnosticMessageTests {
 
         let rotors = controller.textView.accessibilityCustomRotors()
         #expect(rotors.filter { $0.label == QueryDiagnosticsRotorSearch.label }.count == 1)
-    }
-}
-
-private extension EmphasisManager {
-    @MainActor
-    func toolTip(at point: CGPoint) -> String? {
-        guard let textView else { return nil }
-        let text = toolTips.view(textView, stringForToolTip: 0, point: point, userData: nil)
-        return text.isEmpty ? nil : text
     }
 }

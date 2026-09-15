@@ -6,7 +6,7 @@
 import AppKit
 import Foundation
 @testable import TablePro
-@testable import TableProEditorKit
+import TableProEditorKit
 import TableProTextEngine
 import Testing
 
@@ -40,11 +40,21 @@ struct RemoveInvisibleCharactersCommandTests {
         #expect(controller.textView.string == original)
     }
 
+    /// The command turns the editor's typing filters off for the length of its own edit, which is what
+    /// `separatorIsNotReindented` above measures. Asserting on the flag that does it only says a flag was
+    /// cleared; typing a newline afterwards and getting the leading indent back says the same filter is
+    /// running again.
     @Test("Typing filters still run for ordinary edits afterwards")
     func filtersResume() {
-        let (coordinator, controller) = makeEditor("SELECT\u{A0}1")
+        let (coordinator, controller) = makeEditor("    SELECT\u{A0}1")
         coordinator.performRemoveInvisibleCharacters()
-        #expect(controller.isApplyingUnfilteredEdits == false)
+        #expect(controller.textView.string == "    SELECT 1")
+
+        let end = (controller.textView.string as NSString).length
+        controller.textView.selectionManager.setSelectedRange(NSRange(location: end, length: 0))
+        controller.textView.insertText("\n", replacementRange: NSRange(location: end, length: 0))
+
+        #expect(controller.textView.string == "    SELECT 1\n    ")
     }
 
     @Test("A read-only editor is left alone")

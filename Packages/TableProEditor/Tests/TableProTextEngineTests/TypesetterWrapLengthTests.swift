@@ -1,6 +1,6 @@
 //
 //  TypesetterWrapLengthTests.swift
-//  TableProTests
+//  TableProTextEngineTests
 //
 //  Regression tests for wrapped line typesetting. `suggestLineBreak` returns an offset into the run,
 //  not a length, but the typesetter passed it straight through as the CTLine length. Every fragment

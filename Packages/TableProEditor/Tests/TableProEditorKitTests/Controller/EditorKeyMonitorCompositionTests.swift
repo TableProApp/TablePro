@@ -1,6 +1,6 @@
 //
 //  EditorKeyMonitorCompositionTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 
 import AppKit
@@ -63,7 +63,7 @@ internal struct EditorKeyChord: Sendable, CustomTestStringConvertible {
 
     @MainActor
     func event(in window: NSWindow?) -> NSEvent? {
-        EditorControllerFixture.keyDown(keyCode: keyCode, characters: characters, modifiers: modifiers, in: window)
+        Mock.keyDown(keyCode: keyCode, characters: characters, modifiers: modifiers, in: window)
     }
 }
 
@@ -101,10 +101,10 @@ private struct StubSuggestionEntry: CodeSuggestionEntry {
 internal struct EditorKeyMonitorCompositionTests {
     @Test("The editor leaves its plain keys to the input method mid-composition", arguments: EditorKeyChord.inputMethodKeys)
     func editorKeysDeferToComposition(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "    SELECT 1\nFROM ")
+        let (window, editor) = Mock.focusedTextViewController(string: "    SELECT 1\nFROM ")
         let delegate = RecordingCompletionDelegate()
         editor.completionDelegate = delegate
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
+        Mock.beginComposition("le", in: editor.textView)
         let composed = editor.textView.string
         let event = try #require(chord.event(in: window))
 
@@ -115,10 +115,10 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("The editor keeps its Command chords from the menu bar mid-composition and runs none", arguments: EditorKeyChord.commandChords)
     func editorCommandChordsWithheldDuringComposition(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "    SELECT 1\nFROM ")
+        let (window, editor) = Mock.focusedTextViewController(string: "    SELECT 1\nFROM ")
         let delegate = RecordingCompletionDelegate()
         editor.completionDelegate = delegate
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
+        Mock.beginComposition("le", in: editor.textView)
         let composed = editor.textView.string
         let event = try #require(chord.event(in: window))
 
@@ -129,8 +129,8 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("A Command chord the editor does not own reaches the menu bar mid-composition", arguments: EditorKeyChord.foreignCommandChords)
     func foreignCommandChordsPassDuringComposition(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
+        Mock.beginComposition("le", in: editor.textView)
         let event = try #require(chord.event(in: window))
 
         #expect(editor.handleEvent(event: event) === event)
@@ -139,11 +139,11 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("A composition the input method empties gives the editor its keys back", arguments: EditorKeyChord.editorCommands)
     func emptiedCompositionReturnsKeysToEditor(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "    SELECT 1\nFROM ")
+        let (window, editor) = Mock.focusedTextViewController(string: "    SELECT 1\nFROM ")
         let delegate = RecordingCompletionDelegate()
         editor.completionDelegate = delegate
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
-        EditorControllerFixture.emptyComposition(in: editor.textView)
+        Mock.beginComposition("le", in: editor.textView)
+        Mock.emptyComposition(in: editor.textView)
         try #require(editor.textView.hasMarkedText() == false)
         let event = try #require(chord.event(in: window))
 
@@ -152,7 +152,7 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("The editor claims each of those keys when nothing is composing", arguments: EditorKeyChord.editorCommands)
     func editorCommandsClaimSettledText(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "    SELECT 1\nFROM ")
+        let (window, editor) = Mock.focusedTextViewController(string: "    SELECT 1\nFROM ")
         let delegate = RecordingCompletionDelegate()
         editor.completionDelegate = delegate
         let event = try #require(chord.event(in: window))
@@ -162,10 +162,10 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("The completion list leaves its keys to the input method mid-composition", arguments: EditorKeyChord.completionListKeys)
     func completionListDefersToComposition(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
         let delegate = RecordingCompletionDelegate()
         let panel = makeCompletionList(for: editor, delegate: delegate)
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
+        Mock.beginComposition("le", in: editor.textView)
         let event = try #require(chord.event(in: window))
 
         #expect(panel.handleKeyDown(event) === event)
@@ -175,7 +175,7 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("The completion list claims its keys when nothing is composing", arguments: EditorKeyChord.completionListKeys)
     func completionListClaimsSettledText(chord: EditorKeyChord) throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
         let delegate = RecordingCompletionDelegate()
         let panel = makeCompletionList(for: editor, delegate: delegate)
         let event = try #require(chord.event(in: window))
@@ -185,13 +185,13 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("Escape mid-composition in the editor leaves the find panel open")
     func findPanelDefersToEditorComposition() throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
         let finder = try #require(editor.findViewController)
         finder.showFindPanel(animated: false)
         defer { finder.hideFindPanel(animated: false) }
         _ = window.makeFirstResponder(editor.textView)
-        EditorControllerFixture.beginComposition("le", in: editor.textView)
-        let escape = try #require(EditorControllerFixture.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
+        Mock.beginComposition("le", in: editor.textView)
+        let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
         #expect(finder.findPanel.handleKeyDown(escape) === escape)
         #expect(finder.viewModel.isShowingFindPanel)
@@ -199,7 +199,7 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("Escape mid-composition in a text field leaves the find panel open")
     func findPanelDefersToFieldComposition() throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
         let finder = try #require(editor.findViewController)
         finder.showFindPanel(animated: false)
         defer { finder.hideFindPanel(animated: false) }
@@ -213,7 +213,7 @@ internal struct EditorKeyMonitorCompositionTests {
             replacementRange: NSRange(location: NSNotFound, length: 0)
         )
         try #require(fieldEditor.hasMarkedText())
-        let escape = try #require(EditorControllerFixture.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
+        let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
         #expect(finder.findPanel.handleKeyDown(escape) === escape)
         #expect(finder.viewModel.isShowingFindPanel)
@@ -221,12 +221,12 @@ internal struct EditorKeyMonitorCompositionTests {
 
     @Test("Escape with nothing composing closes the find panel")
     func findPanelClosesOnSettledEscape() throws {
-        let (window, editor) = EditorControllerFixture.makeFocusedInWindow(string: "SELECT ")
+        let (window, editor) = Mock.focusedTextViewController(string: "SELECT ")
         let finder = try #require(editor.findViewController)
         finder.showFindPanel(animated: false)
         defer { finder.hideFindPanel(animated: false) }
         _ = window.makeFirstResponder(editor.textView)
-        let escape = try #require(EditorControllerFixture.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
+        let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
         #expect(finder.findPanel.handleKeyDown(escape) == nil)
         #expect(finder.viewModel.isShowingFindPanel == false)

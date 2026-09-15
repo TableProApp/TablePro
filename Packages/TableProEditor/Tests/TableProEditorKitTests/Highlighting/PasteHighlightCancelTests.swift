@@ -1,6 +1,6 @@
 //
 //  PasteHighlightCancelTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 //  A cancelled tree-sitter edit used to invalidate the range as it was BEFORE the edit. That range
 //  is empty for an insertion at a caret, and `HighlightProviderState.invalidate(_:)` returns without

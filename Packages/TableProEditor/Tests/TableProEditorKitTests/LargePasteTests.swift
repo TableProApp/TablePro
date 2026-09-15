@@ -1,6 +1,6 @@
 //
 //  QueryEditorLargePasteTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 //  Regression tests for issue #2158: pasting a large block into the query editor crashed the app.
 //  A caret paste over `maxSyncEditLength` routes the tree-sitter edit to the async arm, and that arm

@@ -1,6 +1,6 @@
 //
 //  GutterHighlightTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 //  Regression tests for gutter line-number highlighting at end of document.
 //  Originally the gutter tested membership via `IndexSet.intersects(integersIn: lineRange)`,
@@ -24,7 +24,7 @@ struct GutterHighlightTests {
 
     @Test("Caret at end of single-line query highlights the only line")
     func caretAtEndOfSingleLineHighlightsLine() throws {
-        let controller = EditorControllerFixture.make()
+        let controller = Mock.loadedTextViewController()
         setText("SELECT * FROM users", on: controller)
         let length = controller.textView.length
         controller.textView.selectionManager.setSelectedRange(NSRange(location: length, length: 0))
@@ -36,7 +36,7 @@ struct GutterHighlightTests {
 
     @Test("Caret at end of multi-line query highlights only the last line")
     func caretAtEndOfMultiLineHighlightsLastLine() throws {
-        let controller = EditorControllerFixture.make()
+        let controller = Mock.loadedTextViewController()
         setText("abc\ndef", on: controller)
         let length = controller.textView.length
         controller.textView.selectionManager.setSelectedRange(NSRange(location: length, length: 0))
@@ -50,7 +50,7 @@ struct GutterHighlightTests {
 
     @Test("Caret in middle of line highlights that line")
     func caretInMiddleOfLineHighlightsThatLine() throws {
-        let controller = EditorControllerFixture.make()
+        let controller = Mock.loadedTextViewController()
         setText("abc\ndef", on: controller)
         controller.textView.selectionManager.setSelectedRange(NSRange(location: 1, length: 0))
 

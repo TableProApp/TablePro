@@ -1,10 +1,9 @@
 //
 //  EditorPeripheralSurfaceTests.swift
-//  TableProTests
+//  TableProEditorKitTests
 //
 
 import AppKit
-@testable import TablePro
 @testable import TableProEditorKit
 import TableProGrammars
 import TableProTextEngine
@@ -24,14 +23,21 @@ struct EditorPeripheralSurfaceTests {
         init(language: CodeLanguage = .default) {
             let configuration = SourceEditorConfiguration(
                 appearance: .init(
-                    theme: EditorControllerFixture.theme,
+                    theme: Mock.theme(),
                     font: .monospacedSystemFont(ofSize: 12, weight: .regular),
                     lineHeightMultiple: 1.0,
                     wrapLines: false,
                     tabWidth: 4
                 ),
                 layout: .init(contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)),
-                peripherals: EditorPeripherals.editor(lineNumbers: true, folding: false)
+                peripherals: .init(
+                    showGutter: true,
+                    showLineNumbers: true,
+                    showFoldingRibbon: false,
+                    showStatementRunControls: false,
+                    gutterFitsContent: false,
+                    showSpecialCharacters: true
+                )
             )
             controller = TextViewController(
                 string: "SELECT * FROM users;\nSELECT * FROM orders;",
