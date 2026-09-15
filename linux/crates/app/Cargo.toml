@@ -23,6 +23,11 @@ name = "i18n_catalog"
 path = "tests/i18n_catalog.rs"
 harness = false
 
+[[test]]
+name = "logging"
+path = "tests/logging.rs"
+harness = false
+
 [features]
 default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
@@ -58,6 +63,7 @@ libc = "0.2"
 sqlformat = "0.5"
 
 [dev-dependencies]
+tracing.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 tempfile.workspace = true
 

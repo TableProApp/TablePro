@@ -35,6 +35,13 @@ meson dist -C _build --no-tests --formats xztar
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
 
+Logs go to stderr and the filter comes from `RUST_LOG`; a development
+build defaults to `debug`.
+
+```bash
+RUST_LOG=debug ./_build/crates/app/tablepro
+```
+
 CI sets `GTK_A11Y=test` for GTK tests. With `GTK_A11Y=none` GTK records no accessible properties, and the accessibility helpers report that the test backend is missing.
 
 ## Code style

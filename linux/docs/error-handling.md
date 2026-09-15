@@ -92,7 +92,17 @@ Do not display raw `Debug` or `Display` output for domain errors. Always go thro
 
 ## Logging
 
-Use the `tracing` crate, with a `tracing-journald` subscriber installed in `app::main`. Levels:
+Use the `tracing` crate. `app::logging::init` installs a `tracing_subscriber` that writes to **stderr**, which the GNOME session journals for both Flatpak and system installs. Panic output goes to the same place, so a panic and the log lines around it stay in order. There is no `tracing-journald` writer and no custom panic hook.
+
+The filter comes from `RUST_LOG`. Without it the level follows the build profile: `debug` for a development build, `info` otherwise. A `RUST_LOG` that does not parse falls back to the profile default and logs a warning saying so, rather than silently dropping to the default.
+
+```sh
+RUST_LOG=debug ./_build/crates/app/tablepro
+RUST_LOG=tablepro_app::ui=trace,info ./_build/crates/app/tablepro
+journalctl --user -f -t tablepro
+```
+
+Levels:
 
 - `error!` — something the user must see, or a contract was violated.
 - `warn!` — recoverable but suspicious.
