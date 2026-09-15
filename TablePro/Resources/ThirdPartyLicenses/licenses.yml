@@ -363,7 +363,7 @@
     `$s9Rearrange` symbols.'
 - id: sparkle
   name: Sparkle
-  version: 2.9.5
+  version: 2.10.0
   spdx: MIT
   copyrights:
   - Copyright (c) 2006-2013 Andy Matuschak.
@@ -374,7 +374,7 @@
   - Copyright (c) 2014 Petroules Corporation.
   - Copyright (c) 2014 Big Nerd Ranch.
   homepageURL: https://github.com/sparkle-project/Sparkle
-  licenseTextURL: https://github.com/sparkle-project/Sparkle/blob/2.9.5/LICENSE
+  licenseTextURL: https://github.com/sparkle-project/Sparkle/blob/2.10.0/LICENSE
   textFile: texts/sparkle.txt
   source: spm:sparkle
   patched: false
@@ -389,7 +389,7 @@
     (c) 2008-2010 Yuta Mori All Rights Reserved." - portable C Ed25519 from https://github.com/orlp/ed25519,
     Zlib, "Copyright (c) 2015 Orson Peters <orsonpeters@gmail.com>" - SUSignatureVerifier.m, BSD-2-Clause,
     "Copyright (c) 2011 Mark Hamlin." Ships as a dynamically linked framework: Contents/Frameworks/Sparkle.framework,
-    confirmed by otool -L on the app dylib (current version 2.9.5), which is why it contributes no Swift
+    confirmed by otool -L on the app dylib (current version 2.10.0), which is why it contributes no Swift
     mangled symbols to the app dylib.'
 - id: swift-asn1
   name: swift-asn1

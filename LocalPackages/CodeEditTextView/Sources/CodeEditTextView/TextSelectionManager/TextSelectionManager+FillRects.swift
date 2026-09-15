@@ -8,6 +8,29 @@
 import Foundation
 
 extension TextSelectionManager {
+    /// A rect a text selection covers, and the line fragment it was measured from.
+    ///
+    /// The fragment travels with the rect because the rect alone cannot say which fragment it belongs to. Fill rects
+    /// are pixel aligned, so an edge can round a fraction of a point into the neighbouring line, and anything that
+    /// re-derives the fragment from the rect's `y` position picks up lines the selection never touched.
+    struct FillRect {
+        /// The rect the selection covers, in the text view's coordinate space.
+        let rect: CGRect
+        /// The line fragment the selection covers part of.
+        let fragment: LineFragment
+        /// Where `fragment` begins, in the text view's coordinate space.
+        let fragmentOrigin: CGPoint
+
+        /// Returns this rect clipped to a drawing rect, pixel aligned like the selection highlight.
+        func clipped(to drawingRect: CGRect) -> FillRect {
+            FillRect(
+                rect: rect.intersection(drawingRect).pixelAligned,
+                fragment: fragment,
+                fragmentOrigin: fragmentOrigin
+            )
+        }
+    }
+
     /// Calculate a set of rects for a text selection suitable for filling with the selection color to indicate a
     /// multi-line selection. The returned rects surround all selected line fragments for the given selection,
     /// following the available text layout space, rather than the available selection layout space.
@@ -17,6 +40,19 @@ extension TextSelectionManager {
     ///   - textSelection: The selection to use.
     /// - Returns: An array of rects that the selection overlaps.
     func getFillRects(in rect: NSRect, for textSelection: TextSelection) -> [CGRect] {
+        fillRects(in: rect, for: textSelection).map(\.rect)
+    }
+
+    /// Calculate the rects a text selection covers, each with the line fragment it was measured from.
+    ///
+    /// Use this over ``TextSelectionManager/getFillRects(in:for:)`` when the rects are used to draw text rather than
+    /// to fill the selection color, such as the image of a dragged selection.
+    ///
+    /// - Parameters:
+    ///   - rect: The bounding rect of available draw space.
+    ///   - textSelection: The selection to use.
+    /// - Returns: A fill rect for every line fragment the selection overlaps inside `rect`.
+    func fillRects(in rect: NSRect, for textSelection: TextSelection) -> [FillRect] {
         // Bound the work by the rect we were asked to fill, never by the viewport: under responsive scrolling
         // `draw(_:)` is called with rects outside the visible area and the result is cached.
         guard let layoutManager,
@@ -25,7 +61,7 @@ extension TextSelectionManager {
             return []
         }
 
-        var fillRects: [CGRect] = []
+        var rects: [FillRect] = []
 
         let textWidth = if layoutManager.maxLineLayoutWidth == .greatestFiniteMagnitude {
             layoutManager.maxLineWidth
@@ -41,16 +77,16 @@ extension TextSelectionManager {
         ).intersection(rect)
 
         for linePosition in layoutManager.linesInRange(range) {
-            fillRects.append(
-                contentsOf: getFillRects(in: validTextDrawingRect, selectionRange: range, forPosition: linePosition)
+            rects.append(
+                contentsOf: fillRects(in: validTextDrawingRect, selectionRange: range, forPosition: linePosition)
             )
         }
 
         // Pixel align these to avoid aliasing on the edges of each rect that should be a solid box. A fragment
         // that misses the drawing rect intersects to `CGRect.null`, whose origin is infinite.
-        return fillRects
-            .map { $0.intersection(validTextDrawingRect).pixelAligned }
-            .filter { !$0.isNull && !$0.isEmpty }
+        return rects
+            .map { $0.clipped(to: validTextDrawingRect) }
+            .filter { !$0.rect.isNull && !$0.rect.isEmpty }
     }
 
     /// Find fill rects for a specific line position.
@@ -59,13 +95,13 @@ extension TextSelectionManager {
     ///   - range: The selected range to create fill rects for.
     ///   - linePosition: The line position to use.
     /// - Returns: An array of rects that the selection overlaps.
-    private func getFillRects(
+    private func fillRects(
         in rect: NSRect,
         selectionRange range: NSRange,
         forPosition linePosition: TextLineStorage<TextLine>.TextLinePosition
-    ) -> [CGRect] {
+    ) -> [FillRect] {
         guard let layoutManager else { return [] }
-        var fillRects: [CGRect] = []
+        var rects: [FillRect] = []
 
         // The selected range contains some portion of the line
         for fragmentPosition in linePosition.data.lineFragments {
@@ -118,14 +154,23 @@ extension TextSelectionManager {
                 )
             }
 
-            fillRects.append(CGRect(
-                x: minRect.origin.x,
-                y: minRect.origin.y,
-                width: maxRect.minX - minRect.minX,
-                height: max(minRect.height, maxRect.height)
-            ))
+            rects.append(
+                FillRect(
+                    rect: CGRect(
+                        x: minRect.origin.x,
+                        y: minRect.origin.y,
+                        width: maxRect.minX - minRect.minX,
+                        height: max(minRect.height, maxRect.height)
+                    ),
+                    fragment: fragmentPosition.data,
+                    fragmentOrigin: CGPoint(
+                        x: layoutManager.edgeInsets.left,
+                        y: linePosition.yPos + fragmentPosition.yPos
+                    )
+                )
+            )
         }
 
-        return fillRects
+        return rects
     }
 }

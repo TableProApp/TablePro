@@ -11,7 +11,8 @@ set -euo pipefail
 # `if createNewItem` guard, so a previously published item that a staged archive happens to match
 # has its download URL rewritten and its release notes dropped.
 #
-# Sparkle 2.9+ rejects two archives sharing a bundle version in one directory, so each
+# generate_appcast rejects two archives sharing a bundle version in one directory
+# (Unarchive.swift:96, SUSparkleErrorDomain 1002, reproduced against 2.9.5 and 2.10.0), so each
 # architecture gets its own staging directory and its own generate_appcast run.
 #
 # Usage: sign-and-appcast.sh <version>
@@ -51,9 +52,9 @@ bash "$(dirname "$0")/extract-release-notes.sh" "$VERSION" --highlights-only --o
 # Pinned and checksum-verified rather than installed from a cask that tracks latest. This step
 # holds the EdDSA private key that signs every update every user receives, so it should not run a
 # binary whose contents can change between releases. The version matches the Sparkle framework
-# pinned in Package.resolved, so both move together.
-SPARKLE_VERSION="2.9.5"
-SPARKLE_SHA256="015336b601493e05c237964954bff6191370003d94edefe663724c88840d73cc"
+# pinned in Package.resolved, and check-sparkle-version.py fails Repo Hygiene when they drift.
+SPARKLE_VERSION="2.10.0"
+SPARKLE_SHA256="c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c"
 SPARKLE_DIR="$(mktemp -d)"
 curl -sSLo "$SPARKLE_DIR/sparkle.tar.xz" \
     "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
@@ -134,19 +135,28 @@ for arch in arm64 x86_64; do
 done
 
 # ---------------------------------------------------------------------------
-# 4. Splice both items into the published feed
+# 4. Keep both signed items, and merge once here as a gate
 # ---------------------------------------------------------------------------
-# Every invariant worth checking lives in merge-appcast.py, which is covered by
-# scripts/ci/test_merge_appcast.py on the Linux runner. This script is only ever exercised by a
-# real release, so the checks belong somewhere a pull request can run them.
-mkdir -p appcast
+# The items are kept because the merge that actually ships runs later, in the commit step, against
+# whatever appcast.xml main holds at that moment. Merging only here meant merging into a snapshot
+# taken minutes earlier and then copying the result over main, so a withdrawal pushed in between
+# was silently reverted and the pulled build was offered again.
+#
+# This merge still runs, against the snapshot, because it is the cheapest place to refuse a release:
+# it happens before the GitHub Release publishes any artifact. Every invariant worth checking lives
+# in merge-appcast.py, which scripts/ci/test_merge_appcast.py covers on the Linux runner, because a
+# real release is the only thing that runs this script.
+mkdir -p appcast/items
+cp "$ARM64_APPCAST" appcast/items/arm64.xml
+cp "$X86_64_APPCAST" appcast/items/x86_64.xml
+
 python3 "$(dirname "$0")/merge-appcast.py" \
   --base "$BASE_APPCAST" \
   --version "$VERSION" \
-  --arm64 "$ARM64_APPCAST" \
-  --x86-64 "$X86_64_APPCAST" \
+  --arm64 appcast/items/arm64.xml \
+  --x86-64 appcast/items/x86_64.xml \
   --download-prefix "$DOWNLOAD_PREFIX" \
   --out appcast/appcast.xml
 
-echo "✅ Appcast published for $VERSION:"
+echo "✅ Appcast validated for $VERSION:"
 head -c 4000 appcast/appcast.xml

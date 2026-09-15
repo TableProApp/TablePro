@@ -113,13 +113,13 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
     /// This is the only measure of whether a default that was flipped for every existing install
     /// was accepted. It carries nothing about a person, a host or a query.
     var updateInstallMode: String? {
-        let updater = UpdaterBridge.shared
+        let updater = SoftwareUpdater.shared
         guard updater.automaticallyChecksForUpdates else { return "off" }
         return updater.automaticallyDownloadsUpdates ? "automatic" : "notify"
     }
 
     var updateCheckInterval: Int? {
-        let updater = UpdaterBridge.shared
+        let updater = SoftwareUpdater.shared
         guard updater.automaticallyChecksForUpdates else { return nil }
         return Int(updater.updateCheckInterval)
     }

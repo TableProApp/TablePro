@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 10/20/23.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 private let pasteboardObjects = [NSString.self, NSURL.self]
 
@@ -20,12 +20,9 @@ extension TextView: NSDraggingSource {
                 return
             }
 
-            // A click is visible by definition, and the frame is the whole document.
+            // A click is visible by definition.
             let clickPoint = view.convert(event.locationInWindow, from: nil)
-            let selectionRects = view.selectionManager.textSelections.filter({ !$0.range.isEmpty }).flatMap {
-                view.selectionManager.getFillRects(in: view.visibleRect, for: $0)
-            }
-            if !selectionRects.contains(where: { $0.contains(clickPoint) }) {
+            if !view.visibleSelectionFillRects().contains(where: { $0.rect.contains(clickPoint) }) {
                 state = .failed
             }
 
@@ -52,9 +49,6 @@ extension TextView: NSDraggingSource {
     /// This will ignore any gesture state besides `.began`, and will end by setting the state to `.ended`. The gesture
     /// is only meant to handle *recognizing* the drag, but the system drag interaction handles the rest.
     ///
-    /// This will create a ``DraggingTextRenderer`` with the contents of the visible text selection. That is converted
-    /// into an image and given to a new dragging session on the text view
-    ///
     /// The rest of the drag interaction is handled by ``performDragOperation(_:)``, ``draggingUpdated(_:)``,
     /// ``draggingSession(_:willBeginAt:)`` and family.
     ///
@@ -65,48 +59,92 @@ extension TextView: NSDraggingSource {
             sender.state = .ended
         }
 
-        guard let visibleTextRange,
-              let draggingView = DraggingTextRenderer(
-                ranges: selectionManager.textSelections
-                    .sorted(using: KeyPathComparator(\.range.location))
-                    .compactMap { $0.range.intersection(visibleTextRange) },
-                layoutManager: layoutManager
-              ) else {
-            return
-        }
-
-        guard let bitmap = bitmapImageRepForCachingDisplay(in: draggingView.frame) else {
-            return
-        }
-
-        draggingView.cacheDisplay(in: draggingView.bounds, to: bitmap)
-
-        guard let cgImage = bitmap.cgImage else {
-            return
-        }
-
-        let draggingImage = NSImage(cgImage: cgImage, size: draggingView.intrinsicContentSize)
-
-        let attributedStrings = selectionManager
-            .textSelections
-            .sorted(by: { $0.range.location < $1.range.location })
-            .map { textStorage.attributedSubstring(from: $0.range) }
-        let attributedString = NSMutableAttributedString()
-        for (idx, string) in attributedStrings.enumerated() {
-            attributedString.append(string)
-            if idx < attributedStrings.count - 1 {
-                attributedString.append(NSAttributedString(string: layoutManager.detectedLineEnding.rawValue))
-            }
-        }
-
-        let draggingItem = NSDraggingItem(pasteboardWriter: attributedString)
-        draggingItem.setDraggingFrame(draggingView.frame, contents: draggingImage)
-
-        guard let currentEvent = NSApp.currentEvent else {
+        guard let currentEvent = NSApp.currentEvent, let draggingItem = makeSelectionDraggingItem() else {
             return
         }
 
         beginDraggingSession(with: [draggingItem], event: currentEvent, source: self)
+    }
+
+    /// The area of the view the user can see, or `.zero` when nothing is showing it.
+    ///
+    /// `NSView.visibleRect` answers `CGRect.infinite` for a view that isn't in a window, and a selection clipped to an
+    /// infinite rect is as wide as the longest line in the document.
+    private var onScreenRect: NSRect {
+        visibleRect.isInfinite ? .zero : visibleRect
+    }
+
+    /// The parts of the text selections the user can see, in the text view's coordinate space.
+    ///
+    /// ``TextSelectionManager/fillRects(in:for:)`` clips to the rect it's given, so these are the rects the selection
+    /// is highlighted in on screen. A press starts a drag when it lands in one of them, and the drag image covers
+    /// them, so the user drags the highlight they pressed on.
+    func visibleSelectionFillRects() -> [TextSelectionManager.FillRect] {
+        selectionFillRects(in: onScreenRect)
+    }
+
+    private func selectionFillRects(in rect: NSRect) -> [TextSelectionManager.FillRect] {
+        nonEmptySelections().flatMap { selectionManager.fillRects(in: rect, for: $0) }
+    }
+
+    /// The selections that have text in them, in document order.
+    ///
+    /// A selection that's only a caret is left out. It has nothing to drag, and joining it into the dragged text
+    /// writes a blank line for every extra cursor.
+    private func nonEmptySelections() -> [TextSelectionManager.TextSelection] {
+        selectionManager
+            .textSelections
+            .filter { !$0.range.isEmpty }
+            .sorted(using: KeyPathComparator(\.range.location))
+    }
+
+    /// The rects the drag image covers.
+    ///
+    /// The press that starts a drag lands inside the visible selection, but the view can scroll out from under it
+    /// before the gesture recognizes. The image then covers the start of the selection in a box the size of the
+    /// viewport, rather than the size of the document.
+    private func draggingFillRects() -> [TextSelectionManager.FillRect] {
+        let visibleFillRects = visibleSelectionFillRects()
+        guard visibleFillRects.isEmpty else { return visibleFillRects }
+        guard let selectionStart = nonEmptySelections()
+            .first
+            .flatMap({ layoutManager.rectForOffset($0.range.location) }) else {
+            return []
+        }
+        return selectionFillRects(in: CGRect(origin: selectionStart.origin, size: onScreenRect.size))
+    }
+
+    /// Builds the item for a drag of the current selection: the text for the pasteboard, and the image the user drags.
+    ///
+    /// This will create a ``DraggingTextRenderer`` with the visible contents of the text selection. That is converted
+    /// into an image and given to the item, positioned so it lines up with the text it was drawn from.
+    ///
+    /// - Returns: The item, or `nil` when there's no text selected or no image to draw.
+    func makeSelectionDraggingItem() -> NSDraggingItem? {
+        let selections = nonEmptySelections()
+        guard !selections.isEmpty,
+              let draggingView = DraggingTextRenderer(
+                fillRects: draggingFillRects(),
+                fragmentRenderer: layoutManager.lineFragmentRenderer
+              ),
+              let draggingImage = draggingView.drawnImage(scaledLike: self) else {
+            return nil
+        }
+
+        let draggingItem = NSDraggingItem(pasteboardWriter: draggedText(for: selections))
+        draggingItem.setDraggingFrame(draggingView.frame, contents: draggingImage)
+        return draggingItem
+    }
+
+    private func draggedText(for selections: [TextSelectionManager.TextSelection]) -> NSAttributedString {
+        let draggedText = NSMutableAttributedString()
+        for (index, selection) in selections.enumerated() {
+            draggedText.append(textStorage.attributedSubstring(from: selection.range))
+            if index < selections.count - 1 {
+                draggedText.append(NSAttributedString(string: layoutManager.detectedLineEnding.rawValue))
+            }
+        }
+        return draggedText
     }
 
     // MARK: - NSDraggingSource
@@ -231,7 +269,7 @@ extension TextView: NSDraggingSource {
                 }
                 return nil
             }),
-              objects.count > 0 else {
+              !objects.isEmpty else {
             return false
         }
         let insertionString = objects.joined(separator: layoutManager.detectedLineEnding.rawValue)

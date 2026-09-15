@@ -28,6 +28,27 @@ struct InspectorFieldEditStagingTests {
         func stage(_ value: PluginCellValue, column: Int = 1, rows: [RowID] = [.existing(1)]) {
             coordinator.stageInspectorFieldEdit(columnIndex: column, value: value, rowIDs: rows)
         }
+
+        /// A real `MultiRowEditState` wired the way the inspector wires it, so a field edit takes
+        /// the same route from the editor's binding to the staged change.
+        func configuredEditState(rows: [RowID]) -> MultiRowEditState {
+            let state = MultiRowEditState()
+            let selected = rows.compactMap { tableRows.row(withID: $0) }
+            state.configure(
+                selectedRowIndices: Set(selected.indices),
+                rowIDs: selected.map(\.id),
+                allRows: selected.map { $0.values.map(\.asText) },
+                columns: tableRows.columns,
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+            )
+            state.onFieldChanged = { [coordinator] columnIndex, value in
+                coordinator.stageInspectorFieldEdit(columnIndex: columnIndex, value: value, rowIDs: rows)
+            }
+            state.onFieldReverted = { [coordinator] columnIndex, valuesByRow in
+                coordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+            }
+            return state
+        }
     }
 
     private func makeFixture(generatedColumns: Set<String> = []) -> Fixture {
@@ -141,6 +162,45 @@ struct InspectorFieldEditStagingTests {
 
         #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
         #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    /// `originalValue` is nil both for a stored NULL and for a selection whose rows disagree, and
+    /// sending that nil as one value wrote NULL into every selected row.
+    @Test("clearing a field the selected rows disagree on puts each row's own value back")
+    func clearingAMultiValueFieldRestoresEachRow() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(0), .existing(1)])
+
+        editState.updateField(at: 1, value: "Same")
+        editState.updateField(at: 1, value: "")
+
+        #expect(fixture.value(row: 0, column: 1) == .text("Alice"))
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    @Test("clearing a field the rows agree on still sends the stored value")
+    func clearingASingleValueFieldSendsTheStoredValue() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(1)])
+
+        editState.updateField(at: 1, value: "Zed")
+        editState.updateField(at: 1, value: "Bob")
+
+        #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
+        #expect(!fixture.coordinator.changeManager.hasChanges)
+    }
+
+    @Test("an explicit NULL over rows that disagree still stages")
+    func anExplicitNullStillStages() {
+        let fixture = makeFixture()
+        let editState = fixture.configuredEditState(rows: [.existing(0), .existing(1)])
+
+        editState.setFieldToNull(at: 1)
+
+        #expect(fixture.value(row: 0, column: 1) == .null)
+        #expect(fixture.value(row: 1, column: 1) == .null)
+        #expect(fixture.coordinator.changeManager.hasChanges)
     }
 
     @Test("a row the buffer does not hold is skipped rather than staged")
