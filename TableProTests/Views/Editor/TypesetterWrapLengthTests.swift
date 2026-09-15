@@ -12,8 +12,8 @@
 //
 
 import AppKit
-@testable import TableProTextEngine
 import Foundation
+@testable import TableProTextEngine
 import Testing
 
 @MainActor

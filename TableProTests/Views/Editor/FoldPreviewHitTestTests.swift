@@ -4,12 +4,12 @@
 //
 
 import AppKit
-import TableProEditorKit
-import TableProTextEngine
 import Foundation
 @testable import TablePro
+import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProTextEngine
 import Testing
 
 @Suite("Fold preview hit testing")

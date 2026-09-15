@@ -3,9 +3,9 @@
 //  TableProTests
 //
 
-import TableProTextEngine
 import Foundation
 @testable import TablePro
+import TableProTextEngine
 import Testing
 
 @Suite("Statement blank characters")

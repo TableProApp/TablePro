@@ -12,10 +12,10 @@
 //  run that target, so a test there would never gate a regression.
 //
 
-@preconcurrency @testable import TableProEditorKit
-import TableProTextEngine
 import Foundation
+@preconcurrency @testable import TableProEditorKit
 import TableProGrammars
+import TableProTextEngine
 import Testing
 
 private final class CompletionRecorder: @unchecked Sendable {

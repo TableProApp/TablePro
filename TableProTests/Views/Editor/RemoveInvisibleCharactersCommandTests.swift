@@ -4,10 +4,10 @@
 //
 
 import AppKit
-@testable import TableProEditorKit
-import TableProTextEngine
 import Foundation
 @testable import TablePro
+@testable import TableProEditorKit
+import TableProTextEngine
 import Testing
 
 @MainActor

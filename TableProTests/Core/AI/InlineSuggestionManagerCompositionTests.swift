@@ -5,9 +5,9 @@
 
 import AppKit
 import Carbon.HIToolbox
+@testable import TablePro
 import TableProEditorKit
 import TableProTextEngine
-@testable import TablePro
 import Testing
 
 @MainActor

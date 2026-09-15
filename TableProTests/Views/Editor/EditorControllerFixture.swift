@@ -8,8 +8,8 @@
 
 import AppKit
 @testable import TableProEditorKit
-import TableProTextEngine
 import TableProGrammars
+import TableProTextEngine
 
 @MainActor
 internal enum EditorControllerFixture {

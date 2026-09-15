@@ -8,10 +8,10 @@
 //
 
 import AppKit
-@testable import TableProEditorKit
 import Foundation
 import SwiftTreeSitter
 @testable import TablePro
+@testable import TableProEditorKit
 import TableProGrammars
 import Testing
 
