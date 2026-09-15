@@ -5,8 +5,8 @@
 
 import AppKit
 import Carbon.HIToolbox
-@testable import CodeEditSourceEditor
-import CodeEditTextView
+@testable import TableProEditorKit
+import TableProTextEngine
 import SwiftUI
 import Testing
 

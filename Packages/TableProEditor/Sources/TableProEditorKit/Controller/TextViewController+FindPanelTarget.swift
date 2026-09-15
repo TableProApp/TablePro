@@ -1,0 +1,46 @@
+//
+//  TextViewController+FindPanelTarget.swift
+//  TableProEditorKit
+//
+//  Created by Khan Winter on 3/16/25.
+//
+
+import AppKit
+import TableProTextEngine
+
+extension TextViewController: FindPanelTarget {
+    var findPanelTargetView: NSView {
+        textView
+    }
+
+    func findPanelWillShow(panelHeight: CGFloat) {
+        updateContentInsets()
+    }
+
+    func findPanelWillHide(panelHeight: CGFloat) {
+        updateContentInsets()
+    }
+
+    func findPanelModeDidChange(to mode: FindPanelMode) {
+        updateContentInsets()
+    }
+
+    var emphasisManager: EmphasisManager? {
+        textView?.emphasisManager
+    }
+}
+
+public extension TextViewController {
+    func showFindPanel() {
+        _ = textView.resignFirstResponder()
+        findViewController?.showFindPanel()
+    }
+
+    func findNext() {
+        findViewController?.viewModel.moveToNextMatch()
+    }
+
+    func findPrevious() {
+        findViewController?.viewModel.moveToPreviousMatch()
+    }
+}

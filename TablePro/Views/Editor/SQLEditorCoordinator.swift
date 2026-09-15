@@ -2,17 +2,17 @@
 //  SQLEditorCoordinator.swift
 //  TablePro
 //
-//  TextViewCoordinator for the CodeEditSourceEditor-based SQL editor.
+//  TextViewCoordinator for the TableProEditorKit-based SQL editor.
 //  Handles find panel workarounds and horizontal scrolling fix.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import Combine
 import Observation
 import os
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @Observable

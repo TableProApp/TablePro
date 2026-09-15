@@ -10,8 +10,8 @@
 //  deterministically unit-testable; these tests cover the logic the fix relies on.
 //
 
-import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
+import TableProTextEngine
 import Foundation
 @testable import TablePro
 import TableProPluginKit

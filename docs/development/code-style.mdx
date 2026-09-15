@@ -3,9 +3,9 @@ title: Code Style
 description: Swift conventions, tooling, naming, and file organization rules
 ---
 
-Lint covers `TablePro/` and nothing else. `Plugins/`, `Packages/`, `LocalPackages/` and the test
-bundles get no automated style check at all, locally or in CI. On a change outside the app target,
-the conventions here are all there is.
+Lint covers `TablePro/` and `Packages/`, which includes `TableProPluginKit` through the symlink in
+`TableProCore`. The rest of `Plugins/` and the app's own test bundles get no automated style check,
+so on a change there the conventions on this page are all there is.
 
 `.swiftlint.yml` and `.swiftformat` settle the mechanical half. `CLAUDE.md` carries the rest, the
 rules no linter can check: no comments, early returns over nested conditionals, explicit access
@@ -74,16 +74,16 @@ SwiftLint's `sorted_imports` catches an out-of-order import that never went thro
 
 ```swift
 import AppKit
-import CodeEditSourceEditor
 import Foundation
 import os
+import TableProEditorKit
 import TableProPluginKit
 
 final class QueryRunner { … }
 ```
 
 Lowercase module names sort by their own spelling, which is why `os` lands between `Foundation` and
-`TableProPluginKit`.
+`TableProEditorKit`.
 
 ## Rules that bite
 

@@ -7,8 +7,8 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
+import TableProTextEngine
 import Foundation
 @testable import TablePro
 import TableProGrammars

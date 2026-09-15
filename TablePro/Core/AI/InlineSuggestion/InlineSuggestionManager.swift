@@ -4,9 +4,9 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class InlineSuggestionManager {

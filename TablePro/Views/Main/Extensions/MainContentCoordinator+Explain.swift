@@ -7,8 +7,8 @@
 //  gate and is fenced against a superseded result, the same way a normal query is.
 //
 
-import CodeEditSourceEditor
 import Foundation
+import TableProEditorKit
 import TableProPluginKit
 
 extension MainContentCoordinator {

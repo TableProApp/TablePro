@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import CodeEditSourceEditor
+import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
 

@@ -3,7 +3,7 @@
 //  TableProTests
 //
 
-import CodeEditSourceEditor
+import TableProEditorKit
 import Foundation
 import Testing
 @testable import TablePro

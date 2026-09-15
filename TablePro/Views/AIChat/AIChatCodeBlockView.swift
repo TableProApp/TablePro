@@ -4,8 +4,8 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
 import TableProGrammars
 
 struct AIChatCodeBlockView: View, Equatable {

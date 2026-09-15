@@ -3,7 +3,7 @@
 //  TableProTests
 //
 
-import CodeEditTextView
+import TableProTextEngine
 import Foundation
 @testable import TablePro
 import TableProPluginKit

@@ -4,7 +4,7 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
+import TableProEditorKit
 
 /// The Edit menu's Find items are nil-targeted, so AppKit resolves them through the responder chain.
 /// `SourceEditor` is an `NSViewControllerRepresentable`, which makes `TextViewController` a child view

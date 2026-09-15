@@ -6,12 +6,12 @@
 //  Separates view logic from presentation for better maintainability.
 //
 
-import CodeEditSourceEditor
 import Combine
 import Foundation
 import Observation
 import os
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 
 /// Discard action types for unified alert handling

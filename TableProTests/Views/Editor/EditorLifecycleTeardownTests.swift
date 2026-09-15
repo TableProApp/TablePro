@@ -9,8 +9,8 @@
 //
 
 import AppKit
-@testable import CodeEditSourceEditor
-import CodeEditTextView
+@testable import TableProEditorKit
+import TableProTextEngine
 import SwiftUI
 @testable import TablePro
 import Testing

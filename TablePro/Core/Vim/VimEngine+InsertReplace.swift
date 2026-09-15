@@ -3,8 +3,8 @@
 //  TablePro
 //
 
-import CodeEditTextView
 import Foundation
+import TableProTextEngine
 
 enum VimInsertControl: Character {
     case outdentLine = "\u{04}"

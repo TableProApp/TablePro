@@ -4,7 +4,7 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
+import TableProEditorKit
 import Foundation
 import SwiftUI
 import TableProPluginKit

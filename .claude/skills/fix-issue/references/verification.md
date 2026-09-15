@@ -129,7 +129,7 @@ The `DEVELOPER_DIR` export above is required; without it SwiftLint aborts with `
 
 Two things to know:
 
-- **SwiftLint's `included:` scope is `TablePro` only.** `Plugins/`, `LocalPackages/`, and the test targets are never linted by a bare `swiftlint lint`. Pass explicit paths to lint a change outside the app target.
+- **SwiftLint's `included:` scope is `TablePro` and `Packages`.** The rest of `Plugins/` and the app's test targets are never linted by a bare `swiftlint lint`. Pass explicit paths to lint a change outside that scope.
 - **Local `swiftformat` is a version behind the repo `.swiftformat`** and rejects `--ifdefindent`, so it cannot run here. Rely on SwiftLint plus reading the diff.
 - **Never remove a `swiftlint:disable force_unwrapping` comment** to satisfy a local run. There are five of them, inline in four files, not in the config: `.swiftlint.yml` enables the rule as an opt-in and sets it to `warning`. The CI toolchain differs from this one, so a disable that looks unnecessary here is load-bearing there.
 

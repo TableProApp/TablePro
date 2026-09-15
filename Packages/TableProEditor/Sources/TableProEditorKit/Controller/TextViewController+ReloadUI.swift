@@ -1,0 +1,17 @@
+//
+//  TextViewController+ReloadUI.swift
+//  TableProEditorKit
+//
+//  Created by Khan Winter on 4/17/25.
+//
+
+import AppKit
+
+extension TextViewController {
+    func reloadUI() {
+        configuration.didSetOnController(controller: self, oldConfig: nil)
+
+        styleScrollView()
+        styleTextView()
+    }
+}

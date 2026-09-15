@@ -3,8 +3,8 @@
 //  TablePro
 //
 
-import CodeEditTextView
 import Foundation
+import TableProTextEngine
 
 internal enum InvisibleCharacterRemover {
     private static let lineBreaks: Set<UInt32> = [0x85, 0x2028, 0x2029]

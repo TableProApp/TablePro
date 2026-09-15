@@ -7,7 +7,7 @@
 //
 
 import AppKit
-import CodeEditTextView
+import TableProTextEngine
 import TableProPluginKit
 @testable import TablePro
 import Testing

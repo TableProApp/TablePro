@@ -6,9 +6,9 @@
 //  to keep the main class body within SwiftLint limits.
 //
 
-import CodeEditSourceEditor
 import Foundation
 import os
+import TableProEditorKit
 
 extension MainContentCoordinator {
     func handleTabChange(

@@ -6,9 +6,9 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 /// Which window a key event seen by the app-wide monitor belongs to
 enum VimKeyEventScope: Equatable {

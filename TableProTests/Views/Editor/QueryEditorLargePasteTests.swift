@@ -8,12 +8,12 @@
 //  `HighlightProviderState`, so highlight state and `NSTextStorage` were touched off the main thread
 //  while the main thread was still processing the same edit.
 //
-//  These live here rather than in `CodeEditSourceEditorTests` because the TablePro scheme does not
+//  These live here rather than in `TableProEditorKitTests` because the TablePro scheme does not
 //  run that target, so a test there would never gate a regression.
 //
 
-@preconcurrency @testable import CodeEditSourceEditor
-import CodeEditTextView
+@preconcurrency @testable import TableProEditorKit
+import TableProTextEngine
 import Foundation
 import TableProGrammars
 import Testing

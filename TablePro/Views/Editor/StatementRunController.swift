@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 /// Which way a statement navigation command moves the caret.
 enum StatementNavigationDirection {

@@ -7,12 +7,12 @@
 //  after the first then re-typeset all the text before it, so glyph work and retained memory grew
 //  with the square of the line length and a long single line could exhaust memory.
 //
-//  These live here rather than in CodeEditTextViewTests because the TablePro scheme does not run
+//  These live here rather than in TableProTextEngineTests because the TablePro scheme does not run
 //  that package's test target, so a test there would never gate a regression.
 //
 
 import AppKit
-@testable import CodeEditTextView
+@testable import TableProTextEngine
 import Foundation
 import Testing
 

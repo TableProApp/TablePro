@@ -9,7 +9,7 @@
 //
 
 import AppKit
-import CodeEditTextView
+import TableProTextEngine
 import Testing
 
 @MainActor

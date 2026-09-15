@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 extension SQLEditorCoordinator {
     func performRemoveInvisibleCharacters() {

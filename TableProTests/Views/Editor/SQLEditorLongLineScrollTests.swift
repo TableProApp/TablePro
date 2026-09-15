@@ -4,8 +4,8 @@
 //
 
 import AppKit
-@testable import CodeEditSourceEditor
-import CodeEditTextView
+@testable import TableProEditorKit
+import TableProTextEngine
 import Testing
 
 /// Pasting a long line into the query editor and taking it back out leaves the start of every line in view (#2709).

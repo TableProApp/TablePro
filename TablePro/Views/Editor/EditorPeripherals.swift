@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import CodeEditSourceEditor
+import TableProEditorKit
 
 /// Builds the gutter and rail settings every code editor in the app shares.
 ///

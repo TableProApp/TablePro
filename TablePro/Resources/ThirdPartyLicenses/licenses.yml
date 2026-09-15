@@ -23,7 +23,7 @@
     Zero `$s6BigInt` symbols in the app dylib.
 - id: codeeditsourceeditor
   name: CodeEditSourceEditor
-  version: vendored (no upstream tag recorded in the tree)
+  version: vendored at 1fa4d3c3f, 2026-03; see Packages/TableProEditor/ORIGIN.md
   spdx: MIT
   copyrights:
   - Copyright (c) 2022 CodeEdit
@@ -32,13 +32,14 @@
   textFile: texts/codeeditsourceeditor.txt
   source: manual
   patched: false
-  notes: 'LICENSE.md present at the package root. First 3 lines: "MIT License" / "" / "Copyright (c) 2022
-    CodeEdit". Vendored fork with local modifications (its Package.swift points CodeEditTextView and TableProGrammars
-    at local paths). MIT requires the copyright notice and permission notice be reproduced. Confirmed
-    linked: 83+ `$s21CodeEditSourceEditor` symbols in the app dylib.'
+  notes: 'Vendored as the TableProEditorKit target of Packages/TableProEditor. The notice travels with
+    the sources at Packages/TableProEditor/LICENSE-CodeEditSourceEditor.md, and ORIGIN.md beside it records
+    the upstream commit and what TablePro changed. First 3 lines of the notice: "MIT License" / "" /
+    "Copyright (c) 2022 CodeEdit". MIT requires the copyright notice and permission notice be reproduced.
+    Heavily modified: roughly 7,000 lines of TablePro source across this target and TableProTextEngine.'
 - id: codeedittextview
   name: CodeEditTextView
-  version: vendored (no upstream tag recorded in the tree)
+  version: vendored at d7ac3f11f, 2026-03; see Packages/TableProEditor/ORIGIN.md
   spdx: MIT
   copyrights:
   - Copyright (c) 2023 CodeEdit
@@ -47,9 +48,9 @@
   textFile: texts/codeedittextview.txt
   source: manual
   patched: false
-  notes: 'LICENSE.md present at the package root. First 3 lines: "MIT License" / "" / "Copyright (c) 2023
-    CodeEdit". Note the year differs from CodeEditSourceEditor (2023 vs 2022), so the two notices are
-    NOT interchangeable.'
+  notes: 'Vendored as the TableProTextEngine and TableProTextEngineObjC targets of Packages/TableProEditor.
+    The notice travels with the sources at Packages/TableProEditor/LICENSE-CodeEditTextView.md. Note the
+    year differs from CodeEditSourceEditor (2023 vs 2022), so the two notices are NOT interchangeable.'
 - id: cassandra-cpp-driver
   name: DataStax C/C++ Driver for Apache Cassandra
   version: 2.17.1

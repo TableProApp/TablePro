@@ -4,8 +4,8 @@
 //
 
 import AppKit
-@testable import CodeEditSourceEditor
-import CodeEditTextView
+@testable import TableProEditorKit
+import TableProTextEngine
 @testable import TablePro
 import TableProGrammars
 import Testing

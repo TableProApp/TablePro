@@ -1,0 +1,178 @@
+import AppKit
+@testable import TableProTextEngine
+import Testing
+
+/// Regression tests for IME commits (Pinyin / Rime / any system that uses marked text).
+///
+/// `TextView.insertText(_:replacementRange:)` used to call `unmarkText()` first and then
+/// `_insertText` with the same `replacementRange` AppKit had supplied, which by then pointed
+/// at characters that no longer existed because `unmarkText` had already shrunk the document.
+/// The result was either content corruption (range still in bounds, but pointing at the wrong
+/// chars) or a cursor that landed at `documentLength` after a clamped out-of-bounds replace —
+/// the latter is what users see as "scrolls to end of script after typing a Chinese word".
+/// See TableProApp/TablePro#1012.
+@Suite
+@MainActor
+struct IMEInputTests {
+    private func makeLaidOutTextView(_ text: String) -> TextView {
+        let textView = TextView(string: text)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        textView.updateFrameIfNeeded()
+        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
+        return textView
+    }
+
+    /// Builds marked text "ceshi" character-by-character at the current selection,
+    /// matching how an IME progressively shows the in-progress romaji string.
+    private func typeMarkedCeshi(on textView: TextView) {
+        for (index, segment) in ["c", "ce", "ces", "cesh", "ceshi"].enumerated() {
+            textView.setMarkedText(
+                segment,
+                selectedRange: NSRange(location: index + 1, length: 0),
+                replacementRange: NSRange(location: NSNotFound, length: 0)
+            )
+        }
+    }
+
+    @Test("IME commit on an empty middle line preserves surrounding content")
+    func imeCommitInTheMiddleDoesNotCorruptText() throws {
+        let textView = makeLaidOutTextView("alpha\n\nbeta")
+        textView.selectionManager.setSelectedRange(NSRange(location: 6, length: 0))
+
+        typeMarkedCeshi(on: textView)
+
+        // After typing five characters of marked text starting at offset 6, the IME owns
+        // the range (6, 5) and may pass it as `replacementRange` at commit.
+        textView.insertText("测试", replacementRange: NSRange(location: 6, length: 5))
+
+        #expect(textView.string == "alpha\n测试\nbeta")
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 8, length: 0))
+    }
+
+    @Test("IME commit at end of document keeps caret at the inserted text, not at length")
+    func imeCommitAtEndKeepsCaretAtInsertedText() throws {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.insertText("测试", replacementRange: NSRange(location: 5, length: 5))
+
+        #expect(textView.string == "alpha测试")
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 7, length: 0))
+    }
+
+    @Test("IME commit with NSNotFound replacement range still inserts at the marked range")
+    func imeCommitWithNotFoundReplacementRange() throws {
+        let textView = makeLaidOutTextView("alpha\n\nbeta")
+        textView.selectionManager.setSelectedRange(NSRange(location: 6, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.insertText(
+            "测试",
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "alpha\n测试\nbeta")
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 8, length: 0))
+    }
+
+    @Test("Marked-text state is cleared after a commit")
+    func markedTextStateClearedAfterCommit() {
+        let textView = makeLaidOutTextView("alpha\n\nbeta")
+        textView.selectionManager.setSelectedRange(NSRange(location: 6, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.insertText("测试", replacementRange: NSRange(location: 6, length: 5))
+
+        #expect(textView.hasMarkedText() == false)
+        #expect(textView.markedRange().location == NSNotFound)
+    }
+
+    @Test("An input method that empties its composition ends it")
+    func emptiedCompositionEndsIt() throws {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "alpha")
+        #expect(textView.hasMarkedText() == false)
+        #expect(textView.markedRange().location == NSNotFound)
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 5, length: 0))
+    }
+
+    @Test("A composition begun after an emptied one starts at the caret")
+    func compositionAfterEmptiedOneStartsAtCaret() throws {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        typeMarkedCeshi(on: textView)
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "c",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        #expect(textView.markedRange() == NSRange(location: 5, length: 1))
+
+        textView.insertText("测", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+        #expect(textView.string == "alpha测")
+        #expect(textView.hasMarkedText() == false)
+        let caret = try #require(textView.selectionManager.textSelections.first)
+        #expect(caret.range == NSRange(location: 6, length: 0))
+    }
+
+    @Test("Emptying a composition across several cursors ends it at every cursor")
+    func emptiedMultiCursorCompositionEndsIt() {
+        let textView = makeLaidOutTextView("ABC")
+        textView.selectionManager.setSelectedRanges([
+            NSRange(location: 1, length: 0),
+            NSRange(location: 2, length: 0)
+        ])
+
+        textView.setMarkedText(
+            "´",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+        textView.setMarkedText(
+            "",
+            selectedRange: NSRange(location: 0, length: 0),
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "ABC")
+        #expect(textView.hasMarkedText() == false)
+        let carets = textView.selectionManager.textSelections.map(\.range).sorted { $0.location < $1.location }
+        #expect(carets == [NSRange(location: 1, length: 0), NSRange(location: 2, length: 0)])
+    }
+
+    @Test("Plain Latin insertText path is unaffected")
+    func plainInsertTextIsUnaffected() {
+        let textView = makeLaidOutTextView("alpha")
+        textView.selectionManager.setSelectedRange(NSRange(location: 5, length: 0))
+
+        // No setMarkedText calls — this is the non-IME path.
+        textView.insertText(
+            " beta",
+            replacementRange: NSRange(location: NSNotFound, length: 0)
+        )
+
+        #expect(textView.string == "alpha beta")
+        #expect(textView.selectionManager.textSelections.first?.range == NSRange(location: 10, length: 0))
+    }
+}

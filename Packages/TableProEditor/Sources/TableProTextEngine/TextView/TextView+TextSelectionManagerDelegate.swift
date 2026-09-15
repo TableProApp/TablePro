@@ -1,0 +1,18 @@
+//
+//  TextView+TextSelectionManagerDelegate.swift
+//  TableProTextEngine
+//
+//  Created by Khan Winter on 6/15/24.
+//
+
+import Foundation
+
+extension TextView: TextSelectionManagerDelegate {
+    public func setNeedsDisplay() {
+        self.setNeedsDisplay(bounds)
+    }
+
+    public func estimatedLineHeight() -> CGFloat {
+        layoutManager.estimateLineHeight()
+    }
+}

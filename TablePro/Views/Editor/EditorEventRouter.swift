@@ -7,7 +7,7 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditTextView
+import TableProTextEngine
 
 @MainActor
 internal final class EditorEventRouter {

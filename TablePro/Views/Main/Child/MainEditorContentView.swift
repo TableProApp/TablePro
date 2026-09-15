@@ -7,8 +7,8 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 
 /// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on

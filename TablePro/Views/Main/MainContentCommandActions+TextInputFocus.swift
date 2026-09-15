@@ -54,7 +54,7 @@ extension MainContentCommandActions {
     }
 
     /// `NSTextInputClient` covers every responder that edits text: the SQL editor
-    /// (`CodeEditTextView.TextView` is `NSView`-based but conforms), an `NSTextView`
+    /// (`TableProTextEngine.TextView` is `NSView`-based but conforms), an `NSTextView`
     /// field editor over a grid cell, and the sidebar filter field. It excludes
     /// `NSTableView` and `NSOutlineView`, so selecting rows or sidebar tables keeps
     /// the grid commands enabled.

@@ -8,7 +8,7 @@
 //
 
 import AppKit
-@testable import CodeEditSourceEditor
+@testable import TableProEditorKit
 import Foundation
 import SwiftTreeSitter
 @testable import TablePro

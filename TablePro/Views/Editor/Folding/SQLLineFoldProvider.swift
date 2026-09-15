@@ -3,10 +3,10 @@
 //  TablePro
 //
 
-import CodeEditSourceEditor
-import CodeEditTextView
 import Foundation
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 /// Answers the editor's per-line fold queries from a whole-document scan.
 ///
