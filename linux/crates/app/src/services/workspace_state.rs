@@ -17,7 +17,6 @@ static FILE_LOCK: Mutex<()> = Mutex::new(());
 const MAX_TABS_PER_CONNECTION: usize = 32;
 const MAX_TABLE_NAME_BYTES: usize = 256;
 const MAX_SCHEMA_NAME_BYTES: usize = 256;
-const MAX_QUERY_BYTES: usize = 256 * 1024;
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -58,7 +57,14 @@ pub enum WorkspaceTabRecord {
         sort_asc: Option<bool>,
     },
     Editor {
+        /// The file the tab's text lives in. Keeping it out of this
+        /// record is what lets a script be any length.
         #[serde(default)]
+        draft: tablepro_storage::DraftId,
+        /// What a build before drafts wrote inline, cut at 256 KiB.
+        /// Read once so an upgrade does not lose an open script, and
+        /// never written again.
+        #[serde(default, skip_serializing)]
         query: String,
     },
     /// Persisted Structure tab (Edit mode only — `New` mode tabs are
@@ -191,12 +197,8 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     }
     for tab in &mut conn.tabs {
         match tab {
-            WorkspaceTabRecord::Editor { query } => {
-                if query.len() > MAX_QUERY_BYTES {
-                    let boundary = floor_char_boundary(query, MAX_QUERY_BYTES);
-                    query.truncate(boundary);
-                }
-            }
+            // An editor record is an id, so there is nothing to clamp.
+            WorkspaceTabRecord::Editor { .. } => {}
             WorkspaceTabRecord::Table {
                 schema,
                 table,
@@ -256,8 +258,11 @@ mod tests {
         }
     }
 
-    fn editor(query: &str) -> WorkspaceTabRecord {
-        WorkspaceTabRecord::Editor { query: query.into() }
+    fn editor() -> WorkspaceTabRecord {
+        WorkspaceTabRecord::Editor {
+            draft: tablepro_storage::DraftId::new(),
+            query: String::new(),
+        }
     }
 
     #[test]
@@ -274,7 +279,7 @@ mod tests {
     #[test]
     fn clamp_handles_mixed_browse_and_editor_tabs() {
         let mut conn = ConnectionWorkspaceState {
-            tabs: vec![browse("users"), editor("SELECT 1"), browse("orders")],
+            tabs: vec![browse("users"), editor(), browse("orders")],
             active_idx: 1,
         };
         clamp_connection(&mut conn);
@@ -309,20 +314,36 @@ mod tests {
     }
 
     #[test]
-    fn clamp_truncates_long_query_at_char_boundary() {
-        let mut q = "a".repeat(MAX_QUERY_BYTES - 1);
-        q.push('é');
-        let mut conn = ConnectionWorkspaceState {
-            tabs: vec![editor(&q)],
-            active_idx: 0,
-        };
-        clamp_connection(&mut conn);
-        match &conn.tabs[0] {
-            WorkspaceTabRecord::Editor { query } => {
-                assert!(query.is_char_boundary(query.len()));
-                assert!(query.len() <= MAX_QUERY_BYTES);
+    fn an_editor_record_carries_a_draft_id_not_the_text() {
+        // The text used to live here and was cut at 256 KiB, which
+        // silently halved a long migration script.
+        let record = editor();
+        let json = serde_json::to_string(&record).expect("serialise");
+
+        let parsed: WorkspaceTabRecord = serde_json::from_str(&json).expect("parse");
+
+        match (&record, &parsed) {
+            (WorkspaceTabRecord::Editor { draft: wrote, .. }, WorkspaceTabRecord::Editor { draft: read, .. }) => {
+                assert_eq!(wrote, read)
             }
-            _ => panic!("expected Editor"),
+            other => panic!("expected two Editor records, got {other:?}"),
+        }
+        assert!(json.len() < 100, "the record carries more than an id: {json}");
+        assert!(
+            !json.contains("query"),
+            "the text was written back into the record: {json}"
+        );
+    }
+
+    #[test]
+    fn an_editor_record_from_before_drafts_keeps_its_text_for_one_read() {
+        let json = r#"{"kind":"editor","query":"SELECT 1"}"#;
+
+        let parsed: WorkspaceTabRecord = serde_json::from_str(json).expect("parse a legacy record");
+
+        match &parsed {
+            WorkspaceTabRecord::Editor { query, .. } => assert_eq!(query, "SELECT 1"),
+            other => panic!("expected Editor, got {other:?}"),
         }
     }
 
@@ -335,7 +356,7 @@ mod tests {
             ConnectionWorkspaceState {
                 tabs: vec![
                     browse("users"),
-                    editor("SELECT * FROM orders"),
+                    editor(),
                     WorkspaceTabRecord::Browse {
                         schema: Some("public".into()),
                         table: "products".into(),
@@ -376,7 +397,7 @@ mod tests {
             _ => panic!("expected Browse"),
         }
         match &tabs[1] {
-            WorkspaceTabRecord::Editor { query } => assert_eq!(query, ""),
+            WorkspaceTabRecord::Editor { query, .. } => assert_eq!(query, ""),
             _ => panic!("expected Editor"),
         }
     }

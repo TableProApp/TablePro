@@ -1,6 +1,7 @@
 mod connections;
 pub mod document;
 mod document_problem;
+pub mod drafts;
 mod error;
 pub mod fs;
 mod paths;
@@ -13,6 +14,7 @@ pub use connections::{
     SavedSshConfig,
 };
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
+pub use drafts::{DraftId, DraftScope, DraftStore};
 pub use error::StorageError;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;

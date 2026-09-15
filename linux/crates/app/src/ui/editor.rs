@@ -615,6 +615,12 @@ impl SimpleComponent for SqlEditor {
 }
 
 impl SqlEditor {
+    /// The text buffer, so the draft writer can read the script once
+    /// per write rather than carrying a copy of it per keystroke.
+    pub fn buffer(&self) -> gtk::TextBuffer {
+        self.source_view.buffer()
+    }
+
     /// Dispatch a pre-trimmed non-empty SQL string into the run path.
     /// Both `Run` (whole buffer) and `RunAtCursor` (single statement
     /// under cursor) funnel through here so the UI-state setup

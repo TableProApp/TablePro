@@ -65,7 +65,7 @@ where
     }
 
     /// Resolves once everything changed so far is on disk.
-    pub fn flush(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn flush(&self) -> impl Future<Output = ()> + Send + use<D> {
         self.writer.flush()
     }
 }
