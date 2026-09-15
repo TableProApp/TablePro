@@ -20,13 +20,13 @@ rustls-pki-types.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlparser.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 uuid.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-sqlparser.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]

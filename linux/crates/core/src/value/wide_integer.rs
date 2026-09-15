@@ -4,6 +4,8 @@ use std::str::FromStr;
 use num_bigint::BigInt;
 use thiserror::Error;
 
+use crate::column::IntegerKind;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WideInteger(BigInt);
 
@@ -35,6 +37,49 @@ impl WideInteger {
     pub fn to_u128(&self) -> Option<u128> {
         u128::try_from(&self.0).ok()
     }
+
+    /// Whether the value fits the column it is headed for. The insert
+    /// path checks this before binding, so an out-of-range value fails
+    /// with the column named rather than as a driver error.
+    pub fn fits(&self, kind: IntegerKind) -> bool {
+        let (low, high) = bounds(kind);
+        &self.0 >= low && &self.0 <= high
+    }
+}
+
+/// Built once: ten `BigInt` pairs constructed per call would dominate a
+/// bulk insert's validation.
+fn bounds(kind: IntegerKind) -> &'static (BigInt, BigInt) {
+    use std::sync::OnceLock;
+
+    static BOUNDS: OnceLock<[(BigInt, BigInt); 10]> = OnceLock::new();
+    let table = BOUNDS.get_or_init(|| {
+        [
+            (BigInt::from(i8::MIN), BigInt::from(i8::MAX)),
+            (BigInt::from(0), BigInt::from(u8::MAX)),
+            (BigInt::from(i16::MIN), BigInt::from(i16::MAX)),
+            (BigInt::from(0), BigInt::from(u16::MAX)),
+            (BigInt::from(i32::MIN), BigInt::from(i32::MAX)),
+            (BigInt::from(0), BigInt::from(u32::MAX)),
+            (BigInt::from(i64::MIN), BigInt::from(i64::MAX)),
+            (BigInt::from(0), BigInt::from(u64::MAX)),
+            (BigInt::from(i128::MIN), BigInt::from(i128::MAX)),
+            (BigInt::from(0), BigInt::from(u128::MAX)),
+        ]
+    });
+    let index = match kind {
+        IntegerKind::I8 => 0,
+        IntegerKind::U8 => 1,
+        IntegerKind::I16 => 2,
+        IntegerKind::U16 => 3,
+        IntegerKind::I32 => 4,
+        IntegerKind::U32 => 5,
+        IntegerKind::I64 => 6,
+        IntegerKind::U64 => 7,
+        IntegerKind::I128 => 8,
+        IntegerKind::U128 => 9,
+    };
+    &table[index]
 }
 
 impl FromStr for WideInteger {
@@ -98,5 +143,51 @@ mod tests {
         assert_eq!(WideInteger::from_u128(u128::MAX).to_u128(), Some(u128::MAX));
         assert_eq!(WideInteger::from_u128(u128::MAX).to_i128(), None);
         assert_eq!(WideInteger::from_i128(-1).to_u128(), None);
+    }
+}
+
+#[cfg(test)]
+mod fits_tests {
+    use super::*;
+
+    fn wide(text: &str) -> WideInteger {
+        text.parse().expect("a valid integer")
+    }
+
+    #[test]
+    fn wide_integer_fits_every_integer_kind() {
+        let cases: [(IntegerKind, &str, &str); 10] = [
+            (IntegerKind::I8, "-128", "127"),
+            (IntegerKind::U8, "0", "255"),
+            (IntegerKind::I16, "-32768", "32767"),
+            (IntegerKind::U16, "0", "65535"),
+            (IntegerKind::I32, "-2147483648", "2147483647"),
+            (IntegerKind::U32, "0", "4294967295"),
+            (IntegerKind::I64, "-9223372036854775808", "9223372036854775807"),
+            (IntegerKind::U64, "0", "18446744073709551615"),
+            (
+                IntegerKind::I128,
+                "-170141183460469231731687303715884105728",
+                "170141183460469231731687303715884105727",
+            ),
+            (IntegerKind::U128, "0", "340282366920938463463374607431768211455"),
+        ];
+
+        for (kind, low, high) in cases {
+            assert!(wide(low).fits(kind), "{kind:?} rejected its own minimum {low}");
+            assert!(wide(high).fits(kind), "{kind:?} rejected its own maximum {high}");
+
+            let below = format!("{}", wide(low).0 - 1);
+            let above = format!("{}", wide(high).0 + 1);
+            assert!(!wide(&below).fits(kind), "{kind:?} accepted {below}");
+            assert!(!wide(&above).fits(kind), "{kind:?} accepted {above}");
+        }
+    }
+
+    #[test]
+    fn an_unsigned_kind_rejects_a_negative_value() {
+        for kind in IntegerKind::ALL.into_iter().filter(|kind| !kind.is_signed()) {
+            assert!(!wide("-1").fits(kind), "{kind:?} accepted -1");
+        }
     }
 }

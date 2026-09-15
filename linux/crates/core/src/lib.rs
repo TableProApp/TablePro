@@ -1,8 +1,10 @@
 mod certificate_file_problem;
 mod client_identity;
+pub mod column;
 mod config_error;
 mod connection;
 pub mod credentials;
+pub mod ddl;
 mod driver;
 mod error;
 mod error_category;
