@@ -23,8 +23,6 @@ struct WelcomeActionsPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Spacer()
-
             VStack(spacing: 12) {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
@@ -65,6 +63,7 @@ struct WelcomeActionsPanel: View {
                 }
                 .font(.subheadline)
             }
+            .padding(.top, 28)
 
             Spacer()
                 .frame(height: 24)
@@ -93,7 +92,7 @@ struct WelcomeActionsPanel: View {
             .controlSize(.large)
             .padding(.horizontal, 24)
 
-            Spacer()
+            Spacer(minLength: 24)
 
             SyncStatusIndicator(onActivateLicense: onActivateLicense)
                 .font(.caption)
