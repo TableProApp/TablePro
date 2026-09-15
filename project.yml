@@ -426,6 +426,7 @@ targets:
       - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift

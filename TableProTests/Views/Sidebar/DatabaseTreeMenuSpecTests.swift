@@ -19,6 +19,22 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
+    /// The same candidate set the outline coordinator resolves: the selection plus the clicked
+    /// row, because the spec aims at the clicked row when nothing is selected.
+    private func tableOperationEligibility(
+        clicked: DatabaseTreeNode.Kind?,
+        selectedTables: Set<DatabaseTreeTableRef>,
+        canExpress: Bool,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard canExpress else { return .unavailable }
+        var candidates = selectedTables
+        if case .table(let ref) = clicked { candidates.insert(ref) }
+        return TableOperationEligibility.Context(
+            droppable: candidates, truncatable: candidates, isReadOnly: isReadOnly
+        )
+    }
+
     private func context(
         clicked: DatabaseTreeNode.Kind?,
         selectedTables: Set<DatabaseTreeTableRef> = [],
@@ -35,6 +51,7 @@ struct DatabaseTreeMenuSpecTests {
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
+        canExpressTableOperations: Bool = true,
         objectToolSupport: DatabaseObjectToolEligibility.Support = .none
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
@@ -63,6 +80,12 @@ struct DatabaseTreeMenuSpecTests {
                 supportsRenameView: supportsRename,
                 supportsRenameDatabase: supportsRename,
                 supportsRenameSchema: supportsRename,
+                isReadOnly: isReadOnly
+            ),
+            tableOperationEligibility: tableOperationEligibility(
+                clicked: clicked,
+                selectedTables: selectedTables,
+                canExpress: canExpressTableOperations,
                 isReadOnly: isReadOnly
             ),
             containerEntityName: "Database",
@@ -316,6 +339,28 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
+    }
+
+    /// #2884: Elasticsearch has no statement for either operation, and offering them anyway is
+    /// what let the app answer an index with `DROP TABLE "test_index"`.
+    @Test("Neither Delete nor Truncate is offered where the engine has no statement")
+    func tableOperationsHiddenWhenInexpressible() {
+        let clicked = tableRef("test_index")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(clicked), canExpressTableOperations: false)
+        ))
+
+        #expect(!issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
+    }
+
+    @Test("Delete and Truncate are offered where the engine has a statement")
+    func tableOperationsOfferedWhenExpressible() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(clicked))))
+
+        #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
     }
 
     @Test("A table row offers Rename where the engine can do it")

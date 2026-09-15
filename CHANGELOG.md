@@ -69,6 +69,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Stale error banner over a pinned result after clearing the results of a failed query.
+- `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
+- Delete and Truncate offered on engines that have no statement for them.
+- Truncate on a Redis database emptying whichever database the connection was on.
+- Base64 text instead of the request in the Typesense drop and truncate confirmation.
 - Imported connections pointing at an SSH profile that is not on the importing Mac.
 - Syntax highlighting falling a second or two behind while typing quickly in the SQL editor.
 - Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.

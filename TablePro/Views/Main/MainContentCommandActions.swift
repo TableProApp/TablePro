@@ -504,7 +504,25 @@ final class MainContentCommandActions {
     /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
     /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
     var canTruncateSelectedTables: Bool {
-        TableOperationEligibility.canTruncate(selectedTables.wrappedValue)
+        TableOperationEligibility.canTruncate(
+            selectedTables.wrappedValue, context: tableOperationEligibility
+        )
+    }
+
+    /// The same question the sidebar's own Delete item asks, so the two agree. Without it the menu
+    /// bar offered Delete on an engine with no statement for it and the sidebar did not.
+    var canDropSelectedTables: Bool {
+        TableOperationEligibility.canDrop(selectedTables.wrappedValue, context: tableOperationEligibility)
+    }
+
+    private var tableOperationEligibility: TableOperationEligibility.Context {
+        guard let coordinator,
+              let adapter = DatabaseManager.shared.driver(for: coordinator.connectionId) as? PluginDriverAdapter
+        else { return .unavailable }
+        return adapter.tableOperationEligibility(
+            for: selectedTables.wrappedValue,
+            isReadOnly: coordinator.safeModeLevel.blocksAllWrites
+        )
     }
 
     /// The one selected object with the database and schema it lives in, or nil when the selection

@@ -44,6 +44,13 @@ struct MenuValidationContext: Equatable {
     /// Whether every selected object is one the engine can truncate. Separate from
     /// `hasTableSelection` because a view is a perfectly good selection and a hopeless truncate.
     var canTruncateSelectedTables = false
+    /// Whether every selected object is one the engine has a drop statement for. An engine with
+    /// no DDL for it must not be offered Delete, or the app invents SQL it cannot run.
+    var canDropSelectedTables = false
+    /// An editable tab only answers Delete when a row is selected. Without the row check the item
+    /// stayed enabled over a grid with no selection, fell through to the sidebar's drop path and
+    /// did nothing there.
+    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
     /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
     /// item its key equivalent regardless, so an item enabled over a handler that returns at its
     /// first guard swallows Command+V with no feedback.
@@ -221,7 +228,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(paste(_:)):
             return context.isConnected && context.canPasteRows
         case #selector(delete(_:)):
-            return context.isConnected && (context.isCurrentTabEditable || context.hasTableSelection)
+            return context.isConnected && (context.canDeleteSelectedRows || context.canDropSelectedTables)
 
         case #selector(createNewTable(_:)), #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly
@@ -359,6 +366,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
             canTruncateSelectedTables: actions.canTruncateSelectedTables,
+            canDropSelectedTables: actions.canDropSelectedTables,
             canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,

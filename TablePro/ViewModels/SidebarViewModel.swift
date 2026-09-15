@@ -280,15 +280,23 @@ final class SidebarViewModel {
     func batchToggleTruncate(refs: [DatabaseTreeTableRef]? = nil) {
         let targets = refs ?? Array(selectedTables)
         guard !targets.isEmpty else { return }
+        /// Unstaging comes first: a queued operation must always be removable, even once the
+        /// engine can no longer express it. Validating ahead of this left a Redis truncate stuck
+        /// in the queue after a `SELECT` moved the session to another database.
+        guard !targets.allSatisfy({ pendingTruncates.contains($0) }) else {
+            unstage(targets, from: &pendingTruncatesBinding.wrappedValue)
+            return
+        }
+
         /// The last gate before the queue, refusing the whole batch the way both menus now do
         /// rather than truncating the part of a selection that happens to qualify.
         guard TableOperationEligibility.canTruncate(targets) else {
             Self.logger.warning("Refused to stage a truncate against an object that holds no rows of its own")
             return
         }
-
-        guard !targets.allSatisfy({ pendingTruncates.contains($0) }) else {
-            unstage(targets, from: &pendingTruncatesBinding.wrappedValue)
+        if let eligibility = tableOperationEligibility(for: targets),
+           !TableOperationEligibility.canTruncate(targets, context: eligibility) {
+            Self.logger.warning("Refused to stage a truncate the engine has no statement for")
             return
         }
         pendingOperationType = .truncate
@@ -299,14 +307,33 @@ final class SidebarViewModel {
     func batchToggleDelete(refs: [DatabaseTreeTableRef]? = nil) {
         let targets = refs ?? Array(selectedTables)
         guard !targets.isEmpty else { return }
-
         guard !targets.allSatisfy({ pendingDeletes.contains($0) }) else {
             unstage(targets, from: &pendingDeletesBinding.wrappedValue)
+            return
+        }
+
+        /// The same last gate Truncate has. Without it a queued drop the engine cannot express
+        /// reached Save and was rejected there, after the dialog had already promised it.
+        if let eligibility = tableOperationEligibility(for: targets),
+           !TableOperationEligibility.canDrop(targets, context: eligibility) {
+            Self.logger.warning("Refused to stage a drop the engine has no statement for")
             return
         }
         pendingOperationType = .drop
         pendingOperationTables = targets
         showOperationDialog = true
+    }
+
+    /// Nil when there is no driver to ask, which is not the same as "refused": with no session
+    /// nothing can run anyway, and answering `.unavailable` there would make the view model
+    /// untestable and silently refuse every staging call.
+    private func tableOperationEligibility(
+        for targets: [DatabaseTreeTableRef]
+    ) -> TableOperationEligibility.Context? {
+        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
+            return nil
+        }
+        return adapter.tableOperationEligibility(for: targets, isReadOnly: false)
     }
 
     private func unstage(_ targets: [DatabaseTreeTableRef], from queue: inout Set<DatabaseTreeTableRef>) {

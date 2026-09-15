@@ -27,6 +27,7 @@ internal struct DatabaseTreeMenuContext {
     internal let maintenanceOperations: [PluginMaintenanceOperation]
     internal let dropEligibility: ContainerDropEligibility.Context
     internal let renameEligibility: ObjectRenameEligibility.Context
+    internal let tableOperationEligibility: TableOperationEligibility.Context
     internal let containerEntityName: String
     internal let containerEntityNamePlural: String
     internal let schemaEntityName: String

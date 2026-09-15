@@ -60,7 +60,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "get \(escapeArgument(prefix)) --prefix"
     }
 
-    func truncateTableStatements(table: String, cascade: Bool) -> [String]? {
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
         let prefix = resolvedPrefix(for: table)
         if prefix.isEmpty {
             return ["del \"\" --prefix"]
@@ -68,7 +68,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ["del \(escapeArgument(prefix)) --prefix"]
     }
 
-    func dropObjectStatement(name: String, type: String) -> String? {
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         let prefix = resolvedPrefix(for: name)
         if prefix.isEmpty {
             return "del \"\" --prefix"
@@ -146,7 +146,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
@@ -388,7 +388,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        return PluginTableMetadata(
+        PluginTableMetadata(
             tableName: table,
             engine: "etcd v3"
         )

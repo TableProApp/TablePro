@@ -202,6 +202,20 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         )
     }
 
+    // MARK: - Table Operations
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        ElasticsearchOperations.deleteIndex(named: name, objectType: objectType)
+    }
+
+    /// Elasticsearch has no truncate. `_delete_by_query` runs asynchronously, reports version
+    /// conflicts per document and leaves the mapping behind, so it is a bulk delete rather than the
+    /// operation the app's Truncate promises. Answering nil keeps the command off the menu instead
+    /// of offering one that means something else.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        nil
+    }
+
     // MARK: - Statement Generation
 
     func generateStatements(
