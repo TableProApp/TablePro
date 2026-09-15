@@ -822,7 +822,12 @@ enum DatabaseDriverFactory {
         if let override { return override }
         if let passwordSource = connection.passwordSource {
             guard await ConnectionStorage.shared.storeIsTrusted else {
-                throw PasswordSourceResolver.ResolutionError.storeNotTrusted
+                /// A modified file and an unreachable key are different failures. Telling a user
+                /// their file was edited when the app simply cannot open the keychain sends them
+                /// looking for an edit that never happened.
+                throw await ConnectionStorage.shared.storeTrustFailure == .keyUnavailable
+                    ? PasswordSourceResolver.ResolutionError.storeKeyUnavailable
+                    : PasswordSourceResolver.ResolutionError.storeNotTrusted
             }
             return try await ConnectionPasswordResolver.resolve(passwordSource, for: connection)
         }

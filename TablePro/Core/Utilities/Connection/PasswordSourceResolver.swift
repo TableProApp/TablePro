@@ -28,6 +28,7 @@ enum PasswordSourceResolver {
         case invalidSecretJson
         case jsonKeyNotFound(key: String)
         case storeNotTrusted
+        case storeKeyUnavailable
 
         var errorDescription: String? {
             switch self {
@@ -67,6 +68,12 @@ enum PasswordSourceResolver {
                 return String(localized: "The secret manager did not return valid JSON.")
             case let .jsonKeyNotFound(key):
                 return String(format: String(localized: "Key %@ was not found in the secret JSON."), key)
+            case .storeKeyUnavailable:
+                return String(localized: """
+                    TablePro cannot reach the keychain that holds this connection store's integrity \
+                    key, so the password source was not run. This build is signed without a keychain \
+                    entitlement.
+                    """)
             case .storeNotTrusted:
                 return String(localized: """
                     Your connections file was changed outside TablePro, so this connection's \

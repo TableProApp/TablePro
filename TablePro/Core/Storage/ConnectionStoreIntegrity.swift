@@ -104,13 +104,24 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         return created
     }
 
+    /// Set only when the app can actually reach that keychain. Without an application identifier
+    /// the flag turns every query into `errSecMissingEntitlement`, the key is neither found nor
+    /// created, and `verify` answers `.unavailable` forever, which stops every password source.
+    private static let canUseDataProtectionKeychain: Bool = {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "com.apple.application-identifier" as CFString, nil) != nil
+    }()
+
     private static func baseQuery() -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecUseDataProtectionKeychain as String: true,
         ]
+        if canUseDataProtectionKeychain {
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
+        return query
     }
 
     /// A sandboxed run keeps its key inside the sandbox. The production query is left exactly as it

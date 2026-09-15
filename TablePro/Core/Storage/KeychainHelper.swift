@@ -187,18 +187,23 @@ final class KeychainHelper: KeychainStoring {
         return query
     }
 
+    /// The data protection keychain answers only an app that carries an application identifier,
+    /// which is granted by a signing team. Asking for it without one fails every read and every
+    /// write with `errSecMissingEntitlement` (-34018), and the app then has no password store at
+    /// all rather than a different one.
+    ///
+    /// The check used to run in DEBUG alone, so a Release build signed ad-hoc, which is what a fork
+    /// without an Apple Developer account produces, lost the keychain silently: connection
+    /// passwords could not be saved or read, and the connection store integrity key could not be
+    /// minted, which left every password source refusing to run.
     private static let canUseDataProtectionKeychain: Bool = {
-        #if DEBUG
         guard let task = SecTaskCreateFromSelf(nil),
               SecTaskCopyValueForEntitlement(task, "com.apple.application-identifier" as CFString, nil) != nil
         else {
-            logger.warning("No application-identifier entitlement; falling back to the file-based keychain (DEBUG build)")
+            logger.warning("No application-identifier entitlement; falling back to the file-based keychain")
             return false
         }
         return true
-        #else
-        return true
-        #endif
     }()
 
     private func accessibility(forSync synchronizable: Bool) -> CFString {

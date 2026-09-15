@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No keychain at all in a build signed without an application identifier, which left every password source refusing to run.
+
 - SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
 - SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.

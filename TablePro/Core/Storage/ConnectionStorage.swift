@@ -27,9 +27,19 @@ final class ConnectionStorage {
     /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
+    /// Why the store is not trusted, when it is not. The two reasons send a user to different
+    /// places and must not share a message: a modified file is fixed by saving the connection
+    /// again, and an unreachable key is not fixed by anything the user can do in the app.
+    enum StoreTrustFailure {
+        case modified
+        case keyUnavailable
+    }
+
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
     private(set) var storeIsTrusted = true
+
+    private(set) var storeTrustFailure: StoreTrustFailure?
 
     private let fileURL: URL
 
@@ -80,23 +90,28 @@ final class ConnectionStorage {
 
         guard let data = try? Data(contentsOf: fileURL) else {
             storeIsTrusted = true
+            storeTrustFailure = nil
             return []
         }
 
         switch ConnectionStoreIntegrity.shared.verify(data, fileURL: fileURL) {
         case .trusted:
             storeIsTrusted = true
+            storeTrustFailure = nil
         case .unstamped:
             // An install that predates the tag. Adopt the file as it stands, which is the only
             // option without a prior baseline, and stamp it so later edits are detectable.
             ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
             storeIsTrusted = true
+            storeTrustFailure = nil
         case .modified:
             Self.logger.warning("connections.json changed outside TablePro; password sources will not run")
             storeIsTrusted = false
+            storeTrustFailure = .modified
         case .unavailable:
             Self.logger.warning("No connection store integrity key; password sources will not run")
             storeIsTrusted = false
+            storeTrustFailure = .keyUnavailable
         }
 
         do {
