@@ -23,7 +23,7 @@ let package = Package(
                 "TreeSitterGrammars",
                 .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter")
             ],
-            resources: [.copy("Resources")]
+            resources: [.copy("Queries")]
         ),
         .testTarget(
             name: "TableProGrammarsTests",

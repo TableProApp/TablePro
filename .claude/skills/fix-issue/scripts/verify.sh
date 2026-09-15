@@ -302,6 +302,37 @@ run_logged() {
     return $?
 }
 
+# SwiftLint applies `.swiftlint.yml`'s `included:` to a DIRECTORY argument but not to a file
+# argument, so `swiftlint lint --strict TableProTests` reports zero violations having linted
+# nothing at all. Measured 2026-09-15: that command found 0 and `TableProTests/**/*.swift` found
+# 1227. Name the directories a run was handed and then dropped, so a clean result is not read as
+# coverage it never had.
+swiftlint_filtered_dirs() {
+    local config="$REPO_ROOT/.swiftlint.yml"
+    [ -f "$config" ] || return 0
+    local roots
+    roots="$(awk '/^included:/ { inside = 1; next }
+                  /^[A-Za-z_]+:/ { inside = 0 }
+                  inside && /^[[:space:]]*-[[:space:]]*/ {
+                      sub(/^[[:space:]]*-[[:space:]]*/, "")
+                      gsub(/["'"'"']/, "")
+                      print
+                  }' "$config")"
+    [ -n "$roots" ] || return 0
+    local dropped="" path root covered
+    for path in "$@"; do
+        [ -d "$REPO_ROOT/$path" ] || continue
+        covered=0
+        for root in $roots; do
+            case "${path%/}/" in
+                "${root%/}/"*) covered=1 ;;
+            esac
+        done
+        [ "$covered" -eq 1 ] || dropped="$dropped $path"
+    done
+    printf '%s' "${dropped# }"
+}
+
 case "$STEP" in
     tail)
         [ $# -ge 1 ] || usage
@@ -431,6 +462,7 @@ case "$STEP" in
         STEP_DETAIL="$# path(s)"
         setup_toolchain
         log="$(new_log lint)"
+        filtered="$(swiftlint_filtered_dirs "$@")"
         run_logged "$log" swiftlint lint --strict "$@"
         code=$?
         if grep -q 'Loading sourcekitdInProc.framework .* failed' "$log" 2> /dev/null; then
@@ -442,6 +474,10 @@ case "$STEP" in
         else
             STATUS=FAIL
             note "$(grep -E ':[0-9]+:[0-9]+: (error|warning):' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+        fi
+        if [ -n "$filtered" ]; then
+            note "NOT LINTED, outside .swiftlint.yml included: $filtered"
+            note "  a directory argument is filtered, a file argument is not: <dir>/**/*.swift"
         fi
 
         # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,
