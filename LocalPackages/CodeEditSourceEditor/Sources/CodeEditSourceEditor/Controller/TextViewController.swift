@@ -29,16 +29,10 @@ public class TextViewController: NSViewController {
     internal(set) public var scrollView: SourceEditorScrollView!
     internal(set) public var textView: TextView!
     var gutterView: GutterView!
-    var minimapView: MinimapView!
-
-    /// The reformatting guide view
-    var reformattingGuideView: ReformattingGuideView!
 
     /// Middleman between the text view to our invisible characters config, with knowledge of things like the
     ///  /// user's theme and indent option to help correctly draw invisible character placeholders.
     var invisibleCharactersCoordinator: InvisibleCharactersCoordinator
-
-    var minimapXConstraint: NSLayoutConstraint?
 
     var _undoManager: CEUndoManager!
     var systemAppearance: NSAppearance.Name?
@@ -96,18 +90,6 @@ public class TextViewController: NSViewController {
     ///         strong reference to the delegate is kept *outside* of this variable.
     public weak var completionDelegate: CodeSuggestionDelegate?
 
-    /// A delegate object that responds to requests for jump to definition actions. see ``JumpToDefinitionDelegate``.
-    /// - Note: The ``TextViewController`` keeps only a `weak` reference to this object. To function properly, ensure a
-    ///         strong reference to the delegate is kept *outside* of this variable.
-    public var jumpToDefinitionDelegate: JumpToDefinitionDelegate? {
-        get {
-            jumpToDefinitionModel.delegate
-        }
-        set {
-            jumpToDefinitionModel.delegate = newValue
-        }
-    }
-
     // MARK: - Config Helpers
 
     /// The font to use in the `textView`
@@ -159,20 +141,11 @@ public class TextViewController: NSViewController {
     /// The type of highlight to use when highlighting bracket pairs. Leave as `nil` to disable highlighting.
     public var bracketPairEmphasis: BracketPairEmphasis? { configuration.appearance.bracketPairEmphasis }
 
-    /// The column at which to show the reformatting guide
-    public var reformatAtColumn: Int { configuration.behavior.reformatAtColumn }
-
     /// If true, uses the system cursor on macOS 14 or greater.
     public var useSystemCursor: Bool { configuration.appearance.useSystemCursor }
 
     /// Toggle the visibility of the gutter view in the editor.
     public var showGutter: Bool { configuration.peripherals.showGutter }
-
-    /// Toggle the visibility of the minimap view in the editor.
-    public var showMinimap: Bool { configuration.peripherals.showMinimap }
-
-    /// Toggle the visibility of the reformatting guide in the editor.
-    public var showReformattingGuide: Bool { configuration.peripherals.showReformattingGuide }
 
     /// Configuration for drawing invisible characters.
     ///
@@ -194,11 +167,7 @@ public class TextViewController: NSViewController {
     /// The tree sitter client managed by the source editor.
     ///
     /// This will be `nil` if another highlighter provider is passed to the source editor.
-    internal(set) public var treeSitterClient: TreeSitterClient? {
-        didSet {
-            jumpToDefinitionModel.treeSitterClient = treeSitterClient
-        }
-    }
+    internal(set) public var treeSitterClient: TreeSitterClient?
 
     var foldProvider: LineFoldProvider
 
@@ -206,17 +175,12 @@ public class TextViewController: NSViewController {
     var textFilters: [TextFormation.Filter] = []
     var isApplyingUnfilteredEdits = false
 
-    var jumpToDefinitionModel: JumpToDefinitionModel
-
     var cancellables = Set<AnyCancellable>()
 
-    /// The widths of the views floating along the editor's edges: the gutter on the leading side, and the minimap on
-    /// the trailing side while it is shown. ``SourceEditorScrollView`` reserves them so the text scrolls clear of both.
+    /// The width of the view floating along the editor's leading edge: the gutter.
+    /// ``SourceEditorScrollView`` reserves it so the text scrolls clear of it.
     var floatingSubviewInsets: HorizontalEdgeInsets {
-        HorizontalEdgeInsets(
-            left: showGutter ? gutterView.frame.width : 0.0,
-            right: (minimapView?.isHidden ?? false) ? 0 : (minimapView?.frame.width ?? 0.0)
-        )
+        HorizontalEdgeInsets(left: showGutter ? gutterView.frame.width : 0.0, right: 0.0)
     }
 
     /// Where the editor is scrolled, measured horizontally from where the text starts rather than from the gutter.
@@ -251,8 +215,7 @@ public class TextViewController: NSViewController {
         foldProvider: LineFoldProvider? = nil,
         undoManager: CEUndoManager? = nil,
         coordinators: [TextViewCoordinator] = [],
-        completionDelegate: CodeSuggestionDelegate? = nil,
-        jumpToDefinitionDelegate: JumpToDefinitionDelegate? = nil
+        completionDelegate: CodeSuggestionDelegate? = nil
     ) {
         self.language = language
         self.configuration = configuration
@@ -262,15 +225,9 @@ public class TextViewController: NSViewController {
         self._undoManager = undoManager
         self.invisibleCharactersCoordinator = InvisibleCharactersCoordinator(configuration: configuration)
         self.completionDelegate = completionDelegate
-        self.jumpToDefinitionModel = JumpToDefinitionModel(
-            controller: nil,
-            treeSitterClient: treeSitterClient,
-            delegate: jumpToDefinitionDelegate
-        )
 
         super.init(nibName: nil, bundle: nil)
 
-        jumpToDefinitionModel.controller = self
         suggestionTriggerModel.controller = self
 
         if let idx = highlightProviders.firstIndex(where: { $0 is TreeSitterClient }),

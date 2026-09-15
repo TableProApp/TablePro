@@ -8,7 +8,7 @@ final class VisibleRangeProviderTests: XCTestCase {
         textView.string = Array(repeating: "\n", count: 400).joined()
         textView.layout()
 
-        let rangeProvider = VisibleRangeProvider(textView: textView, minimapView: nil)
+        let rangeProvider = VisibleRangeProvider(textView: textView)
         let originalSet = rangeProvider.visibleSet
 
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: 250))
@@ -25,7 +25,7 @@ final class VisibleRangeProviderTests: XCTestCase {
         textView.string = Array(repeating: "\n", count: 400).joined()
         textView.layout()
 
-        let rangeProvider = VisibleRangeProvider(textView: textView, minimapView: nil)
+        let rangeProvider = VisibleRangeProvider(textView: textView)
         let originalSet = rangeProvider.visibleSet
 
         scrollView.setFrameSize(NSSize(width: 250, height: 450))
@@ -46,7 +46,7 @@ final class VisibleRangeProviderTests: XCTestCase {
         textView.string = Array(repeating: "\n", count: 400).joined()
         textView.layout()
 
-        let rangeProvider = VisibleRangeProvider(textView: textView, minimapView: nil)
+        let rangeProvider = VisibleRangeProvider(textView: textView)
         let originalSet = rangeProvider.visibleSet
 
         textView.setFrameSize(NSSize(width: 350, height: 450))

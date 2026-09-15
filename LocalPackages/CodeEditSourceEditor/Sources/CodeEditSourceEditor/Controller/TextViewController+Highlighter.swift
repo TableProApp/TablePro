@@ -24,7 +24,6 @@ extension TextViewController {
 
         let highlighter = Highlighter(
             textView: textView,
-            minimapView: minimapView,
             providers: highlightProviders,
             attributeProvider: self,
             language: language

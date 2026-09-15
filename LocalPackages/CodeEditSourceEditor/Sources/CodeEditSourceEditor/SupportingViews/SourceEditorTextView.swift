@@ -9,8 +9,6 @@ import AppKit
 import CodeEditTextView
 
 final class SourceEditorTextView: TextView {
-    var additionalCursorRects: [(NSRect, NSCursor)] = []
-
     /// The span of the statement the caret sits in, painted as a band behind the text.
     ///
     /// This is a decoration and never a selection. Marking a statement by selecting it, which some editors do, means
@@ -107,11 +105,4 @@ final class SourceEditorTextView: TextView {
         context.restoreGState()
     }
 
-    override func resetCursorRects() {
-        discardCursorRects()
-        super.resetCursorRects()
-        additionalCursorRects.forEach { (rect, cursor) in
-            addCursorRect(rect, cursor: cursor)
-        }
-    }
 }

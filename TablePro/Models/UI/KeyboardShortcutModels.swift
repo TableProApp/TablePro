@@ -299,7 +299,6 @@ extension ShortcutAction {
         (.special(.space, control: true), String(localized: "Show Completions")),
         (.special(.upArrow, option: true), String(localized: "Move Line Up")),
         (.special(.downArrow, option: true), String(localized: "Move Line Down")),
-        (.character("j", command: true, control: true), String(localized: "Jump to Definition")),
         (.special(.upArrow, shift: true, option: true), String(localized: "Extend Selection to Previous Statement")),
         (.special(.downArrow, shift: true, option: true), String(localized: "Extend Selection to Next Statement"))
     ]

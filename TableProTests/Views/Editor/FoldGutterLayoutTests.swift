@@ -22,7 +22,6 @@ struct FoldGutterLayoutTests {
             peripherals: .init(
                 showGutter: true,
                 showLineNumbers: showLineNumbers,
-                showMinimap: false,
                 showFoldingRibbon: showFoldingRibbon
             ),
             text: "SELECT 1;\nSELECT 2;\n"

@@ -45,9 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - CodeEditSymbols, a dependency the editor linked and never called, from the app and from Acknowledgements.
+- `Ctrl+Cmd+J` from the editor's reserved shortcuts, so it can be bound in Settings > Keyboard.
 
 ### Fixed
 
+- Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.
 - Connections still reaching an SSH profile's old host and username after the profile was edited.
 - SSH profile edits made on another Mac never reaching the connections that use it.
 - Deleting an SSH profile leaving the connections that used it without a tunnel.

@@ -22,7 +22,6 @@ struct TextViewControllerFloatingInsetsTests {
     init() {
         (window, controller) = Mock.windowedTextViewController(theme: Mock.theme())
         controller.configuration.appearance.wrapLines = false
-        controller.configuration.peripherals.showMinimap = false
         controller.configuration.layout.contentInsets = hostInsets
         controller.reloadUI()
         window.layoutIfNeeded()
@@ -150,37 +149,6 @@ struct TextViewControllerFloatingInsetsTests {
         let ribbonMidX = gutter.foldingRibbon.frame.midX / bounds.width * CGFloat(rep.pixelsWide)
         let color = try #require(rep.colorAt(x: Int(ribbonMidX), y: rep.pixelsHigh / 2))
         #expect(color.alphaComponent == 1, "The strip under the folding ribbon is left unpainted")
-    }
-
-    @Test("The reformatting guide stands on its column, and stays there as the text scrolls sideways")
-    func reformattingGuideStandsOnItsColumn() throws {
-        controller.configuration.peripherals.showReformattingGuide = true
-        controller.configuration.behavior.reformatAtColumn = 20
-        load(longLine)
-        controller.reformattingGuideView.updatePosition(in: controller)
-        let guide = try #require(controller.reformattingGuideView)
-
-        func offsetFromColumn() throws -> CGFloat {
-            controller.textView.layoutManager.layoutLines()
-            let guideX = try #require(guide.superview).convert(guide.frame.origin, to: nil).x
-            let column = try #require(controller.textView.layoutManager.rectForOffset(20))
-            return guideX - controller.textView.convert(column.origin, to: nil).x
-        }
-
-        let atRest = try offsetFromColumn()
-        #expect(abs(atRest) < 1, "The guide stands \(atRest)pt from column 20")
-
-        controller.textView.scroll(NSPoint(x: 100, y: 0))
-        let scrolled = try offsetFromColumn()
-        #expect(abs(scrolled) < 1, "Scrolled, the guide stands \(scrolled)pt from column 20")
-
-        let bounds = CGRect(x: 0, y: 0, width: min(guide.bounds.width, 40), height: 20)
-        let rep = try #require(guide.bitmapImageRepForCachingDisplay(in: bounds))
-        guide.cacheDisplay(in: bounds, to: rep)
-        let firstInked = (0..<rep.pixelsWide).first { column in
-            (rep.colorAt(x: column, y: rep.pixelsHigh / 2)?.alphaComponent ?? 0) > 0.05
-        }
-        #expect(firstInked == 0 || firstInked == 1, "The guide draws its line \(String(describing: firstInked))px in")
     }
 
     @Test("Changing the editor font forgets the widths lines measured at the old size")
