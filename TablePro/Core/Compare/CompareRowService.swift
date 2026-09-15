@@ -30,6 +30,14 @@ internal struct CompareRowService {
         target: DatabaseEndpoint
     ) -> String? {
         guard source.connectionId == target.connectionId else { return nil }
+        /// Two scopes that are the same scope reach one pooled entry, and that entry runs its work
+        /// serially: the inner scope waits on a tail that only the outer scope can finish, so the
+        /// comparison hangs with no error and the entry is wedged for everything else. The window's
+        /// own button already refuses this pair, but a hang with nothing to report is worth
+        /// refusing where the scopes are opened rather than only where they are chosen.
+        guard source.scope != target.scope else {
+            return String(localized: "The source and the target are the same database.")
+        }
         let routes = [manager.metadataRoute(for: source.scope), manager.metadataRoute(for: target.scope)]
         guard routes.contains(where: { $0 != .pooled }) else { return nil }
         return String(
