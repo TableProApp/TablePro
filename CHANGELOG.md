@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Secret Manager** in Settings > General, one placeholder command shared by every connection set to it.
 - In-memory cache for fetched passwords, with a lifetime in Settings > General.
 - Connections list in the sidebar, naming every saved connection beside the object tree.
+- Contextual menu on the connections list: connect, disconnect, edit, duplicate, copy the connection string, change group, delete.
 - **Profile** and **Region** for an AWS Secrets Manager password, for a Mac with one profile per account.
 
 ### Changed

@@ -37,11 +37,13 @@ internal final class ConnectionTreeOutlineController: NSViewController {
     internal weak var host: (any ConnectionTreeHost)?
     internal var onRowCountChange: ((Int) -> Void)?
 
-    private let outlineView = NSOutlineView()
+    /// Reached by `ConnectionTreeOutlineController+Menu`, which is why these are internal: a
+    /// Swift extension in another file cannot see `private`.
+    internal let outlineView = NSOutlineView()
     private var scrollView: NSScrollView!
 
     private var layout = ConnectionTreeRootBuilder.Layout.empty
-    private var connectionsById: [UUID: DatabaseConnection] = [:]
+    internal var connectionsById: [UUID: DatabaseConnection] = [:]
 
     /// Nodes are cached by id and mutated in place. `NSOutlineView` tracks rows by object identity,
     /// so handing it a fresh object for an id it already knows collapses everything under it.
@@ -51,7 +53,7 @@ internal final class ConnectionTreeOutlineController: NSViewController {
     /// record per window, so it is held here for the life of the window.
     private var expandedGroupIds: Set<UUID> = []
 
-    private var autoExpansion = ConnectionTreeAutoExpansion()
+    internal var autoExpansion = ConnectionTreeAutoExpansion()
     private var cancellables: Set<AnyCancellable> = []
     private var isApplyingSelection = false
 
@@ -85,6 +87,13 @@ internal final class ConnectionTreeOutlineController: NSViewController {
         outlineView.target = self
         outlineView.doubleAction = #selector(handleDoubleClick)
         outlineView.setAccessibilityIdentifier("connection-tree")
+
+        /// The menu hangs off the table, not off a row: that is what makes `NSTableView` set
+        /// `clickedRow`, draw the clicked-row highlight, and answer a right-click in the empty area
+        /// below the last row.
+        let menu = NSMenu()
+        menu.delegate = self
+        outlineView.menu = menu
         view = scrollView
     }
 
