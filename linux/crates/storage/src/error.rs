@@ -2,8 +2,26 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("{}: {source}", .path.display())]
+    Io {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("could not write {}: {source}", .path.display())]
+    Write {
+        path: std::path::PathBuf,
+        #[source]
+        source: glib::Error,
+    },
+
+    #[error("could not set permissions on {}: {source}", .path.display())]
+    Permissions {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),

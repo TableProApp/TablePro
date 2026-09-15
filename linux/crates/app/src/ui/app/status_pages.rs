@@ -67,13 +67,14 @@ impl App {
     }
 
     pub(super) fn on_show_history(&mut self, sender: ComponentSender<Self>) {
-        let dialog =
-            HistoryDialog::builder()
-                .launch(HistoryDialogInit)
-                .forward(sender.input_sender(), |out| match out {
-                    HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
-                    HistoryDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
-                });
+        let dialog = HistoryDialog::builder()
+            .launch(HistoryDialogInit {
+                storage: self.storage.clone(),
+            })
+            .forward(sender.input_sender(), |out| match out {
+                HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
+                HistoryDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
+            });
         dialog.model().dialog().present(Some(&self.window));
         self.history_dialog = Some(dialog);
     }

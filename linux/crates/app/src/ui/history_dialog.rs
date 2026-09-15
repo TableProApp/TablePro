@@ -6,11 +6,13 @@ use relm4::gtk::{gio, glib};
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
-use tablepro_storage::query_history::{self, Entry, SearchFilter};
+use tablepro_storage::QueryHistory;
+use tablepro_storage::query_history::{Entry, SearchFilter};
 
 use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct HistoryDialog {
+    history: Option<QueryHistory>,
     root: adw::Dialog,
     search: gtk::SearchEntry,
     pinned_group: adw::PreferencesGroup,
@@ -41,7 +43,9 @@ pub struct HistoryDialog {
     select_mode: bool,
 }
 
-pub struct HistoryDialogInit;
+pub struct HistoryDialogInit {
+    pub storage: crate::storage::SharedStorage,
+}
 
 #[derive(Debug)]
 pub enum HistoryDialogInput {
@@ -97,7 +101,7 @@ impl Component for HistoryDialog {
             .build()
     }
 
-    fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let toolbar = adw::ToolbarView::new();
         let header = adw::HeaderBar::builder().show_end_title_buttons(true).build();
         header.set_title_widget(Some(&adw::WindowTitle::new(&crate::i18n::gettext("Query History"), "")));
@@ -369,6 +373,7 @@ impl Component for HistoryDialog {
         root.insert_action_group("history", Some(&action_group));
 
         let model = Self {
+            history: init.storage.history().cloned(),
             root: root.clone(),
             search,
             pinned_group,
@@ -427,8 +432,11 @@ impl Component for HistoryDialog {
                 if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
                     entry.pinned = pinned;
                 }
+                let Some(history) = self.history.clone() else {
+                    return;
+                };
                 relm4::spawn(async move {
-                    if let Err(e) = query_history::set_pinned(id, pinned).await {
+                    if let Err(e) = history.set_pinned(id, pinned).await {
                         tracing::warn!(error = %e, "history set_pinned failed");
                     }
                 });
@@ -437,8 +445,11 @@ impl Component for HistoryDialog {
 
             HistoryDialogInput::Delete(id) => {
                 self.selected_ids.remove(&id);
+                let Some(history) = self.history.clone() else {
+                    return;
+                };
                 relm4::spawn(async move {
-                    if let Err(e) = query_history::delete(id).await {
+                    if let Err(e) = history.delete(id).await {
                         tracing::warn!(error = %e, "history delete failed");
                     }
                 });
@@ -512,8 +523,11 @@ impl Component for HistoryDialog {
                 if ids.is_empty() {
                     return;
                 }
+                let Some(history) = self.history.clone() else {
+                    return;
+                };
                 relm4::spawn(async move {
-                    if let Err(e) = query_history::delete_many(&ids).await {
+                    if let Err(e) = history.delete_many(&ids).await {
                         tracing::warn!(error = %e, "history delete_many failed");
                     }
                 });
@@ -547,11 +561,14 @@ impl Component for HistoryDialog {
 
             HistoryDialogInput::ClearAllConfirmed => {
                 let s = sender.clone();
+                let Some(history) = self.history.clone() else {
+                    return;
+                };
                 sender.command(move |out, shutdown| {
                     shutdown
                         .register(async move {
                             let _ = s;
-                            if let Err(e) = query_history::clear_all().await {
+                            if let Err(e) = history.clear_all().await {
                                 tracing::warn!(error = %e, "history clear_all failed");
                             }
                             out.send(HistoryDialogCmd::Cleared).ok()
@@ -561,7 +578,7 @@ impl Component for HistoryDialog {
             }
 
             HistoryDialogInput::OpenStorageLocation => {
-                if let Some(path) = query_history::db_path() {
+                if let Some(path) = self.history.as_ref().map(|history| history.path().to_owned()) {
                     let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or(path);
                     let file = gio::File::for_path(&parent);
                     let launcher = gtk::FileLauncher::new(Some(&file));
@@ -605,10 +622,14 @@ impl HistoryDialog {
     /// + after any mutation) and by the debounced timeout firing.
     fn run_search(&self, sender: ComponentSender<Self>) {
         let filter = self.build_filter();
+        let Some(history) = self.history.clone() else {
+            sender.input(HistoryDialogInput::Refresh);
+            return;
+        };
         sender.command(move |out, shutdown| {
             shutdown
                 .register(async move {
-                    match query_history::search(filter).await {
+                    match history.search(filter).await {
                         Ok(entries) => out.send(HistoryDialogCmd::Loaded(entries)).ok(),
                         Err(e) => {
                             tracing::warn!(error = %e, "history search failed");
@@ -917,12 +938,15 @@ impl HistoryDialog {
         } else {
             "tablepro-history.csv".to_string()
         };
+        let Some(history) = self.history.clone() else {
+            return;
+        };
         sender.command(move |out, shutdown| {
             shutdown
                 .register(async move {
                     let result = match kind {
-                        "sql" => query_history::export_sql(&ids).await,
-                        _ => query_history::export_csv(&ids).await,
+                        "sql" => history.export_sql(&ids).await,
+                        _ => history.export_csv(&ids).await,
                     };
                     let msg = match result {
                         Ok(text) => HistoryDialogCmd::ExportReady(text, suggested),

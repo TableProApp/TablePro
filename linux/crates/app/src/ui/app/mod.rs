@@ -50,11 +50,13 @@ pub(super) fn dec_close_after_save(map: &mut std::collections::HashMap<Uuid, u32
 pub struct AppInit {
     pub registry: Arc<DriverRegistry>,
     pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
+    pub storage: crate::storage::SharedStorage,
 }
 
 pub struct App {
     registry: Arc<DriverRegistry>,
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
+    storage: crate::storage::SharedStorage,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
     window_title: adw::WindowTitle,
@@ -711,7 +713,11 @@ impl SimpleComponent for App {
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let AppInit { registry, settings } = init;
+        let AppInit {
+            registry,
+            settings,
+            storage,
+        } = init;
         let widgets = view_output!();
 
         if crate::config::profile() == crate::config::Profile::Development {
@@ -1137,6 +1143,7 @@ impl SimpleComponent for App {
         let model = App {
             registry,
             settings: settings.clone(),
+            storage: storage.clone(),
             window: root.clone(),
             split_view: widgets.split_view.clone(),
             window_title: widgets.window_title.clone(),
@@ -1202,11 +1209,15 @@ impl SimpleComponent for App {
         });
 
         let settings_for_prune = settings.clone();
+        let storage_for_prune = storage.clone();
         glib::timeout_add_seconds_local(3600, move || {
             let retention = settings_for_prune.history_retention_days();
+            let Some(history) = storage_for_prune.history().cloned() else {
+                return glib::ControlFlow::Continue;
+            };
             relm4::spawn(async move {
-                if let Err(e) = tablepro_storage::query_history::prune_older_than(retention).await {
-                    tracing::warn!(error = %e, "history prune failed");
+                if let Err(error) = history.prune_older_than(retention).await {
+                    tracing::warn!(%error, "history prune failed");
                 }
             });
             glib::ControlFlow::Continue
@@ -1369,9 +1380,8 @@ impl SimpleComponent for App {
             AppMsg::PollHealth => self.on_poll_health(),
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowAbout => self.on_show_about(),
-            AppMsg::ShowPreferences => {
-                super::preferences_dialog::PreferencesDialog::new(&self.settings).present(Some(&self.window))
-            }
+            AppMsg::ShowPreferences => super::preferences_dialog::PreferencesDialog::new(&self.settings, &self.storage)
+                .present(Some(&self.window)),
             AppMsg::ExportResults { result, name } => {
                 super::export_dialog::present(&self.window, &self.toast_overlay, result, name, &self.settings)
             }

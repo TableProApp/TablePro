@@ -5,13 +5,15 @@ use std::path::PathBuf;
 use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
 
 use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig, SshError, SshTunnel};
-use tablepro_storage::{
-    SavedConnection, SavedSshAuth, SavedSshConfig, load_password, load_ssh_passphrase, load_ssh_password,
-};
+use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig, SecretStore};
 
 use super::database_service::{self, ConnectionMetadata, ReconnectParams};
 
-pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -> Result<Vec<TableInfo>, String> {
+pub async fn open_saved(
+    registry: Arc<DriverRegistry>,
+    secrets: SecretStore,
+    saved: SavedConnection,
+) -> Result<Vec<TableInfo>, String> {
     let driver = registry
         .get(&saved.driver_id)
         .ok_or_else(|| format!("driver {} not registered", saved.driver_id))?;
@@ -19,7 +21,8 @@ pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -
     // to read back.
     let password = match saved.auth_mode {
         AuthMode::Kerberos => SecretString::new(String::new().into()),
-        AuthMode::Password => load_password(saved.id)
+        AuthMode::Password => secrets
+            .load_password(saved.id)
             .await
             .ok()
             .flatten()
@@ -28,7 +31,7 @@ pub async fn open_saved(registry: Arc<DriverRegistry>, saved: SavedConnection) -
     let id = saved.id;
 
     let ssh_cfg = match &saved.ssh {
-        Some(ssh) => Some(resolve_saved_ssh(id, ssh).await?),
+        Some(ssh) => Some(resolve_saved_ssh(&secrets, id, ssh).await?),
         None => None,
     };
 
@@ -153,11 +156,12 @@ pub(crate) fn interim_ssh_target(saved: &SavedSshConfig) -> Result<InterimSshTar
     })
 }
 
-async fn resolve_saved_ssh(id: uuid::Uuid, saved: &SavedSshConfig) -> Result<SshConfig, String> {
+async fn resolve_saved_ssh(secrets: &SecretStore, id: uuid::Uuid, saved: &SavedSshConfig) -> Result<SshConfig, String> {
     let target = interim_ssh_target(saved).map_err(|error| crate::ui::error_text::ssh_message(&error))?;
     let auth = match target.auth {
         InterimSshAuth::Password => {
-            let password = load_ssh_password(id)
+            let password = secrets
+                .load_ssh_password(id)
                 .await
                 .map_err(|e| format!("load ssh password: {e}"))?
                 .ok_or_else(|| "ssh password not in keyring".to_string())?;
@@ -165,7 +169,8 @@ async fn resolve_saved_ssh(id: uuid::Uuid, saved: &SavedSshConfig) -> Result<Ssh
         }
         InterimSshAuth::PrivateKey { path, has_passphrase } => {
             let passphrase = if has_passphrase {
-                load_ssh_passphrase(id)
+                secrets
+                    .load_ssh_passphrase(id)
                     .await
                     .map_err(|e| format!("load ssh passphrase: {e}"))?
             } else {

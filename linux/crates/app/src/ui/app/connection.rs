@@ -15,6 +15,7 @@ impl App {
     pub(super) fn on_open_connect(&mut self, sender: ComponentSender<Self>) {
         let dialog = ConnectDialog::builder()
             .launch(ConnectDialogInit {
+                storage: self.storage.clone(),
                 registry: self.registry.clone(),
             })
             .forward(sender.input_sender(), |out| match out {
@@ -55,9 +56,10 @@ impl App {
             // the JSON; firing it before the touch lands would render
             // the previous ordering until the next reload.
             let sender_for_touch = sender.clone();
+            let connections = self.storage.connections().clone();
             relm4::spawn(async move {
-                if let Err(e) = tablepro_storage::touch_last_opened(connection_id).await {
-                    tracing::warn!(error = %e, "touch_last_opened failed");
+                if let Err(error) = connections.touch_last_opened(connection_id).await {
+                    tracing::warn!(%error, "could not stamp the last-opened time");
                 }
                 sender_for_touch.input(AppMsg::ReloadConnections);
             });
@@ -134,10 +136,11 @@ impl App {
 
     pub(super) fn on_reload_connections(&self, sender: ComponentSender<Self>) {
         let sender_clone = sender.clone();
+        let store = self.storage.connections().clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    if let Ok(connections) = tablepro_storage::load_connections().await {
+                    if let Ok(connections) = store.load().await {
                         sender_clone.input(AppMsg::ConnectionsLoaded(connections));
                     }
                 })
@@ -198,12 +201,19 @@ impl App {
         dialog.set_close_response("cancel");
 
         let sender_for_response = sender;
+        let connections_for_response = self.storage.connections().clone();
+        let secrets_for_response = self.storage.secrets().clone();
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "delete" {
                 return;
             }
-            execute_delete_connection(id, sender_for_response.clone());
+            execute_delete_connection(
+                connections_for_response.clone(),
+                secrets_for_response.clone(),
+                id,
+                sender_for_response.clone(),
+            );
         });
         dialog.present(Some(&self.window));
     }
@@ -216,11 +226,12 @@ impl App {
         );
         let driver_id = saved.driver_id.clone();
         let registry = self.registry.clone();
+        let secrets = self.storage.secrets().clone();
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    match connection_service::open_saved(registry, saved).await {
+                    match connection_service::open_saved(registry, secrets, saved).await {
                         Ok(tables) => sender_clone.input(AppMsg::Connected { tables, driver_id }),
                         Err(e) => sender_clone.input(AppMsg::LoadFailed(None, e)),
                     }
@@ -311,15 +322,22 @@ impl App {
 /// Performs the actual disk + keyring teardown for a saved connection.
 /// Extracted from `on_delete_connection` so the confirm-yes branch and
 /// the prefs-disabled branch share one implementation.
-fn execute_delete_connection(id: Uuid, sender: ComponentSender<App>) {
+fn execute_delete_connection(
+    connections: tablepro_storage::ConnectionStore,
+    secrets: tablepro_storage::SecretStore,
+    id: Uuid,
+    sender: ComponentSender<App>,
+) {
     let sender_clone = sender.clone();
     sender.command(move |_, shutdown| {
         shutdown
             .register(async move {
-                let _ = tablepro_storage::delete_connection(id).await;
-                let _ = tablepro_storage::delete_password(id).await;
-                let _ = tablepro_storage::delete_ssh_password(id).await;
-                let _ = tablepro_storage::delete_ssh_passphrase(id).await;
+                // Secrets first: an entry with no secrets is recoverable,
+                // a secret with no entry is orphaned in the keyring.
+                let _ = secrets.delete_password(id).await;
+                let _ = secrets.delete_ssh_password(id).await;
+                let _ = secrets.delete_ssh_passphrase(id).await;
+                let _ = connections.delete(id).await;
                 sender_clone.input(AppMsg::ReloadConnections);
             })
             .drop_on_shutdown()

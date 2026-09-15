@@ -20,17 +20,17 @@ glib::wrapper! {
 }
 
 impl PreferencesDialog {
-    pub fn new(settings: &Rc<AppSettings>) -> Self {
+    pub fn new(settings: &Rc<AppSettings>, storage: &crate::storage::SharedStorage) -> Self {
         let dialog: Self = glib::Object::new();
         dialog.imp().settings.replace(Some(settings.clone()));
-        dialog.bind(settings);
-        dialog.connect_history_actions();
+        dialog.bind(settings, storage);
+        dialog.connect_history_actions(storage);
         dialog
     }
 
     /// Every row binds straight to GSettings, so a change reaches any
     /// other view through `changed::<key>` without a save step.
-    fn bind(&self, settings: &Rc<AppSettings>) {
+    fn bind(&self, settings: &Rc<AppSettings>, storage: &crate::storage::SharedStorage) {
         let imp = self.imp();
         let gio_settings = settings.gio();
 
@@ -71,19 +71,22 @@ impl PreferencesDialog {
 
         style_scheme_grid::populate(&imp.style_scheme_box.get(), settings);
 
-        let path = tablepro_storage::query_history::db_path()
-            .map(|path| path.display().to_string())
-            .unwrap_or_else(|| "$XDG_STATE_HOME/tablepro/history.db".to_owned());
+        let path = storage
+            .history()
+            .map(|history| history.path().display().to_string())
+            .unwrap_or_else(|| storage.paths().history_database().display().to_string());
         imp.storage_row.set_subtitle(&path);
         // AdwActionRow ellipsises a long subtitle, so the full path lives
         // in the tooltip.
         imp.storage_row.set_tooltip_text(Some(&path));
     }
 
-    fn connect_history_actions(&self) {
+    fn connect_history_actions(&self, storage: &crate::storage::SharedStorage) {
         let imp = self.imp();
+        let history_path = storage.history().map(|history| history.path().to_owned());
 
         let dialog = self.clone();
+        let history_for_clear = storage.history().cloned();
         imp.clear_button.connect_clicked(move |_| {
             let alert = adw::AlertDialog::new(
                 Some(&crate::i18n::gettext("Clear all query history?")),
@@ -96,11 +99,15 @@ impl PreferencesDialog {
             alert.set_response_appearance("clear", adw::ResponseAppearance::Destructive);
             alert.set_default_response(Some("cancel"));
             alert.set_close_response("cancel");
+            let history_for_clear = history_for_clear.clone();
             alert.connect_response(None, move |alert, response| {
                 alert.close();
                 if response == "clear" {
+                    let Some(history) = history_for_clear.clone() else {
+                        return;
+                    };
                     relm4::spawn(async move {
-                        if let Err(error) = tablepro_storage::query_history::clear_all().await {
+                        if let Err(error) = history.clear_all().await {
                             tracing::warn!(%error, "could not clear the query history");
                         }
                     });
@@ -111,7 +118,7 @@ impl PreferencesDialog {
 
         let dialog = self.clone();
         imp.storage_button.connect_clicked(move |_| {
-            let Some(path) = tablepro_storage::query_history::db_path() else {
+            let Some(path) = history_path.clone() else {
                 return;
             };
             let directory = path.parent().map(std::path::Path::to_path_buf).unwrap_or(path);
@@ -124,17 +131,35 @@ impl PreferencesDialog {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::EditorFont;
+    use tablepro_storage::{EditorFont, StoragePaths};
 
     use crate::test_support::MemorySettings;
 
     use super::*;
 
+    fn test_storage() -> crate::storage::SharedStorage {
+        // A temporary root keeps the dialog's storage row and history
+        // actions away from the developer's own files.
+        let root = std::env::temp_dir().join(format!("tablepro-prefs-{}", std::process::id()));
+        let paths = StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
+        Rc::new(
+            relm4::tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime")
+                .block_on(crate::storage::AppStorage::open(
+                    paths,
+                    "app.tablepro.TablePro.Devel.Password".to_owned(),
+                )),
+        )
+    }
+
     #[gtk4::test]
     fn preferences_dialog_template_builds() {
         let settings = MemorySettings::new();
 
-        let dialog = PreferencesDialog::new(settings.get());
+        let storage = test_storage();
+        let dialog = PreferencesDialog::new(settings.get(), &storage);
         let imp = dialog.imp();
 
         assert_eq!(imp.page_size_row.title(), "Default page size");
@@ -148,7 +173,8 @@ mod tests {
         settings.get().set_default_page_size(500).expect("store the page size");
         settings.get().set_confirm_destructive(false).expect("store the flag");
 
-        let dialog = PreferencesDialog::new(settings.get());
+        let storage = test_storage();
+        let dialog = PreferencesDialog::new(settings.get(), &storage);
         let imp = dialog.imp();
 
         assert_eq!(imp.page_size_row.value(), 500.0);
@@ -165,7 +191,8 @@ mod tests {
     fn the_font_row_is_insensitive_while_the_system_font_is_on() {
         let settings = MemorySettings::new();
 
-        let dialog = PreferencesDialog::new(settings.get());
+        let storage = test_storage();
+        let dialog = PreferencesDialog::new(settings.get(), &storage);
         let imp = dialog.imp();
 
         assert!(!imp.font_row.is_sensitive());
@@ -186,7 +213,8 @@ mod tests {
     fn the_storage_row_names_the_history_database() {
         let settings = MemorySettings::new();
 
-        let dialog = PreferencesDialog::new(settings.get());
+        let storage = test_storage();
+        let dialog = PreferencesDialog::new(settings.get(), &storage);
 
         let subtitle = dialog.imp().storage_row.subtitle().unwrap_or_default();
         assert!(subtitle.contains("history.db"), "{subtitle}");

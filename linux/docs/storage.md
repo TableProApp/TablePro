@@ -69,6 +69,46 @@ Notes:
 - If libsecret is not available (rare; truly minimal Linux installs), `load_password` returns `Ok(None)` and the UI prompts at connect time. The app does not crash and does not write passwords to plain files as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
+## Where files go
+
+`tablepro_storage::StoragePaths` resolves every directory once at startup
+through GLib, so the app agrees with the rest of the desktop about the XDG
+base directories and their fallbacks.
+
+| Accessor | Path |
+|---|---|
+| `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
+| `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json` |
+| `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
+| `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
+| `workspace_state_file()` | `$XDG_STATE_HOME/<dir>/workspace_state.json` |
+| `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
+| `instance_lock()` | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
+
+`<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
+development one, so `cargo run` never writes over an installed build's
+files. `StoragePaths::under(root, ..)` builds the same layout under a
+temporary root, which is how the tests stay off the developer's own data.
+
+## Writing files
+
+Everything private goes through `tablepro_storage::fs`:
+
+- `ensure_private_dir` creates the directory tree and sets the leaf to
+  exactly 0700. `DirBuilder::mode` only applies to directories the call
+  creates, so an existing 0755 directory still needs the explicit chmod.
+- `write_private_blocking` writes through `g_file_set_contents_full` with
+  `CONSISTENT | DURABLE`: a reader sees the old file or the new one, never
+  a mix, and the new one survives a power cut. It tightens an existing
+  file to 0600 first, because that call keeps an existing file's mode and
+  only applies the mode argument when it creates the file.
+- `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
+  creates its database, WAL and SHM with the umask mode, so pre-creating
+  the database is what keeps all three off world-readable.
+
+These calls block on `fsync`, so async callers run them through
+`spawn_blocking` rather than on the GTK thread.
+
 ## App preferences with `gio::Settings`
 
 `data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).

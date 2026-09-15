@@ -155,13 +155,14 @@ The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots
 
 | Data | Backend | Path / table |
 |---|---|---|
-| Saved connections | JSON, atomic temp-file rename | `$XDG_CONFIG_HOME/tablepro/connections.json` |
+| Saved connections | JSON, `g_file_set_contents_full` CONSISTENT + DURABLE, 0600 | `$XDG_CONFIG_HOME/tablepro/connections.json` |
 | Connection passwords + SSH secrets | libsecret via `oo7` (Secret Service / KWallet) | keyring item per connection UUID |
-| Per-connection workspace tabs | JSON, atomic temp-file rename, debounced 500 ms | `$XDG_DATA_HOME/tablepro/workspace.json` |
-| Query history | SQLite + FTS5 virtual table | `$XDG_DATA_HOME/tablepro/history.db` |
+| Per-connection workspace tabs | JSON, durable write, debounced 500 ms | `$XDG_STATE_HOME/tablepro/workspace_state.json` |
+| Query history | SQLite + FTS5 virtual table, 0600 | `$XDG_STATE_HOME/tablepro/history.db` |
 | Application preferences | GSettings | schema `app.tablepro.TablePro` |
 | Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
-| Per-table column widths | JSON | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
+| Per-table column widths | JSON, durable write | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
+| Single-instance lock | `flock` on an empty file | `$XDG_RUNTIME_DIR/app/<app-id>/tablepro.lock` |
 
 Forward compat: `WorkspaceTabRecord` uses `#[serde(other)] Unknown` so an old binary reading a newer file silently skips unknown variants instead of failing the whole load. `clamp_connection` runs on load to migrate legacy variants (`Browse`, `Structure { schema, table }`) into the unified `Table` shape.
 

@@ -4,8 +4,6 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::config_io::{atomic_write_json, xdg_config_path};
-
 /// Serialises every read-modify-write of `workspace_state.json`. Each
 /// `save_connection` call loads the current state, mutates one entry,
 /// and rewrites the whole file; without this lock, two close events
@@ -20,7 +18,6 @@ const MAX_TABS_PER_CONNECTION: usize = 32;
 const MAX_TABLE_NAME_BYTES: usize = 256;
 const MAX_SCHEMA_NAME_BYTES: usize = 256;
 const MAX_QUERY_BYTES: usize = 256 * 1024;
-const FILE_NAME: &str = "workspace_state.json";
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -108,7 +105,7 @@ pub enum PersistedTableMode {
 }
 
 fn load_locked() -> WorkspaceState {
-    let Some(path) = xdg_config_path(FILE_NAME) else {
+    let Some(path) = super::paths().map(|paths| paths.workspace_state_file()) else {
         return WorkspaceState::default();
     };
     let mut state: WorkspaceState = std::fs::read(path)
@@ -120,15 +117,13 @@ fn load_locked() -> WorkspaceState {
 }
 
 fn save_locked(state: &WorkspaceState) {
-    let Some(path) = xdg_config_path(FILE_NAME) else {
+    let Some(path) = super::paths().map(|paths| paths.workspace_state_file()) else {
         tracing::warn!("workspace_state: no config path; skipping save");
         return;
     };
     let mut snapshot = state.clone();
     clamp(&mut snapshot);
-    if let Err(e) = atomic_write_json(&path, &snapshot) {
-        tracing::warn!(path = %path.display(), error = %e, "workspace_state: write failed");
-    }
+    super::write_json(&path, &snapshot, "workspace state");
 }
 
 pub fn load_connection(id: Uuid) -> Option<ConnectionWorkspaceState> {
