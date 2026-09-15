@@ -148,6 +148,10 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        /// A selection change, a refresh or an undo rebuilds the fields under whatever was being
+        /// typed, so the run it was building ends here rather than folding the next keystroke into
+        /// a step that belongs to another row.
+        coordinator.endInspectorEditRun()
         switch gridSelectionOwner {
         case .schemaGrid:
             updateSchemaSidebarEditState()
@@ -227,18 +231,26 @@ extension MainContentView {
 
         let capturedCoordinator = coordinator
         let capturedEditState = trailingPaneState.inspector.editState
-        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue, continuity in
             capturedCoordinator.stageInspectorFieldEdit(
                 columnIndex: columnIndex,
                 value: newValue,
-                rowIDs: capturedEditState.rowIDs
+                rowIDs: capturedEditState.rowIDs,
+                continuity: continuity
             )
         }
         trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow in
             capturedCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
         }
         trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs in
-            capturedCoordinator.stageInspectorFieldEdit(columnIndex: columnIndex, value: newValue, rowIDs: rowIDs)
+            /// A value window commits on every keystroke exactly as the field it detached from
+            /// does, so its typing folds into one undo step the same way.
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: rowIDs,
+                continuity: .typing
+            )
         }
     }
 
@@ -312,7 +324,7 @@ extension MainContentView {
         let capturedCoordinator = coordinator
         trailingPaneState.inspector.editState.onFieldReverted = nil
         trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
-        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(
                 displayRow: displayRow,
                 fieldIndex: fieldIndex,

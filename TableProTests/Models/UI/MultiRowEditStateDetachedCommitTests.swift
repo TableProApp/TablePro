@@ -29,7 +29,7 @@ struct MultiRowEditStateDetachedCommitTests {
         let state = makeState(rowIDs: [.existing(1)], values: [["2", "Bob"]])
         var fieldEdits: [(Int, PluginCellValue)] = []
         var detached: [(Int, PluginCellValue, [RowID])] = []
-        state.onFieldChanged = { fieldEdits.append(($0, $1)) }
+        state.onFieldChanged = { columnIndex, value, _ in fieldEdits.append((columnIndex, value)) }
         state.onDetachedFieldChanged = { detached.append(($0, $1, $2)) }
 
         state.updateDetachedField(columnIndex: 1, rowIDs: [.existing(1)], value: "Zed")
@@ -45,7 +45,7 @@ struct MultiRowEditStateDetachedCommitTests {
     func commitsToTheOpenedRowsAfterTheSelectionMoved() {
         let state = makeState(rowIDs: [.existing(1)], values: [["2", "Bob"]])
         var detached: [(Int, PluginCellValue, [RowID])] = []
-        state.onFieldChanged = { _, _ in Issue.record("the field path must not take a moved selection") }
+        state.onFieldChanged = { _, _, _ in Issue.record("the field path must not take a moved selection") }
         state.onDetachedFieldChanged = { detached.append(($0, $1, $2)) }
 
         state.configure(

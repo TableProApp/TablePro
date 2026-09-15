@@ -68,12 +68,19 @@ struct FieldEditState: Identifiable {
     }
 }
 
+enum FieldEditContinuity {
+    case typing
+    case discrete
+}
+
 /// Manages edit state for multi-row editing in sidebar
 @MainActor @Observable
 final class MultiRowEditState {
     var fields: [FieldEditState] = []
 
-    var onFieldChanged: ((Int, PluginCellValue) -> Void)?
+    /// A field's new value, and whether it arrived a character at a time. Typing is folded into one
+    /// undo step; choosing NULL, DEFAULT, a function or a picker value is its own step.
+    var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
 
     /// A field the selected rows disagree on, cleared back to nothing. It has no single value to
     /// send, so it asks for each row's own configured value instead.
@@ -256,7 +263,7 @@ final class MultiRowEditState {
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         if pending != nil {
-            onFieldChanged?(index, PluginCellValue.fromOptional(pending))
+            onFieldChanged?(index, PluginCellValue.fromOptional(pending), .typing)
         } else if hadPendingEdit {
             /// `originalValue` is nil for two different situations, and only one of them is a
             /// value: a stored NULL, and a selection whose rows do not agree. Sending it as one
@@ -265,7 +272,7 @@ final class MultiRowEditState {
             if fields[index].hasMultipleValues {
                 onFieldReverted?(index, configuredValues(atColumn: index))
             } else {
-                onFieldChanged?(index, PluginCellValue.fromOptional(original))
+                onFieldChanged?(index, PluginCellValue.fromOptional(original), .typing)
             }
         }
     }
@@ -314,7 +321,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = encoded
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .bytes(data))
+        onFieldChanged?(index, .bytes(data), .discrete)
     }
 
     func setFieldToNull(at index: Int) {
@@ -322,7 +329,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = nil
         fields[index].isPendingNull = true
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .null)
+        onFieldChanged?(index, .null, .discrete)
     }
 
     func setFieldToDefault(at index: Int) {
@@ -330,7 +337,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = nil
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = true
-        onFieldChanged?(index, .text("__DEFAULT__"))
+        onFieldChanged?(index, .text("__DEFAULT__"), .discrete)
     }
 
     func setFieldToFunction(at index: Int, function: String) {
@@ -338,7 +345,7 @@ final class MultiRowEditState {
         fields[index].pendingValue = function
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        onFieldChanged?(index, .text(function))
+        onFieldChanged?(index, .text(function), .discrete)
     }
 
     func setFieldToEmpty(at index: Int) {
@@ -352,7 +359,7 @@ final class MultiRowEditState {
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
         if fields[index].pendingValue != nil || hadPendingEdit {
-            onFieldChanged?(index, .text(""))
+            onFieldChanged?(index, .text(""), .discrete)
         }
     }
 

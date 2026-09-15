@@ -172,10 +172,22 @@ final class RowEditingCoordinator {
     /// The rows are named by `RowID` rather than by the display positions the selection carries,
     /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
     /// selection disagrees on the field, where the inspector holds no value for it at all.
-    func stageInspectorFieldEdit(columnIndex: Int, value: PluginCellValue, rowIDs: [RowID]) {
+    /// Ends the typed run an inspector field was building, so the next thing to register an undo
+    /// step lands after it rather than inside it.
+    func endInspectorEditRun() {
+        parent.changeManager.endCoalescedUndoRun()
+    }
+
+    func stageInspectorFieldEdit(
+        columnIndex: Int,
+        value: PluginCellValue,
+        rowIDs: [RowID],
+        continuity: FieldEditContinuity
+    ) {
         stageInspectorEdits(
             valuesByRow: Dictionary(rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
-            columnIndex: columnIndex
+            columnIndex: columnIndex,
+            continuity: continuity
         )
     }
 
@@ -184,10 +196,17 @@ final class RowEditingCoordinator {
     /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
     /// row's own value back rather than for one value across all of them.
     func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
-        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex)
+        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex, continuity: .typing)
     }
 
-    private func stageInspectorEdits(valuesByRow: [RowID: PluginCellValue], columnIndex: Int) {
+    private func stageInspectorEdits(
+        valuesByRow: [RowID: PluginCellValue],
+        columnIndex: Int,
+        continuity: FieldEditContinuity
+    ) {
+        if continuity == .discrete {
+            endInspectorEditRun()
+        }
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
@@ -204,14 +223,25 @@ final class RowEditingCoordinator {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let values = Array(tableRows.rows[storageRow].values)
             guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }
-            parent.changeManager.recordCellChange(
-                rowID: rowID,
-                columnIndex: columnIndex,
-                columnName: columnName,
-                oldValue: values[columnIndex],
-                newValue: value,
-                originalRow: values
-            )
+            if continuity == .typing {
+                parent.changeManager.recordTypedCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values
+                )
+            } else {
+                parent.changeManager.recordCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values
+                )
+            }
             edits.append((row: storageRow, column: columnIndex, value: value))
             editedRowIDs.insert(rowID)
         }
