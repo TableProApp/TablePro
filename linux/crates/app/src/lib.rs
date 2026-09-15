@@ -82,10 +82,18 @@ fn start() -> Result<(), StartupError> {
         .map_err(StartupError::HistoryRuntime)?;
     let storage = std::rc::Rc::new(runtime.block_on(async {
         let storage = storage::AppStorage::open(paths, config::secret_schema()).await;
-        if let Some(history) = storage.history()
-            && let Err(error) = history.prune_older_than(retention).await
-        {
-            tracing::warn!(%error, "history prune failed");
+        if let Some(history) = storage.history() {
+            match history.prune(retention).await {
+                Ok(report) if report.removed_anything() => {
+                    tracing::info!(
+                        expired = report.expired,
+                        over_cap = report.over_cap,
+                        "pruned the query history"
+                    );
+                }
+                Ok(_) => {}
+                Err(error) => tracing::warn!(%error, "history prune failed"),
+            }
         }
         storage
     }));

@@ -46,4 +46,10 @@ pub enum StorageError {
 
     #[error("settings error: {0}")]
     Settings(#[from] crate::settings::SettingsError),
+
+    #[error("the query history was created by a newer version of TablePro (schema {version})")]
+    HistoryNewerThanApp { version: i64 },
+
+    #[error("could not migrate the query history: {0}")]
+    HistoryMigration(#[source] sqlx::migrate::MigrateError),
 }

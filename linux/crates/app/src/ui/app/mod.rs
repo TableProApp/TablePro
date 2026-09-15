@@ -1216,8 +1216,16 @@ impl SimpleComponent for App {
                 return glib::ControlFlow::Continue;
             };
             relm4::spawn(async move {
-                if let Err(error) = history.prune_older_than(retention).await {
-                    tracing::warn!(%error, "history prune failed");
+                match history.prune(retention).await {
+                    Ok(report) if report.removed_anything() => {
+                        tracing::info!(
+                            expired = report.expired,
+                            over_cap = report.over_cap,
+                            "pruned the query history"
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => tracing::warn!(%error, "history prune failed"),
                 }
             });
             glib::ControlFlow::Continue
