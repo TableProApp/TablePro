@@ -60,53 +60,37 @@ struct LicenseTierTests {
 
     // MARK: - resolveAccess
 
-    @Test("active starter license grants a starter feature")
-    func activeStarterGrantsStarterFeature() {
-        let access = LicenseManager.resolveAccess(status: .active, tier: .starter, requiredTier: .starter)
-        #expect(access == .available)
+    /// This fork ships every feature unlocked, so the grid that used to map status and tier onto an
+    /// access decision has one answer. These cases are the ones that used to be refusals: an
+    /// expired license, a failed validation, a starter tier reaching for a team feature, and no
+    /// license at all. Each of them is what a user of this build now gets instead.
+    @Test(
+        "Every status and tier combination grants access",
+        arguments: [
+            (LicenseStatus.active, LicenseTier.starter, LicenseTier.team),
+            (.expired, .team, .starter),
+            (.validationFailed, .team, .team),
+            (.unlicensed, .starter, .starter),
+            (.suspended, .team, .team),
+            (.deactivated, .team, .team),
+        ]
+    )
+    func everyCombinationGrantsAccess(status: LicenseStatus, tier: LicenseTier, required: LicenseTier) {
+        #expect(LicenseManager.resolveAccess(status: status, tier: tier, requiredTier: required) == .available)
     }
 
-    @Test("active starter license is blocked from a team feature")
-    func activeStarterBlockedFromTeamFeature() {
-        let access = LicenseManager.resolveAccess(status: .active, tier: .starter, requiredTier: .team)
-        #expect(access == .requiresUpgrade(.team))
-    }
-
-    @Test("active team license grants a team feature")
-    func activeTeamGrantsTeamFeature() {
-        let access = LicenseManager.resolveAccess(status: .active, tier: .team, requiredTier: .team)
-        #expect(access == .available)
-    }
-
-    @Test("active team license grants a starter feature")
-    func activeTeamGrantsStarterFeature() {
-        let access = LicenseManager.resolveAccess(status: .active, tier: .team, requiredTier: .starter)
-        #expect(access == .available)
-    }
-
-    @Test("expired license reports expired regardless of tier")
-    func expiredReportsExpired() {
-        let access = LicenseManager.resolveAccess(status: .expired, tier: .team, requiredTier: .starter)
-        #expect(access == .expired)
-    }
-
-    @Test("validation failure reports validationFailed")
-    func validationFailureReported() {
-        let access = LicenseManager.resolveAccess(status: .validationFailed, tier: .team, requiredTier: .team)
-        #expect(access == .validationFailed)
-    }
-
-    @Test("unlicensed and other inactive statuses report unlicensed")
-    func inactiveStatusesReportUnlicensed() {
-        #expect(LicenseManager.resolveAccess(status: .unlicensed, tier: .starter, requiredTier: .starter) == .unlicensed)
-        #expect(LicenseManager.resolveAccess(status: .suspended, tier: .team, requiredTier: .team) == .unlicensed)
-        #expect(LicenseManager.resolveAccess(status: .deactivated, tier: .team, requiredTier: .team) == .unlicensed)
-    }
-
-    @Test("an unrecognized future tier grants team features when active")
-    func unknownTierGrantsTeamFeature() {
-        let access = LicenseManager.resolveAccess(status: .active, tier: LicenseTier(rawValue: "enterprise"), requiredTier: .team)
-        #expect(access == .available)
+    @Test("Every pro feature is available")
+    func everyFeatureIsAvailable() {
+        for feature in ProFeature.allCases {
+            #expect(
+                LicenseManager.resolveAccess(
+                    status: .unlicensed,
+                    tier: .starter,
+                    requiredTier: feature.requiredTier
+                ) == .available,
+                Comment(rawValue: "\(feature) is gated")
+            )
+        }
     }
 
     // MARK: - ProFeature required tiers

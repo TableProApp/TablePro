@@ -42,29 +42,18 @@ extension LicenseManager {
         )
     }
 
-    /// Pure resolution of feature access from license state. Kept static and side-effect free so
-    /// gating logic can be unit tested without constructing a LicenseManager.
+    /// This fork ships every feature unlocked, so there is one answer and no state to resolve.
+    ///
+    /// The tier comparison, the offline grace period and the server's own verdict are all still
+    /// here in the types around this, and deliberately untouched: the single decision lives in one
+    /// function, which is what makes unlocking a one-line change rather than a hunt through
+    /// thirty-nine files. Every caller, `ProFeatureGate` included, reads its answer from here.
     nonisolated static func resolveAccess(
         status: LicenseStatus,
         tier: LicenseTier,
         requiredTier: LicenseTier
     ) -> ProFeatureAccess {
-        guard status.isValid else {
-            switch status {
-            case .expired:
-                return .expired
-            case .validationFailed:
-                return .validationFailed
-            default:
-                return .unlicensed
-            }
-        }
-
-        guard tier.unlocks(requiredTier) else {
-            return .requiresUpgrade(requiredTier)
-        }
-
-        return .available
+        .available
     }
 
     /// Who the support screen is talking to.
