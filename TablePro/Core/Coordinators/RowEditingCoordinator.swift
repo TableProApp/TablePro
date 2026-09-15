@@ -173,7 +173,22 @@ final class RowEditingCoordinator {
     /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
     /// selection disagrees on the field, where the inspector holds no value for it at all.
     func stageInspectorFieldEdit(columnIndex: Int, value: PluginCellValue, rowIDs: [RowID]) {
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
+        stageInspectorEdits(
+            valuesByRow: Dictionary(rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex
+        )
+    }
+
+    /// Puts a field back to the values the inspector was configured with.
+    ///
+    /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
+    /// row's own value back rather than for one value across all of them.
+    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
+        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex)
+    }
+
+    private func stageInspectorEdits(valuesByRow: [RowID: PluginCellValue], columnIndex: Int) {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.columns.indices.contains(columnIndex) else { return }
@@ -185,7 +200,7 @@ final class RowEditingCoordinator {
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var editedRowIDs: Set<RowID> = []
-        for rowID in rowIDs {
+        for (rowID, value) in valuesByRow {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let values = Array(tableRows.rows[storageRow].values)
             guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }

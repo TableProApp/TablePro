@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
+- **Download and install updates automatically** in Settings > General.
+- **Last checked** beside **Check for Updates…** in Settings > General.
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
-- What's New window, from Help > What's New.
+- What's New window, from Help > What's New and from Settings > General.
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - SQL Server alias, table and CLR types in the sidebar's **Types** section, each with a rebuilt `CREATE TYPE` statement.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
@@ -29,11 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **View > Zoom In** and **Zoom Out** (`Cmd+=`, `Cmd+-`) in place of Increase and Decrease Text Size, zooming a focused ER or query plan diagram.
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
+- A scheduled update renames **Check for Updates…** to **Update Available…** instead of interrupting.
 - The update window shows the release highlights, with the full changelog one click away.
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
 - Schema picker lists system schemas last, in place of its Show System Schemas toggle. (#2832)
-- Resizable welcome window that remembers its size and position.
+- Welcome window at a fixed size, remembering where it sits on screen.
 - Welcome window list moved with the arrow keys instead of `Ctrl+J`, `Ctrl+K`, `Ctrl+H` and `Ctrl+L`.
 - Connection switcher lists Favorites, Recent and groups at every depth.
 - Connection rows without colored dots, on the Mac and on iOS.
@@ -44,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Stutter when scrolling a very long line in the SQL editor.
 - Row inspector edits missing from the grid cell and gone from the inspector on reselect. (#2851)
+- Detached JSON cell editor writing into another record after a column filter or a sort moved the rows.
+- NULL written into every selected row when a field they disagree on was cleared in the row inspector.
+- Row inspector showing the discarded values after Discard Changes.
 - Text typed into a detached row inspector value window silently dropped once another row was selected.
 - Row inspector's JSON view showing the row as it was while a detached value window was still writing it.
 - Empty Procedures and Functions lists on every SQL Server connection.
@@ -75,10 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favoriting, moving or reordering a connection reverting a Safe Mode level changed in its window.
 - Connections in groups nested more than three levels deep missing from the welcome window.
 - Linked folder and Team Library connections to two databases on one host treated as one connection.
+- Slow typing and scrolling in a very long line with word wrap on.
 - New, duplicated and moved connections placed at the top of their group.
 - Password sources skipped after an older connection store was renumbered.
 - Connections from a cancelled New Group sheet moved into the next group created.
 - Search in the welcome window hiding matches inside collapsed groups.
+- Memory spike when dragging selected text in an editor that holds a very long line.
+- Blank line added to text dragged from an editor for every extra cursor in the document.
 - Connection switcher showing a dropped connection as connected and checking the wrong one in a second window.
 - Welcome window changes that failed to save shown as saved.
 - Linked folder connection losing its SSH, SSL and Safe Mode settings on connect.
@@ -87,6 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iOS sync overwriting a connection edited while the sync ran.
 - iOS Duplicate losing the password, SSH secrets, client certificates and file access.
 - Update preferences overwritten by the app at every launch instead of following the setting.
+- No automatic update checks on a fresh install, and a permission prompt on the second launch.
+- No automatic update checks at all with the usage heartbeat off and **Reopen Last Session** chosen.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
 - Saving a staged Drop or Truncate running the selected query tab's statement again.
@@ -130,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Sparkle 2.10.0, carrying installer fixes for a symlink attack and a privilege escalation under root.
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 - Remote `VACUUM INTO` snapshot created world-readable beside a database with stricter permissions.

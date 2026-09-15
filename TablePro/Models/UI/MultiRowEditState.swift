@@ -75,6 +75,10 @@ final class MultiRowEditState {
 
     var onFieldChanged: ((Int, PluginCellValue) -> Void)?
 
+    /// A field the selected rows disagree on, cleared back to nothing. It has no single value to
+    /// send, so it asks for each row's own configured value instead.
+    var onFieldReverted: ((Int, [RowID: PluginCellValue]) -> Void)?
+
     /// A value window still open over a selection that has moved on. It names the rows it was
     /// opened for, because the fields it was opened from are gone.
     var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID]) -> Void)?
@@ -251,9 +255,29 @@ final class MultiRowEditState {
         fields[index].pendingValue = pending
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        if pending != nil || hadPendingEdit {
-            onFieldChanged?(index, PluginCellValue.fromOptional(pending ?? original))
+        if pending != nil {
+            onFieldChanged?(index, PluginCellValue.fromOptional(pending))
+        } else if hadPendingEdit {
+            /// `originalValue` is nil for two different situations, and only one of them is a
+            /// value: a stored NULL, and a selection whose rows do not agree. Sending it as one
+            /// value wrote NULL into every selected row when the user cleared a field they all
+            /// disagreed on, which the field then reported as unedited.
+            if fields[index].hasMultipleValues {
+                onFieldReverted?(index, configuredValues(atColumn: index))
+            } else {
+                onFieldChanged?(index, PluginCellValue.fromOptional(original))
+            }
         }
+    }
+
+    /// What each row held when the selection was configured, which is what a field with no value of
+    /// its own reverts to.
+    private func configuredValues(atColumn index: Int) -> [RowID: PluginCellValue] {
+        var values: [RowID: PluginCellValue] = [:]
+        for (rowID, row) in zip(rowIDs, allRows) where row.indices.contains(index) {
+            values[rowID] = PluginCellValue.fromOptional(row[index])
+        }
+        return values
     }
 
     /// A commit from a detached value window, which outlives the selection it was opened from.
@@ -345,6 +369,7 @@ final class MultiRowEditState {
     func releaseData() {
         fields = []
         onFieldChanged = nil
+        onFieldReverted = nil
         onDetachedFieldChanged = nil
         selectedRowIndices = []
         rowIDs = []
