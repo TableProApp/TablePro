@@ -1,0 +1,70 @@
+/* Pending-changeset cell and row states. The Adwaita classes
+   (.warning, .success, .error) repaint the whole row, so these tint the
+   libadwaita background colours instead, the way GNOME Builder marks a
+   diff. */
+.tp-cell-modified {
+  background: color-mix(in srgb, var(--warning-bg-color) 25%, transparent);
+}
+
+.tp-row-pending-insert {
+  background: color-mix(in srgb, var(--success-bg-color) 22%, transparent);
+}
+
+.tp-row-pending-delete {
+  background: color-mix(in srgb, var(--error-bg-color) 16%, transparent);
+  color: color-mix(in srgb, var(--error-color) 70%, transparent);
+  text-decoration: line-through;
+}
+
+/* Italic only: the dim-label Adwaita class added alongside already
+   supplies the opacity. */
+label.tp-null-sentinel {
+  font-style: italic;
+}
+
+/* GtkColumnView's default cell focus is a 1px outline that vanishes
+   against the selected-row highlight. A 2px inset accent ring is the
+   spreadsheet-standard focused-cell signal. The selectors stay explicit
+   so the ring never stacks on a GtkCheckButton, which paints its own. */
+columnview > listview > row > cell:focus-within > label,
+columnview > listview > row > cell:focus-within > .tp-cell-editor {
+  box-shadow: inset 0 0 0 2px var(--accent-color);
+  border-radius: 2px;
+}
+
+/* One-shot flash on the row whose statement failed to commit. The bind
+   callback re-applies the class until the tab clears its error row. */
+@keyframes tp-flash-error {
+  0% {
+    background: color-mix(in srgb, var(--error-bg-color) 55%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.tp-row-leftmost-error-flash {
+  animation: tp-flash-error 1.8s ease-out;
+}
+
+@media (prefers-contrast: more) {
+  .tp-cell-modified {
+    background: var(--warning-bg-color);
+    color: var(--warning-fg-color);
+  }
+
+  .tp-row-pending-insert {
+    background: var(--success-bg-color);
+    color: var(--success-fg-color);
+  }
+
+  .tp-row-pending-delete {
+    background: var(--error-bg-color);
+    color: var(--error-fg-color);
+  }
+
+  columnview > listview > row > cell:focus-within > label,
+  columnview > listview > row > cell:focus-within > .tp-cell-editor {
+    box-shadow: inset 0 0 0 3px var(--accent-color);
+  }
+}

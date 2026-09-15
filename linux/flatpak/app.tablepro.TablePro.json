@@ -24,7 +24,11 @@
         "prepend-ld-library-path": "/usr/lib/sdk/llvm18/lib",
         "env": {
             "CARGO_HOME": "/run/build/tablepro/cargo",
-            "LIBCLANG_PATH": "/usr/lib/sdk/llvm18/lib"
+            "LIBCLANG_PATH": "/usr/lib/sdk/llvm18/lib",
+            "TABLEPRO_APP_ID": "app.tablepro.TablePro",
+            "TABLEPRO_PROFILE": "default",
+            "TABLEPRO_LOCALEDIR": "/app/share/locale",
+            "TABLEPRO_LIBEXECDIR": "/app/libexec"
         }
     },
     "modules": [

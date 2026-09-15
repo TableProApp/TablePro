@@ -85,9 +85,9 @@ impl App {
     pub(super) fn on_show_about(&self) {
         let dialog = adw::AboutDialog::builder()
             .application_name(crate::tr!("TablePro"))
-            .application_icon(crate::APP_ID)
+            .application_icon(crate::config::APP_ID)
             .developer_name(crate::tr!("TablePro Authors"))
-            .version(env!("CARGO_PKG_VERSION"))
+            .version(crate::config::VERSION)
             .website("https://github.com/TableProApp/TablePro")
             .issue_url("https://github.com/TableProApp/TablePro/issues")
             .support_url("https://github.com/TableProApp/TablePro/discussions")

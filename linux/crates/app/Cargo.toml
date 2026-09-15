@@ -31,6 +31,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tablepro-ssh = { path = "../ssh" }
 tablepro-storage = { path = "../storage" }
+gio.workspace = true
 gtk4.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true
@@ -45,6 +46,9 @@ uuid.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 libc = "0.2"
 sqlformat = "0.5"
+
+[build-dependencies]
+glib-build-tools.workspace = true
 
 [lints]
 workspace = true

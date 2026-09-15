@@ -59,7 +59,9 @@ rustls-pki-types = { version = "1", features = ["std"] }
 gtk4 = { version = "0.11", features = ["v4_14"] }
 libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }
 sourceview5 = { version = "0.11", features = ["v5_12"] }
+gio = "0.22"
 glib = "0.22"
+glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1.9"
 tempfile = "3"
