@@ -3,8 +3,6 @@ use std::sync::Mutex;
 
 use uuid::Uuid;
 
-use super::config_io::{atomic_write_json, xdg_config_path};
-
 type Widths = HashMap<String, i32>;
 type Tables = HashMap<String, Widths>;
 type Connections = HashMap<String, Tables>;
@@ -34,16 +32,14 @@ pub fn save(connection_id: Uuid, table: &str, column: &str, width: i32) {
     // shares the existing tokio runtime instead of creating a fresh OS
     // thread per width change.
     relm4::spawn(async move {
-        if let Some(path) = xdg_config_path("column_widths.json")
-            && let Err(e) = atomic_write_json(&path, &snapshot)
-        {
-            tracing::warn!(error = %e, "column_widths: persist failed");
+        if let Some(path) = super::paths().map(|paths| paths.column_widths_file()) {
+            super::write_json(&path, &snapshot, "column widths");
         }
     });
 }
 
 fn load_from_disk() -> Connections {
-    let Some(path) = xdg_config_path("column_widths.json") else {
+    let Some(path) = super::paths().map(|paths| paths.column_widths_file()) else {
         return HashMap::new();
     };
     let Ok(bytes) = std::fs::read(path) else {

@@ -8,13 +8,14 @@ use sourceview5::prelude::*;
 use tokio_util::sync::CancellationToken;
 
 use tablepro_core::QueryResult;
-use tablepro_storage::query_history::{self, NewEntry, Outcome};
+use tablepro_storage::query_history::{NewEntry, Outcome};
 
 use super::grid::{GridMsg, TabGridContext, build_column_view};
 use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct SqlEditor {
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
+    history: Option<tablepro_storage::QueryHistory>,
     source_view: sourceview5::View,
     run_button: gtk::Button,
     cancel_button: gtk::Button,
@@ -32,6 +33,7 @@ pub struct SqlEditorInit {
     pub schema_buffer: gtk::TextBuffer,
     pub initial_query: Option<String>,
     pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
+    pub history: Option<tablepro_storage::QueryHistory>,
 }
 
 /// One statement's outcome inside a multi-statement script. The
@@ -406,6 +408,7 @@ impl SimpleComponent for SqlEditor {
 
         let model = SqlEditor {
             settings,
+            history: init.history.clone(),
             source_view: widgets.source_view.clone(),
             run_button: widgets.run_button.clone(),
             cancel_button: widgets.cancel_button.clone(),
@@ -710,9 +713,12 @@ impl SqlEditor {
             rows_affected,
             outcome,
         };
+        let Some(history) = self.history.clone() else {
+            return;
+        };
         relm4::spawn(async move {
-            if let Err(e) = query_history::record(entry).await {
-                tracing::warn!(error = %e, "history record failed");
+            if let Err(error) = history.record(entry).await {
+                tracing::warn!(%error, "history record failed");
             }
         });
     }

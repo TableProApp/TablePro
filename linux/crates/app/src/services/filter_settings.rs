@@ -14,10 +14,6 @@ use std::sync::Mutex;
 use tablepro_core::FilterSet;
 use uuid::Uuid;
 
-use super::config_io::{atomic_write_json, xdg_config_path};
-
-const FILE: &str = "filter_settings.json";
-
 /// `FilterSet` keyed by `(connection_id, schema-or-empty, table)`.
 type Tables = HashMap<String, FilterSet>;
 type Schemas = HashMap<String, Tables>;
@@ -77,16 +73,14 @@ pub fn save(connection_id: Uuid, schema: Option<&str>, table: &str, set: FilterS
     let snapshot = map.clone();
     drop(guard);
     relm4::spawn(async move {
-        if let Some(path) = xdg_config_path(FILE)
-            && let Err(e) = atomic_write_json(&path, &snapshot)
-        {
-            tracing::warn!(error = %e, "filter_settings: persist failed");
+        if let Some(path) = super::paths().map(|paths| paths.filter_settings_file()) {
+            super::write_json(&path, &snapshot, "filter settings");
         }
     });
 }
 
 fn load_from_disk() -> Connections {
-    let Some(path) = xdg_config_path(FILE) else {
+    let Some(path) = super::paths().map(|paths| paths.filter_settings_file()) else {
         return HashMap::new();
     };
     let Ok(bytes) = std::fs::read(path) else {

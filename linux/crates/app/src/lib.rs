@@ -10,6 +10,7 @@ pub mod config;
 pub mod i18n;
 pub mod logging;
 mod services;
+pub mod storage;
 #[cfg(test)]
 mod test_support;
 mod ui;
@@ -55,7 +56,10 @@ fn start() -> Result<(), StartupError> {
     // silently lets two processes through when DBus is unavailable.
     // A second instance corrupts workspace_state.json via concurrent
     // read-modify-write. Hold the lock through the entire `start`.
-    let _instance_lock = match services::single_instance::acquire() {
+    let paths = tablepro_storage::StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
+    services::install_paths(paths.clone());
+
+    let _instance_lock = match services::single_instance::acquire(&paths) {
         Ok(lock) => Some(lock),
         Err(services::single_instance::LockError::AlreadyRunning) => {
             tracing::info!("another TablePro instance is running; exiting");
@@ -76,13 +80,15 @@ fn start() -> Result<(), StartupError> {
         .enable_all()
         .build()
         .map_err(StartupError::HistoryRuntime)?;
-    runtime.block_on(async {
-        if let Err(e) = tablepro_storage::query_history::init().await {
-            tracing::warn!(error = %e, "history init failed; feature disabled");
-        } else if let Err(e) = tablepro_storage::query_history::prune_older_than(retention).await {
-            tracing::warn!(error = %e, "history prune failed");
+    let storage = std::rc::Rc::new(runtime.block_on(async {
+        let storage = storage::AppStorage::open(paths, config::secret_schema()).await;
+        if let Some(history) = storage.history()
+            && let Err(error) = history.prune_older_than(retention).await
+        {
+            tracing::warn!(%error, "history prune failed");
         }
-    });
+        storage
+    }));
 
     let registry = Arc::new(build_registry());
     tracing::info!(drivers = registry.len(), "starting tablepro");
@@ -95,7 +101,11 @@ fn start() -> Result<(), StartupError> {
             .resource_base_path(config::RESOURCE_BASE_PATH)
             .build(),
     );
-    app.run::<ui::App>(ui::AppInit { registry, settings });
+    app.run::<ui::App>(ui::AppInit {
+        registry,
+        settings,
+        storage,
+    });
 
     // Explicit ordered shutdown: `app.run` returned (window closed),
     // so let the tokio runtime's worker threads finish in-flight

@@ -7,9 +7,7 @@ use secrecy::{ExposeSecret, SecretString};
 use uuid::Uuid;
 
 use tablepro_core::{AuthMode, ConnectOptions, DriverRegistry, TableInfo};
-use tablepro_storage::{
-    SavedConnection, SavedSshConfig, save_connections, store_password, store_ssh_passphrase, store_ssh_password,
-};
+use tablepro_storage::{ConnectionStore, SavedConnection, SavedSshConfig, SecretStore};
 
 use super::ssh_section::{SshInputs, SshSecretToStore, SshSection};
 use crate::services::connection_service;
@@ -17,6 +15,7 @@ use crate::services::database_service::{self, ReconnectParams};
 
 pub struct ConnectDialog {
     registry: Arc<DriverRegistry>,
+    storage: crate::storage::SharedStorage,
     drivers: Vec<DriverEntry>,
     driver_combo: adw::ComboRow,
     host: adw::EntryRow,
@@ -88,6 +87,7 @@ impl AuthFormState {
 
 pub struct ConnectDialogInit {
     pub registry: Arc<DriverRegistry>,
+    pub storage: crate::storage::SharedStorage,
 }
 
 #[derive(Debug)]
@@ -292,6 +292,7 @@ impl Component for ConnectDialog {
 
         let mut model = ConnectDialog {
             registry: init.registry,
+            storage: init.storage,
             drivers: drivers.clone(),
             driver_combo,
             host,
@@ -414,12 +415,24 @@ impl Component for ConnectDialog {
                     None
                 };
                 let read_only = self.read_only.is_active();
+                let targets = SaveTargets {
+                    connections: self.storage.connections().clone(),
+                    secrets: self.storage.secrets().clone(),
+                };
 
                 sender.command(move |out, shutdown| {
                     shutdown
                         .register(async move {
-                            let result =
-                                run_connect(driver.clone(), driver_id, label, opts, ssh_inputs, read_only).await;
+                            let result = run_connect(
+                                driver.clone(),
+                                targets.clone(),
+                                driver_id,
+                                label,
+                                opts,
+                                ssh_inputs,
+                                read_only,
+                            )
+                            .await;
                             out.send(ConnectDialogCmd::Result(result)).ok();
                         })
                         .drop_on_shutdown()
@@ -631,8 +644,17 @@ fn toggle_error(row: &adw::EntryRow, invalid: bool) {
     }
 }
 
+/// The two stores a successful connect writes to. Bundled so the
+/// connect future takes one value instead of two.
+#[derive(Clone)]
+struct SaveTargets {
+    connections: ConnectionStore,
+    secrets: SecretStore,
+}
+
 async fn run_connect(
     driver: Arc<dyn tablepro_core::DatabaseDriver>,
+    targets: SaveTargets,
     driver_id: String,
     label: String,
     opts: ConnectOptions,
@@ -647,7 +669,15 @@ async fn run_connect(
         connection_service::establish(driver.as_ref(), opts.clone(), ssh_for_establish, read_only).await?;
     let tables = conn.list_tables().await.map_err(|e| format!("list_tables: {e}"))?;
 
-    let id = match find_existing_id(&driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await {
+    let id = match find_existing_id(
+        &targets.connections,
+        &driver_id,
+        &opts_clone,
+        driver.is_file_based(),
+        ssh.as_ref(),
+    )
+    .await
+    {
         Some(id) => id,
         None => Uuid::new_v4(),
     };
@@ -670,17 +700,28 @@ async fn run_connect(
         last_opened_at: None,
     };
 
-    save_one(&saved).await.map_err(|e| format!("save: {e}"))?;
+    save_one(&targets.connections, &saved)
+        .await
+        .map_err(|error| format!("save: {error}"))?;
     if saved.auth_mode == AuthMode::Password {
-        let _ = store_password(saved.id, stored_password.expose_secret(), &label).await;
+        let _ = targets
+            .secrets
+            .store_password(saved.id, stored_password.expose_secret(), &label)
+            .await;
     }
     if let Some(s) = &ssh {
         match &s.secret_to_store {
             SshSecretToStore::Password(p) => {
-                let _ = store_ssh_password(saved.id, p.expose_secret(), &label).await;
+                let _ = targets
+                    .secrets
+                    .store_ssh_password(saved.id, p.expose_secret(), &label)
+                    .await;
             }
             SshSecretToStore::Passphrase(p) => {
-                let _ = store_ssh_passphrase(saved.id, p.expose_secret(), &label).await;
+                let _ = targets
+                    .secrets
+                    .store_ssh_passphrase(saved.id, p.expose_secret(), &label)
+                    .await;
             }
             SshSecretToStore::None => {}
         }
@@ -701,20 +742,24 @@ async fn run_connect(
     Ok((saved, tables))
 }
 
-async fn save_one(connection: &SavedConnection) -> Result<(), tablepro_storage::StorageError> {
-    let mut existing = tablepro_storage::load_connections().await.unwrap_or_default();
-    existing.retain(|c| c.id != connection.id);
+async fn save_one(
+    connections: &ConnectionStore,
+    connection: &SavedConnection,
+) -> Result<(), tablepro_storage::StorageError> {
+    let mut existing = connections.load().await.unwrap_or_default();
+    existing.retain(|saved| saved.id != connection.id);
     existing.push(connection.clone());
-    save_connections(&existing).await
+    connections.save(&existing).await
 }
 
 async fn find_existing_id(
+    connections: &ConnectionStore,
     driver_id: &str,
     opts: &ConnectOptions,
     file_based: bool,
     ssh: Option<&SshInputs>,
 ) -> Option<Uuid> {
-    let existing = tablepro_storage::load_connections().await.ok()?;
+    let existing = connections.load().await.ok()?;
     existing
         .into_iter()
         .find(|c| matches_existing(c, driver_id, opts, file_based, ssh))

@@ -66,46 +66,63 @@ struct ConnectionsFile {
     connections: Vec<SavedConnection>,
 }
 
-pub async fn load_connections() -> Result<Vec<SavedConnection>, StorageError> {
-    load_from(&connections_path()?).await
+/// The saved-connection list on disk. One store per storage root, so a
+/// development build and an installed build never share a file.
+#[derive(Debug, Clone)]
+pub struct ConnectionStore {
+    path: PathBuf,
 }
 
-pub async fn save_connections(connections: &[SavedConnection]) -> Result<(), StorageError> {
-    save_to(&connections_path()?, connections).await
-}
-
-pub async fn delete_connection(id: Uuid) -> Result<(), StorageError> {
-    let mut existing = load_connections().await.unwrap_or_default();
-    existing.retain(|c| c.id != id);
-    save_connections(&existing).await
-}
-
-/// Stamp `last_opened_at = now()` on the matching connection. Called
-/// once per successful open so the welcome view can sort recency-first.
-/// No-op when `id` isn't in the file (e.g. an unsaved connection
-/// opened from the dialog without ticking "Save"); the missing-id case
-/// is silent because there is nothing to update.
-pub async fn touch_last_opened(id: Uuid) -> Result<(), StorageError> {
-    let mut existing = load_connections().await.unwrap_or_default();
-    let mut hit = false;
-    for c in existing.iter_mut() {
-        if c.id == id {
-            c.last_opened_at = Some(Utc::now());
-            hit = true;
-            break;
+impl ConnectionStore {
+    pub fn new(paths: &crate::StoragePaths) -> Self {
+        Self {
+            path: paths.connections_file(),
         }
     }
-    if !hit {
-        return Ok(());
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
-    save_connections(&existing).await
+
+    pub async fn load(&self) -> Result<Vec<SavedConnection>, StorageError> {
+        load_from(&self.path).await
+    }
+
+    pub async fn save(&self, connections: &[SavedConnection]) -> Result<(), StorageError> {
+        save_to(&self.path, connections).await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
+        let mut existing = self.load().await.unwrap_or_default();
+        existing.retain(|connection| connection.id != id);
+        self.save(&existing).await
+    }
+
+    /// Stamp `last_opened_at = now()` on the matching connection, so the
+    /// welcome view can sort recency-first. A connection opened from the
+    /// dialog without ticking Save is not in the file, and that is not an
+    /// error: there is nothing to update.
+    pub async fn touch_last_opened(&self, id: Uuid) -> Result<(), StorageError> {
+        let mut existing = self.load().await.unwrap_or_default();
+        let Some(connection) = existing.iter_mut().find(|connection| connection.id == id) else {
+            return Ok(());
+        };
+        connection.last_opened_at = Some(Utc::now());
+        self.save(&existing).await
+    }
 }
 
-pub(crate) async fn load_from(path: &Path) -> Result<Vec<SavedConnection>, StorageError> {
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let bytes = tokio::fs::read(path).await?;
+async fn load_from(path: &Path) -> Result<Vec<SavedConnection>, StorageError> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(source) => {
+            return Err(StorageError::Io {
+                path: path.to_owned(),
+                source,
+            });
+        }
+    };
     let file: ConnectionsFile = serde_json::from_slice(&bytes)?;
     if file.version != CURRENT_VERSION {
         return Err(StorageError::Schema(format!(
@@ -116,33 +133,18 @@ pub(crate) async fn load_from(path: &Path) -> Result<Vec<SavedConnection>, Stora
     Ok(file.connections)
 }
 
-pub(crate) async fn save_to(path: &Path, connections: &[SavedConnection]) -> Result<(), StorageError> {
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
+async fn save_to(path: &Path, connections: &[SavedConnection]) -> Result<(), StorageError> {
     let file = ConnectionsFile {
         version: CURRENT_VERSION,
         connections: connections.to_vec(),
     };
     let json = serde_json::to_vec_pretty(&file)?;
-    let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, &json).await?;
-    tokio::fs::rename(&tmp, path).await?;
-    Ok(())
-}
-
-fn connections_path() -> Result<PathBuf, StorageError> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| {
-                let mut p = PathBuf::from(h);
-                p.push(".config");
-                p
-            })
-        })
-        .ok_or_else(|| StorageError::Schema("neither XDG_CONFIG_HOME nor HOME is set".into()))?;
-    Ok(base.join("tablepro").join("connections.json"))
+    let path = path.to_owned();
+    // The durable write blocks on fsync, which must not run on the GTK
+    // thread or a tokio worker that other futures share.
+    tokio::task::spawn_blocking(move || crate::fs::write_private_blocking(&path, &json))
+        .await
+        .map_err(|error| StorageError::Schema(format!("the connections write task failed: {error}")))?
 }
 
 #[cfg(test)]
