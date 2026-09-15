@@ -68,12 +68,12 @@ final class HighlighterTests: XCTestCase {
         var didQueryAgain = false
 
         let highlightProvider = MockHighlightProvider {
-            didQueryOnce = true
-            if didQueryOnce {
-                didQueryAgain = true
-                return .success([]) // succeed second
+            guard didQueryOnce else {
+                didQueryOnce = true
+                return .failure(HighlightProvidingError.operationCancelled) // fail first, causing an invalidation
             }
-            return .failure(HighlightProvidingError.operationCancelled) // fail first, causing an invalidation
+            didQueryAgain = true
+            return .success([]) // succeed second
         }
         let attributeProvider = MockAttributeProvider()
         let textView = Mock.textView()
@@ -246,7 +246,6 @@ final class HighlighterTests: XCTestCase {
             highlightProviders: [highlightProvider],
             attributeProvider: attributeProvider
         )
-        textView.addStorageDelegate(highlighter)
         highlighter.setLanguage(language: .sql)
         highlighter.invalidate()
 

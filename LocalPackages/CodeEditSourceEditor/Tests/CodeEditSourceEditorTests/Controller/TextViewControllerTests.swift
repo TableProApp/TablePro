@@ -476,8 +476,30 @@ final class TextViewControllerTests: XCTestCase {
         controller.gutterView.updateWidthIfNeeded() // Would be called on a display pass
         XCTAssertEqual(
             controller.gutterView.frame.width,
-            noRibbonWidth + 7.0 + controller.gutterView.foldingRibbonPadding
+            noRibbonWidth + LineFoldRibbonView.width + controller.gutterView.foldingRibbonPadding,
+            "Showing the ribbon reserves one fold control plus the padding that keeps it off the line numbers"
         )
+    }
+
+    /// The reservation above follows ``LineFoldRibbonView/width`` wherever it goes, so it no longer notices the
+    /// control being shrunk. This is what that constant is for: a fold is a disclosure chevron, and a column
+    /// narrower than the chevron clips it.
+    func test_foldingRibbonFitsItsChevron() throws {
+        let configuration = NSImage.SymbolConfiguration(
+            pointSize: LineFoldRibbonView.chevronPointSize,
+            weight: .semibold
+        )
+        for symbol in ["chevron.down", "chevron.right"] {
+            let chevron = try XCTUnwrap(
+                NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                    .withSymbolConfiguration(configuration)
+            )
+            XCTAssertGreaterThanOrEqual(
+                LineFoldRibbonView.width,
+                chevron.size.width,
+                "The fold column is narrower than the \(symbol) drawn in it"
+            )
+        }
     }
 
     // MARK: - Get Overlapping Lines

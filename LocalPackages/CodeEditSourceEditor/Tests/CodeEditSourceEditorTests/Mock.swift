@@ -141,12 +141,17 @@ enum Mock {
         attributeProvider: ThemeAttributesProviding,
         language: CodeLanguage = .default
     ) -> Highlighter {
-        Highlighter(
+        let highlighter = Highlighter(
             textView: textView,
             providers: highlightProviders,
             attributeProvider: attributeProvider,
             language: language
         )
+        // `TextViewController.setUpHighlighter` does this, and it is the only route an edit takes to a highlighter.
+        // Leaving it to each call site is what left two max-length tests asserting against a highlighter nothing
+        // ever spoke to.
+        textView.addStorageDelegate(highlighter)
+        return highlighter
     }
 
     static func highlightProvider(
