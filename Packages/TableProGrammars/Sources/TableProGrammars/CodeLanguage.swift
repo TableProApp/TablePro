@@ -7,7 +7,7 @@ public struct CodeLanguage: Hashable, Sendable {
     /// Which grammar parses this language.
     public let id: GrammarID
 
-    /// The directory under `Resources` holding this language's queries, and the parser it shares.
+    /// The directory under `Queries` holding this language's queries, and the parser it shares.
     ///
     /// JSX reads the JavaScript parser and the JavaScript query directory, so this is not always `id.rawValue`.
     public let grammarName: String
@@ -50,10 +50,17 @@ public struct CodeLanguage: Hashable, Sendable {
     public var queryURL: URL? { queryURL(for: "highlights") }
 
     /// The URL of one of this language's query files, named without its extension.
+    ///
+    /// The lookup goes through `Bundle`, never through `resourceURL` plus a path: only `Bundle` knows whether
+    /// this bundle keeps its resources at the root or under `Contents/Resources`, and the two layouts differ
+    /// by toolchain.
     public func queryURL(for query: String) -> URL? {
         guard id != .plainText else { return nil }
-        return Bundle.module.resourceURL?
-            .appendingPathComponent("Resources/tree-sitter-\(grammarName)/\(query).scm")
+        return Bundle.module.url(
+            forResource: query,
+            withExtension: "scm",
+            subdirectory: "Queries/tree-sitter-\(grammarName)"
+        )
     }
 
     private var parser: OpaquePointer? {

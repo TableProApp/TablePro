@@ -14,7 +14,7 @@ TablePro. Each grammar keeps its upstream `LICENSE` beside its sources, and each
 `vendored-headers/tree_sitter` holds the parser ABI headers a generated parser includes. They come from
 https://github.com/tree-sitter/tree-sitter, MIT, Copyright (c) 2018-2024 Max Brunsfeld.
 
-The `.scm` query files under `Sources/TableProGrammars/Resources` come from the same four repositories and carry the
+The `.scm` query files under `Sources/TableProGrammars/Queries` come from the same four repositories and carry the
 same licences. `SyntaxHighlightingTests` compiles every one of them against its grammar, so a query that drifts out of
 step with a regenerated parser fails there rather than at runtime.
 

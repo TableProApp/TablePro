@@ -40,6 +40,17 @@ struct TableProGrammarsTests {
         }
     }
 
+    @Test("The query directory does not shadow the bundle's own resources root")
+    func queryDirectoryDoesNotShadowTheResourcesRoot() throws {
+        let root = try #require(Bundle.module.resourceURL)
+        let names = Set(try FileManager.default.contentsOfDirectory(atPath: root.path))
+        #expect(names.contains("Queries"))
+        #expect(
+            !names.contains("Resources"),
+            "a copied directory named Resources is taken as the resources root, which doubles every lookup path"
+        )
+    }
+
     @Test("The query cache hands back the same compiled query every time")
     func queriesAreCached() {
         let first = HighlightQueries.shared.query(for: .sql)
