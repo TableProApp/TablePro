@@ -440,7 +440,7 @@ fn clear_box(b: &gtk::Box) {
 fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 'static) {
     let row = adw::ButtonRow::builder()
         .title(label)
-        .start_icon_name("list-add-symbolic")
+        .start_icon_name(crate::ui::icons::LIST_ADD)
         .build();
     row.connect_activated(move |_| on_activate());
     list.append(&row);
@@ -502,7 +502,7 @@ impl SimpleComponent for StructureTab {
             &columns_scroll,
             Some("columns"),
             &crate::tr!("Columns"),
-            "view-list-symbolic",
+            crate::ui::icons::VIEW_LIST,
         );
         let _ = columns_page;
 
@@ -515,7 +515,7 @@ impl SimpleComponent for StructureTab {
             &indexes_scroll,
             Some("indexes"),
             &crate::tr!("Indexes"),
-            "view-sort-ascending-symbolic",
+            crate::ui::icons::VIEW_SORT_ASCENDING,
         );
         let _ = indexes_page;
 
@@ -528,7 +528,7 @@ impl SimpleComponent for StructureTab {
             &fks_scroll,
             Some("fks"),
             &crate::tr!("Foreign Keys"),
-            "emblem-shared-symbolic",
+            crate::ui::icons::TABLE_RELATION,
         );
         let _ = fks_page;
 
@@ -560,7 +560,7 @@ impl SimpleComponent for StructureTab {
         // sourceview, Ctrl+A, Ctrl+C every time they want to paste
         // the generated DDL into a different tool.
         let copy_sql_btn = gtk::Button::builder()
-            .icon_name("edit-copy-symbolic")
+            .icon_name(crate::ui::icons::EDIT_COPY)
             .tooltip_text(crate::tr!("Copy SQL to clipboard"))
             .valign(gtk::Align::Center)
             .build();
@@ -587,7 +587,7 @@ impl SimpleComponent for StructureTab {
             &sql_page_box,
             Some("sql"),
             &crate::tr!("SQL Preview"),
-            "text-x-generic-symbolic",
+            crate::ui::icons::TEXT_X_GENERIC,
         );
         let _ = sql_page;
 
@@ -684,7 +684,7 @@ impl SimpleComponent for StructureTab {
         inner_stack.add_named(&editor_clamp, Some("editor"));
 
         let error_status = adw::StatusPage::builder()
-            .icon_name("dialog-error-symbolic")
+            .icon_name(crate::ui::icons::DIALOG_ERROR)
             .title(crate::tr!("Couldn't load structure"))
             .build();
         // "Try again" — fires another FetchStructure round-trip via

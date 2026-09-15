@@ -439,7 +439,7 @@ impl BrowseTab {
         // its position and by the GtkActionBar's start group spacing,
         // so a mis-aim toward Next doesn't land on Insert.
         let insert_button = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
+            .icon_name(crate::ui::icons::LIST_ADD)
             .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
             .sensitive(false)
             .build();
@@ -448,22 +448,22 @@ impl BrowseTab {
         insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
 
         let first_button = gtk::Button::builder()
-            .icon_name("go-first-symbolic")
+            .icon_name(crate::ui::icons::GO_FIRST)
             .tooltip_text(crate::tr!("First page"))
             .sensitive(false)
             .build();
         let prev_button = gtk::Button::builder()
-            .icon_name("go-previous-symbolic")
+            .icon_name(crate::ui::icons::GO_PREVIOUS)
             .tooltip_text(crate::tr!("Previous page (Page Up)"))
             .sensitive(false)
             .build();
         let next_button = gtk::Button::builder()
-            .icon_name("go-next-symbolic")
+            .icon_name(crate::ui::icons::GO_NEXT)
             .tooltip_text(crate::tr!("Next page (Page Down)"))
             .sensitive(false)
             .build();
         let last_button = gtk::Button::builder()
-            .icon_name("go-last-symbolic")
+            .icon_name(crate::ui::icons::GO_LAST)
             .tooltip_text(crate::tr!("Last page"))
             .sensitive(false)
             .build();
@@ -529,7 +529,7 @@ impl BrowseTab {
         let paginator_bar = gtk::ActionBar::new();
 
         let export_button = gtk::Button::builder()
-            .icon_name("document-save-symbolic")
+            .icon_name(crate::ui::icons::DOCUMENT_SAVE)
             .tooltip_text(crate::tr!("Export results"))
             .build();
         export_button.add_css_class("flat");
@@ -1297,7 +1297,7 @@ impl BrowseTab {
         // structure"). The previous terse "Failed" left the user
         // guessing what failed.
         let page = adw::StatusPage::builder()
-            .icon_name("dialog-error-symbolic")
+            .icon_name(crate::ui::icons::DIALOG_ERROR)
             .title(crate::tr!("Couldn't load rows"))
             .description(message)
             .build();

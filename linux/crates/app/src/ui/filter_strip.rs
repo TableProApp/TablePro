@@ -414,7 +414,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     let apply_btn = gtk::Button::with_label(&crate::tr!("Apply"));
     apply_btn.add_css_class("suggested-action");
     let close_btn = gtk::Button::builder()
-        .icon_name("window-close-symbolic")
+        .icon_name(crate::ui::icons::WINDOW_CLOSE)
         .tooltip_text(crate::tr!("Close (Esc)"))
         .build();
     close_btn.add_css_class("flat");
@@ -511,7 +511,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
 
     // Inline "Add rule" button — small, left-aligned, flat.
     let add_rule_btn = gtk::Button::builder()
-        .icon_name("list-add-symbolic")
+        .icon_name(crate::ui::icons::LIST_ADD)
         .label(crate::tr!("Add rule"))
         .halign(gtk::Align::Start)
         .build();
@@ -863,7 +863,7 @@ fn build_rule_row(
 
     // Trash button — removes this rule.
     let remove = gtk::Button::builder()
-        .icon_name("user-trash-symbolic")
+        .icon_name(crate::ui::icons::USER_TRASH)
         .tooltip_text(crate::tr!("Remove rule"))
         .valign(gtk::Align::Center)
         .build();

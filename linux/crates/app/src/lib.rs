@@ -109,22 +109,25 @@ fn build_registry() -> DriverRegistry {
 }
 
 #[cfg(test)]
+pub(crate) fn register_test_resources() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        gio::resources_register_include!("tablepro.gresource").expect("embedded resources");
+    });
+}
+
+#[cfg(test)]
 mod tests {
     use gio::prelude::ApplicationExt;
+
+    use super::register_test_resources;
     use glib::prelude::ObjectExt;
 
     use super::*;
 
-    fn register_resources() {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            gio::resources_register_include!("tablepro.gresource").expect("embedded resources");
-        });
-    }
-
     #[test]
     fn resources_contain_style_css() {
-        register_resources();
+        register_test_resources();
 
         let data = gio::resources_lookup_data(
             &format!("{}/style.css", config::RESOURCE_BASE_PATH),
@@ -138,7 +141,7 @@ mod tests {
     #[gtk4::test]
     fn shortcuts_dialog_resource_builds() {
         adw::init().expect("libadwaita initialises under the test backend");
-        register_resources();
+        register_test_resources();
 
         let builder = gtk4::Builder::from_resource(&format!("{}/shortcuts-dialog.ui", config::RESOURCE_BASE_PATH));
         let dialog = builder

@@ -204,7 +204,7 @@ impl Component for HistoryDialog {
         danger_section.append(Some(&crate::tr!("Clear all history…")), Some("history.clear-all"));
         menu.append_section(None, &danger_section);
         let menu_button = gtk::MenuButton::builder()
-            .icon_name("view-more-symbolic")
+            .icon_name(crate::ui::icons::VIEW_MORE)
             .menu_model(&menu)
             .tooltip_text(crate::tr!("More actions"))
             .build();
@@ -248,7 +248,7 @@ impl Component for HistoryDialog {
         search_bar.connect_entry(&search);
 
         let search_toggle = gtk::ToggleButton::builder()
-            .icon_name("system-search-symbolic")
+            .icon_name(crate::ui::icons::SYSTEM_SEARCH)
             .tooltip_text(crate::tr!("Search"))
             .build();
         let search_bar_for_toggle = search_bar.clone();
@@ -303,7 +303,7 @@ impl Component for HistoryDialog {
             .build();
 
         let status_page = adw::StatusPage::builder()
-            .icon_name("document-open-recent-symbolic")
+            .icon_name(crate::ui::icons::DOCUMENT_OPEN_RECENT)
             .title(crate::tr!("No queries yet"))
             .description(crate::tr!("Run a query in the SQL editor and it will appear here."))
             .vexpand(true)
@@ -691,13 +691,14 @@ impl HistoryDialog {
                 self.status_page.set_title(&crate::tr!("No matches"));
                 self.status_page
                     .set_description(Some(&crate::tr!("Try a different search term or change the filters.")));
-                self.status_page.set_icon_name(Some("system-search-symbolic"));
+                self.status_page.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
             } else {
                 self.status_page.set_title(&crate::tr!("No queries yet"));
                 self.status_page.set_description(Some(&crate::tr!(
                     "Run a query in the SQL editor and it will appear here."
                 )));
-                self.status_page.set_icon_name(Some("document-open-recent-symbolic"));
+                self.status_page
+                    .set_icon_name(Some(crate::ui::icons::DOCUMENT_OPEN_RECENT));
             }
             self.stack.set_visible_child_name("empty");
             self.refresh_selection_bar();
@@ -742,11 +743,11 @@ impl HistoryDialog {
         row.add_css_class("monospace");
 
         let icon_name = if entry.cancelled {
-            "process-stop-symbolic"
+            crate::ui::icons::PROCESS_STOP
         } else if entry.success {
-            "emblem-ok-symbolic"
+            crate::ui::icons::SUCCESS
         } else {
-            "dialog-error-symbolic"
+            crate::ui::icons::DIALOG_ERROR
         };
         let icon = gtk::Image::from_icon_name(icon_name);
         icon.add_css_class("dim-label");
@@ -765,7 +766,7 @@ impl HistoryDialog {
         row.add_prefix(&select_check);
 
         let pin_btn = gtk::Button::builder()
-            .icon_name("view-pin-symbolic")
+            .icon_name(crate::ui::icons::VIEW_PIN)
             .valign(gtk::Align::Center)
             .tooltip_text(if entry.pinned {
                 crate::tr!("Unpin")
@@ -783,7 +784,7 @@ impl HistoryDialog {
         row.add_suffix(&pin_btn);
 
         let delete_btn = gtk::Button::builder()
-            .icon_name("user-trash-symbolic")
+            .icon_name(crate::ui::icons::USER_TRASH)
             .valign(gtk::Align::Center)
             .tooltip_text(crate::tr!("Delete"))
             .build();

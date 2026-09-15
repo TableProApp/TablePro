@@ -1886,7 +1886,7 @@ fn show_row_json_dialog(parent: &impl IsA<gtk::Widget>, json: String) {
     view.set_left_margin(8);
     let scrolled = gtk::ScrolledWindow::builder().child(&view).vexpand(true).build();
 
-    let copy_button = gtk::Button::from_icon_name("edit-copy-symbolic");
+    let copy_button = gtk::Button::from_icon_name(crate::ui::icons::EDIT_COPY);
     copy_button.set_tooltip_text(Some(&crate::tr!("Copy")));
     copy_button.connect_clicked(move |b| b.clipboard().set_text(&json));
     let header = adw::HeaderBar::new();

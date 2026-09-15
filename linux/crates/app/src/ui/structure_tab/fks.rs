@@ -49,7 +49,7 @@ pub(super) fn build_fk_row(
         .build();
 
     let remove_button = gtk::Button::builder()
-        .icon_name("user-trash-symbolic")
+        .icon_name(crate::ui::icons::USER_TRASH)
         .tooltip_text(crate::tr!("Remove foreign key"))
         .valign(gtk::Align::Center)
         .build();

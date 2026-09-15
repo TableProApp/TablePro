@@ -71,7 +71,7 @@ impl SimpleComponent for WelcomeView {
         // "No printers found" / "Add a printer to begin." / "Add
         // Printer" pattern).
         let empty_page = adw::StatusPage::builder()
-            .icon_name("network-server-symbolic")
+            .icon_name(crate::ui::icons::NETWORK_SERVER)
             .title(crate::tr!("No connections yet"))
             .description(crate::tr!("Add a database connection to get started."))
             .build();
@@ -115,7 +115,7 @@ impl SimpleComponent for WelcomeView {
             .title(crate::tr!("Saved connections"))
             .build();
         let header_btn = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
+            .icon_name(crate::ui::icons::LIST_ADD)
             .tooltip_text(crate::tr!("Add Connection"))
             .valign(gtk::Align::Center)
             .build();

@@ -167,7 +167,7 @@ pub(super) fn build_column_expander_row(
     // Trash button as a header-suffix on the expander row itself —
     // remains visible whether the row is expanded or collapsed.
     let remove_button = gtk::Button::builder()
-        .icon_name("user-trash-symbolic")
+        .icon_name(crate::ui::icons::USER_TRASH)
         .tooltip_text(crate::tr!("Remove column"))
         .valign(gtk::Align::Center)
         .build();
@@ -366,7 +366,7 @@ fn build_type_suggestions_button(driver_id: &str, target: &adw::EntryRow) -> (gt
     }
 
     let button = gtk::MenuButton::builder()
-        .icon_name("pan-down-symbolic")
+        .icon_name(crate::ui::icons::PAN_DOWN)
         .tooltip_text(crate::tr!("Suggested types"))
         .valign(gtk::Align::Center)
         .build();

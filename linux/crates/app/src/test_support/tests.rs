@@ -70,7 +70,7 @@ fn find_by_action_name_finds_a_nested_button() {
 
 #[gtk4::test]
 fn icon_button_without_label_is_reported() {
-    let button = gtk4::Button::from_icon_name("list-add-symbolic");
+    let button = gtk4::Button::from_icon_name(crate::ui::icons::LIST_ADD);
     assert_eq!(
         assert_labelled(&button),
         Err(UnlabelledWidget::MissingLabel {
@@ -81,7 +81,7 @@ fn icon_button_without_label_is_reported() {
 
 #[gtk4::test]
 fn icon_button_with_accessible_label_passes() {
-    let button = gtk4::Button::from_icon_name("list-add-symbolic");
+    let button = gtk4::Button::from_icon_name(crate::ui::icons::LIST_ADD);
     button.update_property(&[gtk4::accessible::Property::Label("Add connection")]);
     assert_eq!(assert_labelled(&button), Ok(()));
 }

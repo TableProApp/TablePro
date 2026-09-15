@@ -525,8 +525,8 @@ pub(super) enum StatusKind {
 impl StatusKind {
     fn icon(self) -> &'static str {
         match self {
-            StatusKind::Info => "view-grid-symbolic",
-            StatusKind::Error => "dialog-error-symbolic",
+            StatusKind::Info => crate::ui::icons::VIEW_GRID,
+            StatusKind::Error => crate::ui::icons::DIALOG_ERROR,
         }
     }
 }
@@ -579,14 +579,14 @@ impl SimpleComponent for App {
                     // SplitButton-as-Save-with-format pattern).
                     #[name = "new_connection_button"]
                     pack_start = &gtk::Button {
-                        set_icon_name: "list-add-symbolic",
+                        set_icon_name: crate::ui::icons::LIST_ADD,
                         set_tooltip_text: Some(crate::tr!("New connection").as_str()),
                         connect_clicked => AppMsg::OpenConnect,
                     },
 
                     #[name = "saved_connections_button"]
                     pack_start = &gtk::MenuButton {
-                        set_icon_name: "document-open-symbolic",
+                        set_icon_name: crate::ui::icons::DOCUMENT_OPEN,
                         set_tooltip_text: Some(crate::tr!("Open saved connection").as_str()),
 
                         #[wrap(Some)]
@@ -612,7 +612,7 @@ impl SimpleComponent for App {
 
                     #[name = "primary_menu_button"]
                     pack_end = &gtk::MenuButton {
-                        set_icon_name: "open-menu-symbolic",
+                        set_icon_name: crate::ui::icons::OPEN_MENU,
                         set_tooltip_text: Some(crate::tr!("Main menu").as_str()),
                     },
                 },
@@ -646,7 +646,7 @@ impl SimpleComponent for App {
 
                             #[name = "table_search_toggle"]
                             pack_end = &gtk::ToggleButton {
-                                set_icon_name: "system-search-symbolic",
+                                set_icon_name: crate::ui::icons::SYSTEM_SEARCH,
                                 set_tooltip_text: Some(crate::tr!("Search tables").as_str()),
                             },
                         },
@@ -957,7 +957,7 @@ impl SimpleComponent for App {
         // widget for narrow containers (matches GNOME Files's
         // sidebar-empty look).
         let sidebar_placeholder = adw::StatusPage::builder()
-            .icon_name("view-list-symbolic")
+            .icon_name(crate::ui::icons::VIEW_LIST)
             .title(crate::tr!("No tables"))
             .description(crate::tr!(
                 "Nothing matches the current search, or this connection has no tables yet."
@@ -1038,7 +1038,7 @@ impl SimpleComponent for App {
             // tooltip clarifies the destination ("New Table in …")
             // so the user understands what the schema scoping means.
             let new_table_button = gtk::Button::builder()
-                .icon_name("list-add-symbolic")
+                .icon_name(crate::ui::icons::LIST_ADD)
                 .tooltip_text(match current.as_deref() {
                     Some(s) => crate::tr!("New Table in {schema}…").replace("{schema}", s),
                     None => crate::tr!("New Table…"),
@@ -1491,9 +1491,6 @@ fn make_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType, action: 
 
 #[cfg(test)]
 mod tests {
-    use glib::prelude::Cast;
-    use gtk::prelude::*;
-
     use super::*;
 
     fn shortcut_action_names(window: &adw::ApplicationWindow) -> Vec<String> {

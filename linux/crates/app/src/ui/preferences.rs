@@ -11,7 +11,7 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
 
     let general = adw::PreferencesPage::builder()
         .title(crate::tr!("General"))
-        .icon_name("preferences-system-symbolic")
+        .icon_name(crate::ui::icons::PREFERENCES_SYSTEM)
         .build();
 
     let browse_group = adw::PreferencesGroup::builder()
@@ -131,7 +131,7 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
 
     let editor = adw::PreferencesPage::builder()
         .title(crate::tr!("Editor"))
-        .icon_name("text-editor-symbolic")
+        .icon_name(crate::ui::icons::TEXT_EDITOR)
         .build();
 
     let editor_group = adw::PreferencesGroup::builder().title(crate::tr!("SQL editor")).build();
