@@ -9,7 +9,7 @@ System packages — see [README.md](README.md) for distro-specific commands. Aft
 ```bash
 cd linux
 cargo build                    # debug build
-cargo run -p tablepro-app      # run the app
+cargo run -p tablepro          # run the app
 cargo fmt --all                # format
 ```
 

@@ -11,7 +11,7 @@ mod services;
 mod test_support;
 mod ui;
 
-const APP_ID: &str = "com.tablepro.linux";
+const APP_ID: &str = "app.tablepro.TablePro";
 
 #[derive(Debug, Error)]
 enum StartupError {
@@ -72,7 +72,7 @@ fn start() -> Result<(), StartupError> {
     });
 
     let registry = Arc::new(build_registry());
-    tracing::info!(drivers = registry.len(), "starting tablepro-app");
+    tracing::info!(drivers = registry.len(), "starting tablepro");
 
     let app = RelmApp::new(APP_ID);
     app.run::<ui::App>(registry);
@@ -95,4 +95,19 @@ fn build_registry() -> DriverRegistry {
     r.register(Arc::new(drivers_postgres::PgDriver));
     r.register(Arc::new(drivers_sqlite::SqliteDriver));
     r
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_id_is_valid() {
+        assert!(gtk4::gio::Application::id_is_valid(APP_ID));
+    }
+
+    #[test]
+    fn app_id_is_the_reverse_dns_name_the_flatpak_files_carry() {
+        assert_eq!(APP_ID, "app.tablepro.TablePro");
+    }
 }

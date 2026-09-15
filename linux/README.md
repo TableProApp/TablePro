@@ -53,7 +53,7 @@ Build and run:
 
 ```bash
 cd linux
-cargo run -p tablepro-app
+cargo run -p tablepro
 ```
 
 Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).
@@ -67,7 +67,7 @@ than compiling a second copy into the binary. `libclang-dev` lets
 
 `libkrb5-dev` and `clang` are there for the app's default `kerberos`
 feature: SQL Server Windows integrated auth links MIT Kerberos and runs
-bindgen at build time. `cargo build -p tablepro-app --no-default-features`
+bindgen at build time. `cargo build -p tablepro --no-default-features`
 leaves it out, and the connect dialog then hides Windows (Kerberos).
 
 ## SQL Server with Windows integrated auth

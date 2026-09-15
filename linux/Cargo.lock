@@ -5005,8 +5005,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tablepro-app"
-version = "0.1.0"
+name = "tablepro"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "gettext-rs",
@@ -5039,7 +5039,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-core"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5060,7 +5060,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-clickhouse"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5077,7 +5077,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-mssql"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5096,7 +5096,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-mysql"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5114,7 +5114,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-postgres"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5134,7 +5134,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-driver-sqlite"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5148,7 +5148,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-net"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "http",
@@ -5172,11 +5172,11 @@ dependencies = [
 
 [[package]]
 name = "tablepro-session"
-version = "0.1.0"
+version = "0.0.0"
 
 [[package]]
 name = "tablepro-ssh"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "futures",
@@ -5197,7 +5197,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-storage"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "oo7",
@@ -5215,7 +5215,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-test-fixtures"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "rcgen",
  "rustls",
@@ -5232,7 +5232,7 @@ dependencies = [
 
 [[package]]
 name = "tablepro-test-support"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "async-trait",
  "futures",

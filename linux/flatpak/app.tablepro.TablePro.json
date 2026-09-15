@@ -1,5 +1,5 @@
 {
-    "app-id": "com.tablepro.linux",
+    "app-id": "app.tablepro.TablePro",
     "runtime": "org.gnome.Platform",
     "runtime-version": "47",
     "sdk": "org.gnome.Sdk",
@@ -7,7 +7,7 @@
         "org.freedesktop.Sdk.Extension.rust-stable",
         "org.freedesktop.Sdk.Extension.llvm18"
     ],
-    "command": "tablepro-app",
+    "command": "tablepro",
     "finish-args": [
         "--share=ipc",
         "--share=network",
@@ -23,20 +23,20 @@
         "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm18/bin",
         "prepend-ld-library-path": "/usr/lib/sdk/llvm18/lib",
         "env": {
-            "CARGO_HOME": "/run/build/tablepro-app/cargo",
+            "CARGO_HOME": "/run/build/tablepro/cargo",
             "LIBCLANG_PATH": "/usr/lib/sdk/llvm18/lib"
         }
     },
     "modules": [
         {
-            "name": "tablepro-app",
+            "name": "tablepro",
             "buildsystem": "simple",
             "build-commands": [
-                "cargo build --release -p tablepro-app",
-                "install -Dm755 target/release/tablepro-app /app/bin/tablepro-app",
-                "install -Dm644 flatpak/com.tablepro.linux.desktop /app/share/applications/com.tablepro.linux.desktop",
-                "install -Dm644 flatpak/com.tablepro.linux.metainfo.xml /app/share/metainfo/com.tablepro.linux.metainfo.xml",
-                "install -Dm644 flatpak/icons/scalable/com.tablepro.linux.svg /app/share/icons/hicolor/scalable/apps/com.tablepro.linux.svg",
+                "cargo build --release -p tablepro",
+                "install -Dm755 target/release/tablepro /app/bin/tablepro",
+                "install -Dm644 flatpak/app.tablepro.TablePro.desktop /app/share/applications/app.tablepro.TablePro.desktop",
+                "install -Dm644 flatpak/app.tablepro.TablePro.metainfo.xml /app/share/metainfo/app.tablepro.TablePro.metainfo.xml",
+                "install -Dm644 flatpak/icons/scalable/app.tablepro.TablePro.svg /app/share/icons/hicolor/scalable/apps/app.tablepro.TablePro.svg",
                 "if [ -f po/LINGUAS ]; then for lang in $(grep -v '^#' po/LINGUAS | grep -v '^$' || true); do mkdir -p /app/share/locale/$lang/LC_MESSAGES && msgfmt po/$lang.po -o /app/share/locale/$lang/LC_MESSAGES/tablepro.mo; done; fi"
             ],
             "sources": [

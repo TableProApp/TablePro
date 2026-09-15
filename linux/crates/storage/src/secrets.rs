@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 
-const SCHEMA: &str = "com.tablepro.linux.Password";
+const SCHEMA: &str = "app.tablepro.TablePro.Password";
 
 const KIND_DB_PASSWORD: &str = "db_password";
 const KIND_SSH_PASSWORD: &str = "ssh_password";
@@ -118,6 +118,12 @@ mod tests {
     }
 
     #[test]
+    fn schema_name_follows_the_app_id() {
+        assert_eq!(SCHEMA, "app.tablepro.TablePro.Password");
+        assert!(SCHEMA.starts_with("app.tablepro."));
+    }
+
+    #[test]
     fn attrs_distinguish_kinds() {
         let id = Uuid::new_v4();
         let db = attrs_for(id, KIND_DB_PASSWORD);
@@ -135,12 +141,6 @@ mod tests {
         assert_ne!(KIND_DB_PASSWORD, KIND_SSH_PASSWORD);
         assert_ne!(KIND_DB_PASSWORD, KIND_SSH_PASSPHRASE);
         assert_ne!(KIND_SSH_PASSWORD, KIND_SSH_PASSPHRASE);
-    }
-
-    #[test]
-    fn schema_constant_uses_reverse_dns() {
-        assert!(SCHEMA.starts_with("com."));
-        assert!(SCHEMA.contains("tablepro"));
     }
 
     #[test]

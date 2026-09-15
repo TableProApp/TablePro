@@ -1,6 +1,5 @@
 [package]
-name = "tablepro-app"
-version = "0.1.0"
+name = "tablepro"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,7 +10,7 @@ name = "tablepro_app"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tablepro-app"
+name = "tablepro"
 path = "src/main.rs"
 
 [features]
