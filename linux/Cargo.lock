@@ -5037,6 +5037,7 @@ dependencies = [
  "tablepro-driver-sqlite",
  "tablepro-ssh",
  "tablepro-storage",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",

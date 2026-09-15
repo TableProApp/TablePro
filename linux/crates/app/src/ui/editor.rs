@@ -14,6 +14,7 @@ use super::grid::{GridMsg, TabGridContext, build_column_view};
 use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct SqlEditor {
+    settings: std::rc::Rc<tablepro_storage::AppSettings>,
     source_view: sourceview5::View,
     run_button: gtk::Button,
     cancel_button: gtk::Button,
@@ -30,6 +31,7 @@ pub struct SqlEditor {
 pub struct SqlEditorInit {
     pub schema_buffer: gtk::TextBuffer,
     pub initial_query: Option<String>,
+    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
 }
 
 /// One statement's outcome inside a multi-statement script. The
@@ -214,14 +216,35 @@ impl SimpleComponent for SqlEditor {
         } else {
             widgets.source_view.buffer().set_text(&initial_text);
         }
-        apply_editor_scheme(&widgets.source_view);
-        let view_for_theme = widgets.source_view.clone();
-        adw::StyleManager::default().connect_dark_notify(move |_| {
-            apply_editor_scheme(&view_for_theme);
-        });
+        widgets.source_view.add_css_class("sql-editor");
+        widgets.source_view.set_monospace(true);
 
-        let font_size = crate::services::preferences::load().editor_font_size;
-        apply_editor_font_size(&widgets.source_view, font_size);
+        let settings = init.settings.clone();
+        crate::ui::style_scheme_resolver::apply(&widgets.source_view, &settings.style_scheme());
+        let view_for_theme = widgets.source_view.clone();
+        let settings_for_theme = settings.clone();
+        adw::StyleManager::default().connect_dark_notify(move |_| {
+            crate::ui::style_scheme_resolver::apply(&view_for_theme, &settings_for_theme.style_scheme());
+        });
+        let view_for_scheme = widgets.source_view.clone();
+        settings.gio().connect_changed(
+            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
+            move |settings, key| {
+                crate::ui::style_scheme_resolver::apply(&view_for_scheme, &settings.string(key));
+            },
+        );
+
+        crate::ui::editor_font_provider::apply(&settings);
+        let settings_for_font = settings.clone();
+        for key in [
+            tablepro_storage::settings::keys::USE_SYSTEM_FONT,
+            tablepro_storage::settings::keys::CUSTOM_FONT,
+        ] {
+            let settings_for_key = settings_for_font.clone();
+            settings.gio().connect_changed(Some(key), move |_, _| {
+                crate::ui::editor_font_provider::apply(&settings_for_key);
+            });
+        }
 
         let provider = sourceview5::CompletionWords::new(Some("SQL"));
         provider.register(&init.schema_buffer);
@@ -382,6 +405,7 @@ impl SimpleComponent for SqlEditor {
         relm4::spawn_local(grid_receiver.forward(sender.input_sender().clone(), SqlEditorInput::Grid));
 
         let model = SqlEditor {
+            settings,
             source_view: widgets.source_view.clone(),
             run_button: widgets.run_button.clone(),
             cancel_button: widgets.cancel_button.clone(),
@@ -614,7 +638,8 @@ impl SqlEditor {
         self.executing_metadata = database_service::instance().active_metadata();
         self.executing_started_at = Some(SystemTime::now());
 
-        let timeout_secs = crate::services::preferences::load().query_timeout_secs;
+        let timeout = self.settings.query_timeout();
+        let timeout_secs = timeout.map_or(0, |duration| duration.as_secs() as u32);
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
@@ -625,10 +650,9 @@ impl SqlEditor {
                     // never resolves. Otherwise the tokio sleep races
                     // against `cancelled()` and `run_statements()`;
                     // first to finish wins.
-                    let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> = if timeout_secs > 0 {
-                        Box::pin(tokio::time::sleep(std::time::Duration::from_secs(timeout_secs as u64)))
-                    } else {
-                        Box::pin(std::future::pending::<()>())
+                    let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> = match timeout {
+                        Some(duration) => Box::pin(tokio::time::sleep(duration)),
+                        None => Box::pin(std::future::pending::<()>()),
                     };
                     // The cancel token is the editor's own signal
                     // channel — the driver does not subscribe to it
@@ -1177,49 +1201,6 @@ pub fn derive_tab_label(query: &str) -> String {
         return cleaned;
     }
     crate::tr!("Empty query")
-}
-
-fn apply_editor_scheme(view: &sourceview5::View) {
-    let scheme_name = if adw::StyleManager::default().is_dark() {
-        "Adwaita-dark"
-    } else {
-        "Adwaita"
-    };
-    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name)
-        && let Ok(buffer) = view.buffer().downcast::<sourceview5::Buffer>()
-    {
-        buffer.set_style_scheme(Some(&scheme));
-    }
-}
-
-fn apply_editor_font_size(_view: &sourceview5::View, font_size: u32) {
-    // GTK 4.10+ removed per-widget CssProvider (gtk::Widget::style_context()
-    // is deprecated). The replacement is display-scoped — register the rule
-    // on the default display; the textview selector ensures only SourceView
-    // / TextView descendants are affected (gtk::Entry doesn't match).
-    //
-    // Track the live provider in a thread-local so the previous one is
-    // removed before the new one is installed. Without this, every
-    // editor-tab open (and every preferences change) added a fresh
-    // provider that nothing ever cleaned up — a slow CSS-provider leak
-    // visible in heavy sessions.
-    thread_local! {
-        static EDITOR_FONT_PROVIDER: std::cell::RefCell<Option<gtk::CssProvider>> =
-            const { std::cell::RefCell::new(None) };
-    }
-    let Some(display) = gtk::gdk::Display::default() else {
-        return;
-    };
-    EDITOR_FONT_PROVIDER.with(|cell| {
-        if let Some(prev) = cell.borrow_mut().take() {
-            gtk::style_context_remove_provider_for_display(&display, &prev);
-        }
-        let css = format!("textview, textview text {{ font-size: {font_size}pt; }}");
-        let provider = gtk::CssProvider::new();
-        provider.load_from_string(&css);
-        gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-        *cell.borrow_mut() = Some(provider);
-    });
 }
 
 #[cfg(test)]

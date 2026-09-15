@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProPreferencesDialog" parent="AdwPreferencesDialog">
+    <property name="title" translatable="yes">Preferences</property>
+    <property name="search-enabled">true</property>
+    <child>
+      <object class="AdwPreferencesPage">
+        <property name="title" translatable="yes">General</property>
+        <property name="icon-name">preferences-system-symbolic</property>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Data browser</property>
+            <property name="description" translatable="yes">Tunes the row paginator and destructive-action confirmation.</property>
+            <child>
+              <object class="AdwSpinRow" id="page_size_row">
+                <property name="title" translatable="yes">Default page size</property>
+                <property name="subtitle" translatable="yes">Rows fetched per request when browsing a table</property>
+                <property name="adjustment">
+                  <object class="GtkAdjustment">
+                    <property name="lower">100</property>
+                    <property name="upper">100000</property>
+                    <property name="step-increment">100</property>
+                    <property name="page-increment">1000</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="confirm_row">
+                <property name="title" translatable="yes">Confirm before deleting rows</property>
+                <property name="subtitle" translatable="yes">Show a confirmation dialog before each destructive action</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Query history</property>
+            <property name="description" translatable="yes">Persistent record of every SQL query you run.</property>
+            <child>
+              <object class="AdwSpinRow" id="retention_row">
+                <property name="title" translatable="yes">Retention (days)</property>
+                <property name="subtitle" translatable="yes">0 keeps history forever; pinned entries are never pruned.</property>
+                <property name="adjustment">
+                  <object class="GtkAdjustment">
+                    <property name="lower">0</property>
+                    <property name="upper">365</property>
+                    <property name="step-increment">1</property>
+                    <property name="page-increment">30</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow" id="clear_row">
+                <property name="title" translatable="yes">Clear query history</property>
+                <property name="subtitle" translatable="yes">Removes every saved query, including pinned ones.</property>
+                <child type="suffix">
+                  <!-- Flat, not destructive: GNOME colours the confirmation,
+                       not the trigger that opens it. The ellipsis says more
+                       input is coming. -->
+                  <object class="GtkButton" id="clear_button">
+                    <property name="label" translatable="yes">Clear…</property>
+                    <property name="valign">center</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow" id="storage_row">
+                <property name="title" translatable="yes">Storage location</property>
+                <child type="suffix">
+                  <object class="GtkButton" id="storage_button">
+                    <property name="label" translatable="yes">Show in Files</property>
+                    <property name="valign">center</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesPage">
+        <property name="title" translatable="yes">Editor</property>
+        <property name="icon-name">text-editor-symbolic</property>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Font</property>
+            <child>
+              <object class="AdwSwitchRow" id="system_font_row">
+                <property name="title" translatable="yes">Use the system monospace font</property>
+                <property name="subtitle" translatable="yes">Follows the font you picked in the desktop settings</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwActionRow" id="font_row">
+                <property name="title" translatable="yes">Editor font</property>
+                <child type="suffix">
+                  <object class="GtkFontDialogButton" id="font_button">
+                    <property name="valign">center</property>
+                    <property name="dialog">
+                      <object class="GtkFontDialog"/>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Style scheme</property>
+            <child>
+              <object class="GtkFlowBox" id="style_scheme_box">
+                <property name="selection-mode">none</property>
+                <property name="homogeneous">true</property>
+                <property name="column-spacing">12</property>
+                <property name="row-spacing">12</property>
+                <property name="max-children-per-line">3</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPreferencesGroup">
+            <property name="title" translatable="yes">Running queries</property>
+            <child>
+              <object class="AdwSpinRow" id="timeout_row">
+                <property name="title" translatable="yes">Query timeout (seconds)</property>
+                <property name="subtitle" translatable="yes">Cancel long-running queries automatically. Set to 0 to disable.</property>
+                <property name="adjustment">
+                  <object class="GtkAdjustment">
+                    <property name="lower">0</property>
+                    <property name="upper">3600</property>
+                    <property name="step-increment">5</property>
+                    <property name="page-increment">60</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

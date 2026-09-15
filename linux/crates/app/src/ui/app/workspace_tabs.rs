@@ -158,6 +158,7 @@ impl App {
         let workspace_tabs_for_create = self.workspace_tabs.clone();
         let tab_view_for_create = tab_view.clone();
         let schema_buffer_for_create = self.schema_buffer.clone();
+        let settings_for_create = self.settings.clone();
         let sender_for_create = sender.clone();
         tab_overview.connect_create_tab(move |_| {
             let tab_id = Uuid::new_v4();
@@ -165,6 +166,7 @@ impl App {
                 .launch(SqlEditorInit {
                     schema_buffer: schema_buffer_for_create.clone(),
                     initial_query: None,
+                    settings: settings_for_create.clone(),
                 })
                 .forward(sender_for_create.input_sender(), move |out| match out {
                     SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
@@ -500,6 +502,7 @@ impl App {
             .launch(SqlEditorInit {
                 schema_buffer: self.schema_buffer.clone(),
                 initial_query,
+                settings: self.settings.clone(),
             })
             .forward(sender.input_sender(), move |out| match out {
                 SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
@@ -835,7 +838,8 @@ impl App {
         // Default open path appends a Data-view Browse tab. Structure
         // for the same table opens as its own separate tab via the
         // sidebar right-click "Edit Structure" action.
-        self.append_table_tab(schema, name, 0, self.default_page_size, None, sender);
+        let page_size = u64::from(self.settings.default_page_size());
+        self.append_table_tab(schema, name, 0, page_size, None, sender);
     }
 
     /// Persist workspace tabs for the active connection. Walks

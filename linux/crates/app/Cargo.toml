@@ -52,6 +52,9 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 libc = "0.2"
 sqlformat = "0.5"
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [build-dependencies]
 glib-build-tools.workspace = true
 

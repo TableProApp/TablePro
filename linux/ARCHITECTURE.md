@@ -159,8 +159,8 @@ The Structure tab is **snapshot + diff**, not per-op log. `original_*` snapshots
 | Connection passwords + SSH secrets | libsecret via `oo7` (Secret Service / KWallet) | keyring item per connection UUID |
 | Per-connection workspace tabs | JSON, atomic temp-file rename, debounced 500 ms | `$XDG_DATA_HOME/tablepro/workspace.json` |
 | Query history | SQLite + FTS5 virtual table | `$XDG_DATA_HOME/tablepro/history.db` |
-| Application preferences | JSON, atomic temp-file rename | `$XDG_CONFIG_HOME/tablepro/preferences.json` |
-| Window size / position | JSON | `$XDG_CONFIG_HOME/tablepro/window.json` |
+| Application preferences | GSettings | schema `app.tablepro.TablePro` |
+| Window size / maximized | GSettings | schema `app.tablepro.TablePro` |
 | Per-table column widths | JSON | `$XDG_CONFIG_HOME/tablepro/column_widths.json` |
 
 Forward compat: `WorkspaceTabRecord` uses `#[serde(other)] Unknown` so an old binary reading a newer file silently skips unknown variants instead of failing the whole load. `clamp_connection` runs on load to migrate legacy variants (`Browse`, `Structure { schema, table }`) into the unified `Table` shape.
