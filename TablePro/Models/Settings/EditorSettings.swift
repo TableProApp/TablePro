@@ -73,7 +73,7 @@ struct EditorSettings: Codable, Equatable {
     var tabWidth: Int // 2, 4, or 8 spaces
     var wordWrap: Bool
     var vimModeEnabled: Bool
-    var uppercaseKeywords: Bool
+    var keywordCase: SQLKeywordCase
     var queryParametersEnabled: Bool
     var codeFoldingEnabled: Bool
     var highlightCurrentStatement: Bool
@@ -87,7 +87,7 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: 4,
         wordWrap: false,
         vimModeEnabled: false,
-        uppercaseKeywords: false,
+        keywordCase: .default,
         queryParametersEnabled: true,
         codeFoldingEnabled: true,
         highlightCurrentStatement: true,
@@ -102,7 +102,7 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: Int = 4,
         wordWrap: Bool = false,
         vimModeEnabled: Bool = false,
-        uppercaseKeywords: Bool = false,
+        keywordCase: SQLKeywordCase = .default,
         queryParametersEnabled: Bool = true,
         codeFoldingEnabled: Bool = true,
         highlightCurrentStatement: Bool = true,
@@ -115,7 +115,7 @@ struct EditorSettings: Codable, Equatable {
         self.tabWidth = tabWidth
         self.wordWrap = wordWrap
         self.vimModeEnabled = vimModeEnabled
-        self.uppercaseKeywords = uppercaseKeywords
+        self.keywordCase = keywordCase
         self.queryParametersEnabled = queryParametersEnabled
         self.codeFoldingEnabled = codeFoldingEnabled
         self.highlightCurrentStatement = highlightCurrentStatement
@@ -131,13 +131,64 @@ struct EditorSettings: Codable, Equatable {
         tabWidth = try container.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
         wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
-        uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
+        keywordCase = try Self.decodeKeywordCase(from: container)
         queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
         codeFoldingEnabled = try container.decodeIfPresent(Bool.self, forKey: .codeFoldingEnabled) ?? true
         highlightCurrentStatement = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentStatement) ?? true
         showStatementRunControls = try container.decodeIfPresent(Bool.self, forKey: .showStatementRunControls) ?? true
         showInvisibleCharacters = try container.decodeIfPresent(Bool.self, forKey: .showInvisibleCharacters) ?? true
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
+    }
+
+    /// Spelled out rather than synthesized so `uppercaseKeywords` survives as a wire key after the
+    /// property it named became `keywordCase`. Editor settings sync as one JSON blob, so both the
+    /// key an older build reads and the key this one writes have to be in it.
+    private enum CodingKeys: String, CodingKey {
+        case showLineNumbers
+        case highlightCurrentLine
+        case tabWidth
+        case wordWrap
+        case vimModeEnabled
+        case keywordCase
+        case uppercaseKeywords
+        case queryParametersEnabled
+        case codeFoldingEnabled
+        case highlightCurrentStatement
+        case showStatementRunControls
+        case showInvisibleCharacters
+        case jsonViewerPreferredMode
+    }
+
+    private static func decodeKeywordCase(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> SQLKeywordCase {
+        /// A raw value this build does not know falls back rather than throwing. Editor settings
+        /// decode as one blob, so a value written by a newer build would otherwise take every
+        /// other editor setting down with it.
+        if let stored = try? container.decodeIfPresent(SQLKeywordCase.self, forKey: .keywordCase) {
+            return stored
+        }
+        guard let legacy = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) else {
+            return .default
+        }
+        return legacy ? .upper : .matchTypedElseUpper
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(showLineNumbers, forKey: .showLineNumbers)
+        try container.encode(highlightCurrentLine, forKey: .highlightCurrentLine)
+        try container.encode(tabWidth, forKey: .tabWidth)
+        try container.encode(wordWrap, forKey: .wordWrap)
+        try container.encode(vimModeEnabled, forKey: .vimModeEnabled)
+        try container.encode(keywordCase, forKey: .keywordCase)
+        try container.encode(keywordCase == .upper, forKey: .uppercaseKeywords)
+        try container.encode(queryParametersEnabled, forKey: .queryParametersEnabled)
+        try container.encode(codeFoldingEnabled, forKey: .codeFoldingEnabled)
+        try container.encode(highlightCurrentStatement, forKey: .highlightCurrentStatement)
+        try container.encode(showStatementRunControls, forKey: .showStatementRunControls)
+        try container.encode(showInvisibleCharacters, forKey: .showInvisibleCharacters)
+        try container.encode(jsonViewerPreferredMode, forKey: .jsonViewerPreferredMode)
     }
 
     /// Clamped tab width (1-16)

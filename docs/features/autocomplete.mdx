@@ -27,7 +27,7 @@ It opens itself after FROM, JOIN, ON and the other clauses with a short answer, 
 | `Return` / `Tab` | Accept the selected suggestion |
 | `Escape` | Dismiss and keep typing |
 
-There is no setting for autocomplete and nothing to turn off. What the popup offers depends entirely on where the cursor sits.
+Autocomplete is always on and there is nothing to turn off. What the popup offers depends entirely on where the cursor sits; the one setting is the case keywords come back in.
 
 ## SQL keywords
 
@@ -35,6 +35,30 @@ There is no setting for autocomplete and nothing to turn off. What the popup off
 SEL|  -- SELECT
 FROM users WH|  -- WHERE
 ```
+
+## Keyword case
+
+Keywords and built-in functions come back in the case you are typing:
+
+```sql
+sel|  -- select
+SEL|  -- SELECT
+cou|  -- count()
+COU|  -- COUNT()
+```
+
+The first letter decides, so `Sel` completes to `SELECT` and `sElE` to `select`. A phrase moves as one: `group b` completes to `group by`. Table, column, schema and alias names are never re-cased, and neither are saved [favorite keywords](#favorite-keywords) or the values of an enum column.
+
+**Settings > Editor > Keyword case** holds four values:
+
+| Value | Typing `sel` | Nothing typed |
+|-------|--------------|---------------|
+| Match what I type, otherwise UPPERCASE | `select` | `SELECT` |
+| Match what I type, otherwise lowercase | `select` | `select` |
+| UPPERCASE | `SELECT` | `SELECT` |
+| lowercase | `select` | `select` |
+
+The two absolute values also rewrite keywords as you type them and set the case [Format SQL](/features/sql-editor#formatting) produces.
 
 ## Table names
 

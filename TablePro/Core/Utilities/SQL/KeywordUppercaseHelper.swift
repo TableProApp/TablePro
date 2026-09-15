@@ -103,8 +103,12 @@ enum KeywordUppercaseHelper {
     }
 
     /// Extracts the word immediately before `position` in `text` by scanning backwards.
-    /// Returns nil if no word found or the word is not a SQL keyword.
-    static func keywordBeforePosition(_ text: NSString, at position: Int) -> (word: String, range: NSRange)? {
+    /// Returns nil if no word found, the word is not a SQL keyword, or it is already in `targetCase`.
+    static func keywordBeforePosition(
+        _ text: NSString,
+        at position: Int,
+        uppercase: Bool = true
+    ) -> (word: String, folded: String, range: NSRange)? {
         var wordStart = position
         while wordStart > 0 {
             let ch = text.character(at: wordStart - 1)
@@ -119,9 +123,9 @@ enum KeywordUppercaseHelper {
         guard SQLKeywords.keywordSet.contains(word.lowercased()) else { return nil }
         guard !isInsideProtectedContext(text, at: wordStart) else { return nil }
 
-        let uppercased = word.uppercased()
-        guard uppercased != word else { return nil }
+        let folded = uppercase ? word.uppercased() : word.lowercased()
+        guard folded != word else { return nil }
 
-        return (word: word, range: NSRange(location: wordStart, length: wordLength))
+        return (word: word, folded: folded, range: NSRange(location: wordStart, length: wordLength))
     }
 }

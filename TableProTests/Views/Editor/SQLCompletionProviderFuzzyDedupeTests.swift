@@ -160,7 +160,7 @@ struct SQLCompletionProviderFuzzyDedupeTests {
         let filtered = provider.filterByPrefix(items, prefix: "slc")
 
         #expect(filtered.count == 1)
-        #expect(filtered[0].label == "SSL_CERTIFICATE")
+        #expect(filtered[0].label == "ssl_certificate")
         let expectedPenalty = referenceFuzzyScore(pattern: "slc", target: "ssl_certificate") ?? 0
         #expect(filtered[0].sortPriority == basePriority)
         #expect(filtered[0].fuzzyPenalty == expectedPenalty)

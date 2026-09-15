@@ -693,20 +693,30 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         lastInlineSourceKind = kind
     }
 
-    // MARK: - Keyword Auto-Uppercase
+    // MARK: - Keyword Case
 
+    /// Rewrites the keyword just completed by a word boundary to the configured case.
+    ///
+    /// Only the two absolute `SQLKeywordCase` values rewrite what the user typed. Under either
+    /// `matchTyped` value this does nothing, so an accepted lowercase completion is not flipped
+    /// back to uppercase by the next space.
     private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
+        let keywordCase = AppSettingsManager.shared.editor.keywordCase
         guard !isUppercasing,
-              AppSettingsManager.shared.editor.uppercaseKeywords,
+              keywordCase.rewritesTypedText,
               KeywordUppercaseHelper.isWordBoundary(string),
               (textView.textStorage.string as NSString).length < 500_000 else { return }
 
         let nsText = textView.textStorage.string as NSString
-        guard let match = KeywordUppercaseHelper.keywordBeforePosition(nsText, at: range.location) else { return }
+        guard let match = KeywordUppercaseHelper.keywordBeforePosition(
+            nsText,
+            at: range.location,
+            uppercase: keywordCase.prefersUppercase
+        ) else { return }
 
         let word = match.word
         let wordRange = match.range
-        let uppercased = word.uppercased()
+        let uppercased = match.folded
 
         isUppercasing = true
         DispatchQueue.main.async { [weak self, weak textView] in

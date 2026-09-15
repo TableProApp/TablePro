@@ -93,6 +93,16 @@ public struct SQLDialectDescriptor: Sendable {
     // Authoring
     public let operators: [SQLOperatorDescriptor]
 
+    /// Whether the engine matches built-in function names case-insensitively.
+    ///
+    /// True for standard SQL, so completion may present and insert a function name in whatever
+    /// case the user is typing. ClickHouse is the exception: measured on 26.9.1.52, `toString`,
+    /// `uniq`, `multiIf`, `arrayJoin` and `topK` are all rejected as UNKNOWN_FUNCTION in any other
+    /// case, while a curated SQL-compatibility set (`COUNT`, `IF`, `NOW`, `CAST`, `CONCAT`,
+    /// `LOWER`, `SUBSTRING`) is accepted in either. No rule derived from the declared spelling can
+    /// tell those apart, which is why the dialect has to say.
+    public let functionNamesAreCaseInsensitive: Bool
+
     public enum CaseSensitivityStyle: String, Sendable {
         case ilikeOperator    // PostgreSQL, CockroachDB, PGlite, DuckDB, Snowflake
         case caseFoldFunction // Oracle, BigQuery, ClickHouse, Redshift
@@ -235,6 +245,7 @@ public struct SQLDialectDescriptor: Sendable {
         )
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -253,6 +264,46 @@ public struct SQLDialectDescriptor: Sendable {
         operators: [SQLOperatorDescriptor] = [],
         textCastTypeName: String?
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: true
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
+        operators: [SQLOperatorDescriptor] = [],
+        textCastTypeName: String?,
+        functionNamesAreCaseInsensitive: Bool
+    ) {
         self.identifierQuote = identifierQuote
         self.keywords = keywords
         self.functions = functions
@@ -269,6 +320,7 @@ public struct SQLDialectDescriptor: Sendable {
         self.caseFoldFunction = caseFoldFunction
         self.operators = operators
         self.textCastTypeName = textCastTypeName
+        self.functionNamesAreCaseInsensitive = functionNamesAreCaseInsensitive
     }
 
     public static let defaultCaseFoldFunction = "LOWER"
@@ -293,7 +345,8 @@ public struct SQLDialectDescriptor: Sendable {
             caseSensitivityStyle: style,
             caseFoldFunction: caseFoldFunction,
             operators: operators,
-            textCastTypeName: textCastTypeName
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive
         )
     }
 }

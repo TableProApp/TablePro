@@ -28,6 +28,10 @@ final class SQLCompletionService: QueryCompletionService {
 
     var triggerCharacters: Set<String> { [".", " ", ":", "(", ","] }
 
+    /// Read per request rather than captured, so changing the setting applies to the next
+    /// keystroke instead of the next connection.
+    private var keywordCase: SQLKeywordCase { AppSettingsManager.shared.editor.keywordCase }
+
     /// Seeding starts a session the analyzer has not seen, so the context a previous session
     /// left behind stops describing anything. Ranking a seeded session against it would score
     /// the new prefix under the old clause.
@@ -50,7 +54,7 @@ final class SQLCompletionService: QueryCompletionService {
     }
 
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        engine.provider.filterRankAndLimit(items, prefix: prefix, context: lastContext)
+        engine.rank(items, prefix: prefix, context: lastContext, keywordCase: keywordCase)
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
@@ -60,7 +64,11 @@ final class SQLCompletionService: QueryCompletionService {
         let windowEnd = min(text.length, offset + Self.windowRadius)
         let window = text.substring(with: NSRange(location: windowStart, length: windowEnd - windowStart))
 
-        guard let context = await engine.getCompletions(text: window, cursorPosition: offset - windowStart) else {
+        guard let context = await engine.getCompletions(
+            text: window,
+            cursorPosition: offset - windowStart,
+            keywordCase: keywordCase
+        ) else {
             return nil
         }
         guard !isSuppressedEmptyPrefix(context.sqlContext, isManualTrigger: isManualTrigger) else { return nil }

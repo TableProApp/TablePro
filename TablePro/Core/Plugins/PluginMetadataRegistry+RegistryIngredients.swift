@@ -48,17 +48,17 @@ extension PluginMetadataRegistry {
                 "MATERIALIZED", "WITH"
             ],
             functions: [
-                "COUNT", "SUM", "AVG", "MAX", "MIN",
-                "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-                "TRIM", "LTRIM", "RTRIM", "REPLACE",
-                "NOW", "TODAY", "YESTERDAY",
+                "count", "sum", "avg", "max", "min",
+                "concat", "substring", "left", "right", "length", "lower", "upper",
+                "trim", "ltrim", "rtrim", "replace",
+                "now", "today", "yesterday",
                 "CAST",
-                "UNIQ", "UNIQEXACT", "ARGMIN", "ARGMAX", "GROUPARRAY",
-                "TOSTRING", "TOINT32", "FORMATDATETIME",
-                "IF", "MULTIIF",
-                "ARRAYMAP", "ARRAYJOIN",
-                "MATCH", "CURRENTDATABASE", "VERSION",
-                "QUANTILE", "TOPK"
+                "uniq", "uniqExact", "argMin", "argMax", "groupArray",
+                "toString", "toInt32", "formatDateTime",
+                "if", "multiIf",
+                "arrayMap", "arrayJoin",
+                "match", "currentDatabase", "version",
+                "quantile", "topK"
             ],
             dataTypes: [
                 "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
@@ -82,7 +82,9 @@ extension PluginMetadataRegistry {
             paginationStyle: .limit,
             requiresBackslashEscaping: true,
             caseSensitivityStyle: .caseFoldFunction,
-            caseFoldFunction: "lowerUTF8"
+            caseFoldFunction: "lowerUTF8",
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: false
         )
 
         let clickhouseColumnTypes: [String: [String]] = [

@@ -12,14 +12,18 @@ protocol QueryFormatting {
 
 struct SQLQueryFormatter: QueryFormatting {
     private let dialect: DatabaseType
+    private let keywordCase: SQLKeywordCase
     private let formatter = SQLFormatterService()
 
-    init(dialect: DatabaseType) {
+    init(dialect: DatabaseType, keywordCase: SQLKeywordCase = .default) {
         self.dialect = dialect
+        self.keywordCase = keywordCase
     }
 
     func format(_ text: String, cursorOffset: Int?) throws -> QueryFormatResult {
-        let result = try formatter.format(text, dialect: dialect, cursorOffset: cursorOffset, options: .default)
+        var options = SQLFormatterOptions.default
+        options.keywordCase = keywordCase.prefersUppercase ? .upper : .lower
+        let result = try formatter.format(text, dialect: dialect, cursorOffset: cursorOffset, options: options)
         return QueryFormatResult(text: result.formattedSQL, cursorOffset: result.cursorOffset)
     }
 }
@@ -33,7 +37,7 @@ enum QueryFormatterFactory {
         case .javascript:
             return MongoShellFormatter()
         default:
-            return SQLQueryFormatter(dialect: dialect)
+            return SQLQueryFormatter(dialect: dialect, keywordCase: AppSettingsManager.shared.editor.keywordCase)
         }
     }
 }
