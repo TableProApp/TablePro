@@ -15,7 +15,7 @@ tablepro-core = { path = "../../core" }
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
-sqlx = { workspace = true, features = ["sqlite"] }
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 tokio.workspace = true
 
 [dev-dependencies]

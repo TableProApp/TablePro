@@ -55,8 +55,10 @@ jobs:
             libadwaita-1-dev \
             libgtksourceview-5-dev \
             libsecret-1-dev \
+            libsqlite3-dev \
             libkrb5-dev \
             clang \
+            libclang-dev \
             openssh-client \
             xvfb \
             xauth \

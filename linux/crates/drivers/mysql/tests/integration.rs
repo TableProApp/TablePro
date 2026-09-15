@@ -31,6 +31,43 @@ async fn start_mysql() -> Result<(ContainerAsync<Mysql>, ConnectOptions), Testco
     Ok((container, opts))
 }
 
+async fn start_caching_sha2() -> Result<(ContainerAsync<Mysql>, ConnectOptions), TestcontainersError> {
+    let container = Mysql::default()
+        .with_env_var("MYSQL_ROOT_PASSWORD", "tablepro_test")
+        .start()
+        .await?;
+    let host = container.get_host().await?.to_string();
+    let port = container.get_host_port_ipv4(3306).await?;
+    let opts = ConnectOptions {
+        host,
+        port,
+        database: "test".into(),
+        username: "root".into(),
+        password: secrecy::SecretString::new("tablepro_test".to_string().into()),
+        use_tls: false,
+        ..Default::default()
+    };
+    Ok((container, opts))
+}
+
+// caching_sha2_password over a plaintext connection falls back to full
+// authentication, where the client encrypts the password with the
+// server's public key. Without sqlx's mysql-rsa feature that path fails
+// at runtime, so a successful connect is the assertion.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn caching_sha2_without_tls_uses_rsa() {
+    let (_c, opts) = start_caching_sha2().await.unwrap();
+    let conn = MysqlDriver.connect(opts).await.unwrap();
+
+    let plugin = conn
+        .query("SELECT CAST(plugin AS CHAR) FROM mysql.user WHERE user = 'root' AND host = '%'")
+        .await
+        .unwrap();
+
+    assert_eq!(plugin.rows[0][0], Value::Text("caching_sha2_password".into()));
+}
+
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn connect_list_tables_and_pk_detection() {
