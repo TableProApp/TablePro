@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Password sources skipped after an older connection store was renumbered.
 - Connections from a cancelled New Group sheet moved into the next group created.
 - Search in the welcome window hiding matches inside collapsed groups.
+- Memory spike when dragging selected text in an editor that holds a very long line.
+- Blank line added to text dragged from an editor for every extra cursor in the document.
 - Connection switcher showing a dropped connection as connected and checking the wrong one in a second window.
 - Welcome window changes that failed to save shown as saved.
 - Linked folder connection losing its SSH, SSL and Safe Mode settings on connect.
