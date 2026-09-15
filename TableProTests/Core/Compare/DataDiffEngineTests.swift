@@ -27,7 +27,6 @@ private func makeDiffEngine(
     compared: [String] = ["name"],
     valueKinds: [String: ValueComparisonKind] = [:],
     digest: [String] = ["id", "name"],
-    rowLimit: Int? = nil,
     defersOneSidedRows: Bool = false,
     configure: (inout DataCompareOptions) -> Void = { _ in }
 ) -> DataDiffEngine {
@@ -41,7 +40,6 @@ private func makeDiffEngine(
             comparedColumns: compared,
             valueKinds: valueKinds,
             digestColumns: digest,
-            rowLimit: rowLimit,
             defersOneSidedRows: defersOneSidedRows
         )
     )
@@ -630,7 +628,7 @@ final class DataDiffDigestTests: XCTestCase {
 
 final class DataDiffRowLimitTests: XCTestCase {
     func testTheWalkStopsAtTheRowLimitWithoutInventingDifferences() async throws {
-        let engine = makeDiffEngine(rowLimit: 3)
+        let engine = makeDiffEngine()
         let source = ArrayRowProvider(rows: [1, 2, 3, 4].map { diffIdRow($0) }, rowLimit: 3)
         let target = ArrayRowProvider(rows: [1, 2, 3, 5, 6].map { diffIdRow($0) }, rowLimit: 3)
 
@@ -645,7 +643,7 @@ final class DataDiffRowLimitTests: XCTestCase {
 
     /// The source's LIMIT cut it short, so the target's later keys are unread, not missing.
     func testASourceCappedByItsLimitDoesNotTurnLaterTargetKeysIntoDeletes() async throws {
-        let engine = makeDiffEngine(rowLimit: 3)
+        let engine = makeDiffEngine()
         let sourceRows = [diffRow(["id": nil, "name": "n"])] + [1, 2, 3].map { diffIdRow($0) }
         let source = ArrayRowProvider(rows: sourceRows, rowLimit: 3)
         let target = ArrayRowProvider(rows: [1, 2, 3, 4].map { diffIdRow($0) }, rowLimit: 3)
@@ -660,7 +658,7 @@ final class DataDiffRowLimitTests: XCTestCase {
     }
 
     func testATargetCappedByItsLimitDoesNotTurnLaterSourceKeysIntoInserts() async throws {
-        let engine = makeDiffEngine(rowLimit: 3)
+        let engine = makeDiffEngine()
         let targetRows = [diffRow(["id": nil, "name": "n"])] + [1, 2, 3].map { diffIdRow($0) }
         let source = ArrayRowProvider(rows: [1, 2, 3, 4].map { diffIdRow($0) }, rowLimit: 3)
         let target = ArrayRowProvider(rows: targetRows, rowLimit: 3)
@@ -675,7 +673,7 @@ final class DataDiffRowLimitTests: XCTestCase {
     /// A side that ran out before its limit really is exhausted, so the other side's keys are
     /// differences rather than unread rows.
     func testASideThatEndsShortOfItsLimitStillProducesDifferences() async throws {
-        let engine = makeDiffEngine(rowLimit: 10)
+        let engine = makeDiffEngine()
         let source = ArrayRowProvider(rows: [diffIdRow(1), diffIdRow(2)], rowLimit: 10)
         let target = ArrayRowProvider(rows: [diffIdRow(1)], rowLimit: 10)
 
@@ -685,6 +683,65 @@ final class DataDiffRowLimitTests: XCTestCase {
         XCTAssertEqual(summary.insertCount, 1)
         XCTAssertFalse(summary.stoppedAtRowLimit)
         XCTAssertEqual(summary.comparedKeyCount, 2)
+        XCTAssertNil(summary.resumeKey, "nothing was cut short, so there is nothing to resume from")
+    }
+
+    /// The limit is a cap on each side's read, not on the merged walk. Counting merged positions
+    /// against it stopped inside the region both sides had already been read past: with interleaved
+    /// keys the walk quit after three positions and threw away the delete on key 4 and the insert on
+    /// key 5, both of which were sitting in rows already fetched.
+    func testEveryKeyBothSidesWereReadPastIsClassifiedUnderALimit() async throws {
+        let engine = makeDiffEngine(compared: [])
+        let source = ArrayRowProvider(rows: [1, 3, 5, 7].map { diffIdRow($0) }, rowLimit: 3)
+        let target = ArrayRowProvider(rows: [2, 4, 6, 8].map { diffIdRow($0) }, rowLimit: 3)
+
+        let summary = try await engine.compare(source: source, target: target)
+
+        XCTAssertEqual(summary.insertCount, 3, "keys 1, 3 and 5 were read on the source")
+        XCTAssertEqual(summary.deleteCount, 2, "keys 2 and 4 were read on the target")
+        XCTAssertEqual(summary.comparedKeyCount, 5)
+        XCTAssertTrue(summary.stoppedAtRowLimit)
+        XCTAssertEqual(summary.resumeKey, [.text("5")])
+    }
+
+    /// The boundary is the lower of the two sides' last read keys, because past it one side has
+    /// nothing to be compared against.
+    func testTheResumeKeyIsTheLowerOfTheTwoSidesLastReadKey() async throws {
+        let engine = makeDiffEngine(compared: [])
+        let source = ArrayRowProvider(rows: [1, 2, 5, 6, 9].map { diffIdRow($0) }, rowLimit: 3)
+        let target = ArrayRowProvider(rows: [1, 3, 4, 5, 7, 8].map { diffIdRow($0) }, rowLimit: 3)
+
+        let summary = try await engine.compare(source: source, target: target)
+
+        XCTAssertEqual(summary.resumeKey, [.text("4")], "the target's third key is the lower ceiling")
+        XCTAssertTrue(summary.stoppedAtRowLimit)
+    }
+
+    func testTheResumeKeyIsTheCappedSidesLastKeyWhenOnlyOneSideCaps() async throws {
+        let engine = makeDiffEngine(compared: [])
+        let source = ArrayRowProvider(rows: [1, 2, 3, 4].map { diffIdRow($0) }, rowLimit: 2)
+        let target = ArrayRowProvider(rows: [1, 2, 3, 4].map { diffIdRow($0) })
+
+        let summary = try await engine.compare(source: source, target: target)
+
+        XCTAssertEqual(summary.identicalCount, 2)
+        XCTAssertTrue(summary.stoppedAtRowLimit)
+        XCTAssertEqual(summary.resumeKey, [.text("2")])
+    }
+
+    func testAFilteredComparisonUnderALimitStillReportsWhereItStopped() async throws {
+        let resolver = ScriptedKeyResolver(
+            sourceRows: [1, 3, 5].map { diffIdRow($0) },
+            targetRows: [2, 4, 6].map { diffIdRow($0) }
+        )
+        let engine = makeDiffEngine(compared: [], defersOneSidedRows: true)
+        let source = ArrayRowProvider(rows: [1, 3, 5, 7].map { diffIdRow($0) }, rowLimit: 3)
+        let target = ArrayRowProvider(rows: [2, 4, 6, 8].map { diffIdRow($0) }, rowLimit: 3)
+
+        let summary = try await engine.compare(source: source, target: target, resolver: resolver)
+
+        XCTAssertTrue(summary.stoppedAtRowLimit)
+        XCTAssertEqual(summary.resumeKey, [.text("5")], "a deferred key still moves the boundary")
     }
 }
 
