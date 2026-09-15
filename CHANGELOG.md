@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favoriting, moving or reordering a connection reverting a Safe Mode level changed in its window.
 - Connections in groups nested more than three levels deep missing from the welcome window.
 - Linked folder and Team Library connections to two databases on one host treated as one connection.
+- Slow typing and scrolling in a very long line with word wrap on.
 - New, duplicated and moved connections placed at the top of their group.
 - Password sources skipped after an older connection store was renumbered.
 - Connections from a cancelled New Group sheet moved into the next group created.

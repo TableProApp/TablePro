@@ -31,12 +31,19 @@ extension TextLayoutManager {
     ///   line wrapping is disabled. This will detect that, and cause the lines to be recalculated.
     /// - **2** Was the line previously not visible? This is determined by keeping a set of visible line IDs. If the
     ///   line does not appear in that set, we can assume it was previously off screen and may need layout.
-    /// - **3** Was the line entirely laid out? We break up lines into line fragments. When we do layout, we determine
-    ///   all line fragments but don't necessarily place them all in the view. This checks if all line fragments have
-    ///   been placed in the view. If not, we need to place them.
+    /// - **3** Does the line's stored height disagree with the height of its line fragments? A line an edit inserted
+    ///   or merged is stored at an estimated height until it is typeset, so a mismatch means it needs layout.
     ///
-    /// Once it has been determined that a line needs layout, we perform layout by recalculating it's line fragments,
-    /// removing all old line fragment views, and creating new ones for the line.
+    /// Once it has been determined that a line needs layout, we perform layout by recalculating it's line fragments
+    /// and placing views for the ones inside the layout rect.
+    ///
+    /// ## Line Fragment Views
+    ///
+    /// A line is typeset as a whole, because its height is the height of every one of its fragments, but only the
+    /// fragments that intersect the layout rect get a view. A wrapped line can be many times taller than the viewport
+    /// and stay visible while the viewport scrolls across it without ever needing layout, so every pass also places
+    /// views for the fragments of such a line that moved into the rect, and leaves the ones that moved out of it to be
+    /// reused. The number of fragment views follows the height of the layout rect, never the length of a line.
     ///
     /// ## Laziness
     ///
@@ -62,7 +69,7 @@ extension TextLayoutManager {
     /// - Warning: This is probably not what you're looking for. If you need to invalidate layout, or update lines, this
     ///            is not the way to do so. This should only be called when macOS performs layout.
     @discardableResult
-    public func layoutLines(in rect: NSRect? = nil) -> Set<TextLine.ID> { // swiftlint:disable:this function_body_length
+    public func layoutLines(in rect: NSRect? = nil) -> Set<TextLine.ID> {
         guard let visibleRect = rect ?? delegate?.visibleRect,
               !isInTransaction,
               let textStorage else {
@@ -104,47 +111,41 @@ extension TextLayoutManager {
 
             defer { newVisibleLines.insert(linePosition.data.id) }
 
-            func fullLineLayout() {
-                let (yAdjustment, wasLineHeightChanged) = layoutLine(
-                    linePosition,
-                    usedFragmentIDs: &usedFragmentIDs,
-                    textStorage: textStorage,
-                    yRange: minY..<maxY
+            guard forceLayout || linePositionNeedsLayout || wasNotVisible || lineNotEntirelyLaidOut else {
+                // The line keeps its fragments, but a line above it may have moved it and the viewport may have
+                // moved across it, so its views still have to match the layout rect.
+                layoutFragmentViews(
+                    of: linePosition,
+                    in: minY..<maxY,
+                    redrawingPlacedViews: false,
+                    laidOutFragmentIDs: &usedFragmentIDs
                 )
-                yContentAdjustment += yAdjustment
-                relaidOutMinY = min(relaidOutMinY, linePosition.yPos)
-                relaidOutMaxY = max(
-                    relaidOutMaxY,
-                    linePosition.yPos + max(linePosition.height, linePosition.data.lineFragments.height)
-                )
+                continue
+            }
+
+            let (yAdjustment, wasLineHeightChanged) = layoutLine(
+                linePosition,
+                usedFragmentIDs: &usedFragmentIDs,
+                textStorage: textStorage,
+                yRange: minY..<maxY
+            )
+            yContentAdjustment += yAdjustment
+            relaidOutMinY = min(relaidOutMinY, linePosition.yPos)
+            relaidOutMaxY = max(
+                relaidOutMaxY,
+                linePosition.yPos + max(linePosition.height, linePosition.data.lineFragments.height)
+            )
 #if DEBUG
-                laidOutLines.insert(linePosition.data.id)
+            laidOutLines.insert(linePosition.data.id)
 #endif
-                // If we've updated a line's height, or a line position was newly laid out, force re-layout for the
-                // rest of the pass (going down the screen).
-                //
-                // These two signals identify:
-                // - New lines being inserted & Lines being deleted (lineNotEntirelyLaidOut)
-                // - Line updated for width change (wasLineHeightChanged)
+            // If we've updated a line's height, or a line position was newly laid out, force re-layout for the
+            // rest of the pass (going down the screen).
+            //
+            // These two signals identify:
+            // - New lines being inserted & Lines being deleted (lineNotEntirelyLaidOut)
+            // - Line updated for width change (wasLineHeightChanged)
 
-                didLayoutChange = didLayoutChange || wasLineHeightChanged || lineNotEntirelyLaidOut
-            }
-
-            if forceLayout || linePositionNeedsLayout || wasNotVisible || lineNotEntirelyLaidOut {
-                fullLineLayout()
-            } else {
-                if didLayoutChange || yContentAdjustment > 0 {
-                    // Layout happened and this line needs to be moved but not necessarily re-added
-                    let needsFullLayout = updateLineViewPositions(linePosition)
-                    if needsFullLayout {
-                        fullLineLayout()
-                        continue
-                    }
-                }
-
-                // Make sure the used fragment views aren't dequeued.
-                usedFragmentIDs.formUnion(linePosition.data.lineFragments.map(\.data.id))
-            }
+            didLayoutChange = didLayoutChange || wasLineHeightChanged || lineNotEntirelyLaidOut
         }
 
         // Enqueue any lines not used in this layout pass.
@@ -234,7 +235,9 @@ extension TextLayoutManager {
     ///   - textStorage: The text storage object to use for text info.
     ///   - layoutData: The information required to perform layout for the given line.
     ///   - laidOutFragmentIDs: Updated by this method as line fragments are laid out.
-    /// - Returns: A `CGSize` representing the max width and total height of the laid out portion of the line.
+    /// - Returns: A `CGSize` representing the max width and total height of the whole line. Fragments outside the
+    ///            layout rect count too, even though they get no view, because the line storage records this size as
+    ///            the line's own.
     private func layoutLineViews(
         _ position: TextLineStorage<TextLine>.TextLinePosition,
         textStorage: NSTextStorage,
@@ -273,34 +276,58 @@ extension TextLayoutManager {
             return CGSize(width: 0, height: estimateLineHeight())
         }
 
-        var height: CGFloat = 0
         var width: CGFloat = 0
-        let relativeMinY = max(layoutData.minY - position.yPos, 0)
-        let relativeMaxY = max(layoutData.maxY - position.yPos, relativeMinY)
-
-//        for lineFragmentPosition in line.lineFragments.linesStartingAt(
-//            relativeMinY,
-//            until: relativeMaxY
-//        ) {
         for lineFragmentPosition in line.lineFragments {
             let lineFragment = lineFragmentPosition.data
             lineFragment.documentRange = lineFragmentPosition.range.translate(location: position.range.location)
-
-            layoutFragmentView(
-                inLine: position,
-                for: lineFragmentPosition,
-                at: position.yPos + lineFragmentPosition.yPos
-            )
-
             width = max(width, lineFragment.width)
-            height += lineFragment.scaledHeight
-            laidOutFragmentIDs.insert(lineFragment.id)
         }
 
-        return CGSize(width: width, height: height)
+        layoutFragmentViews(
+            of: position,
+            in: layoutData.minY..<layoutData.maxY,
+            redrawingPlacedViews: true,
+            laidOutFragmentIDs: &laidOutFragmentIDs
+        )
+
+        return CGSize(width: width, height: line.lineFragments.height)
     }
 
     // MARK: - Layout Fragment
+
+    /// Places a view for every fragment of a line that intersects a vertical band, and none for the rest.
+    ///
+    /// A fragment that already has a view keeps it, moved to where the line now puts it. When the line has just been
+    /// typeset, `redrawingPlacedViews` hands those views their fragment again and redraws them. A fragment outside the
+    /// band is left out of `laidOutFragmentIDs`, so the end of the layout pass releases its view for reuse.
+    /// - Parameters:
+    ///   - position: The line position whose fragments to place.
+    ///   - yRange: The vertical band being laid out, in the layout view's coordinate space.
+    ///   - redrawingPlacedViews: Whether a fragment that already has a view is drawn again.
+    ///   - laidOutFragmentIDs: Updated with the fragments that have a view.
+    private func layoutFragmentViews(
+        of position: TextLineStorage<TextLine>.TextLinePosition,
+        in yRange: Range<CGFloat>,
+        redrawingPlacedViews: Bool,
+        laidOutFragmentIDs: inout Set<LineFragment.ID>
+    ) {
+        guard !position.range.isEmpty else { return }
+        let relativeMinY = max(yRange.lowerBound - position.yPos, 0)
+        let relativeMaxY = max(yRange.upperBound - position.yPos, relativeMinY)
+
+        for lineFragmentPosition in position.data.lineFragments.linesStartingAt(relativeMinY, until: relativeMaxY) {
+            let lineFragment = lineFragmentPosition.data
+            let yPos = position.yPos + lineFragmentPosition.yPos
+            lineFragment.documentRange = lineFragmentPosition.range.translate(location: position.range.location)
+            laidOutFragmentIDs.insert(lineFragment.id)
+
+            if !redrawingPlacedViews, let view = viewReuseQueue.getView(forKey: lineFragment.id) {
+                view.frame.origin = CGPoint(x: edgeInsets.left, y: yPos)
+            } else {
+                layoutFragmentView(inLine: position, for: lineFragmentPosition, at: yPos)
+            }
+        }
+    }
 
     /// Lays out a line fragment view for the given line fragment at the specified y value.
     /// - Parameters:
@@ -320,19 +347,5 @@ extension TextLayoutManager {
         view.frame.origin = CGPoint(x: edgeInsets.left, y: yPos)
         layoutView?.addSubview(view, positioned: .below, relativeTo: nil)
         view.needsDisplay = true
-    }
-
-    private func updateLineViewPositions(_ position: TextLineStorage<TextLine>.TextLinePosition) -> Bool {
-        let line = position.data
-        for lineFragmentPosition in line.lineFragments {
-            guard let view = viewReuseQueue.getView(forKey: lineFragmentPosition.data.id) else {
-                return true
-            }
-            lineFragmentPosition.data.documentRange = lineFragmentPosition.range.translate(
-                location: position.range.location
-            )
-            view.frame.origin = CGPoint(x: edgeInsets.left, y: position.yPos + lineFragmentPosition.yPos)
-        }
-        return false
     }
 }
