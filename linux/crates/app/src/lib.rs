@@ -9,6 +9,7 @@ use tablepro_core::DriverRegistry;
 pub mod config;
 pub mod i18n;
 pub mod logging;
+pub mod runtime;
 mod services;
 pub mod storage;
 #[cfg(test)]
@@ -17,8 +18,8 @@ mod ui;
 
 #[derive(Debug, Error)]
 enum StartupError {
-    #[error("could not start the query history runtime: {0}")]
-    HistoryRuntime(#[source] std::io::Error),
+    #[error("could not start the background runtime: {0}")]
+    Runtime(#[source] std::io::Error),
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
     #[error("could not open the settings schema: {0}")]
@@ -74,29 +75,17 @@ fn start() -> Result<(), StartupError> {
     };
 
     let settings = std::rc::Rc::new(tablepro_storage::AppSettings::open(config::SCHEMA_ID)?);
-    let retention = settings.history_retention_days();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .map_err(StartupError::HistoryRuntime)?;
-    let storage = std::rc::Rc::new(runtime.block_on(async {
-        let storage = storage::AppStorage::open(paths, config::secret_schema()).await;
-        if let Some(history) = storage.history() {
-            match history.prune(retention).await {
-                Ok(report) if report.removed_anything() => {
-                    tracing::info!(
-                        expired = report.expired,
-                        over_cap = report.over_cap,
-                        "pruned the query history"
-                    );
-                }
-                Ok(_) => {}
-                Err(error) => tracing::warn!(%error, "history prune failed"),
-            }
-        }
-        storage
-    }));
+    let runtime = runtime::AppRuntime::build().map_err(StartupError::Runtime)?;
+    let tasks = runtime.tasks();
+    // The database migrates and prunes on open, which is too slow to
+    // hold up the first window. The menu item that needs it stays
+    // disabled until the service reports Ready.
+    let history =
+        services::history_service::HistoryService::start(paths.clone(), settings.history_retention_days(), &tasks);
+    let storage = std::rc::Rc::new(storage::AppStorage::new(
+        paths,
+        std::sync::Arc::new(tablepro_storage::SecretStore::new(config::secret_schema())),
+    ));
 
     let registry = Arc::new(build_registry());
     tracing::info!(drivers = registry.len(), "starting tablepro");
@@ -113,15 +102,14 @@ fn start() -> Result<(), StartupError> {
         registry,
         settings,
         storage,
+        tasks,
+        history,
     });
 
-    // Explicit ordered shutdown: `app.run` returned (window closed),
-    // so let the tokio runtime's worker threads finish in-flight
-    // tasks rather than getting cancelled mid-flight by an abrupt
-    // mem::forget-style leak. The history pool sits in a global
-    // OnceLock and stays usable from relm4's runtime; this runtime
-    // here is only used for the startup init / prune block_on above.
-    runtime.shutdown_timeout(std::time::Duration::from_secs(2));
+    // The main loop has returned, so nothing is producing work any
+    // more. Give what is in flight a moment to finish rather than
+    // dropping it mid-write.
+    runtime.shutdown();
     Ok(())
 }
 

@@ -51,17 +51,24 @@ pub struct AppInit {
     pub registry: Arc<DriverRegistry>,
     pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
     pub storage: crate::storage::SharedStorage,
+    pub tasks: tablepro_session::runtime::Tasks,
+    pub history: crate::services::history_service::HistoryService,
 }
 
 pub struct App {
     registry: Arc<DriverRegistry>,
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
     storage: crate::storage::SharedStorage,
+    tasks: tablepro_session::runtime::Tasks,
+    history: crate::services::history_service::HistoryService,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
     window_title: adw::WindowTitle,
     sidebar_title: adw::WindowTitle,
     disconnect_action: gio::SimpleAction,
+    /// Watches `HistoryService` and flips `win.show-history`. Aborted in
+    /// `shutdown` so it does not outlive the window it acts on.
+    history_gate: glib::JoinHandle<()>,
     sidebar_factory: FactoryVecDeque<SidebarRow>,
     sidebar_schemas: std::rc::Rc<std::cell::RefCell<Vec<Option<String>>>>,
     content_holder: adw::ToolbarView,
@@ -727,6 +734,8 @@ impl SimpleComponent for App {
             registry,
             settings,
             storage,
+            tasks,
+            history,
         } = init;
         let widgets = view_output!();
 
@@ -1137,7 +1146,8 @@ impl SimpleComponent for App {
         workspace_outer_stack.add_named(&workspace_empty_page, Some("empty"));
         workspace_outer_stack.set_visible_child_name("empty");
 
-        let disconnect_action = install_window_actions(&widgets.window, sender.clone());
+        let actions = install_window_actions(&widgets.window, sender.clone());
+        let history_gate = spawn_history_gate(actions.show_history.clone(), history.availability());
         install_window_shortcuts(&widgets.window);
         widgets.primary_menu_button.set_menu_model(Some(&primary_menu_model()));
 
@@ -1154,11 +1164,14 @@ impl SimpleComponent for App {
             registry,
             settings: settings.clone(),
             storage: storage.clone(),
+            tasks: tasks.clone(),
+            history: history.clone(),
             window: root.clone(),
             split_view: widgets.split_view.clone(),
             window_title: widgets.window_title.clone(),
             sidebar_title: widgets.sidebar_title.clone(),
-            disconnect_action,
+            disconnect_action: actions.disconnect,
+            history_gate,
             sidebar_factory,
             sidebar_schemas,
             content_holder: widgets.content_holder.clone(),
@@ -1224,30 +1237,13 @@ impl SimpleComponent for App {
             glib::ControlFlow::Continue
         });
 
-        let settings_for_prune = settings.clone();
-        let storage_for_prune = storage.clone();
-        glib::timeout_add_seconds_local(3600, move || {
-            let retention = settings_for_prune.history_retention_days();
-            let Some(history) = storage_for_prune.history().cloned() else {
-                return glib::ControlFlow::Continue;
-            };
-            relm4::spawn(async move {
-                match history.prune(retention).await {
-                    Ok(report) if report.removed_anything() => {
-                        tracing::info!(
-                            expired = report.expired,
-                            over_cap = report.over_cap,
-                            "pruned the query history"
-                        );
-                    }
-                    Ok(_) => {}
-                    Err(error) => tracing::warn!(%error, "history prune failed"),
-                }
-            });
-            glib::ControlFlow::Continue
-        });
-
         ComponentParts { model, widgets }
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        // The gate holds the window's action, so it has to stop before
+        // the window does.
+        self.history_gate.abort();
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
@@ -1407,8 +1403,13 @@ impl SimpleComponent for App {
             AppMsg::PollHealth => self.on_poll_health(),
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowAbout => self.on_show_about(),
-            AppMsg::ShowPreferences => super::preferences_dialog::PreferencesDialog::new(&self.settings, &self.storage)
-                .present(Some(&self.window)),
+            AppMsg::ShowPreferences => super::preferences_dialog::PreferencesDialog::new(
+                &self.settings,
+                &self.storage,
+                self.history.store(),
+                &self.tasks,
+            )
+            .present(Some(&self.window)),
             AppMsg::ExportResults { result, name } => {
                 super::export_dialog::present(&self.window, &self.toast_overlay, result, name, &self.settings)
             }
@@ -1450,7 +1451,36 @@ fn primary_menu_model() -> gio::Menu {
     menu
 }
 
-fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSender<App>) -> gio::SimpleAction {
+/// Flip `win.show-history` whenever `HistoryService` changes state.
+///
+/// The watch channel is read on the GTK thread, so the action is only
+/// ever touched from the thread that owns it.
+fn spawn_history_gate(
+    action: gio::SimpleAction,
+    mut availability: tokio::sync::watch::Receiver<crate::services::history_availability::HistoryAvailability>,
+) -> glib::JoinHandle<()> {
+    glib::spawn_future_local(async move {
+        loop {
+            let state = availability.borrow_and_update().clone();
+            action.set_enabled(state.is_ready());
+            if let Some(failure) = state.failure() {
+                tracing::warn!(error = failure, "query history stays unavailable");
+            }
+            if availability.changed().await.is_err() {
+                return;
+            }
+        }
+    })
+}
+
+/// The actions the model keeps a handle on because their enabled
+/// state changes after the window is built.
+struct WindowActions {
+    disconnect: gio::SimpleAction,
+    show_history: gio::SimpleAction,
+}
+
+fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSender<App>) -> WindowActions {
     let group = gio::SimpleActionGroup::new();
 
     // Twelve identical action wrappers were inlined here before; the macro
@@ -1475,7 +1505,6 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("open-editor", AppMsg::NewEditorTab),
         input_action!("close-current", AppMsg::CloseActiveWorkspaceTab),
         input_action!("preferences", AppMsg::ShowPreferences),
-        input_action!("show-history", AppMsg::ShowHistory),
         input_action!("refresh-page", AppMsg::RefreshPage),
         input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
         input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
@@ -1483,14 +1512,26 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
         input_action!("open-filter", AppMsg::ShowFilterDialog),
     ]);
-    let disconnect_action = gio::SimpleAction::new("disconnect", None);
+    let disconnect = gio::SimpleAction::new("disconnect", None);
     let sender_for_disconnect = sender.clone();
-    disconnect_action.connect_activate(move |_, _| sender_for_disconnect.input(AppMsg::Disconnect));
-    disconnect_action.set_enabled(false);
-    group.add_action(&disconnect_action);
+    disconnect.connect_activate(move |_, _| sender_for_disconnect.input(AppMsg::Disconnect));
+    disconnect.set_enabled(false);
+    group.add_action(&disconnect);
+
+    // The history database opens on a background task, so the menu item
+    // and Ctrl+H stay insensitive until `HistoryService` reports Ready.
+    let show_history = gio::SimpleAction::new("show-history", None);
+    let sender_for_history = sender.clone();
+    show_history.connect_activate(move |_, _| sender_for_history.input(AppMsg::ShowHistory));
+    show_history.set_enabled(false);
+    group.add_action(&show_history);
+
     window.insert_action_group("win", Some(&group));
-    tracing::info!(enabled = disconnect_action.is_enabled(), "registered win.disconnect");
-    disconnect_action
+    tracing::info!(enabled = disconnect.is_enabled(), "registered win.disconnect");
+    WindowActions {
+        disconnect,
+        show_history,
+    }
 }
 
 fn install_window_shortcuts(window: &adw::ApplicationWindow) {
@@ -1563,5 +1604,28 @@ mod tests {
             !names.iter().any(|name| name == "win.shortcuts"),
             "AdwApplication owns app.shortcuts now: {names:?}"
         );
+    }
+
+    #[gtk4::test]
+    fn the_history_gate_follows_availability() {
+        use crate::services::history_availability::HistoryAvailability;
+
+        let action = gio::SimpleAction::new("show-history", None);
+        action.set_enabled(false);
+        let (sender, receiver) = tokio::sync::watch::channel(HistoryAvailability::Starting);
+        let gate = spawn_history_gate(action.clone(), receiver);
+
+        crate::test_support::drain_main_context();
+        assert!(!action.is_enabled(), "enabled while the database was still opening");
+
+        sender.send_replace(HistoryAvailability::Ready);
+        crate::test_support::drain_main_context();
+        assert!(action.is_enabled(), "stayed disabled after the database opened");
+
+        sender.send_replace(HistoryAvailability::Failed("no disk".to_owned()));
+        crate::test_support::drain_main_context();
+        assert!(!action.is_enabled(), "stayed enabled after the database failed");
+
+        gate.abort();
     }
 }

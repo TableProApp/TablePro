@@ -45,6 +45,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tablepro-ssh = { path = "../ssh" }
+tablepro-session = { path = "../session" }
 tablepro-storage = { path = "../storage" }
 gio.workspace = true
 gtk4.workspace = true
@@ -54,7 +55,7 @@ glib.workspace = true
 relm4.workspace = true
 secrecy.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true

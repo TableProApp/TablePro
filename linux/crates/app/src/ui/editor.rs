@@ -16,6 +16,7 @@ use crate::services::database_service::{self, ConnectionMetadata};
 pub struct SqlEditor {
     settings: std::rc::Rc<tablepro_storage::AppSettings>,
     history: Option<tablepro_storage::QueryHistory>,
+    tasks: tablepro_session::runtime::Tasks,
     source_view: sourceview5::View,
     run_button: gtk::Button,
     cancel_button: gtk::Button,
@@ -34,6 +35,7 @@ pub struct SqlEditorInit {
     pub initial_query: Option<String>,
     pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
     pub history: Option<tablepro_storage::QueryHistory>,
+    pub tasks: tablepro_session::runtime::Tasks,
 }
 
 /// One statement's outcome inside a multi-statement script. The
@@ -404,11 +406,12 @@ impl SimpleComponent for SqlEditor {
         widgets.source_view.add_controller(drop_target);
 
         let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
-        relm4::spawn_local(grid_receiver.forward(sender.input_sender().clone(), SqlEditorInput::Grid));
+        glib::spawn_future_local(grid_receiver.forward(sender.input_sender().clone(), SqlEditorInput::Grid));
 
         let model = SqlEditor {
             settings,
             history: init.history.clone(),
+            tasks: init.tasks.clone(),
             source_view: widgets.source_view.clone(),
             run_button: widgets.run_button.clone(),
             cancel_button: widgets.cancel_button.clone(),
@@ -716,7 +719,7 @@ impl SqlEditor {
         let Some(history) = self.history.clone() else {
             return;
         };
-        relm4::spawn(async move {
+        self.tasks.spawn_task(async move {
             if let Err(error) = history.record(entry).await {
                 tracing::warn!(%error, "history record failed");
             }

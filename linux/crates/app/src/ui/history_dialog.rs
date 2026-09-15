@@ -6,6 +6,7 @@ use relm4::gtk::{gio, glib};
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
+use tablepro_session::runtime::Tasks;
 use tablepro_storage::QueryHistory;
 use tablepro_storage::query_history::{Entry, SearchFilter};
 
@@ -13,6 +14,7 @@ use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct HistoryDialog {
     history: Option<QueryHistory>,
+    tasks: Tasks,
     root: adw::Dialog,
     search: gtk::SearchEntry,
     pinned_group: adw::PreferencesGroup,
@@ -44,7 +46,8 @@ pub struct HistoryDialog {
 }
 
 pub struct HistoryDialogInit {
-    pub storage: crate::storage::SharedStorage,
+    pub history: crate::services::history_service::HistoryService,
+    pub tasks: Tasks,
 }
 
 #[derive(Debug)]
@@ -373,7 +376,8 @@ impl Component for HistoryDialog {
         root.insert_action_group("history", Some(&action_group));
 
         let model = Self {
-            history: init.storage.history().cloned(),
+            history: init.history.store(),
+            tasks: init.tasks.clone(),
             root: root.clone(),
             search,
             pinned_group,
@@ -435,7 +439,7 @@ impl Component for HistoryDialog {
                 let Some(history) = self.history.clone() else {
                     return;
                 };
-                relm4::spawn(async move {
+                self.tasks.spawn_task(async move {
                     if let Err(e) = history.set_pinned(id, pinned).await {
                         tracing::warn!(error = %e, "history set_pinned failed");
                     }
@@ -448,7 +452,7 @@ impl Component for HistoryDialog {
                 let Some(history) = self.history.clone() else {
                     return;
                 };
-                relm4::spawn(async move {
+                self.tasks.spawn_task(async move {
                     if let Err(e) = history.delete(id).await {
                         tracing::warn!(error = %e, "history delete failed");
                     }
@@ -526,7 +530,7 @@ impl Component for HistoryDialog {
                 let Some(history) = self.history.clone() else {
                     return;
                 };
-                relm4::spawn(async move {
+                self.tasks.spawn_task(async move {
                     if let Err(e) = history.delete_many(&ids).await {
                         tracing::warn!(error = %e, "history delete_many failed");
                     }

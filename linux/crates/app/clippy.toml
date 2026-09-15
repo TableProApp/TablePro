@@ -4,10 +4,24 @@ allow-panic-in-tests = true
 allow-dbg-in-tests = true
 allow-print-in-tests = true
 
-# Catalogue text goes into DDL verbatim, so only a driver may build one
-# from a string. User input goes through SqlDialect::parse_type or
-# parse_expression first.
 disallowed-methods = [
+    # Catalogue text goes into DDL verbatim, so only a driver may build
+    # one from a string. User input goes through SqlDialect::parse_type
+    # or parse_expression first.
     { path = "tablepro_core::column::SqlTypeExpr::from_catalog_text", reason = "catalog text only; validate user input with SqlDialect::parse_type/parse_expression" },
     { path = "tablepro_core::column::SqlExpression::from_catalog_text", reason = "catalog text only; validate user input with SqlDialect::parse_type/parse_expression" },
+
+    # Background work goes through Tasks, which holds the one handle
+    # AppRuntime created. Reaching for the ambient runtime hides where
+    # work runs and panics on the GTK thread, which has no runtime.
+    { path = "tokio::runtime::Handle::current", reason = "take the handle from Tasks" },
+    { path = "tokio::runtime::Handle::try_current", reason = "take the handle from Tasks" },
+    { path = "tokio::runtime::Handle::block_on", reason = "blocking a runtime thread deadlocks it; use spawn_blocking_task" },
+    { path = "tokio::runtime::Runtime::enter", reason = "take the handle from Tasks" },
+    { path = "tokio::runtime::Handle::enter", reason = "take the handle from Tasks" },
+
+    # Blocking the GTK main loop freezes every window, and quitting from
+    # under it skips the shutdown that flushes pending writes.
+    { path = "gtk4::glib::MainContext::block_on", reason = "await in glib::spawn_future_local instead of blocking the main loop" },
+    { path = "gio::prelude::ApplicationExt::quit", reason = "close the window so shutdown runs; run() shuts the runtime down after" },
 ]
