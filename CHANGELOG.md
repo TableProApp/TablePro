@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stutter when scrolling a very long line in the SQL editor.
 - SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
 - SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
