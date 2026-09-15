@@ -174,5 +174,12 @@ internal extension MainSplitViewController {
                 )
             }
         )
+        /// Seeded here, where the strip is built, rather than from one of its view modifiers. See
+        /// `EditorTabStripInteraction.adopt(tabIds:overflow:)`; the strip's own `onChange` carries
+        /// every later change.
+        interaction.adopt(
+            tabIds: manager.tabs.map(\.id),
+            overflow: AppSettingsManager.shared.tabs.overflow
+        )
     }
 }
