@@ -12,6 +12,10 @@ pub struct Tasks {
     handle: Handle,
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this is the one wrapper the ban points every other caller at"
+)]
 impl Tasks {
     pub fn new(handle: Handle) -> Self {
         Self { handle }

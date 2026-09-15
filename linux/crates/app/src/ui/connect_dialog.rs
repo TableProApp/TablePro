@@ -20,6 +20,7 @@ use crate::services::secret_save_report::SecretSaveReport;
 pub struct ConnectDialog {
     registry: Arc<DriverRegistry>,
     storage: crate::storage::SharedStorage,
+    tasks: tablepro_session::runtime::Tasks,
     drivers: Vec<DriverEntry>,
     driver_combo: adw::ComboRow,
     host: adw::EntryRow,
@@ -92,6 +93,7 @@ impl AuthFormState {
 pub struct ConnectDialogInit {
     pub registry: Arc<DriverRegistry>,
     pub storage: crate::storage::SharedStorage,
+    pub tasks: tablepro_session::runtime::Tasks,
 }
 
 #[derive(Debug)]
@@ -312,6 +314,7 @@ impl Component for ConnectDialog {
         let mut model = ConnectDialog {
             registry: init.registry,
             storage: init.storage,
+            tasks: init.tasks,
             drivers: drivers.clone(),
             driver_combo,
             host,
@@ -437,6 +440,7 @@ impl Component for ConnectDialog {
                 let targets = SaveTargets {
                     connections: self.storage.connections().clone(),
                     secrets: self.storage.secrets().clone(),
+                    tasks: self.tasks.clone(),
                 };
 
                 sender.command(move |out, shutdown| {
@@ -678,6 +682,7 @@ fn toggle_error(row: &adw::EntryRow, invalid: bool) {
 struct SaveTargets {
     connections: ConnectionStore,
     secrets: std::sync::Arc<dyn SecretVault>,
+    tasks: tablepro_session::runtime::Tasks,
 }
 
 async fn run_connect(
@@ -697,27 +702,13 @@ async fn run_connect(
         connection_service::establish(driver.as_ref(), opts.clone(), ssh_for_establish, read_only).await?;
     let tables = conn.list_tables().await.map_err(|e| format!("list_tables: {e}"))?;
 
-    let id = match find_existing_id(
-        &targets.connections,
-        &driver_id,
-        &opts_clone,
-        driver.is_file_based(),
-        ssh.as_ref(),
-    )
-    .await
-    {
+    let id = match find_existing_id(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await {
         Some(id) => id,
         None => Uuid::new_v4(),
     };
-    let is_new = find_existing_id(
-        &targets.connections,
-        &driver_id,
-        &opts_clone,
-        driver.is_file_based(),
-        ssh.as_ref(),
-    )
-    .await
-    .is_none();
+    let is_new = find_existing_id(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref())
+        .await
+        .is_none();
 
     let mut saved = SavedConnection {
         id,
@@ -782,7 +773,7 @@ async fn run_connect(
         }
     }
 
-    if let Err(error) = save_one(&targets.connections, &saved).await {
+    if let Err(error) = save_one(&targets, &saved).await {
         // The list write is what makes the connection real. Without it
         // the secrets just stored belong to nothing, so they go again.
         if is_new {
@@ -819,36 +810,39 @@ async fn run_connect(
 
 /// The store serialises the read, apply and write itself, so the save
 /// path is one call and two concurrent saves cannot lose an entry.
-async fn save_one(
-    connections: &ConnectionStore,
-    connection: &SavedConnection,
-) -> Result<(), tablepro_storage::StorageError> {
-    let connections = connections.clone();
+async fn save_one(targets: &SaveTargets, connection: &SavedConnection) -> Result<(), tablepro_storage::StorageError> {
+    let connections = targets.connections.clone();
     let connection = connection.clone();
-    tokio::task::spawn_blocking(move || connections.upsert_blocking(connection))
+    targets
+        .tasks
+        .spawn_blocking_task(move || connections.upsert_blocking(connection))
         .await
-        .map_err(|error| {
-            tablepro_storage::StorageError::Schema(format!("the connections write task failed: {error}"))
+        .map_err(|failure| {
+            tablepro_storage::StorageError::Schema(format!("the connections write task failed: {failure}"))
         })?
 }
 
 async fn load_connections(
-    connections: &ConnectionStore,
+    targets: &SaveTargets,
 ) -> Result<std::sync::Arc<[SavedConnection]>, tablepro_storage::StorageError> {
-    let connections = connections.clone();
-    tokio::task::spawn_blocking(move || connections.load_blocking())
+    let connections = targets.connections.clone();
+    targets
+        .tasks
+        .spawn_blocking_task(move || connections.load_blocking())
         .await
-        .map_err(|error| tablepro_storage::StorageError::Schema(format!("the connections read task failed: {error}")))?
+        .map_err(|failure| {
+            tablepro_storage::StorageError::Schema(format!("the connections read task failed: {failure}"))
+        })?
 }
 
 async fn find_existing_id(
-    connections: &ConnectionStore,
+    targets: &SaveTargets,
     driver_id: &str,
     opts: &ConnectOptions,
     file_based: bool,
     ssh: Option<&SshInputs>,
 ) -> Option<Uuid> {
-    let existing = load_connections(connections).await.ok()?;
+    let existing = load_connections(targets).await.ok()?;
     existing
         .iter()
         .find(|saved| matches_existing(saved, driver_id, opts, file_based, ssh))

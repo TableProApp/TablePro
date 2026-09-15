@@ -78,6 +78,12 @@ impl DatabaseService {
             health: ConnectionHealth::Healthy,
         }));
         let cancel = CancellationToken::new();
+        // The service is a process-wide singleton with no Tasks handle.
+        // W4-06 replaces it with an owned session registry.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the singleton has no Tasks yet; W4-06 gives it one"
+        )]
         let monitor = tokio::spawn(connection_monitor::run(inner.clone(), params, cancel.clone()));
         let entry = Entry {
             inner,

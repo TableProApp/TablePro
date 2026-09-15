@@ -19,4 +19,8 @@ disallowed-methods = [
     { path = "tokio::runtime::Handle::block_on", reason = "blocking a runtime thread deadlocks it; use spawn_blocking_task" },
     { path = "tokio::runtime::Runtime::enter", reason = "take the handle from Tasks" },
     { path = "tokio::runtime::Handle::enter", reason = "take the handle from Tasks" },
+    { path = "tokio::spawn", reason = "use Tasks::spawn_task" },
+    { path = "tokio::task::spawn_blocking", reason = "use Tasks::spawn_blocking_task" },
+    { path = "tokio::runtime::Handle::spawn", reason = "use Tasks::spawn_task" },
+    { path = "tokio::runtime::Handle::spawn_blocking", reason = "use Tasks::spawn_blocking_task" },
 ]
