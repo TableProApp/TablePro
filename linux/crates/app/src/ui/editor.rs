@@ -153,8 +153,8 @@ impl SimpleComponent for SqlEditor {
 
                 #[name = "cancel_button"]
                 gtk::Button {
-                    set_label: &crate::tr!("Cancel"),
-                    set_tooltip_text: Some(crate::tr!("Cancel running query (Esc)").as_str()),
+                    set_label: &crate::i18n::gettext("Cancel"),
+                    set_tooltip_text: Some(crate::i18n::gettext("Cancel running query (Esc)").as_str()),
                     set_visible: false,
                     add_css_class: "flat",
                     connect_clicked => SqlEditorInput::Cancel,
@@ -162,8 +162,8 @@ impl SimpleComponent for SqlEditor {
 
                 #[name = "run_button"]
                 gtk::Button {
-                    set_label: &crate::tr!("Run"),
-                    set_tooltip_text: Some(crate::tr!("Run query (Ctrl+Return)").as_str()),
+                    set_label: &crate::i18n::gettext("Run"),
+                    set_tooltip_text: Some(crate::i18n::gettext("Run query (Ctrl+Return)").as_str()),
                     add_css_class: "suggested-action",
                     connect_clicked => SqlEditorInput::Run,
                 },
@@ -429,7 +429,7 @@ impl SimpleComponent for SqlEditor {
                 let sql = buffer.text(&start, &end, false).to_string();
                 let trimmed = sql.trim().to_string();
                 if trimmed.is_empty() {
-                    self.status.set_label(&crate::tr!("empty query"));
+                    self.status.set_label(&crate::i18n::gettext("empty query"));
                     return;
                 }
                 self.execute_sql(trimmed, sender);
@@ -470,7 +470,7 @@ impl SimpleComponent for SqlEditor {
                 // German umlauts) would land mid-character.
                 let cursor_byte: usize = sql.chars().take(cursor_chars).map(char::len_utf8).sum();
                 let Some(statement) = statement_at_cursor(&sql, cursor_byte) else {
-                    self.status.set_label(&crate::tr!("No statement at cursor"));
+                    self.status.set_label(&crate::i18n::gettext("No statement at cursor"));
                     return;
                 };
                 self.execute_sql(statement, sender);
@@ -535,11 +535,11 @@ impl SimpleComponent for SqlEditor {
                     .map(|d| d.as_millis() as i64)
                     .unwrap_or(0);
                 self.record_history(elapsed, None, Outcome::Cancelled);
-                self.status.set_label(&crate::tr!("cancelled"));
+                self.status.set_label(&crate::i18n::gettext("cancelled"));
                 clear_box(&self.results_holder);
                 let cancelled_page = adw::StatusPage::builder()
-                    .title(crate::tr!("Query cancelled"))
-                    .description(crate::tr!("The running query was stopped."))
+                    .title(crate::i18n::gettext("Query cancelled"))
+                    .description(crate::i18n::gettext("The running query was stopped."))
                     .icon_name(crate::ui::icons::PROCESS_STOP)
                     .vexpand(true)
                     .build();
@@ -558,13 +558,15 @@ impl SimpleComponent for SqlEditor {
                     .map(|d| d.as_millis() as i64)
                     .unwrap_or(0);
                 let secs_str = secs.to_string();
-                let reason =
-                    crate::tr!("Query exceeded the {n}s timeout configured in Preferences.").replace("{n}", &secs_str);
+                let reason = crate::i18n::gettext_f(
+                    "Query exceeded the {n}s timeout configured in Preferences.",
+                    &[("n", &secs_str)],
+                );
                 self.record_history(elapsed, None, Outcome::Error(reason.clone()));
-                self.status.set_label(&crate::tr!("timed out"));
+                self.status.set_label(&crate::i18n::gettext("timed out"));
                 clear_box(&self.results_holder);
                 let page = adw::StatusPage::builder()
-                    .title(crate::tr!("Query timed out"))
+                    .title(crate::i18n::gettext("Query timed out"))
                     .description(&reason)
                     .icon_name(crate::ui::icons::DIALOG_WARNING)
                     .vexpand(true)
@@ -616,7 +618,7 @@ impl SqlEditor {
         let conn = match database_service::instance().active() {
             Some(c) => c,
             None => {
-                self.status.set_label(&crate::tr!("no active connection"));
+                self.status.set_label(&crate::i18n::gettext("no active connection"));
                 return;
             }
         };
@@ -630,7 +632,7 @@ impl SqlEditor {
         self.run_button.set_sensitive(false);
         self.cancel_button.set_visible(true);
         self.running_spinner.set_visible(true);
-        self.status.set_label(&crate::tr!("Running…"));
+        self.status.set_label(&crate::i18n::gettext("Running…"));
         clear_box(&self.results_holder);
         let _ = sender.output(SqlEditorOutput::RunStateChanged(true));
 
@@ -779,20 +781,20 @@ fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_error: bool) -
     if n_total == 1 {
         let ms = total_ms.to_string();
         if has_error {
-            crate::tr!("error in {ms} ms").replace("{ms}", &ms)
+            crate::i18n::gettext_f("error in {ms} ms", &[("ms", &ms)])
         } else {
-            crate::tr!("done in {ms} ms").replace("{ms}", &ms)
+            crate::i18n::gettext_f("done in {ms} ms", &[("ms", &ms)])
         }
     } else {
         let ok_s = n_ok.to_string();
         let total_s = n_total.to_string();
         let ms = total_ms.to_string();
-        let base = crate::tr!("{ok}/{total} statements · {ms} ms")
-            .replace("{ok}", &ok_s)
-            .replace("{total}", &total_s)
-            .replace("{ms}", &ms);
+        let base = crate::i18n::gettext_f(
+            "{ok}/{total} statements · {ms} ms",
+            &[("ok", &ok_s), ("total", &total_s), ("ms", &ms)],
+        );
         if has_error {
-            format!("{base} · {}", crate::tr!("error"))
+            format!("{base} · {}", crate::i18n::gettext("error"))
         } else {
             base
         }
@@ -826,23 +828,32 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
         StatementOutcomeKind::Rows(_) => {
             let ms = o.elapsed_ms.to_string();
             adw::StatusPage::builder()
-                .title(crate::tr!("Statement {n} executed").replace("{n}", &(idx + 1).to_string()))
-                .description(crate::tr!("No rows returned · {ms} ms").replace("{ms}", &ms))
+                .title(crate::i18n::gettext_f(
+                    "Statement {n} executed",
+                    &[("n", &(idx + 1).to_string())],
+                ))
+                .description(crate::i18n::gettext_f("No rows returned · {ms} ms", &[("ms", &ms)]))
                 .icon_name(crate::ui::icons::SUCCESS)
                 .vexpand(true)
                 .build()
                 .upcast()
         }
         StatementOutcomeKind::Error(msg) => adw::StatusPage::builder()
-            .title(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
+            .title(crate::i18n::gettext_f(
+                "Statement {n} failed",
+                &[("n", &(idx + 1).to_string())],
+            ))
             .description(msg)
             .icon_name(crate::ui::icons::DIALOG_ERROR)
             .vexpand(true)
             .build()
             .upcast(),
         StatementOutcomeKind::NotRun => adw::StatusPage::builder()
-            .title(crate::tr!("Statement {n} not run").replace("{n}", &(idx + 1).to_string()))
-            .description(crate::tr!("Skipped because an earlier statement failed."))
+            .title(crate::i18n::gettext_f(
+                "Statement {n} not run",
+                &[("n", &(idx + 1).to_string())],
+            ))
+            .description(crate::i18n::gettext("Skipped because an earlier statement failed."))
             .icon_name(crate::ui::icons::MEDIA_PLAYBACK_STOP)
             .vexpand(true)
             .build()
@@ -854,20 +865,25 @@ fn outcome_tab_label(idx: usize, o: &StatementOutcome) -> String {
     match &o.kind {
         StatementOutcomeKind::Rows(qr) => {
             let n_str = qr.rows.len().to_string();
-            crate::tr!("Result {n} ({rows})")
-                .replace("{n}", &(idx + 1).to_string())
-                .replace("{rows}", &n_str)
+            crate::i18n::gettext_f(
+                "Result {n} ({rows})",
+                &[("n", &(idx + 1).to_string()), ("rows", &n_str)],
+            )
         }
-        StatementOutcomeKind::Error(_) => crate::tr!("Result {n} (error)").replace("{n}", &(idx + 1).to_string()),
-        StatementOutcomeKind::NotRun => crate::tr!("Result {n} (skipped)").replace("{n}", &(idx + 1).to_string()),
+        StatementOutcomeKind::Error(_) => {
+            crate::i18n::gettext_f("Result {n} (error)", &[("n", &(idx + 1).to_string())])
+        }
+        StatementOutcomeKind::NotRun => {
+            crate::i18n::gettext_f("Result {n} (skipped)", &[("n", &(idx + 1).to_string())])
+        }
     }
 }
 
 fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome], grid_sender: &relm4::Sender<GridMsg>) {
     if outcomes.is_empty() {
         let placeholder = adw::StatusPage::builder()
-            .title(crate::tr!("Empty query"))
-            .description(crate::tr!("Type a SQL statement and press Run."))
+            .title(crate::i18n::gettext("Empty query"))
+            .description(crate::i18n::gettext("Type a SQL statement and press Run."))
             .icon_name(crate::ui::icons::TEXT_X_GENERIC)
             .vexpand(true)
             .build();
@@ -1172,7 +1188,7 @@ pub fn update_schema_buffer(buffer: &gtk::TextBuffer, schema_words: &[String]) {
 /// different files instead of offering to overwrite the first.
 pub fn export_name_for_query(query: &str) -> String {
     if query.trim().is_empty() {
-        return crate::tr!("query-results");
+        return crate::i18n::gettext("query-results");
     }
     let mut stem = String::new();
     for c in derive_tab_label(query).chars() {
@@ -1183,7 +1199,7 @@ pub fn export_name_for_query(query: &str) -> String {
         }
     }
     match stem.trim_matches('-') {
-        "" => crate::tr!("query-results"),
+        "" => crate::i18n::gettext("query-results"),
         trimmed => trimmed.to_string(),
     }
 }
@@ -1200,7 +1216,7 @@ pub fn derive_tab_label(query: &str) -> String {
         }
         return cleaned;
     }
-    crate::tr!("Empty query")
+    crate::i18n::gettext("Empty query")
 }
 
 #[cfg(test)]
@@ -1215,7 +1231,7 @@ mod tests {
 
     #[test]
     fn export_name_falls_back_when_there_is_no_statement() {
-        assert_eq!(export_name_for_query("   \n  "), crate::tr!("query-results"));
+        assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
     }
 
     #[test]

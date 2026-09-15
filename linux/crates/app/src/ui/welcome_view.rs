@@ -72,11 +72,11 @@ impl SimpleComponent for WelcomeView {
         // Printer" pattern).
         let empty_page = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::NETWORK_SERVER)
-            .title(crate::tr!("No connections yet"))
-            .description(crate::tr!("Add a database connection to get started."))
+            .title(crate::i18n::gettext("No connections yet"))
+            .description(crate::i18n::gettext("Add a database connection to get started."))
             .build();
         let empty_btn = gtk::Button::builder()
-            .label(crate::tr!("Add Connection"))
+            .label(crate::i18n::gettext("Add Connection"))
             .halign(gtk::Align::Center)
             .build();
         empty_btn.add_css_class("suggested-action");
@@ -112,11 +112,11 @@ impl SimpleComponent for WelcomeView {
         // stays (it's the only CTA there); on this page the header
         // suffix is sufficient.
         let group = adw::PreferencesGroup::builder()
-            .title(crate::tr!("Saved connections"))
+            .title(crate::i18n::gettext("Saved connections"))
             .build();
         let header_btn = gtk::Button::builder()
             .icon_name(crate::ui::icons::LIST_ADD)
-            .tooltip_text(crate::tr!("Add Connection"))
+            .tooltip_text(crate::i18n::gettext("Add Connection"))
             .valign(gtk::Align::Center)
             .build();
         header_btn.add_css_class("flat");

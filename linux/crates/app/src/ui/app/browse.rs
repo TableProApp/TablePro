@@ -230,7 +230,7 @@ impl App {
                 // Connect attempt failed → drop the in-progress toast so
                 // the alert isn't competing with stale "Connecting…" UI.
                 self.dismiss_loading_page();
-                self.set_status_page(super::StatusKind::Error, &crate::tr!("Failed"), &msg);
+                self.set_status_page(super::StatusKind::Error, &crate::i18n::gettext("Failed"), &msg);
             }
         }
     }
@@ -240,7 +240,7 @@ impl App {
     /// constructed at init), so this is just a reveal flip.
     pub(super) fn on_show_filter_dialog(&self) {
         let Some(id) = self.selected_browse_tab_id() else {
-            self.show_toast(&crate::tr!("Open a table to filter rows."));
+            self.show_toast(&crate::i18n::gettext("Open a table to filter rows."));
             return;
         };
         self.dispatch_to_tab(id, BrowseTabInput::ToggleFilterStrip);
@@ -260,13 +260,13 @@ impl App {
         // with a destructive AlertDialog mirroring the close-with-
         // pending path so the user has to opt in to the data loss.
         let dialog = adw::AlertDialog::new(
-            Some(&crate::tr!("Discard pending changes?")),
-            Some(&crate::tr!(
-                "Refreshing reloads the table from the database and drops every unsaved edit on this tab."
+            Some(&crate::i18n::gettext("Discard pending changes?")),
+            Some(&crate::i18n::gettext(
+                "Refreshing reloads the table from the database and drops every unsaved edit on this tab.",
             )),
         );
-        dialog.add_response("cancel", &crate::tr!("Cancel"));
-        dialog.add_response("discard", &crate::tr!("Discard and refresh"));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("discard", &crate::i18n::gettext("Discard and refresh"));
         dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");

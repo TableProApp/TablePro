@@ -587,14 +587,14 @@ impl SimpleComponent for App {
                     #[name = "new_connection_button"]
                     pack_start = &gtk::Button {
                         set_icon_name: crate::ui::icons::LIST_ADD,
-                        set_tooltip_text: Some(crate::tr!("New connection").as_str()),
+                        set_tooltip_text: Some(crate::i18n::gettext("New connection").as_str()),
                         connect_clicked => AppMsg::OpenConnect,
                     },
 
                     #[name = "saved_connections_button"]
                     pack_start = &gtk::MenuButton {
                         set_icon_name: crate::ui::icons::DOCUMENT_OPEN,
-                        set_tooltip_text: Some(crate::tr!("Open saved connection").as_str()),
+                        set_tooltip_text: Some(crate::i18n::gettext("Open saved connection").as_str()),
 
                         #[wrap(Some)]
                         #[name = "connections_popover"]
@@ -604,7 +604,7 @@ impl SimpleComponent for App {
                     #[name = "read_only_badge"]
                     pack_end = &gtk::Label {
                         set_visible: false,
-                        set_label: &crate::tr!("Read-only"),
+                        set_label: &crate::i18n::gettext("Read-only"),
                         set_margin_end: 6,
                         add_css_class: "warning",
                         add_css_class: "caption-heading",
@@ -614,13 +614,13 @@ impl SimpleComponent for App {
                     pack_end = &adw::Spinner {
                         set_visible: false,
                         set_margin_end: 6,
-                        set_tooltip_text: Some(crate::tr!("Saving…").as_str()),
+                        set_tooltip_text: Some(crate::i18n::gettext("Saving…").as_str()),
                     },
 
                     #[name = "primary_menu_button"]
                     pack_end = &gtk::MenuButton {
                         set_icon_name: crate::ui::icons::OPEN_MENU,
-                        set_tooltip_text: Some(crate::tr!("Main menu").as_str()),
+                        set_tooltip_text: Some(crate::i18n::gettext("Main menu").as_str()),
                     },
                 },
 
@@ -648,13 +648,13 @@ impl SimpleComponent for App {
                             #[wrap(Some)]
                             #[name = "sidebar_title"]
                             set_title_widget = &adw::WindowTitle {
-                                set_title: &crate::tr!("Tables"),
+                                set_title: &crate::i18n::gettext("Tables"),
                             },
 
                             #[name = "table_search_toggle"]
                             pack_end = &gtk::ToggleButton {
                                 set_icon_name: crate::ui::icons::SYSTEM_SEARCH,
-                                set_tooltip_text: Some(crate::tr!("Search tables").as_str()),
+                                set_tooltip_text: Some(crate::i18n::gettext("Search tables").as_str()),
                             },
                         },
 
@@ -670,7 +670,7 @@ impl SimpleComponent for App {
                                 #[wrap(Some)]
                                 #[name = "table_search"]
                                 set_child = &gtk::SearchEntry {
-                                    set_placeholder_text: Some(crate::tr!("Filter tables…").as_str()),
+                                    set_placeholder_text: Some(crate::i18n::gettext("Filter tables…").as_str()),
                                     set_hexpand: true,
                                 },
                             },
@@ -693,7 +693,7 @@ impl SimpleComponent for App {
                             add_top_bar = &adw::Banner {
                                 set_revealed: false,
                                 set_use_markup: false,
-                                set_button_label: Some(crate::tr!("Retry").as_str()),
+                                set_button_label: Some(crate::i18n::gettext("Retry").as_str()),
                             },
                             // Content is set imperatively at the end of
                             // init() — show_welcome_page swaps in the
@@ -745,9 +745,9 @@ impl SimpleComponent for App {
             // with no UI feedback.
             if !force_close_for_close.get() && in_flight_saves_for_close.get() > 0 {
                 let dialog = adw::AlertDialog::new(
-                    Some(&crate::tr!("Saving in progress")),
-                    Some(&crate::tr!(
-                        "Waiting for pending saves to finish before closing the window."
+                    Some(&crate::i18n::gettext("Saving in progress")),
+                    Some(&crate::i18n::gettext(
+                        "Waiting for pending saves to finish before closing the window.",
                     )),
                 );
                 dialog.set_can_close(false);
@@ -782,13 +782,13 @@ impl SimpleComponent for App {
                 // to {name}"); window close groups across N tabs so
                 // it stays generic.
                 let dialog = adw::AlertDialog::new(None, None);
-                dialog.set_heading(Some(&crate::tr!("Save changes before closing?")));
-                dialog.set_body(&crate::tr!(
-                    "One or more tabs have unsaved changes. They will be permanently lost if you discard them."
+                dialog.set_heading(Some(&crate::i18n::gettext("Save changes before closing?")));
+                dialog.set_body(&crate::i18n::gettext(
+                    "One or more tabs have unsaved changes. They will be permanently lost if you discard them.",
                 ));
-                dialog.add_response("cancel", &crate::tr!("Cancel"));
-                dialog.add_response("discard", &crate::tr!("Discard"));
-                dialog.add_response("save", &crate::tr!("Save"));
+                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                dialog.add_response("discard", &crate::i18n::gettext("Discard"));
+                dialog.add_response("save", &crate::i18n::gettext("Save"));
                 dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
                 dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
                 dialog.set_default_response(Some("save"));
@@ -954,9 +954,9 @@ impl SimpleComponent for App {
         // sidebar-empty look).
         let sidebar_placeholder = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::VIEW_LIST)
-            .title(crate::tr!("No tables"))
-            .description(crate::tr!(
-                "Nothing matches the current search, or this connection has no tables yet."
+            .title(crate::i18n::gettext("No tables"))
+            .description(crate::i18n::gettext(
+                "Nothing matches the current search, or this connection has no tables yet.",
             ))
             .build();
         sidebar_placeholder.add_css_class("compact");
@@ -1014,7 +1014,7 @@ impl SimpleComponent for App {
             let label_text = current
                 .as_deref()
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| crate::tr!("Tables"));
+                .unwrap_or_else(|| crate::i18n::gettext("Tables"));
             let label = gtk::Label::builder()
                 .label(&label_text)
                 .xalign(0.0)
@@ -1036,8 +1036,8 @@ impl SimpleComponent for App {
             let new_table_button = gtk::Button::builder()
                 .icon_name(crate::ui::icons::LIST_ADD)
                 .tooltip_text(match current.as_deref() {
-                    Some(s) => crate::tr!("New Table in {schema}…").replace("{schema}", s),
-                    None => crate::tr!("New Table…"),
+                    Some(s) => crate::i18n::gettext_f("New Table in {schema}…", &[("schema", s)]),
+                    None => crate::i18n::gettext("New Table…"),
                 })
                 .valign(gtk::Align::Center)
                 .build();
@@ -1104,7 +1104,7 @@ impl SimpleComponent for App {
         // without it the only path was the keyboard shortcut and the
         // tab-bar "+", and the tab bar is hidden in this empty state.
         let workspace_empty_cta = gtk::Button::builder()
-            .label(crate::tr!("Open SQL editor"))
+            .label(crate::i18n::gettext("Open SQL editor"))
             .action_name("win.open-editor")
             .halign(gtk::Align::Center)
             .build();
@@ -1112,9 +1112,9 @@ impl SimpleComponent for App {
         workspace_empty_cta.add_css_class("pill");
         let workspace_empty_page = adw::StatusPage::builder()
             .icon_name(StatusKind::Info.icon())
-            .title(crate::tr!("Select a table"))
-            .description(crate::tr!(
-                "Pick a table from the sidebar, or use the button below (Ctrl+T)."
+            .title(crate::i18n::gettext("Select a table"))
+            .description(crate::i18n::gettext(
+                "Pick a table from the sidebar, or use the button below (Ctrl+T).",
             ))
             .child(&workspace_empty_cta)
             .build();
@@ -1254,7 +1254,7 @@ impl SimpleComponent for App {
                 // committed; users have explicit Ctrl+Z before Save.
                 // 4s timeout (vs the default 5) so the success toast
                 // doesn't hang around long after the user has moved on.
-                let msg = warning.unwrap_or_else(|| crate::tr!("Saved"));
+                let msg = warning.unwrap_or_else(|| crate::i18n::gettext("Saved"));
                 let toast = adw::Toast::builder().title(msg).timeout(4).build();
                 self.toast_overlay.add_toast(toast);
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveCompleted);
@@ -1356,14 +1356,14 @@ impl SimpleComponent for App {
                 if self.connected {
                     self.append_editor_tab(Some(text), sender);
                 } else {
-                    self.show_toast(&crate::tr!("Connect to a database first to run SQL."));
+                    self.show_toast(&crate::i18n::gettext("Connect to a database first to run SQL."));
                 }
             }
             AppMsg::ReplaceActiveTabQuery(text) => {
                 if self.connected {
                     self.on_replace_active_tab_query(text, sender);
                 } else {
-                    self.show_toast(&crate::tr!("Connect to a database first to run SQL."));
+                    self.show_toast(&crate::i18n::gettext("Connect to a database first to run SQL."));
                 }
             }
             AppMsg::PollHealth => self.on_poll_health(),
@@ -1395,20 +1395,20 @@ fn qualified_label(schema: Option<&str>, table: &str) -> String {
 fn primary_menu_model() -> gio::Menu {
     let menu = gio::Menu::new();
     let connection_section = gio::Menu::new();
-    let disconnect_item = gio::MenuItem::new(Some(&crate::tr!("Disconnect")), Some("win.disconnect"));
+    let disconnect_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Disconnect")), Some("win.disconnect"));
     disconnect_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
     connection_section.append_item(&disconnect_item);
     menu.append_section(None, &connection_section);
     let history_section = gio::Menu::new();
-    history_section.append(Some(&crate::tr!("Query History")), Some("win.show-history"));
+    history_section.append(Some(&crate::i18n::gettext("Query History")), Some("win.show-history"));
     menu.append_section(None, &history_section);
     let prefs_section = gio::Menu::new();
-    prefs_section.append(Some(&crate::tr!("Preferences")), Some("win.preferences"));
+    prefs_section.append(Some(&crate::i18n::gettext("Preferences")), Some("win.preferences"));
     menu.append_section(None, &prefs_section);
     let app_section = gio::Menu::new();
-    app_section.append(Some(&crate::tr!("Keyboard Shortcuts")), Some("app.shortcuts"));
-    app_section.append(Some(&crate::tr!("About TablePro")), Some("win.about"));
-    app_section.append(Some(&crate::tr!("Quit")), Some("win.quit"));
+    app_section.append(Some(&crate::i18n::gettext("Keyboard Shortcuts")), Some("app.shortcuts"));
+    app_section.append(Some(&crate::i18n::gettext("About TablePro")), Some("win.about"));
+    app_section.append(Some(&crate::i18n::gettext("Quit")), Some("win.quit"));
     menu.append_section(None, &app_section);
     menu
 }

@@ -91,7 +91,7 @@ impl Component for HistoryDialog {
 
     fn init_root() -> Self::Root {
         adw::Dialog::builder()
-            .title(crate::tr!("Query History"))
+            .title(crate::i18n::gettext("Query History"))
             .content_width(640)
             .content_height(640)
             .build()
@@ -100,56 +100,56 @@ impl Component for HistoryDialog {
     fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let toolbar = adw::ToolbarView::new();
         let header = adw::HeaderBar::builder().show_end_title_buttons(true).build();
-        header.set_title_widget(Some(&adw::WindowTitle::new(&crate::tr!("Query History"), "")));
+        header.set_title_widget(Some(&adw::WindowTitle::new(&crate::i18n::gettext("Query History"), "")));
 
         let filter_popover = gtk::Popover::new();
         let filter_button = gtk::MenuButton::builder()
-            .label(crate::tr!("Filter"))
+            .label(crate::i18n::gettext("Filter"))
             .always_show_arrow(true)
-            .tooltip_text(crate::tr!("Filter history"))
+            .tooltip_text(crate::i18n::gettext("Filter history"))
             .popover(&filter_popover)
             .build();
 
         let connections = database_service::instance().all_connections();
 
-        let conn_strings: Vec<String> = std::iter::once(crate::tr!("All connections"))
+        let conn_strings: Vec<String> = std::iter::once(crate::i18n::gettext("All connections"))
             .chain(connections.iter().map(|m| m.name.clone()))
             .collect();
         let conn_strings_ref: Vec<&str> = conn_strings.iter().map(String::as_str).collect();
         let conn_model = gtk::StringList::new(&conn_strings_ref);
         let filter_connection = adw::ComboRow::builder()
-            .title(crate::tr!("Connection"))
+            .title(crate::i18n::gettext("Connection"))
             .model(&conn_model)
             .build();
 
         let status_strings = [
-            crate::tr!("Any"),
-            crate::tr!("Successful"),
-            crate::tr!("Failed"),
-            crate::tr!("Cancelled"),
+            crate::i18n::gettext("Any"),
+            crate::i18n::gettext("Successful"),
+            crate::i18n::gettext("Failed"),
+            crate::i18n::gettext("Cancelled"),
         ];
         let status_strings_ref: Vec<&str> = status_strings.iter().map(String::as_str).collect();
         let status_model = gtk::StringList::new(&status_strings_ref);
         let filter_status = adw::ComboRow::builder()
-            .title(crate::tr!("Status"))
+            .title(crate::i18n::gettext("Status"))
             .model(&status_model)
             .build();
 
         let window_strings = [
-            crate::tr!("Any time"),
-            crate::tr!("Last 24 hours"),
-            crate::tr!("Last 7 days"),
-            crate::tr!("Last 30 days"),
+            crate::i18n::gettext("Any time"),
+            crate::i18n::gettext("Last 24 hours"),
+            crate::i18n::gettext("Last 7 days"),
+            crate::i18n::gettext("Last 30 days"),
         ];
         let window_strings_ref: Vec<&str> = window_strings.iter().map(String::as_str).collect();
         let window_model = gtk::StringList::new(&window_strings_ref);
         let filter_window = adw::ComboRow::builder()
-            .title(crate::tr!("Time window"))
+            .title(crate::i18n::gettext("Time window"))
             .model(&window_model)
             .build();
 
         let reset_button = gtk::Button::builder()
-            .label(crate::tr!("Reset"))
+            .label(crate::i18n::gettext("Reset"))
             .halign(gtk::Align::End)
             .margin_top(6)
             .build();
@@ -187,8 +187,8 @@ impl Component for HistoryDialog {
         header.pack_start(&filter_button);
 
         let select_button = gtk::ToggleButton::builder()
-            .label(crate::tr!("Select"))
-            .tooltip_text(crate::tr!("Toggle multi-select"))
+            .label(crate::i18n::gettext("Select"))
+            .tooltip_text(crate::i18n::gettext("Toggle multi-select"))
             .build();
         let s_select = sender.clone();
         select_button.connect_toggled(move |btn| {
@@ -198,15 +198,21 @@ impl Component for HistoryDialog {
 
         let menu = gio::Menu::new();
         let storage_section = gio::Menu::new();
-        storage_section.append(Some(&crate::tr!("Show storage location")), Some("history.show-storage"));
+        storage_section.append(
+            Some(&crate::i18n::gettext("Show storage location")),
+            Some("history.show-storage"),
+        );
         menu.append_section(None, &storage_section);
         let danger_section = gio::Menu::new();
-        danger_section.append(Some(&crate::tr!("Clear all history…")), Some("history.clear-all"));
+        danger_section.append(
+            Some(&crate::i18n::gettext("Clear all history…")),
+            Some("history.clear-all"),
+        );
         menu.append_section(None, &danger_section);
         let menu_button = gtk::MenuButton::builder()
             .icon_name(crate::ui::icons::VIEW_MORE)
             .menu_model(&menu)
-            .tooltip_text(crate::tr!("More actions"))
+            .tooltip_text(crate::i18n::gettext("More actions"))
             .build();
         header.pack_end(&menu_button);
 
@@ -234,7 +240,7 @@ impl Component for HistoryDialog {
         action_group.add_action_entries([export_sql, export_csv, delete, clear_all, show_storage]);
 
         let search = gtk::SearchEntry::builder()
-            .placeholder_text(crate::tr!("Search queries…"))
+            .placeholder_text(crate::i18n::gettext("Search queries…"))
             .hexpand(true)
             .build();
         let s = sender.clone();
@@ -249,7 +255,7 @@ impl Component for HistoryDialog {
 
         let search_toggle = gtk::ToggleButton::builder()
             .icon_name(crate::ui::icons::SYSTEM_SEARCH)
-            .tooltip_text(crate::tr!("Search"))
+            .tooltip_text(crate::i18n::gettext("Search"))
             .build();
         let search_bar_for_toggle = search_bar.clone();
         search_toggle.connect_toggled(move |btn| {
@@ -272,7 +278,7 @@ impl Component for HistoryDialog {
         let pinned_listbox = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         pinned_listbox.add_css_class("boxed-list");
         let pinned_group = adw::PreferencesGroup::builder()
-            .title(crate::tr!("Pinned"))
+            .title(crate::i18n::gettext("Pinned"))
             .visible(false)
             .build();
         pinned_group.add(&pinned_listbox);
@@ -280,7 +286,7 @@ impl Component for HistoryDialog {
         let listbox = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
         listbox.add_css_class("boxed-list");
         let list_group = adw::PreferencesGroup::builder()
-            .title(crate::tr!("All queries"))
+            .title(crate::i18n::gettext("All queries"))
             .visible(false)
             .build();
         list_group.add(&listbox);
@@ -304,8 +310,10 @@ impl Component for HistoryDialog {
 
         let status_page = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::DOCUMENT_OPEN_RECENT)
-            .title(crate::tr!("No queries yet"))
-            .description(crate::tr!("Run a query in the SQL editor and it will appear here."))
+            .title(crate::i18n::gettext("No queries yet"))
+            .description(crate::i18n::gettext(
+                "Run a query in the SQL editor and it will appear here.",
+            ))
             .vexpand(true)
             .build();
 
@@ -324,15 +332,15 @@ impl Component for HistoryDialog {
         selection_label.add_css_class("dim-label");
 
         let export_menu = gio::Menu::new();
-        export_menu.append(Some(&crate::tr!("Export as SQL")), Some("history.export-sql"));
-        export_menu.append(Some(&crate::tr!("Export as CSV")), Some("history.export-csv"));
+        export_menu.append(Some(&crate::i18n::gettext("Export as SQL")), Some("history.export-sql"));
+        export_menu.append(Some(&crate::i18n::gettext("Export as CSV")), Some("history.export-csv"));
         let export_button = gtk::MenuButton::builder()
-            .label(crate::tr!("Export"))
+            .label(crate::i18n::gettext("Export"))
             .always_show_arrow(true)
             .menu_model(&export_menu)
             .build();
 
-        let delete_button = gtk::Button::builder().label(crate::tr!("Delete")).build();
+        let delete_button = gtk::Button::builder().label(crate::i18n::gettext("Delete")).build();
         delete_button.add_css_class("destructive-action");
         let s_del_bar = sender.clone();
         delete_button.connect_clicked(move |_| s_del_bar.input(HistoryDialogInput::DeleteSelected));
@@ -472,15 +480,20 @@ impl Component for HistoryDialog {
                 }
                 let dialog = adw::AlertDialog::new(None, None);
                 dialog.set_heading(Some(&if n == 1 {
-                    crate::tr!("Delete this query?")
+                    crate::i18n::gettext("Delete this query?")
                 } else {
-                    crate::tr!("Delete {n} queries?").replace("{n}", &n.to_string())
+                    crate::i18n::ngettext_f(
+                        "Delete {n} query?",
+                        "Delete {n} queries?",
+                        n as u32,
+                        &[("n", &n.to_string())],
+                    )
                 }));
-                dialog.set_body(&crate::tr!(
-                    "Selected entries will be permanently removed from history, including any pinned ones."
+                dialog.set_body(&crate::i18n::gettext(
+                    "Selected entries will be permanently removed from history, including any pinned ones.",
                 ));
-                dialog.add_response("cancel", &crate::tr!("Cancel"));
-                dialog.add_response("delete", &crate::tr!("Delete"));
+                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                dialog.add_response("delete", &crate::i18n::gettext("Delete"));
                 dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
                 dialog.set_default_response(Some("cancel"));
                 dialog.set_close_response("cancel");
@@ -512,13 +525,13 @@ impl Component for HistoryDialog {
 
             HistoryDialogInput::ClearAllRequested => {
                 let dialog = adw::AlertDialog::new(
-                    Some(&crate::tr!("Clear all query history?")),
-                    Some(&crate::tr!(
-                        "This permanently deletes every saved query, including pinned ones."
+                    Some(&crate::i18n::gettext("Clear all query history?")),
+                    Some(&crate::i18n::gettext(
+                        "This permanently deletes every saved query, including pinned ones.",
                     )),
                 );
-                dialog.add_response("cancel", &crate::tr!("Cancel"));
-                dialog.add_response("clear", &crate::tr!("Clear"));
+                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                dialog.add_response("clear", &crate::i18n::gettext("Clear"));
                 dialog.set_response_appearance("clear", adw::ResponseAppearance::Destructive);
                 dialog.set_default_response(Some("cancel"));
                 dialog.set_close_response("cancel");
@@ -688,14 +701,15 @@ impl HistoryDialog {
                 || self.filter_status.selected() != 0
                 || self.filter_window.selected() != 0;
             if has_search || has_filter {
-                self.status_page.set_title(&crate::tr!("No matches"));
-                self.status_page
-                    .set_description(Some(&crate::tr!("Try a different search term or change the filters.")));
+                self.status_page.set_title(&crate::i18n::gettext("No matches"));
+                self.status_page.set_description(Some(&crate::i18n::gettext(
+                    "Try a different search term or change the filters.",
+                )));
                 self.status_page.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
             } else {
-                self.status_page.set_title(&crate::tr!("No queries yet"));
-                self.status_page.set_description(Some(&crate::tr!(
-                    "Run a query in the SQL editor and it will appear here."
+                self.status_page.set_title(&crate::i18n::gettext("No queries yet"));
+                self.status_page.set_description(Some(&crate::i18n::gettext(
+                    "Run a query in the SQL editor and it will appear here.",
                 )));
                 self.status_page
                     .set_icon_name(Some(crate::ui::icons::DOCUMENT_OPEN_RECENT));
@@ -769,9 +783,9 @@ impl HistoryDialog {
             .icon_name(crate::ui::icons::VIEW_PIN)
             .valign(gtk::Align::Center)
             .tooltip_text(if entry.pinned {
-                crate::tr!("Unpin")
+                crate::i18n::gettext("Unpin")
             } else {
-                crate::tr!("Pin")
+                crate::i18n::gettext("Pin")
             })
             .build();
         pin_btn.add_css_class("flat");
@@ -786,7 +800,7 @@ impl HistoryDialog {
         let delete_btn = gtk::Button::builder()
             .icon_name(crate::ui::icons::USER_TRASH)
             .valign(gtk::Align::Center)
-            .tooltip_text(crate::tr!("Delete"))
+            .tooltip_text(crate::i18n::gettext("Delete"))
             .build();
         delete_btn.add_css_class("flat");
         delete_btn.add_css_class("destructive-action");
@@ -799,22 +813,25 @@ impl HistoryDialog {
 
         let menu = gio::Menu::new();
         let nav_section = gio::Menu::new();
-        nav_section.append(Some(&crate::tr!("Open in new tab")), Some("history-row.open"));
-        nav_section.append(Some(&crate::tr!("Replace current tab")), Some("history-row.replace"));
+        nav_section.append(Some(&crate::i18n::gettext("Open in new tab")), Some("history-row.open"));
+        nav_section.append(
+            Some(&crate::i18n::gettext("Replace current tab")),
+            Some("history-row.replace"),
+        );
         menu.append_section(None, &nav_section);
         let util_section = gio::Menu::new();
         util_section.append(
             Some(&if entry.pinned {
-                crate::tr!("Unpin")
+                crate::i18n::gettext("Unpin")
             } else {
-                crate::tr!("Pin")
+                crate::i18n::gettext("Pin")
             }),
             Some("history-row.pin"),
         );
-        util_section.append(Some(&crate::tr!("Copy SQL")), Some("history-row.copy"));
+        util_section.append(Some(&crate::i18n::gettext("Copy SQL")), Some("history-row.copy"));
         menu.append_section(None, &util_section);
         let danger_section = gio::Menu::new();
-        danger_section.append(Some(&crate::tr!("Delete")), Some("history-row.delete"));
+        danger_section.append(Some(&crate::i18n::gettext("Delete")), Some("history-row.delete"));
         menu.append_section(None, &danger_section);
 
         let popover_menu = gtk::PopoverMenu::from_model(Some(&menu));
@@ -886,7 +903,7 @@ impl HistoryDialog {
             return;
         }
         self.selection_label
-            .set_label(&crate::tr!("{n} selected").replace("{n}", &n.to_string()));
+            .set_label(&crate::i18n::gettext_f("{n} selected", &[("n", &n.to_string())]));
         self.selection_bar.set_reveal_child(true);
     }
 
@@ -920,18 +937,18 @@ impl HistoryDialog {
     fn save_export(&self, content: String, suggested_name: String) {
         let filter = gtk::FileFilter::new();
         if suggested_name.ends_with(".sql") {
-            filter.set_name(Some(&crate::tr!("SQL files")));
+            filter.set_name(Some(&crate::i18n::gettext("SQL files")));
             filter.add_mime_type("text/x-sql");
             filter.add_suffix("sql");
         } else {
-            filter.set_name(Some(&crate::tr!("CSV files")));
+            filter.set_name(Some(&crate::i18n::gettext("CSV files")));
             filter.add_mime_type("text/csv");
             filter.add_suffix("csv");
         }
         let filters = gio::ListStore::new::<gtk::FileFilter>();
         filters.append(&filter);
         let dialog = gtk::FileDialog::builder()
-            .title(crate::tr!("Export query history"))
+            .title(crate::i18n::gettext("Export query history"))
             .modal(true)
             .initial_name(&suggested_name)
             .default_filter(&filter)
@@ -981,7 +998,7 @@ fn preview_title(query: &str) -> String {
     if collected.chars().count() < first_line.chars().count() {
         format!("{collected}…")
     } else if collected.is_empty() {
-        crate::tr!("Empty query")
+        crate::i18n::gettext("Empty query")
     } else {
         collected
     }
@@ -994,7 +1011,7 @@ fn format_subtitle(entry: &Entry) -> String {
         parts.push(format!("{d} ms"));
     }
     if entry.cancelled {
-        parts.push(crate::tr!("cancelled"));
+        parts.push(crate::i18n::gettext("cancelled"));
     } else if let Some(err) = &entry.error {
         let trimmed: String = err.chars().take(48).collect();
         parts.push(if trimmed.chars().count() < err.chars().count() {
@@ -1003,7 +1020,12 @@ fn format_subtitle(entry: &Entry) -> String {
             trimmed
         });
     } else if let Some(rows) = entry.rows_affected {
-        parts.push(crate::tr!("{n} row(s)").replace("{n}", &rows.to_string()));
+        parts.push(crate::i18n::ngettext_f(
+            "{n} row",
+            "{n} rows",
+            rows as u32,
+            &[("n", &rows.to_string())],
+        ));
     }
     parts.join(" · ")
 }
@@ -1013,16 +1035,16 @@ fn format_relative_time(when: SystemTime) -> String {
     let diff = now.duration_since(when).unwrap_or_default();
     let secs = diff.as_secs();
     if secs < 60 {
-        crate::tr!("just now")
+        crate::i18n::gettext("just now")
     } else if secs < 3600 {
         let n = secs / 60;
-        crate::tr!("{n} min ago").replace("{n}", &n.to_string())
+        crate::i18n::ngettext_f("{n} minute ago", "{n} minutes ago", n as u32, &[("n", &n.to_string())])
     } else if secs < 86_400 {
         let n = secs / 3600;
-        crate::tr!("{n} h ago").replace("{n}", &n.to_string())
+        crate::i18n::ngettext_f("{n} hour ago", "{n} hours ago", n as u32, &[("n", &n.to_string())])
     } else if secs < 30 * 86_400 {
         let n = secs / 86_400;
-        crate::tr!("{n} d ago").replace("{n}", &n.to_string())
+        crate::i18n::ngettext_f("{n} day ago", "{n} days ago", n as u32, &[("n", &n.to_string())])
     } else {
         let dt = chrono::DateTime::<chrono::Local>::from(when);
         dt.format("%Y-%m-%d").to_string()

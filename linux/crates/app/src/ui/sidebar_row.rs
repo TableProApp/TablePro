@@ -171,19 +171,25 @@ impl FactoryComponent for SidebarRow {
         let menu = gtk::gio::Menu::new();
         let open_section = gtk::gio::Menu::new();
         open_section.append(
-            Some(&crate::tr!("Open in new tab")),
+            Some(&crate::i18n::gettext("Open in new tab")),
             Some("sidebar-row.open-in-new-tab"),
         );
         menu.append_section(None, &open_section);
         let structure_section = gtk::gio::Menu::new();
-        structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
         structure_section.append(
-            Some(&crate::tr!("Show CREATE TABLE")),
+            Some(&crate::i18n::gettext("Edit Structure")),
+            Some("sidebar-row.edit-structure"),
+        );
+        structure_section.append(
+            Some(&crate::i18n::gettext("Show CREATE TABLE")),
             Some("sidebar-row.show-create-table"),
         );
         menu.append_section(None, &structure_section);
         let mutate_section = gtk::gio::Menu::new();
-        mutate_section.append(Some(&crate::tr!("Drop Table\u{2026}")), Some("sidebar-row.drop-table"));
+        mutate_section.append(
+            Some(&crate::i18n::gettext("Drop Table\u{2026}")),
+            Some("sidebar-row.drop-table"),
+        );
         menu.append_section(None, &mutate_section);
 
         let popover = gtk::PopoverMenu::from_model(Some(&menu));

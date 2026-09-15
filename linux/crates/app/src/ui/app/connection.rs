@@ -76,13 +76,13 @@ impl App {
             || crate::services::structure_tracker::any_pending_globally();
         if has_pending {
             let dialog = adw::AlertDialog::new(
-                Some(&crate::tr!("Discard pending changes?")),
-                Some(&crate::tr!(
-                    "Disconnecting will close every tab and drop every unsaved row edit and DDL change."
+                Some(&crate::i18n::gettext("Discard pending changes?")),
+                Some(&crate::i18n::gettext(
+                    "Disconnecting will close every tab and drop every unsaved row edit and DDL change.",
                 )),
             );
-            dialog.add_response("cancel", &crate::tr!("Cancel"));
-            dialog.add_response("discard", &crate::tr!("Discard and disconnect"));
+            dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+            dialog.add_response("discard", &crate::i18n::gettext("Discard and disconnect"));
             dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
             dialog.set_default_response(Some("cancel"));
             dialog.set_close_response("cancel");
@@ -185,14 +185,14 @@ impl App {
             .iter()
             .find(|s| s.id == id)
             .map(|s| s.name.clone())
-            .unwrap_or_else(|| crate::tr!("this connection"));
-        let title = crate::tr!("Delete {name}?").replace("{name}", &connection_name);
-        let body = crate::tr!(
-            "The saved entry and any stored passwords will be removed from your keyring. This cannot be undone."
+            .unwrap_or_else(|| crate::i18n::gettext("this connection"));
+        let title = crate::i18n::gettext_f("Delete {name}?", &[("name", &connection_name)]);
+        let body = crate::i18n::gettext(
+            "The saved entry and any stored passwords will be removed from your keyring. This cannot be undone.",
         );
         let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
-        dialog.add_response("cancel", &crate::tr!("Cancel"));
-        dialog.add_response("delete", &crate::tr!("Delete"));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("delete", &crate::i18n::gettext("Delete"));
         dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
@@ -211,8 +211,8 @@ impl App {
     pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         self.set_loading_page(
-            &crate::tr!("Connecting…"),
-            &crate::tr!("Opening {name}").replace("{name}", &saved.name),
+            &crate::i18n::gettext("Connecting…"),
+            &crate::i18n::gettext_f("Opening {name}", &[("name", &saved.name)]),
         );
         let driver_id = saved.driver_id.clone();
         let registry = self.registry.clone();
@@ -251,10 +251,10 @@ impl App {
     pub(super) fn refresh_health_banner(&self, health: Option<ConnectionHealth>) {
         match health {
             Some(ConnectionHealth::Reconnecting { attempt }) => {
-                self.reconnect_banner.set_title(
-                    &crate::tr!("Connection lost — reconnecting (attempt {n}, will keep retrying)")
-                        .replace("{n}", &attempt.to_string()),
-                );
+                self.reconnect_banner.set_title(&crate::i18n::gettext_f(
+                    "Connection lost. Reconnecting (attempt {n}, will keep retrying)",
+                    &[("n", &attempt.to_string())],
+                ));
                 self.reconnect_banner.set_revealed(true);
             }
             _ => self.reconnect_banner.set_revealed(false),
@@ -302,7 +302,7 @@ impl App {
                 self.sidebar_title.set_title(name);
             }
             None => {
-                self.sidebar_title.set_title(&crate::tr!("Tables"));
+                self.sidebar_title.set_title(&crate::i18n::gettext("Tables"));
             }
         }
     }

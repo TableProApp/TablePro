@@ -6,54 +6,63 @@ use tablepro_ssh::russh_tunnel::SshError;
 #[cfg(test)]
 pub fn build_sql_message(error: &BuildSqlError) -> String {
     match error {
-        BuildSqlError::NoPrimaryKey => crate::tr!("This table has no primary key. Use the modal Edit dialog instead."),
-        BuildSqlError::NothingToUpdate => crate::tr!("No changes to save."),
-        BuildSqlError::LengthMismatch { expected, got } => {
-            crate::tr!("Internal column count mismatch (expected {expected}, got {got}).")
-                .replace("{expected}", &expected.to_string())
-                .replace("{got}", &got.to_string())
+        BuildSqlError::NoPrimaryKey => {
+            crate::i18n::gettext("This table has no primary key. Use the modal Edit dialog instead.")
         }
+        BuildSqlError::NothingToUpdate => crate::i18n::gettext("No changes to save."),
+        BuildSqlError::LengthMismatch { expected, got } => crate::i18n::gettext_f(
+            "Internal column count mismatch (expected {expected}, got {got}).",
+            &[("expected", &expected.to_string()), ("got", &got.to_string())],
+        ),
     }
 }
 
 pub fn ssh_message(error: &SshError) -> String {
     match error {
-        SshError::RequiresOpenSsh { setting } => {
-            crate::tr!("This connection uses {setting}, which needs a newer TablePro.").replace("{setting}", setting)
-        }
-        other => crate::tr!("SSH tunnel failed: {detail}").replace("{detail}", &other.to_string()),
+        SshError::RequiresOpenSsh { setting } => crate::i18n::gettext_f(
+            "This connection uses {setting}, which needs a newer TablePro.",
+            &[("setting", setting)],
+        ),
+        other => crate::i18n::gettext_f("SSH tunnel failed: {detail}", &[("detail", &other.to_string())]),
     }
 }
 
 pub fn driver_message(error: &DriverError) -> String {
     match error {
-        DriverError::ConnectionRefused => crate::tr!("Could not reach the database. Is it running?"),
-        DriverError::AuthFailed => crate::tr!("Username or password is wrong."),
-        DriverError::Tls(detail) => crate::tr!("TLS handshake failed: {detail}").replace("{detail}", detail),
+        DriverError::ConnectionRefused => crate::i18n::gettext("Could not reach the database. Is it running?"),
+        DriverError::AuthFailed => crate::i18n::gettext("Username or password is wrong."),
+        DriverError::Tls(detail) => crate::i18n::gettext_f("TLS handshake failed: {detail}", &[("detail", detail)]),
         DriverError::Query {
             message,
             sqlstate: Some(s),
-        } => crate::tr!("Query failed (SQLSTATE {sqlstate}): {message}")
-            .replace("{sqlstate}", s)
-            .replace("{message}", message),
-        DriverError::Query { message, .. } => crate::tr!("Query failed: {message}").replace("{message}", message),
-        DriverError::Disconnected => crate::tr!("The connection was closed. Try reconnecting."),
-        DriverError::ReadOnly => {
-            crate::tr!("This connection is read-only. Reopen it without read-only mode to make changes.")
+        } => crate::i18n::gettext_f(
+            "Query failed (SQLSTATE {sqlstate}): {message}",
+            &[("sqlstate", s), ("message", message)],
+        ),
+        DriverError::Query { message, .. } => {
+            crate::i18n::gettext_f("Query failed: {message}", &[("message", message)])
         }
-        DriverError::Internal(detail) => crate::tr!("Internal driver error: {detail}").replace("{detail}", detail),
-        DriverError::IntegratedAuth(detail) => crate::tr!(
-            "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed."
-        )
-        .replace("{detail}", detail),
+        DriverError::Disconnected => crate::i18n::gettext("The connection was closed. Try reconnecting."),
+        DriverError::ReadOnly => {
+            crate::i18n::gettext("This connection is read-only. Reopen it without read-only mode to make changes.")
+        }
+        DriverError::Internal(detail) => {
+            crate::i18n::gettext_f("Internal driver error: {detail}", &[("detail", detail)])
+        }
+        DriverError::IntegratedAuth(detail) => crate::i18n::gettext_f(
+            "Kerberos login failed: {detail}. Check that klist shows a valid ticket, run kinit if it does not, and make sure the server's SPN matches the host you typed.",
+            &[("detail", detail)],
+        ),
         DriverError::Transaction {
             statement_index,
             source,
-        } => {
-            crate::tr!("Save failed at statement {n}: {error}. The transaction was rolled back; no rows were changed.")
-                .replace("{n}", &(statement_index + 1).to_string())
-                .replace("{error}", &driver_message(source))
-        }
+        } => crate::i18n::gettext_f(
+            "Save failed at statement {n}: {error}. The transaction was rolled back; no rows were changed.",
+            &[
+                ("n", &(statement_index + 1).to_string()),
+                ("error", &driver_message(source)),
+            ],
+        ),
     }
 }
 

@@ -27,11 +27,11 @@ pub enum SshInputError {
 impl SshInputError {
     pub fn message(self) -> String {
         match self {
-            Self::HostRequired => crate::tr!("SSH host is required"),
-            Self::PortOutOfRange => crate::tr!("SSH port must be a whole number from 1 to 65535"),
-            Self::UserRequired => crate::tr!("SSH username is required"),
-            Self::KeyPathRequired => crate::tr!("Private key path is required"),
-            Self::UnknownAuth => crate::tr!("Choose an SSH authentication method"),
+            Self::HostRequired => crate::i18n::gettext("SSH host is required"),
+            Self::PortOutOfRange => crate::i18n::gettext("SSH port must be a whole number from 1 to 65535"),
+            Self::UserRequired => crate::i18n::gettext("SSH username is required"),
+            Self::KeyPathRequired => crate::i18n::gettext("Private key path is required"),
+            Self::UnknownAuth => crate::i18n::gettext("Choose an SSH authentication method"),
         }
     }
 }

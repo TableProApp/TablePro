@@ -60,7 +60,7 @@ impl App {
         // GNOME HIG dismiss-only alert: "Close" reads cleaner than "OK"
         // (which implies acknowledgement of an action the user took)
         // and matches GNOME Settings' info-alert convention.
-        dialog.add_response("close", &crate::tr!("Close"));
+        dialog.add_response("close", &crate::i18n::gettext("Close"));
         dialog.set_default_response(Some("close"));
         dialog.set_close_response("close");
         dialog.present(Some(&self.window));
@@ -80,21 +80,21 @@ impl App {
 
     pub(super) fn on_show_about(&self) {
         let dialog = adw::AboutDialog::builder()
-            .application_name(crate::tr!("TablePro"))
+            .application_name(crate::i18n::gettext("TablePro"))
             .application_icon(crate::config::APP_ID)
-            .developer_name(crate::tr!("TablePro Authors"))
+            .developer_name(crate::i18n::gettext("TablePro Authors"))
             .version(crate::config::VERSION)
             .website("https://github.com/TableProApp/TablePro")
             .issue_url("https://github.com/TableProApp/TablePro/issues")
             .support_url("https://github.com/TableProApp/TablePro/discussions")
-            .copyright(crate::tr!("© 2025–2026 TablePro Authors"))
+            .copyright(crate::i18n::gettext("© 2025–2026 TablePro Authors"))
             .license_type(gtk::License::Agpl30)
-            .comments(crate::tr!(
-                "A native Linux database client built with GTK4 + libadwaita."
+            .comments(crate::i18n::gettext(
+                "A native Linux database client built with GTK4 + libadwaita.",
             ))
             .build();
         dialog.set_developers(&["TablePro Authors https://github.com/TableProApp/TablePro"]);
-        dialog.set_translator_credits(&crate::tr!("translator-credits"));
+        dialog.set_translator_credits(&crate::i18n::gettext("translator-credits"));
         dialog.present(Some(&self.window));
     }
 }

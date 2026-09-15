@@ -386,15 +386,20 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // with 0–1 rules), spacer, action buttons on the right. Drops the
     // earlier "Filter rows" title — Apply / Clear / × already mark
     // this as the filter editor.
-    let match_label = gtk::Label::builder().label(crate::tr!("Match")).build();
+    let match_label = gtk::Label::builder().label(crate::i18n::gettext("Match")).build();
     match_label.add_css_class("dim-label");
-    let combinator_dropdown = gtk::DropDown::from_strings(&[&crate::tr!("all"), &crate::tr!("any")]);
+    let combinator_dropdown = gtk::DropDown::from_strings(&[
+        &crate::i18n::pgettext("filter operator", "all"),
+        &crate::i18n::pgettext("filter operator", "any"),
+    ]);
     combinator_dropdown.set_valign(gtk::Align::Center);
     combinator_dropdown.set_selected(match state.borrow().combinator {
         Combinator::And => 0,
         Combinator::Or => 1,
     });
-    let match_suffix = gtk::Label::builder().label(crate::tr!("of these rules")).build();
+    let match_suffix = gtk::Label::builder()
+        .label(crate::i18n::gettext("of these rules"))
+        .build();
     match_suffix.add_css_class("dim-label");
     let match_row_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -409,13 +414,13 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
         .child(&match_row_box)
         .build();
     let spacer = gtk::Box::builder().hexpand(true).build();
-    let clear_btn = gtk::Button::with_label(&crate::tr!("Clear all"));
+    let clear_btn = gtk::Button::with_label(&crate::i18n::gettext("Clear all"));
     clear_btn.add_css_class("flat");
-    let apply_btn = gtk::Button::with_label(&crate::tr!("Apply"));
+    let apply_btn = gtk::Button::with_label(&crate::i18n::gettext("Apply"));
     apply_btn.add_css_class("suggested-action");
     let close_btn = gtk::Button::builder()
         .icon_name(crate::ui::icons::WINDOW_CLOSE)
-        .tooltip_text(crate::tr!("Close (Esc)"))
+        .tooltip_text(crate::i18n::gettext("Close (Esc)"))
         .build();
     close_btn.add_css_class("flat");
     header.append(&match_revealer);
@@ -463,7 +468,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     where_label.add_css_class("monospace");
     where_label.add_css_class("dim-label");
     let raw_entry = gtk::Entry::builder()
-        .placeholder_text(crate::tr!("e.g. created_at > now() - interval '1 day'"))
+        .placeholder_text(crate::i18n::gettext("e.g. created_at > now() - interval '1 day'"))
         .hexpand(true)
         .build();
     raw_entry.add_css_class("monospace");
@@ -494,7 +499,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // when they reach for it. Pre-expanded only when the saved
     // FilterSet already has rules from a previous session.
     let rules_expander = gtk::Expander::builder()
-        .label(crate::tr!("Or use the rule editor"))
+        .label(crate::i18n::gettext("Or use the rule editor"))
         .expanded(!state.borrow().rules.is_empty())
         .build();
     let rules_body = gtk::Box::builder()
@@ -512,7 +517,7 @@ pub fn build(columns: Vec<ColumnInfo>, initial: FilterSet, on_apply: Rc<dyn Fn(F
     // Inline "Add rule" button — small, left-aligned, flat.
     let add_rule_btn = gtk::Button::builder()
         .icon_name(crate::ui::icons::LIST_ADD)
-        .label(crate::tr!("Add rule"))
+        .label(crate::i18n::gettext("Add rule"))
         .halign(gtk::Align::Start)
         .build();
     add_rule_btn.add_css_class("flat");
@@ -767,7 +772,7 @@ fn build_rule_row(
         }
         ValueShape::Single => {
             let entry = gtk::Entry::builder()
-                .placeholder_text(crate::tr!("Value"))
+                .placeholder_text(crate::i18n::gettext("Value"))
                 .valign(gtk::Align::Center)
                 .hexpand(true)
                 .build();
@@ -789,11 +794,11 @@ fn build_rule_row(
         }
         ValueShape::Pair => {
             let lo = gtk::Entry::builder()
-                .placeholder_text(crate::tr!("From"))
+                .placeholder_text(crate::i18n::gettext("From"))
                 .valign(gtk::Align::Center)
                 .build();
             let hi = gtk::Entry::builder()
-                .placeholder_text(crate::tr!("To"))
+                .placeholder_text(crate::i18n::gettext("To"))
                 .valign(gtk::Align::Center)
                 .build();
             lo.set_input_purpose(input_purpose_for(&col.data_type));
@@ -834,7 +839,7 @@ fn build_rule_row(
         }
         ValueShape::List => {
             let entry = gtk::Entry::builder()
-                .placeholder_text(crate::tr!("a, b, c"))
+                .placeholder_text(crate::i18n::gettext("a, b, c"))
                 .valign(gtk::Align::Center)
                 .hexpand(true)
                 .build();
@@ -864,7 +869,7 @@ fn build_rule_row(
     // Trash button — removes this rule.
     let remove = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::tr!("Remove rule"))
+        .tooltip_text(crate::i18n::gettext("Remove rule"))
         .valign(gtk::Align::Center)
         .build();
     remove.add_css_class("flat");

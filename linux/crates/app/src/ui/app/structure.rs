@@ -24,7 +24,7 @@ impl App {
     /// Sidebar right-click → "New Table…" or schema-header "+" button.
     pub(super) fn on_new_table_tab(&mut self, schema: Option<String>, sender: ComponentSender<Self>) {
         if !self.connected {
-            self.show_toast(&crate::tr!("Connect to a database first."));
+            self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
         }
         self.append_new_structure_tab(schema, sender);
@@ -43,7 +43,7 @@ impl App {
         sender: ComponentSender<Self>,
     ) {
         if !self.connected {
-            self.show_toast(&crate::tr!("Connect to a database first."));
+            self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
         }
         let existing_structure = self.workspace_tabs.borrow().iter().find_map(|(_, tab)| match tab {
@@ -70,12 +70,13 @@ impl App {
         table: String,
         sender: ComponentSender<Self>,
     ) {
-        let title = crate::tr!("Drop {table}?").replace("{table}", &table);
-        let body =
-            crate::tr!("All rows and the table definition will be removed. This can't be undone from inside TablePro.");
+        let title = crate::i18n::gettext_f("Drop {table}?", &[("table", &table)]);
+        let body = crate::i18n::gettext(
+            "All rows and the table definition will be removed. This can't be undone from inside TablePro.",
+        );
         let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
-        dialog.add_response("cancel", &crate::tr!("Cancel"));
-        dialog.add_response("drop", &crate::tr!("Drop"));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("drop", &crate::i18n::gettext("Drop"));
         dialog.set_response_appearance("drop", adw::ResponseAppearance::Destructive);
         dialog.set_default_response(Some("cancel"));
         dialog.set_close_response("cancel");
@@ -111,7 +112,7 @@ impl App {
         let sql = match tablepro_core::sql_ddl::build_drop_table(&driver_id, schema.as_deref(), &table, true, false) {
             Ok(s) => s,
             Err(e) => {
-                self.show_error_alert(&crate::tr!("Cannot drop table"), &format!("{e}"));
+                self.show_error_alert(&crate::i18n::gettext("Cannot drop table"), &format!("{e}"));
                 return;
             }
         };
@@ -123,8 +124,8 @@ impl App {
                 .register(async move {
                     let Some(conn) = database_service::instance().active() else {
                         sender_for_cmd.input(AppMsg::ShowAlert {
-                            title: crate::tr!("Cannot drop table"),
-                            body: crate::tr!("No active connection."),
+                            title: crate::i18n::gettext("Cannot drop table"),
+                            body: crate::i18n::gettext("No active connection."),
                         });
                         return;
                     };
@@ -137,7 +138,7 @@ impl App {
                         }
                         Err(e) => {
                             sender_for_cmd.input(AppMsg::ShowAlert {
-                                title: crate::tr!("Drop failed"),
+                                title: crate::i18n::gettext("Drop failed"),
                                 body: format!("{e}"),
                             });
                         }
@@ -245,7 +246,10 @@ impl App {
         }
         let Some(driver_id) = self.current_driver_id.clone() else {
             self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-            sender.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
+            sender.input(AppMsg::StructureSaveFailed(
+                tab_id,
+                crate::i18n::gettext("No active connection."),
+            ));
             return;
         };
         let ddl_is_transactional = self
@@ -295,7 +299,10 @@ impl App {
             shutdown
                 .register(async move {
                     let Some(conn) = database_service::instance().active() else {
-                        sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
+                        sender_for_cmd.input(AppMsg::StructureSaveFailed(
+                            tab_id,
+                            crate::i18n::gettext("No active connection."),
+                        ));
                         return;
                     };
                     if ddl_is_transactional {
@@ -467,22 +474,24 @@ impl App {
             shutdown
                 .register(async move {
                     let Some(conn) = database_service::instance().active() else {
-                        sender_for_cmd.input(AppMsg::ShowToast(crate::tr!("No active connection.")));
+                        sender_for_cmd.input(AppMsg::ShowToast(crate::i18n::gettext("No active connection.")));
                         return;
                     };
                     let columns = match conn.fetch_columns(schema_for_cmd.as_deref(), &table_for_cmd).await {
                         Ok(c) => c,
                         Err(e) => {
-                            sender_for_cmd.input(AppMsg::ShowToast(
-                                crate::tr!("Couldn't read columns: {error}").replace("{error}", &format!("{e}")),
-                            ));
+                            sender_for_cmd.input(AppMsg::ShowToast(crate::i18n::gettext_f(
+                                "Couldn't read columns: {error}",
+                                &[("error", &format!("{e}"))],
+                            )));
                             return;
                         }
                     };
                     if columns.is_empty() {
-                        sender_for_cmd.input(AppMsg::ShowToast(
-                            crate::tr!("Table {table} has no columns.").replace("{table}", &table_for_cmd),
-                        ));
+                        sender_for_cmd.input(AppMsg::ShowToast(crate::i18n::gettext_f(
+                            "Table {table} has no columns.",
+                            &[("table", &table_for_cmd)],
+                        )));
                         return;
                     }
                     let indexes = conn
@@ -518,12 +527,13 @@ impl App {
                             sender_for_cmd.input(AppMsg::ShowCreateTableLoaded { sql });
                         }
                         Ok(_) => {
-                            sender_for_cmd.input(AppMsg::ShowToast(crate::tr!("Nothing to show.")));
+                            sender_for_cmd.input(AppMsg::ShowToast(crate::i18n::gettext("Nothing to show.")));
                         }
                         Err(e) => {
-                            sender_for_cmd.input(AppMsg::ShowToast(
-                                crate::tr!("Couldn't build SQL: {error}").replace("{error}", &format!("{e}")),
-                            ));
+                            sender_for_cmd.input(AppMsg::ShowToast(crate::i18n::gettext_f(
+                                "Couldn't build SQL: {error}",
+                                &[("error", &format!("{e}"))],
+                            )));
                         }
                     }
                 })
@@ -554,7 +564,7 @@ impl App {
                     let Some(conn) = database_service::instance().active() else {
                         sender_for_cmd.input(AppMsg::StructureLoadFailed {
                             tab_id,
-                            message: crate::tr!("No active connection."),
+                            message: crate::i18n::gettext("No active connection."),
                         });
                         return;
                     };
@@ -682,7 +692,7 @@ impl App {
             _ => return,
         };
         let base = if table_name.is_empty() {
-            crate::tr!("New Table")
+            crate::i18n::gettext("New Table")
         } else {
             super::workspace_tabs::qualified_browse_tab_label(schemas_count, schema, &table_name)
         };

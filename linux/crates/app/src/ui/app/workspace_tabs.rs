@@ -46,7 +46,7 @@ impl App {
         let overview_button = adw::TabButton::builder()
             .view(&tab_view)
             .action_name("overview.open")
-            .tooltip_text(crate::tr!("View open tabs"))
+            .tooltip_text(crate::i18n::gettext("View open tabs"))
             .valign(gtk::Align::Center)
             .build();
         // Hide the overview button until there are at least 2 tabs —
@@ -64,7 +64,7 @@ impl App {
         // Browse tabs come from sidebar clicks.
         let new_query_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::TAB_NEW)
-            .tooltip_text(crate::tr!("New query (Ctrl+E)"))
+            .tooltip_text(crate::i18n::gettext("New query (Ctrl+E)"))
             .valign(gtk::Align::Center)
             .build();
         new_query_button.add_css_class("flat");
@@ -120,8 +120,14 @@ impl App {
         tab_view.insert_action_group("tab", Some(&action_group));
 
         let bulk_menu = gio::Menu::new();
-        bulk_menu.append(Some(&crate::tr!("Close Other Tabs")), Some("tab.close-others"));
-        bulk_menu.append(Some(&crate::tr!("Close Tabs to the Right")), Some("tab.close-right"));
+        bulk_menu.append(
+            Some(&crate::i18n::gettext("Close Other Tabs")),
+            Some("tab.close-others"),
+        );
+        bulk_menu.append(
+            Some(&crate::i18n::gettext("Close Tabs to the Right")),
+            Some("tab.close-right"),
+        );
         tab_view.set_menu_model(Some(&bulk_menu));
 
         // Both selection-change AND any pages-list change (insert /
@@ -313,7 +319,7 @@ impl App {
                 });
 
         let page = tab_view.append(controller.widget());
-        page.set_title(&crate::tr!("New Table"));
+        page.set_title(&crate::i18n::gettext("New Table"));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
@@ -470,7 +476,7 @@ impl App {
         // by suffixing the structure tab title — "products · Structure".
         // GNOME uses U+00B7 middle dot as the canonical separator
         // (Files, Builder, Console all do this for compound titles).
-        page.set_title(&format!("{title} · {}", crate::tr!("Structure")));
+        page.set_title(&format!("{title} · {}", crate::i18n::gettext("Structure")));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
@@ -582,15 +588,16 @@ impl App {
             // the tab in the heading + factual body copy follows the
             // GNOME HIG pattern for destructive-confirmation dialogs.
             let dialog = adw::AlertDialog::new(None, None);
-            dialog.set_heading(Some(
-                &crate::tr!("Save changes to “{name}”?").replace("{name}", &tab_label),
+            dialog.set_heading(Some(&crate::i18n::gettext_f(
+                "Save changes to “{name}”?",
+                &[("name", &tab_label)],
+            )));
+            dialog.set_body(&crate::i18n::gettext(
+                "Unsaved changes will be permanently lost if you discard them.",
             ));
-            dialog.set_body(&crate::tr!(
-                "Unsaved changes will be permanently lost if you discard them."
-            ));
-            dialog.add_response("cancel", &crate::tr!("Cancel"));
-            dialog.add_response("discard", &crate::tr!("Discard"));
-            dialog.add_response("save", &crate::tr!("Save"));
+            dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+            dialog.add_response("discard", &crate::i18n::gettext("Discard"));
+            dialog.add_response("save", &crate::i18n::gettext("Save"));
             dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
             dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
             dialog.set_default_response(Some("save"));
@@ -1122,7 +1129,7 @@ impl App {
     /// editor tabs are first-class workspace tabs.
     pub(super) fn on_editor_tab_query_changed(&self, id: Uuid, query: String) {
         let label = if query.trim().is_empty() {
-            crate::tr!("Empty query")
+            crate::i18n::gettext("Empty query")
         } else {
             derive_tab_label(&query)
         };
@@ -1178,7 +1185,7 @@ pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&s
 }
 
 fn default_editor_tab_label(n: usize) -> String {
-    crate::tr!("Query {n}").replace("{n}", &n.to_string())
+    crate::i18n::gettext_f("Query {n}", &[("n", &n.to_string())])
 }
 
 /// Returns a tooltip for a Browse tab, but only when it would add info
@@ -1239,7 +1246,7 @@ impl App {
             // shortcut from feeling broken when the user hits it
             // before having closed anything (or after a reconnect
             // wiped the stack).
-            self.show_toast(&crate::tr!("No recently closed tab"));
+            self.show_toast(&crate::i18n::gettext("No recently closed tab"));
             return;
         };
         match descriptor {

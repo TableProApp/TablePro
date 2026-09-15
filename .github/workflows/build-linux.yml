@@ -68,6 +68,7 @@ jobs:
             clang \
             libclang-dev \
             adwaita-icon-theme \
+            locales \
             gnome-keyring \
             openssh-client \
             xvfb \
@@ -80,6 +81,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: linux
+      - name: Generate the en_US.UTF-8 locale
+        # glibc loads no catalogue under C or C.UTF-8, so the i18n
+        # catalogue test needs a real locale on the machine.
+        run: localedef -i en_US -f UTF-8 en_US.UTF-8
       - name: Configure
         run: meson setup _build -Dprofile=development
       - name: Format check
@@ -98,6 +103,40 @@ jobs:
             && meson devenv -C _build cargo test --locked -p tablepro-storage -- --ignored"
       - name: Dist
         run: meson dist -C _build --no-tests --formats xztar
+
+  i18n:
+    name: Translations
+    runs-on: ubuntu-24.04
+    # fedora:44 ships gettext 0.24, the first release whose xgettext reads
+    # Rust. An older one falls back to its C lexer and misreads lifetimes.
+    container:
+      image: fedora:44
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
+      - name: Install system dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc pkgconf meson ninja-build gettext git \
+            desktop-file-utils appstream glib2-devel \
+            gtk4-devel libadwaita-devel gtksourceview5-devel \
+            sqlite-devel krb5-devel clang-devel cargo rust
+      - name: POTFILES.in is current
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+            'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
+          git diff --exit-code po/POTFILES.in
+      - name: Configure
+        run: meson setup _build --fatal-meson-warnings
+      - name: The POT template still extracts
+        run: meson compile -C _build tablepro-pot
+      - name: Discard the generated template
+        run: git checkout po/tablepro.pot
 
   integration:
     name: Docker tests (${{ matrix.package }})

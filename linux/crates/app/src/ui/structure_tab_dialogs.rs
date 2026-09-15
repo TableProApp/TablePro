@@ -52,7 +52,7 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
         .show_start_title_buttons(false)
         .show_end_title_buttons(false)
         .build();
-    let cancel_btn = gtk::Button::with_label(&crate::tr!("Cancel"));
+    let cancel_btn = gtk::Button::with_label(&crate::i18n::gettext("Cancel"));
     let submit_btn = gtk::Button::with_label(submit_label);
     submit_btn.add_css_class("suggested-action");
     header.pack_start(&cancel_btn);
@@ -126,22 +126,25 @@ pub(super) fn present_index_dialog(
     columns: &[DraftColumn],
     sender: ComponentSender<StructureTab>,
 ) {
-    let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Index"), &crate::tr!("Add"));
+    let (dialog, body, submit_btn) =
+        build_form_dialog(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("Add"));
 
     // Name + Unique inside one AdwPreferencesGroup. AdwEntryRow's
     // title slot doubles as the placeholder when empty (floats up
     // when filled), so no separate "Name" label is needed.
     let detail_group = adw::PreferencesGroup::builder().build();
-    let name_row = adw::EntryRow::builder().title(crate::tr!("Name")).build();
+    let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
     detail_group.add(&name_row);
     let unique_row = adw::SwitchRow::builder()
-        .title(crate::tr!("Unique"))
-        .subtitle(crate::tr!("Reject inserts that duplicate the indexed columns"))
+        .title(crate::i18n::gettext("Unique"))
+        .subtitle(crate::i18n::gettext(
+            "Reject inserts that duplicate the indexed columns",
+        ))
         .build();
     detail_group.add(&unique_row);
     body.append(&detail_group);
 
-    body.append(&section_label(&crate::tr!("Columns")));
+    body.append(&section_label(&crate::i18n::gettext("Columns")));
     let (columns_list, column_checks) = build_column_checklist(columns);
     body.append(&columns_list);
 
@@ -153,7 +156,9 @@ pub(super) fn present_index_dialog(
         if name.trim().is_empty() {
             // Toast instead of silent no-op so the user knows why
             // their click didn't land.
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!("Index name is required.")));
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Index name is required.",
+            )));
             return;
         }
         let cols: Vec<String> = column_checks_for_resp
@@ -162,7 +167,9 @@ pub(super) fn present_index_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!("Select at least one column.")));
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Select at least one column.",
+            )));
             return;
         }
         sender_for_resp.input(StructureTabInput::AddIndex(IndexInfo {
@@ -184,34 +191,37 @@ pub(super) fn present_fk_dialog(
     sender: ComponentSender<StructureTab>,
 ) {
     let fk_actions = tablepro_core::sql_ddl::supported_fk_actions(driver_id);
-    let (dialog, body, submit_btn) = build_form_dialog(&crate::tr!("Add Foreign Key"), &crate::tr!("Add"));
+    let (dialog, body, submit_btn) =
+        build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
 
     // Name in its own AdwPreferencesGroup at the top — matches the
     // shape of the column-edit drawer + every other GNOME form.
     let name_group = adw::PreferencesGroup::builder().build();
-    let name_row = adw::EntryRow::builder().title(crate::tr!("Name")).build();
+    let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
     name_group.add(&name_row);
     body.append(&name_group);
 
-    body.append(&section_label(&crate::tr!("Source columns")));
+    body.append(&section_label(&crate::i18n::gettext("Source columns")));
     let (columns_list, column_checks) = build_column_checklist(columns);
     body.append(&columns_list);
 
     // Reference target + ON DELETE / ON UPDATE in a second group.
     // Reference columns stay free-text — wiring up an async fetch of
     // the referenced table's columns is out of scope for an MVP.
-    let ref_group = adw::PreferencesGroup::builder().title(crate::tr!("References")).build();
-    let ref_table_row = adw::EntryRow::builder().title(crate::tr!("Table")).build();
+    let ref_group = adw::PreferencesGroup::builder()
+        .title(crate::i18n::gettext("References"))
+        .build();
+    let ref_table_row = adw::EntryRow::builder().title(crate::i18n::gettext("Table")).build();
     ref_group.add(&ref_table_row);
-    let ref_cols_row = adw::EntryRow::builder().title(crate::tr!("Columns")).build();
+    let ref_cols_row = adw::EntryRow::builder().title(crate::i18n::gettext("Columns")).build();
     ref_group.add(&ref_cols_row);
     let on_delete_row = adw::ComboRow::builder()
-        .title(crate::tr!("On delete"))
+        .title(crate::i18n::gettext("On delete"))
         .model(&gtk::StringList::new(fk_actions))
         .build();
     ref_group.add(&on_delete_row);
     let on_update_row = adw::ComboRow::builder()
-        .title(crate::tr!("On update"))
+        .title(crate::i18n::gettext("On update"))
         .model(&gtk::StringList::new(fk_actions))
         .build();
     ref_group.add(&on_update_row);
@@ -224,14 +234,14 @@ pub(super) fn present_fk_dialog(
         let name = name_row.text().to_string();
         let ref_table = ref_table_row.text().to_string();
         if name.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Foreign key name is required."
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Foreign key name is required.",
             )));
             return;
         }
         if ref_table.trim().is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Reference table is required."
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Reference table is required.",
             )));
             return;
         }
@@ -241,8 +251,8 @@ pub(super) fn present_fk_dialog(
             .filter_map(|(n, c)| if c.is_active() { Some(n.clone()) } else { None })
             .collect();
         if cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Select at least one source column."
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Select at least one source column.",
             )));
             return;
         }
@@ -253,8 +263,8 @@ pub(super) fn present_fk_dialog(
             .filter(|s| !s.is_empty())
             .collect();
         if ref_cols.is_empty() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Reference columns are required."
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Reference columns are required.",
             )));
             return;
         }
@@ -262,8 +272,8 @@ pub(super) fn present_fk_dialog(
         // is structurally invalid SQL. Drivers reject it, but with an
         // opaque error after Save instead of an inline guard.
         if ref_cols.len() != cols.len() {
-            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::tr!(
-                "Source and reference column counts must match."
+            let _ = sender_for_resp.output(StructureTabOutput::ShowToast(crate::i18n::gettext(
+                "Source and reference column counts must match.",
             )));
             return;
         }

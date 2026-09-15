@@ -1,12 +1,26 @@
 # Translations
 
 TablePro Linux uses [GNU gettext](https://www.gnu.org/software/gettext/) for
-localisation. Source strings are wrapped at the call site with the `tr!`
-macro defined in `crates/app/src/i18n.rs`; at runtime
-`bindtextdomain("tablepro", …)` points gettext at the locale directory
-shipped by the package (`/app/share/locale` under Flatpak,
-`/usr/share/locale` for system installs, or `$TABLEPRO_LOCALEDIR` for
-ad-hoc testing).
+localisation. Source strings go through the helpers in
+`crates/app/src/i18n.rs`; at runtime `bindtextdomain("tablepro", …)` points
+gettext at `config::LOCALEDIR`, which meson sets at build time.
+
+## Which function to call
+
+| Case | Call |
+|---|---|
+| A plain string | `gettext("Cancel")` |
+| A string with values in it | `gettext_f("{table} in {schema}", &[("table", name), ("schema", schema)])` |
+| A count | `ngettext_f("{n} row", "{n} rows", n, &[("n", &n.to_string())])` |
+| A word whose sense depends on where it appears | `pgettext("filter operator", "all")` |
+| Both of the last two | `npgettext` / `pgettext_f` |
+
+Placeholders are **named**, never positional. A translator can reorder
+`{table}` and `{schema}` freely, and a value is substituted once, so a
+value containing braces is never expanded again. An unknown placeholder
+stays in the string rather than disappearing, which makes a typo visible.
+
+Do not translate symbols, SQL keywords, or the word TablePro.
 
 ## Adding a new translation
 
@@ -24,30 +38,41 @@ ad-hoc testing).
    ```sh
    mkdir -p ~/.local/share/locale/xx/LC_MESSAGES
    msgfmt po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
-   TABLEPRO_LOCALEDIR=~/.local/share/locale cargo run -p tablepro
+   LC_ALL=xx.UTF-8 TABLEPRO_LOCALEDIR=~/.local/share/locale ./_build/crates/app/tablepro
    ```
+
+   glibc loads no catalogue at all under `C` or `C.UTF-8`, so testing a
+   translation needs a real locale generated on the machine.
+
+## POTFILES.in
+
+`POTFILES.in` lists every file xgettext reads. Regenerate it with:
+
+```sh
+git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
+  'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
+```
+
+CI runs the same command and fails on a diff, so a new source file cannot
+silently drop out of translation.
 
 ## Regenerating tablepro.pot
 
-`tablepro.pot` is the master template. Regenerate it with
-[`xtr`](https://crates.io/crates/xtr):
+`tablepro.pot` is the master template, regenerated during release
+preparation rather than on every change:
 
 ```sh
-cargo install xtr
-xtr --keyword=tr --output=po/tablepro.pot $(cat po/POTFILES.in)
+meson compile -C _build tablepro-pot
 ```
+
+This needs **gettext 0.24 or newer**, which is the first release whose
+xgettext reads Rust. An older xgettext falls back to its C lexer, which
+misreads lifetimes such as `'static` as character constants and produces a
+template you should not commit. `meson setup` warns when the xgettext it
+found is too old.
 
 Use `msgmerge` to fold new strings into existing translations:
 
 ```sh
 for f in po/*.po; do msgmerge --update "$f" po/tablepro.pot; done
 ```
-
-## Notes
-
-- Only literal arguments to `tr!` are extracted. Avoid runtime
-  composition; use a fixed template and pass it through `format!` after
-  translation.
-- Strings shipped before this i18n infrastructure landed are still in
-  English-as-source. They need to be wrapped in `tr!` to participate in
-  translation; this is being done incrementally.

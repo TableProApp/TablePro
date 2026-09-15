@@ -41,38 +41,44 @@ pub enum SshSecretToStore {
 
 impl SshSection {
     pub fn build() -> Self {
-        let group = adw::PreferencesGroup::builder().title(crate::tr!("SSH tunnel")).build();
+        let group = adw::PreferencesGroup::builder()
+            .title(crate::i18n::gettext("SSH tunnel"))
+            .build();
 
         let expander = adw::ExpanderRow::builder()
-            .title(crate::tr!("Use SSH tunnel"))
-            .subtitle(crate::tr!("Reach the database through a bastion host"))
+            .title(crate::i18n::gettext("Use SSH tunnel"))
+            .subtitle(crate::i18n::gettext("Reach the database through a bastion host"))
             .show_enable_switch(true)
             .enable_expansion(false)
             .build();
         group.add(&expander);
 
-        let host = adw::EntryRow::builder().title(crate::tr!("Host")).build();
+        let host = adw::EntryRow::builder().title(crate::i18n::gettext("Host")).build();
         let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
-        port.set_title(&crate::tr!("Port"));
+        port.set_title(&crate::i18n::gettext("Port"));
         port.set_value(22.0);
-        let user = adw::EntryRow::builder().title(crate::tr!("Username")).build();
+        let user = adw::EntryRow::builder().title(crate::i18n::gettext("Username")).build();
 
-        let auth_pwd = crate::tr!("Password");
-        let auth_key = crate::tr!("Private key");
+        let auth_pwd = crate::i18n::gettext("Password");
+        let auth_key = crate::i18n::gettext("Private key");
         let auth_model = gtk::StringList::new(&[auth_pwd.as_str(), auth_key.as_str()]);
         let auth_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Authentication"))
+            .title(crate::i18n::gettext("Authentication"))
             .model(&auth_model)
             .selected(SSH_AUTH_PASSWORD)
             .build();
 
-        let password = adw::PasswordEntryRow::builder().title(crate::tr!("Password")).build();
+        let password = adw::PasswordEntryRow::builder()
+            .title(crate::i18n::gettext("Password"))
+            .build();
         let key_path = adw::EntryRow::builder()
-            .title(crate::tr!("Private key path"))
+            .title(crate::i18n::gettext("Private key path"))
             .text(default_ssh_key_path())
             .build();
         attach_key_browse_button(&key_path);
-        let passphrase = adw::PasswordEntryRow::builder().title(crate::tr!("Passphrase")).build();
+        let passphrase = adw::PasswordEntryRow::builder()
+            .title(crate::i18n::gettext("Passphrase"))
+            .build();
 
         expander.add_row(&host);
         expander.add_row(&port);
@@ -173,18 +179,18 @@ fn default_ssh_key_path() -> String {
 fn attach_key_browse_button(key_path: &adw::EntryRow) {
     let button = gtk::Button::builder()
         .icon_name(crate::ui::icons::DOCUMENT_OPEN)
-        .tooltip_text(crate::tr!("Browse for private key"))
+        .tooltip_text(crate::i18n::gettext("Browse for private key"))
         .valign(gtk::Align::Center)
         .build();
     button.add_css_class("flat");
     let entry = key_path.clone();
     button.connect_clicked(move |btn| {
         let dialog = gtk::FileDialog::builder()
-            .title(crate::tr!("Select SSH private key"))
+            .title(crate::i18n::gettext("Select SSH private key"))
             .modal(true)
             .build();
         let filter = gtk::FileFilter::new();
-        filter.set_name(Some(&crate::tr!("SSH keys")));
+        filter.set_name(Some(&crate::i18n::gettext("SSH keys")));
         for pattern in ["id_*", "*.pem", "*.key"] {
             filter.add_pattern(pattern);
         }
