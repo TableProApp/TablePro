@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::AuthMode;
+use tokio::sync::watch;
 use uuid::Uuid;
 
+use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
-
-const CURRENT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -60,97 +61,240 @@ pub enum SavedSshAuth {
     KeyboardInteractive,
 }
 
+/// The saved-connection list as it sits on disk.
 #[derive(Debug, Serialize, Deserialize)]
-struct ConnectionsFile {
-    version: u32,
+struct ConnectionsDocument {
     connections: Vec<SavedConnection>,
+}
+
+impl crate::document::VersionedDocument for ConnectionsDocument {
+    const KIND: &'static str = "connections";
+    const VERSION: u32 = 1;
+}
+
+/// What the store knows about the list right now.
+#[derive(Debug, Clone)]
+pub enum ConnectionListState {
+    /// Nothing read yet.
+    Loading,
+    Ready(Arc<[SavedConnection]>),
+    /// The file exists but cannot be used. The store refuses every write
+    /// while in this state, because a write would destroy whatever the
+    /// user could still recover by hand.
+    Unavailable(Arc<DocumentProblem>),
+}
+
+/// A state plus a counter, so a view can tell a real change from a
+/// re-publish of the same list.
+#[derive(Debug, Clone)]
+pub struct ConnectionListSnapshot {
+    pub revision: u64,
+    pub state: ConnectionListState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoveOutcome {
+    Removed,
+    NotPresent,
+}
+
+#[derive(Debug)]
+enum StoreState {
+    Unloaded,
+    Ready(Vec<SavedConnection>),
+    Unavailable(DocumentProblem),
 }
 
 /// The saved-connection list on disk. One store per storage root, so a
 /// development build and an installed build never share a file.
-#[derive(Debug, Clone)]
+///
+/// Every mutation holds the mutex across read, apply, encode and write,
+/// so two threads cannot interleave a read-modify-write and lose an
+/// entry.
+#[derive(Clone)]
 pub struct ConnectionStore {
+    inner: Arc<StoreInner>,
+}
+
+struct StoreInner {
     path: PathBuf,
+    state: Mutex<StoreState>,
+    snapshot: watch::Sender<ConnectionListSnapshot>,
 }
 
 impl ConnectionStore {
     pub fn new(paths: &crate::StoragePaths) -> Self {
+        let (snapshot, _) = watch::channel(ConnectionListSnapshot {
+            revision: 0,
+            state: ConnectionListState::Loading,
+        });
         Self {
-            path: paths.connections_file(),
+            inner: Arc::new(StoreInner {
+                path: paths.connections_file(),
+                state: Mutex::new(StoreState::Unloaded),
+                snapshot,
+            }),
         }
     }
 
     pub fn path(&self) -> &Path {
-        &self.path
+        &self.inner.path
     }
 
-    pub async fn load(&self) -> Result<Vec<SavedConnection>, StorageError> {
-        load_from(&self.path).await
+    pub fn subscribe(&self) -> watch::Receiver<ConnectionListSnapshot> {
+        self.inner.snapshot.subscribe()
     }
 
-    pub async fn save(&self, connections: &[SavedConnection]) -> Result<(), StorageError> {
-        save_to(&self.path, connections).await
+    pub fn snapshot(&self) -> ConnectionListSnapshot {
+        self.inner.snapshot.borrow().clone()
     }
 
-    pub async fn delete(&self, id: Uuid) -> Result<(), StorageError> {
-        let mut existing = self.load().await.unwrap_or_default();
-        existing.retain(|connection| connection.id != id);
-        self.save(&existing).await
+    pub fn load_blocking(&self) -> Result<Arc<[SavedConnection]>, StorageError> {
+        let mut state = self.lock();
+        let list = self.ensure_loaded(&mut state)?;
+        Ok(list)
     }
 
-    /// Stamp `last_opened_at = now()` on the matching connection, so the
-    /// welcome view can sort recency-first. A connection opened from the
-    /// dialog without ticking Save is not in the file, and that is not an
-    /// error: there is nothing to update.
-    pub async fn touch_last_opened(&self, id: Uuid) -> Result<(), StorageError> {
-        let mut existing = self.load().await.unwrap_or_default();
-        let Some(connection) = existing.iter_mut().find(|connection| connection.id == id) else {
+    pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
+        let mut state = self.lock();
+        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        list.retain(|saved| saved.id != connection.id);
+        list.push(connection);
+        self.commit(&mut state, list)
+    }
+
+    pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
+        let mut state = self.lock();
+        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        let before = list.len();
+        list.retain(|saved| saved.id != id);
+        if list.len() == before {
+            return Ok(RemoveOutcome::NotPresent);
+        }
+        self.commit(&mut state, list)?;
+        Ok(RemoveOutcome::Removed)
+    }
+
+    /// Stamp the last-opened time so the welcome view can sort
+    /// recency-first. An id that is not in the list writes nothing:
+    /// a connection opened without saving has nothing to update.
+    pub fn touch_last_opened_blocking(&self, id: Uuid) -> Result<(), StorageError> {
+        let mut state = self.lock();
+        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        let Some(connection) = list.iter_mut().find(|saved| saved.id == id) else {
             return Ok(());
         };
         connection.last_opened_at = Some(Utc::now());
-        self.save(&existing).await
+        self.commit(&mut state, list)
+    }
+
+    /// Move the unreadable file aside and start from an empty list,
+    /// returning the name the old file now has so the user can find it.
+    /// Only valid while the list is unavailable.
+    pub fn reset_unreadable_blocking(&self, now: std::time::SystemTime) -> Result<PathBuf, StorageError> {
+        let mut state = self.lock();
+        if !matches!(*state, StoreState::Unavailable(_)) {
+            return Err(StorageError::Schema(
+                "the saved connections are readable; there is nothing to reset".to_owned(),
+            ));
+        }
+        let moved = crate::fs::move_aside_blocking(&self.inner.path, now)?;
+        *state = StoreState::Ready(Vec::new());
+        self.publish(&state);
+        Ok(moved)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, StoreState> {
+        match self.inner.state.lock() {
+            Ok(guard) => guard,
+            // A panic mid-mutation leaves the cache suspect, so drop it
+            // and read the file again.
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                *guard = StoreState::Unloaded;
+                guard
+            }
+        }
+    }
+
+    fn ensure_loaded(&self, state: &mut StoreState) -> Result<Arc<[SavedConnection]>, StorageError> {
+        if let StoreState::Unloaded = state {
+            *state = match read_document(&self.inner.path) {
+                Ok(list) => StoreState::Ready(list),
+                Err(problem) => StoreState::Unavailable(problem),
+            };
+            self.publish(state);
+        }
+        match state {
+            StoreState::Ready(list) => Ok(Arc::from(list.as_slice())),
+            StoreState::Unavailable(problem) => Err(StorageError::DocumentUnavailable(problem.clone())),
+            StoreState::Unloaded => unreachable!("just loaded"),
+        }
+    }
+
+    /// Write first, then adopt. A failed write leaves both the file and
+    /// the cached list exactly as they were.
+    fn commit(&self, state: &mut StoreState, list: Vec<SavedConnection>) -> Result<(), StorageError> {
+        let document = ConnectionsDocument {
+            connections: list.clone(),
+        };
+        let bytes = crate::document::encode_document(&document)?;
+        crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
+        *state = StoreState::Ready(list);
+        self.publish(state);
+        Ok(())
+    }
+
+    fn publish(&self, state: &StoreState) {
+        let next = match state {
+            StoreState::Unloaded => ConnectionListState::Loading,
+            StoreState::Ready(list) => ConnectionListState::Ready(Arc::from(list.as_slice())),
+            StoreState::Unavailable(problem) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
+        };
+        let revision = self.inner.snapshot.borrow().revision + 1;
+        // send() drops the value when no receiver is alive, which would
+        // leave the snapshot stale before the first window opens.
+        self.inner
+            .snapshot
+            .send_replace(ConnectionListSnapshot { revision, state: next });
     }
 }
 
-async fn load_from(path: &Path) -> Result<Vec<SavedConnection>, StorageError> {
-    let bytes = match tokio::fs::read(path).await {
+impl std::fmt::Debug for ConnectionStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionStore")
+            .field("path", &self.inner.path)
+            .finish()
+    }
+}
+
+fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
+    let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
+        // No file is an empty list, not a problem: a first run has none.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(source) => {
-            return Err(StorageError::Io {
-                path: path.to_owned(),
-                source,
-            });
+        Err(error) => {
+            return Err(DocumentProblem::new(
+                path,
+                DocumentProblemKind::Unreadable {
+                    detail: error.to_string(),
+                },
+            ));
         }
     };
-    let file: ConnectionsFile = serde_json::from_slice(&bytes)?;
-    if file.version != CURRENT_VERSION {
-        return Err(StorageError::Schema(format!(
-            "connections.json version {} not supported (expected {})",
-            file.version, CURRENT_VERSION,
-        )));
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Ok(Vec::new());
     }
-    Ok(file.connections)
-}
-
-async fn save_to(path: &Path, connections: &[SavedConnection]) -> Result<(), StorageError> {
-    let file = ConnectionsFile {
-        version: CURRENT_VERSION,
-        connections: connections.to_vec(),
-    };
-    let json = serde_json::to_vec_pretty(&file)?;
-    let path = path.to_owned();
-    // The durable write blocks on fsync, which must not run on the GTK
-    // thread or a tokio worker that other futures share.
-    tokio::task::spawn_blocking(move || crate::fs::write_private_blocking(&path, &json))
-        .await
-        .map_err(|error| StorageError::Schema(format!("the connections write task failed: {error}")))?
+    crate::document::decode_document::<ConnectionsDocument>(path, &bytes).map(|document| document.connections)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc as StdArc;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     fn sample_connection() -> SavedConnection {
         SavedConnection {
@@ -169,64 +313,250 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn load_returns_empty_when_file_missing() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let result = load_from(&path).await.unwrap();
-        assert!(result.is_empty());
+    fn store(root: &TempDir) -> ConnectionStore {
+        ConnectionStore::new(&crate::StoragePaths::under(
+            root.path(),
+            "tablepro",
+            "app.tablepro.TablePro",
+        ))
     }
 
-    #[tokio::test]
-    async fn save_then_load_round_trips() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let original = vec![sample_connection()];
-        save_to(&path, &original).await.unwrap();
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(original, loaded);
+    fn seed(root: &TempDir, contents: &str) -> PathBuf {
+        let paths = crate::StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+        let path = paths.connections_file();
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("create");
+        std::fs::write(&path, contents).expect("seed");
+        path
     }
 
-    #[tokio::test]
-    async fn save_creates_parent_directory() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("nested/dir/connections.json");
-        save_to(&path, &[]).await.unwrap();
-        assert!(path.exists());
+    #[test]
+    fn missing_file_is_ready_empty() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+
+        let list = store.load_blocking().expect("load");
+
+        assert!(list.is_empty());
+        assert!(matches!(store.snapshot().state, ConnectionListState::Ready(_)));
     }
 
-    #[tokio::test]
-    async fn load_rejects_unknown_version() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        tokio::fs::write(&path, r#"{"version":999,"connections":[]}"#)
-            .await
-            .unwrap();
-        let err = load_from(&path).await.unwrap_err();
-        assert!(matches!(err, StorageError::Schema(_)));
+    #[test]
+    fn upsert_then_load_round_trips() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        let reopened = ConnectionStore::new(&crate::StoragePaths::under(
+            root.path(),
+            "tablepro",
+            "app.tablepro.TablePro",
+        ));
+        let list = reopened.load_blocking().expect("load");
+
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], connection);
     }
 
-    #[tokio::test]
-    async fn load_accepts_legacy_files_without_ssh_field() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let id = Uuid::new_v4();
-        let legacy = format!(
-            r#"{{"version":1,"connections":[{{
-                "id":"{id}","name":"Old","driver_id":"postgres",
-                "host":"localhost","port":5432,"database":"postgres",
-                "username":"postgres","use_tls":false}}]}}"#
+    #[test]
+    fn truncated_file_is_unavailable_and_upsert_leaves_bytes_identical() {
+        let root = TempDir::new().expect("tempdir");
+        let path = seed(&root, r#"{"version": 1, "connections": [{"id":"#);
+        let before = std::fs::read(&path).expect("read");
+        let store = store(&root);
+
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
         );
-        tokio::fs::write(&path, legacy).await.unwrap();
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(loaded.len(), 1);
-        assert!(loaded[0].ssh.is_none());
+        assert_eq!(std::fs::read(&path).expect("read"), before);
+        assert!(matches!(store.snapshot().state, ConnectionListState::Unavailable(_)));
     }
 
-    #[tokio::test]
-    async fn saved_ssh_config_round_trips_optional_port_user_and_jumps() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
+    #[test]
+    fn version_2_is_newer_and_never_written() {
+        let root = TempDir::new().expect("tempdir");
+        let path = seed(&root, r#"{"version": 2, "connections": []}"#);
+        let before = std::fs::read(&path).expect("read");
+        let store = store(&root);
+
+        let refused = store.upsert_blocking(sample_connection());
+
+        assert!(matches!(refused, Err(StorageError::DocumentUnavailable(_))));
+        assert_eq!(std::fs::read(&path).expect("read"), before);
+        let ConnectionListState::Unavailable(problem) = store.snapshot().state else {
+            panic!("expected Unavailable");
+        };
+        assert!(problem.is_newer_version());
+    }
+
+    #[test]
+    fn missing_version_is_refused() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, r#"{"connections": []}"#);
+
+        let refused = store(&root).load_blocking();
+
+        assert!(matches!(refused, Err(StorageError::DocumentUnavailable(_))));
+    }
+
+    #[test]
+    fn unknown_auth_mode_is_corrupt_not_empty() {
+        let root = TempDir::new().expect("tempdir");
+        seed(
+            &root,
+            r#"{"version": 1, "connections": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"n","driver_id":"postgres","host":"h","port":5432,"database":"d","username":"u","use_tls":false,"auth_mode":"from_the_future"}]}"#,
+        );
+
+        let refused = store(&root).load_blocking();
+
+        // Silently treating this as an empty list would lose every saved
+        // connection the moment a newer auth mode appears.
+        assert!(
+            matches!(refused, Err(StorageError::DocumentUnavailable(_))),
+            "{refused:?}"
+        );
+    }
+
+    #[test]
+    fn concurrent_upserts_all_persist() {
+        let root = TempDir::new().expect("tempdir");
+        let store = StdArc::new(store(&root));
+
+        let handles: Vec<_> = (0..16)
+            .map(|index| {
+                let store = StdArc::clone(&store);
+                std::thread::spawn(move || {
+                    let mut connection = sample_connection();
+                    connection.name = format!("connection {index}");
+                    store.upsert_blocking(connection).expect("upsert");
+                })
+            })
+            .collect();
+        for handle in handles {
+            handle.join().expect("join");
+        }
+
+        let list = store.load_blocking().expect("load");
+        assert_eq!(list.len(), 16, "an interleaved read-modify-write lost entries");
+    }
+
+    #[test]
+    fn touch_missing_id_does_not_write() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(sample_connection()).expect("upsert");
+        let path = store.path().to_owned();
+        let before = std::fs::read(&path).expect("read");
+        let revision = store.snapshot().revision;
+
+        store.touch_last_opened_blocking(Uuid::new_v4()).expect("touch");
+
+        assert_eq!(std::fs::read(&path).expect("read"), before);
+        assert_eq!(store.snapshot().revision, revision);
+    }
+
+    #[test]
+    fn touch_stamps_a_present_id() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        store.touch_last_opened_blocking(connection.id).expect("touch");
+
+        let list = store.load_blocking().expect("load");
+        assert!(list[0].last_opened_at.is_some());
+    }
+
+    #[test]
+    fn remove_reports_whether_it_removed_anything() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        assert_eq!(
+            store.remove_blocking(connection.id).expect("remove"),
+            RemoveOutcome::Removed
+        );
+        assert_eq!(
+            store.remove_blocking(connection.id).expect("remove again"),
+            RemoveOutcome::NotPresent
+        );
+        assert!(store.load_blocking().expect("load").is_empty());
+    }
+
+    #[test]
+    fn reset_returns_created_path_with_original_bytes_then_upsert_succeeds() {
+        let root = TempDir::new().expect("tempdir");
+        let path = seed(&root, "not json at all");
+        let original = std::fs::read(&path).expect("read");
+        let store = store(&root);
+        store.load_blocking().expect_err("unavailable");
+
+        let moved = store
+            .reset_unreadable_blocking(std::time::SystemTime::now())
+            .expect("reset");
+
+        assert_eq!(std::fs::read(&moved).expect("read moved"), original);
+        assert!(!path.exists());
+        store.upsert_blocking(sample_connection()).expect("upsert after reset");
+        assert_eq!(store.load_blocking().expect("load").len(), 1);
+    }
+
+    #[test]
+    fn reset_is_refused_while_the_list_is_readable() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.load_blocking().expect("load");
+
+        let refused = store.reset_unreadable_blocking(std::time::SystemTime::now());
+
+        assert!(refused.is_err());
+    }
+
+    #[test]
+    fn snapshot_revision_increments_per_successful_mutation() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let connection = sample_connection();
+
+        let start = store.snapshot().revision;
+        store.load_blocking().expect("load");
+        let after_load = store.snapshot().revision;
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        let after_upsert = store.snapshot().revision;
+        store.touch_last_opened_blocking(Uuid::new_v4()).expect("no-op touch");
+        let after_noop = store.snapshot().revision;
+
+        assert!(after_load > start);
+        assert_eq!(after_upsert, after_load + 1);
+        assert_eq!(after_noop, after_upsert, "a no-op must not publish");
+    }
+
+    #[test]
+    fn a_subscriber_sees_the_new_list() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut receiver = store.subscribe();
+
+        store.upsert_blocking(sample_connection()).expect("upsert");
+
+        let snapshot = receiver.borrow_and_update().clone();
+        let ConnectionListState::Ready(list) = snapshot.state else {
+            panic!("expected Ready");
+        };
+        assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn saved_ssh_config_round_trips_optional_port_user_and_jumps() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let path = store.path().to_owned();
         let mut full = sample_connection();
         full.ssh = Some(SavedSshConfig {
             host: "bastion.example.com".into(),
@@ -247,16 +577,16 @@ mod tests {
             auth: SavedSshAuth::Agent,
         });
 
-        save_to(&path, &[full.clone(), minimal.clone()]).await.unwrap();
-        assert_eq!(load_from(&path).await.unwrap(), vec![full, minimal]);
+        store.upsert_blocking(full.clone()).expect("upsert full");
+        store.upsert_blocking(minimal.clone()).expect("upsert minimal");
+        assert_eq!(store.load_blocking().expect("load").to_vec(), vec![full, minimal]);
 
-        let raw: serde_json::Value = serde_json::from_slice(&tokio::fs::read(&path).await.unwrap()).unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).expect("read")).expect("json");
         let minimal_ssh = &raw["connections"][1]["ssh"];
         assert!(minimal_ssh.get("port").is_none());
         assert!(minimal_ssh.get("username").is_none());
         assert!(minimal_ssh.get("jump_hosts").is_none());
     }
-
     #[test]
     fn each_ssh_auth_mode_round_trips() {
         let cases = [
@@ -277,57 +607,8 @@ mod tests {
             assert_eq!(serde_json::from_value::<SavedSshAuth>(json).unwrap(), auth);
         }
     }
-
     #[test]
     fn unknown_ssh_auth_kind_fails_to_parse() {
         assert!(serde_json::from_str::<SavedSshAuth>(r#"{"kind":"gssapi"}"#).is_err());
-    }
-
-    #[tokio::test]
-    async fn auth_mode_defaults_to_password_on_a_legacy_file() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let id = Uuid::new_v4();
-        let legacy = format!(
-            r#"{{"version":1,"connections":[{{
-                "id":"{id}","name":"Old","driver_id":"mssql",
-                "host":"localhost","port":1433,"database":"db",
-                "username":"sa","use_tls":false}}]}}"#
-        );
-        tokio::fs::write(&path, legacy).await.unwrap();
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(loaded[0].auth_mode, AuthMode::Password);
-    }
-
-    #[tokio::test]
-    async fn kerberos_is_written_as_snake_case_and_reads_back() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let mut conn = sample_connection();
-        conn.auth_mode = AuthMode::Kerberos;
-        save_to(&path, &[conn.clone()]).await.unwrap();
-        let raw: serde_json::Value = serde_json::from_slice(&tokio::fs::read(&path).await.unwrap()).unwrap();
-        assert_eq!(raw["connections"][0]["auth_mode"], "kerberos");
-        assert_eq!(load_from(&path).await.unwrap(), vec![conn]);
-    }
-
-    /// Pins the reader against a file already on disk. Renaming the
-    /// variant fails here instead of orphaning every saved connection:
-    /// an unparseable file loads as empty, and the next successful
-    /// connect writes that empty list back.
-    #[tokio::test]
-    async fn a_file_written_with_kerberos_still_loads() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("connections.json");
-        let id = Uuid::new_v4();
-        let on_disk = format!(
-            r#"{{"version":1,"connections":[{{
-                "id":"{id}","name":"Corp","driver_id":"mssql",
-                "host":"sql.corp.example","port":1433,"database":"sales",
-                "username":"","use_tls":true,"auth_mode":"kerberos"}}]}}"#
-        );
-        tokio::fs::write(&path, on_disk).await.unwrap();
-        let loaded = load_from(&path).await.unwrap();
-        assert_eq!(loaded[0].auth_mode, AuthMode::Kerberos);
     }
 }

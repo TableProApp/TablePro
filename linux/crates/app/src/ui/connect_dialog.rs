@@ -742,14 +742,28 @@ async fn run_connect(
     Ok((saved, tables))
 }
 
+/// The store serialises the read, apply and write itself, so the save
+/// path is one call and two concurrent saves cannot lose an entry.
 async fn save_one(
     connections: &ConnectionStore,
     connection: &SavedConnection,
 ) -> Result<(), tablepro_storage::StorageError> {
-    let mut existing = connections.load().await.unwrap_or_default();
-    existing.retain(|saved| saved.id != connection.id);
-    existing.push(connection.clone());
-    connections.save(&existing).await
+    let connections = connections.clone();
+    let connection = connection.clone();
+    tokio::task::spawn_blocking(move || connections.upsert_blocking(connection))
+        .await
+        .map_err(|error| {
+            tablepro_storage::StorageError::Schema(format!("the connections write task failed: {error}"))
+        })?
+}
+
+async fn load_connections(
+    connections: &ConnectionStore,
+) -> Result<std::sync::Arc<[SavedConnection]>, tablepro_storage::StorageError> {
+    let connections = connections.clone();
+    tokio::task::spawn_blocking(move || connections.load_blocking())
+        .await
+        .map_err(|error| tablepro_storage::StorageError::Schema(format!("the connections read task failed: {error}")))?
 }
 
 async fn find_existing_id(
@@ -759,11 +773,11 @@ async fn find_existing_id(
     file_based: bool,
     ssh: Option<&SshInputs>,
 ) -> Option<Uuid> {
-    let existing = connections.load().await.ok()?;
+    let existing = load_connections(connections).await.ok()?;
     existing
-        .into_iter()
-        .find(|c| matches_existing(c, driver_id, opts, file_based, ssh))
-        .map(|c| c.id)
+        .iter()
+        .find(|saved| matches_existing(saved, driver_id, opts, file_based, ssh))
+        .map(|saved| saved.id)
 }
 
 fn matches_existing(
