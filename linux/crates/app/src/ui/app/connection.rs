@@ -1,4 +1,5 @@
 use relm4::adw::prelude::*;
+use relm4::gtk::glib;
 use relm4::{Component, ComponentController, ComponentSender, adw};
 
 use tablepro_core::TableInfo;
@@ -58,10 +59,11 @@ impl App {
             // the previous ordering until the next reload.
             let sender_for_touch = sender.clone();
             let connections = self.storage.connections().clone();
-            relm4::spawn(async move {
-                let touched =
-                    tokio::task::spawn_blocking(move || connections.touch_last_opened_blocking(connection_id)).await;
-                match touched {
+            let touching = self
+                .tasks
+                .spawn_blocking_task(move || connections.touch_last_opened_blocking(connection_id));
+            glib::spawn_future_local(async move {
+                match touching.await {
                     Ok(Err(error)) => tracing::warn!(%error, "could not stamp the last-opened time"),
                     Err(error) => tracing::warn!(%error, "the last-opened task failed"),
                     Ok(Ok(())) => {}

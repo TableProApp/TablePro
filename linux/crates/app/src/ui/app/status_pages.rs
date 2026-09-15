@@ -69,7 +69,8 @@ impl App {
     pub(super) fn on_show_history(&mut self, sender: ComponentSender<Self>) {
         let dialog = HistoryDialog::builder()
             .launch(HistoryDialogInit {
-                storage: self.storage.clone(),
+                history: self.history.clone(),
+                tasks: self.tasks.clone(),
             })
             .forward(sender.input_sender(), |out| match out {
                 HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),

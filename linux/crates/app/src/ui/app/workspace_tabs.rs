@@ -165,7 +165,8 @@ impl App {
         let tab_view_for_create = tab_view.clone();
         let schema_buffer_for_create = self.schema_buffer.clone();
         let settings_for_create = self.settings.clone();
-        let history_for_create = self.storage.history().cloned();
+        let history_for_create = self.history.store();
+        let tasks_for_create = self.tasks.clone();
         let sender_for_create = sender.clone();
         tab_overview.connect_create_tab(move |_| {
             let tab_id = Uuid::new_v4();
@@ -175,6 +176,7 @@ impl App {
                     initial_query: None,
                     settings: settings_for_create.clone(),
                     history: history_for_create.clone(),
+                    tasks: tasks_for_create.clone(),
                 })
                 .forward(sender_for_create.input_sender(), move |out| match out {
                     SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
@@ -511,7 +513,8 @@ impl App {
                 schema_buffer: self.schema_buffer.clone(),
                 initial_query,
                 settings: self.settings.clone(),
-                history: self.storage.history().cloned(),
+                history: self.history.store(),
+                tasks: self.tasks.clone(),
             })
             .forward(sender.input_sender(), move |out| match out {
                 SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),

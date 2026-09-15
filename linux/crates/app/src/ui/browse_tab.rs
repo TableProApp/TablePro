@@ -1667,7 +1667,7 @@ impl SimpleComponent for BrowseTab {
         // shape; the tab's update() then routes them to the App via
         // outputs that App's forwarder tags with this tab's id.
         let grid_input = sender.input_sender().clone();
-        relm4::spawn_local(grid_receiver.forward(grid_input, |msg| match msg {
+        glib::spawn_future_local(grid_receiver.forward(grid_input, |msg| match msg {
             GridMsg::SortChanged(col_idx, ascending) => BrowseTabInput::SortChanged { col_idx, ascending },
             GridMsg::CellEdited {
                 row_position,
@@ -1746,12 +1746,12 @@ impl SimpleComponent for BrowseTab {
 
         // Subscribe to the tracker so we can refresh the pending UI
         // any time the user adds / undoes / commits a change. The
-        // channel is leaked into the GTK main loop via spawn_local,
+        // channel is leaked into the GTK main loop via spawn_future_local,
         // matching how the per-tab GridMsg channel above is wired.
         let (tracker_sender, tracker_receiver) = relm4::channel::<crate::services::change_tracker::TrackerEvent>();
         crate::services::change_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_sender));
         let input_for_tracker = sender.input_sender().clone();
-        relm4::spawn_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
+        glib::spawn_future_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
             crate::services::change_tracker::TrackerEvent::PendingCountChanged(n) => {
                 BrowseTabInput::PendingCountChanged(n)
             }
