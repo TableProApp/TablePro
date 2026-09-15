@@ -101,10 +101,10 @@ fn redirect_through_tunnel(opts: &mut ConnectOptions, remote: (String, u16), loc
 /// problem rather than a configuration one.
 fn check_auth_mode(mode: AuthMode, supports_integrated: bool, driver_name: &str) -> Result<(), String> {
     if mode == AuthMode::Kerberos && !supports_integrated {
-        return Err(
-            crate::tr!("The {driver} driver does not support Windows (Kerberos) authentication.")
-                .replace("{driver}", driver_name),
-        );
+        return Err(crate::i18n::gettext_f(
+            "The {driver} driver does not support Windows (Kerberos) authentication.",
+            &[("driver", driver_name)],
+        ));
     }
     Ok(())
 }

@@ -1,0 +1,28 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: tablepro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_US\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Reordered on purpose: the test proves a translator can move a named
+#. placeholder without touching the code.
+msgid "{table} in {schema}"
+msgstr "{schema} owns {table}"
+
+msgid "{n} row"
+msgid_plural "{n} rows"
+msgstr[0] "exactly {n} row"
+msgstr[1] "all {n} rows"
+
+msgctxt "filter operator"
+msgid "all"
+msgstr "every rule"
+
+msgctxt "filter operator"
+msgid "{n} match"
+msgid_plural "{n} matches"
+msgstr[0] "{n} hit"
+msgstr[1] "{n} hits"

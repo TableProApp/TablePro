@@ -111,46 +111,54 @@ pub fn present(
 
     let format_group = adw::PreferencesGroup::new();
     let format_labels: Vec<&str> = Format::ALL.iter().map(|f| f.label()).collect();
-    let format_row = combo_row(&crate::tr!("Format"), &format_labels);
-    let rows_label = crate::tr!("{n} rows").replace("{n}", &result.rows.len().to_string());
+    let format_row = combo_row(&crate::i18n::gettext("Format"), &format_labels);
+    let rows_label = crate::i18n::ngettext_f(
+        "{n} row",
+        "{n} rows",
+        result.rows.len() as u32,
+        &[("n", &result.rows.len().to_string())],
+    );
     format_row.set_subtitle(&rows_label);
     format_group.add(&format_row);
     page.add(&format_group);
 
     let csv_group = adw::PreferencesGroup::builder()
-        .title(crate::tr!("CSV options"))
+        .title(crate::i18n::gettext("CSV options"))
         .build();
     let rows = Rc::new(CsvRows {
-        null_to_empty: switch_row(&crate::tr!("Convert NULL to empty"), None),
-        line_break_to_space: switch_row(&crate::tr!("Convert line breaks to spaces"), None),
-        header_row: switch_row(&crate::tr!("Put field names in the first row"), None),
+        null_to_empty: switch_row(&crate::i18n::gettext("Convert NULL to empty"), None),
+        line_break_to_space: switch_row(&crate::i18n::gettext("Convert line breaks to spaces"), None),
+        header_row: switch_row(&crate::i18n::gettext("Put field names in the first row"), None),
         sanitize_formulas: switch_row(
-            &crate::tr!("Sanitize formula-like values"),
-            Some(&crate::tr!(
-                "Prefix values starting with =, +, - or @ so spreadsheets do not run them"
+            &crate::i18n::gettext("Sanitize formula-like values"),
+            Some(&crate::i18n::gettext(
+                "Prefix values starting with =, +, - or @ so spreadsheets do not run them",
             )),
         ),
         delimiter: combo_row(
-            &crate::tr!("Delimiter"),
+            &crate::i18n::gettext("Delimiter"),
             &[
-                &crate::tr!("Comma (,)"),
-                &crate::tr!("Semicolon (;)"),
-                &crate::tr!("Tab"),
-                &crate::tr!("Pipe (|)"),
+                &crate::i18n::gettext("Comma (,)"),
+                &crate::i18n::gettext("Semicolon (;)"),
+                &crate::i18n::gettext("Tab"),
+                &crate::i18n::gettext("Pipe (|)"),
             ],
         ),
         quote: combo_row(
-            &crate::tr!("Quote"),
+            &crate::i18n::gettext("Quote"),
             &[
-                &crate::tr!("Always"),
-                &crate::tr!("Quote if needed"),
-                &crate::tr!("Never"),
+                &crate::i18n::gettext("Always"),
+                &crate::i18n::gettext("Quote if needed"),
+                &crate::i18n::gettext("Never"),
             ],
         ),
-        line_break: combo_row(&crate::tr!("Line break"), &["LF (\\n)", "CRLF (\\r\\n)", "CR (\\r)"]),
+        line_break: combo_row(
+            &crate::i18n::gettext("Line break"),
+            &["LF (\\n)", "CRLF (\\r\\n)", "CR (\\r)"],
+        ),
         decimal: combo_row(
-            &crate::tr!("Decimal separator"),
-            &[&crate::tr!("Period (.)"), &crate::tr!("Comma (,)")],
+            &crate::i18n::gettext("Decimal separator"),
+            &[&crate::i18n::gettext("Period (.)"), &crate::i18n::gettext("Comma (,)")],
         ),
     });
     rows.show(&settings.csv_options());
@@ -197,7 +205,9 @@ pub fn present(
         csv_group_for_format.set_visible(pick(&Format::ALL, row.selected()) == Format::Csv);
     });
 
-    let reset_button = gtk::Button::builder().label(crate::tr!("Reset to Defaults")).build();
+    let reset_button = gtk::Button::builder()
+        .label(crate::i18n::gettext("Reset to Defaults"))
+        .build();
     reset_button.add_css_class("flat");
     let rows_for_reset = rows.clone();
     let settings_for_reset = settings.clone();
@@ -206,7 +216,9 @@ pub fn present(
         rows_for_reset.show(&settings_for_reset.csv_options());
     });
 
-    let export_button = gtk::Button::builder().label(crate::tr!("Export\u{2026}")).build();
+    let export_button = gtk::Button::builder()
+        .label(crate::i18n::gettext("Export\u{2026}"))
+        .build();
     export_button.add_css_class("suggested-action");
 
     let footer = gtk::Box::builder()
@@ -226,7 +238,7 @@ pub fn present(
     toolbar.add_bottom_bar(&footer);
 
     let dialog = adw::Dialog::builder()
-        .title(crate::tr!("Export Results"))
+        .title(crate::i18n::gettext("Export Results"))
         .content_width(480)
         .child(&toolbar)
         .build();
@@ -254,13 +266,16 @@ fn save_with_file_dialog(
     options: CsvOptions,
 ) {
     let filter = gtk::FileFilter::new();
-    filter.set_name(Some(&crate::tr!("{format} files").replace("{format}", format.label())));
+    filter.set_name(Some(&crate::i18n::gettext_f(
+        "{format} files",
+        &[("format", format.label())],
+    )));
     filter.add_mime_type(format.mime_type());
     filter.add_suffix(format.extension());
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&filter);
     let file_dialog = gtk::FileDialog::builder()
-        .title(crate::tr!("Export Results"))
+        .title(crate::i18n::gettext("Export Results"))
         .modal(true)
         .initial_name(format!("{name}.{}", format.extension()))
         .default_filter(&filter)
@@ -278,19 +293,19 @@ fn save_with_file_dialog(
         };
         let written = encoded.and_then(|text| std::fs::write(&path, text).map_err(|e| e.to_string()));
         match written {
-            Ok(()) => toast_overlay.add_toast(adw::Toast::new(
-                &crate::tr!("Exported to {path}").replace("{path}", &path.display().to_string()),
-            )),
+            Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+                "Exported to {path}",
+                &[("path", &path.display().to_string())],
+            ))),
             Err(error) => {
                 let alert = adw::AlertDialog::new(
-                    Some(&crate::tr!("Couldn't export")),
-                    Some(
-                        &crate::tr!("Writing {path} failed: {error}")
-                            .replace("{path}", &path.display().to_string())
-                            .replace("{error}", &error),
-                    ),
+                    Some(&crate::i18n::gettext("Couldn't export")),
+                    Some(&crate::i18n::gettext_f(
+                        "Writing {path} failed: {error}",
+                        &[("path", &path.display().to_string()), ("error", &error)],
+                    )),
                 );
-                alert.add_response("close", &crate::tr!("Close"));
+                alert.add_response("close", &crate::i18n::gettext("Close"));
                 alert.set_default_response(Some("close"));
                 alert.set_close_response("close");
                 alert.present(Some(&parent_for_alert));

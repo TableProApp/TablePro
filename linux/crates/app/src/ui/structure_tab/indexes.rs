@@ -37,15 +37,15 @@ pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSe
         .build();
 
     if idx.unique {
-        row.add_suffix(&index_badge(&crate::tr!("UNIQUE"), "dim-label"));
+        row.add_suffix(&index_badge(&crate::i18n::gettext("UNIQUE"), "dim-label"));
     }
     if idx.primary {
-        row.add_suffix(&index_badge(&crate::tr!("PRIMARY"), "accent"));
+        row.add_suffix(&index_badge(&crate::i18n::gettext("PRIMARY"), "accent"));
     }
 
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::tr!("Remove index"))
+        .tooltip_text(crate::i18n::gettext("Remove index"))
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
@@ -53,8 +53,8 @@ pub(super) fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSe
     // column constraint and removing it breaks the table.
     if idx.primary {
         remove_button.set_sensitive(false);
-        remove_button.set_tooltip_text(Some(&crate::tr!(
-            "Primary-key index can't be dropped here; clear the PK on the column."
+        remove_button.set_tooltip_text(Some(&crate::i18n::gettext(
+            "Primary-key index can't be dropped here; clear the PK on the column.",
         )));
     }
     let sender_for_remove = sender.clone();

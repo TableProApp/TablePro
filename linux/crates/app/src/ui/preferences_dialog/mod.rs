@@ -86,13 +86,13 @@ impl PreferencesDialog {
         let dialog = self.clone();
         imp.clear_button.connect_clicked(move |_| {
             let alert = adw::AlertDialog::new(
-                Some(&crate::tr!("Clear all query history?")),
-                Some(&crate::tr!(
-                    "This permanently deletes every saved query, including pinned ones."
+                Some(&crate::i18n::gettext("Clear all query history?")),
+                Some(&crate::i18n::gettext(
+                    "This permanently deletes every saved query, including pinned ones.",
                 )),
             );
-            alert.add_response("cancel", &crate::tr!("Cancel"));
-            alert.add_response("clear", &crate::tr!("Clear"));
+            alert.add_response("cancel", &crate::i18n::gettext("Cancel"));
+            alert.add_response("clear", &crate::i18n::gettext("Clear"));
             alert.set_response_appearance("clear", adw::ResponseAppearance::Destructive);
             alert.set_default_response(Some("cancel"));
             alert.set_close_response("cancel");

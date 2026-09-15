@@ -684,14 +684,14 @@ fn enter_edit_mode(label: &super::cell_editor::CellEditor) {
 /// that keeps the sentinel visually distinct from a literal "NULL"
 /// text value.
 pub(crate) fn editable_null_sentinel() -> String {
-    crate::tr!("<NULL>")
+    crate::i18n::gettext("<NULL>")
 }
 
 /// Read-only NULL rendering. Separate from the editable sentinel so
 /// translators can localise both forms independently — read-only
 /// cells dim the text and don't need the angle-bracket disambig.
 pub(crate) fn readonly_null_sentinel() -> String {
-    crate::tr!("NULL")
+    crate::i18n::gettext("NULL")
 }
 
 /// Placeholder text rendered in a NULL cell whose value the database
@@ -701,7 +701,7 @@ pub(crate) fn readonly_null_sentinel() -> String {
 /// as null". Italic styling comes from the `tp-null-sentinel` CSS
 /// class applied alongside.
 pub(crate) fn auto_filled_sentinel() -> String {
-    crate::tr!("(auto)")
+    crate::i18n::gettext("(auto)")
 }
 
 /// Detect whether a column's declared data_type is boolean. Mirrors
@@ -1177,10 +1177,10 @@ fn show_json_popover(label: &super::cell_editor::CellEditor, col_index: usize, s
         .has_frame(true)
         .build();
 
-    let save_button = gtk::Button::with_label(&crate::tr!("Save"));
+    let save_button = gtk::Button::with_label(&crate::i18n::gettext("Save"));
     save_button.add_css_class("suggested-action");
 
-    let cancel_button = gtk::Button::with_label(&crate::tr!("Cancel"));
+    let cancel_button = gtk::Button::with_label(&crate::i18n::gettext("Cancel"));
 
     let button_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -1406,33 +1406,48 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
     let menu = gio::Menu::new();
     if shape.edit_cell {
         let edit_section = gio::Menu::new();
-        let edit_item = gio::MenuItem::new(Some(&crate::tr!("Edit cell")), Some("cell.edit"));
+        let edit_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Edit cell")), Some("cell.edit"));
         edit_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
         edit_section.append_item(&edit_item);
         menu.append_section(None, &edit_section);
     }
 
     let copy_as = gio::Menu::new();
-    copy_as.append(Some(&crate::tr!("Rows")), Some("cell.copy-rows"));
-    copy_as.append(Some(&crate::tr!("With Headers")), Some("cell.copy-rows-headers"));
-    copy_as.append(Some(&crate::tr!("JSON")), Some("cell.copy-json"));
-    copy_as.append(Some(&crate::tr!("CSV")), Some("cell.copy-csv"));
-    copy_as.append(Some(&crate::tr!("CSV with Headers")), Some("cell.copy-csv-headers"));
-    copy_as.append(Some(&crate::tr!("Markdown")), Some("cell.copy-markdown"));
-    copy_as.append(Some(&crate::tr!("IN Clause")), Some("cell.copy-in-clause"));
+    copy_as.append(Some(&crate::i18n::gettext("Rows")), Some("cell.copy-rows"));
+    copy_as.append(
+        Some(&crate::i18n::gettext("With Headers")),
+        Some("cell.copy-rows-headers"),
+    );
+    copy_as.append(Some(&crate::i18n::gettext("JSON")), Some("cell.copy-json"));
+    copy_as.append(Some(&crate::i18n::gettext("CSV")), Some("cell.copy-csv"));
+    copy_as.append(
+        Some(&crate::i18n::gettext("CSV with Headers")),
+        Some("cell.copy-csv-headers"),
+    );
+    copy_as.append(Some(&crate::i18n::gettext("Markdown")), Some("cell.copy-markdown"));
+    copy_as.append(Some(&crate::i18n::gettext("IN Clause")), Some("cell.copy-in-clause"));
     if shape.row_ops {
         let sql_section = gio::Menu::new();
-        sql_section.append(Some(&crate::tr!("INSERT Statement")), Some("cell.copy-row-insert"));
+        sql_section.append(
+            Some(&crate::i18n::gettext("INSERT Statement")),
+            Some("cell.copy-row-insert"),
+        );
         copy_as.append_section(None, &sql_section);
     }
     let copy_section = gio::Menu::new();
-    copy_section.append(Some(&crate::tr!("Copy")), Some("cell.copy"));
-    copy_section.append_submenu(Some(&crate::tr!("Copy as")), &copy_as);
-    copy_section.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
+    copy_section.append(Some(&crate::i18n::gettext("Copy")), Some("cell.copy"));
+    copy_section.append_submenu(Some(&crate::i18n::gettext("Copy as")), &copy_as);
+    copy_section.append(
+        Some(&crate::i18n::gettext("Copy column name")),
+        Some("cell.copy-column-name"),
+    );
     menu.append_section(None, &copy_section);
 
     let json_section = gio::Menu::new();
-    json_section.append(Some(&crate::tr!("Show Row as JSON")), Some("cell.show-row-json"));
+    json_section.append(
+        Some(&crate::i18n::gettext("Show Row as JSON")),
+        Some("cell.show-row-json"),
+    );
     menu.append_section(None, &json_section);
 
     let action_section = gio::Menu::new();
@@ -1441,17 +1456,20 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
         // Only a free-text column can hold an empty string: elsewhere
         // "Empty" would either be rejected by the server or mean NULL,
         // which the item below already says plainly.
-        let empty_item = gio::MenuItem::new(Some(&crate::tr!("Empty")), Some("cell.set-empty"));
+        let empty_item = gio::MenuItem::new(Some(&crate::i18n::gettext("Empty")), Some("cell.set-empty"));
         empty_item.set_attribute_value("hidden-when", Some(&"action-disabled".to_variant()));
         set_value.append_item(&empty_item);
         set_value.append(Some("NULL"), Some("cell.set-null"));
-        action_section.append_submenu(Some(&crate::tr!("Set Value")), &set_value);
+        action_section.append_submenu(Some(&crate::i18n::gettext("Set Value")), &set_value);
     }
-    action_section.append(Some(&crate::tr!("Export Results\u{2026}")), Some("cell.export"));
+    action_section.append(
+        Some(&crate::i18n::gettext("Export Results\u{2026}")),
+        Some("cell.export"),
+    );
     if shape.row_ops {
-        action_section.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
-        action_section.append(Some(&crate::tr!("Duplicate")), Some("cell.duplicate-row"));
-        action_section.append(Some(&crate::tr!("Delete")), Some("cell.delete-row"));
+        action_section.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
+        action_section.append(Some(&crate::i18n::gettext("Duplicate")), Some("cell.duplicate-row"));
+        action_section.append(Some(&crate::i18n::gettext("Delete")), Some("cell.delete-row"));
     }
     menu.append_section(None, &action_section);
     menu
@@ -1506,9 +1524,10 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
     fn clipboard_message(encoded: Result<String, tablepro_core::export::EncodeError>) -> GridMsg {
         match encoded {
             Ok(text) => GridMsg::CopyToClipboard(text),
-            Err(error) => GridMsg::ShowToast(
-                crate::tr!("Couldn't copy the selection: {error}").replace("{error}", &error.to_string()),
-            ),
+            Err(error) => GridMsg::ShowToast(crate::i18n::gettext_f(
+                "Couldn't copy the selection: {error}",
+                &[("error", &error.to_string())],
+            )),
         }
     }
     macro_rules! copy_action {
@@ -1613,18 +1632,18 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
             let rows = rows_for_menu(&cv, &tab, slot_position(slot));
             let clause = tablepro_core::export::render_in_clause(&rows, slot.col_index);
             if clause.sql.is_empty() {
-                s.send(GridMsg::ShowToast(crate::tr!(
-                    "Nothing to copy: an IN clause can't carry NULL or binary values"
+                s.send(GridMsg::ShowToast(crate::i18n::gettext(
+                    "Nothing to copy: an IN clause can't carry NULL or binary values",
                 )))
                 .ok();
                 return;
             }
             s.send(GridMsg::CopyToClipboard(clause.sql)).ok();
             if clause.skipped > 0 {
-                s.send(GridMsg::ShowToast(
-                    crate::tr!("{n} NULL or binary values left out of the IN clause")
-                        .replace("{n}", &clause.skipped.to_string()),
-                ))
+                s.send(GridMsg::ShowToast(crate::i18n::gettext_f(
+                    "{n} NULL or binary values left out of the IN clause",
+                    &[("n", &clause.skipped.to_string())],
+                )))
                 .ok();
             }
         })
@@ -1748,7 +1767,7 @@ fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
 
     if editable {
         let empty_menu = gio::Menu::new();
-        empty_menu.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
+        empty_menu.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
         let empty_popover = gtk::PopoverMenu::from_model_full(&empty_menu, gtk::PopoverMenuFlags::NESTED);
         empty_popover.set_has_arrow(true);
         empty_popover.set_parent(column_view);
@@ -1887,7 +1906,7 @@ fn show_row_json_dialog(parent: &impl IsA<gtk::Widget>, json: String) {
     let scrolled = gtk::ScrolledWindow::builder().child(&view).vexpand(true).build();
 
     let copy_button = gtk::Button::from_icon_name(crate::ui::icons::EDIT_COPY);
-    copy_button.set_tooltip_text(Some(&crate::tr!("Copy")));
+    copy_button.set_tooltip_text(Some(&crate::i18n::gettext("Copy")));
     copy_button.connect_clicked(move |b| b.clipboard().set_text(&json));
     let header = adw::HeaderBar::new();
     header.pack_end(&copy_button);
@@ -1896,7 +1915,7 @@ fn show_row_json_dialog(parent: &impl IsA<gtk::Widget>, json: String) {
     toolbar.set_content(Some(&scrolled));
 
     adw::Dialog::builder()
-        .title(crate::tr!("Row as JSON"))
+        .title(crate::i18n::gettext("Row as JSON"))
         .content_width(560)
         .content_height(480)
         .child(&toolbar)

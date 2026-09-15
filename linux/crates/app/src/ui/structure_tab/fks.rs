@@ -50,13 +50,15 @@ pub(super) fn build_fk_row(
 
     let remove_button = gtk::Button::builder()
         .icon_name(crate::ui::icons::USER_TRASH)
-        .tooltip_text(crate::tr!("Remove foreign key"))
+        .tooltip_text(crate::i18n::gettext("Remove foreign key"))
         .valign(gtk::Align::Center)
         .build();
     remove_button.add_css_class("flat");
     if !driver_can_drop_foreign_key(driver_id) {
         remove_button.set_sensitive(false);
-        remove_button.set_tooltip_text(Some(&crate::tr!("Dropping a foreign key isn't supported by SQLite.")));
+        remove_button.set_tooltip_text(Some(&crate::i18n::gettext(
+            "Dropping a foreign key isn't supported by SQLite.",
+        )));
     }
     let sender_for_remove = sender.clone();
     remove_button.connect_clicked(move |_| sender_for_remove.input(StructureTabInput::RemoveForeignKey(index)));

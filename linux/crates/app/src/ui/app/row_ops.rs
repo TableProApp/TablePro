@@ -26,7 +26,10 @@ impl App {
         sender: ComponentSender<App>,
     ) {
         let Some(conn) = crate::services::database_service::instance().active() else {
-            self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(crate::tr!("No active connection")));
+            self.dispatch_to_tab(
+                tab_id,
+                BrowseTabInput::SaveFailed(crate::i18n::gettext("No active connection")),
+            );
             return;
         };
         // Drivers that cannot report a row count for UPDATE / DELETE
@@ -122,12 +125,12 @@ impl App {
             values.join(", "),
         );
         self.window.clipboard().set_text(&sql);
-        self.show_toast(&crate::tr!("INSERT statement copied"));
+        self.show_toast(&crate::i18n::gettext("INSERT statement copied"));
     }
 
     pub(super) fn on_copy_to_clipboard(&self, text: String) {
         self.window.clipboard().set_text(&text);
-        self.show_toast(&crate::tr!("Copied to clipboard"));
+        self.show_toast(&crate::i18n::gettext("Copied to clipboard"));
     }
 }
 
@@ -161,10 +164,10 @@ fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[
         return None;
     }
     let total = zero_updates + zero_deletes;
-    Some(
-        crate::tr!("{n} rows could not be located. They may have been changed by another session. Refresh and review.")
-            .replace("{n}", &total.to_string()),
-    )
+    Some(crate::i18n::gettext_f(
+        "{n} rows could not be located. They may have been changed by another session. Refresh and review.",
+        &[("n", &total.to_string())],
+    ))
 }
 
 /// Render a `Value` as a SQL literal — used by the "Copy row as

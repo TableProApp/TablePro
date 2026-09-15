@@ -52,6 +52,10 @@ Conventions, beyond what `rustfmt` decides:
 - **No `unwrap()` or `expect()` in production paths.** Tests and `OnceLock::get_or_init` initialisers are the only acceptable callers.
 - **No `panic!`, `todo!`, `unimplemented!` in merged code.** Stub a real `Err` variant instead.
 - **One public type per module file** when the type's surface is non-trivial. Internal helpers stay private.
+- **User-facing strings go through `crate::i18n`.** `gettext` for a plain
+  string, `gettext_f` with named `{placeholders}` when values are
+  interpolated, `ngettext_f` for counts, `pgettext` when a word's sense
+  depends on where it appears. See [po/README.md](po/README.md).
 - **Errors cross crate boundaries as `thiserror` enums.** Inside a crate, `anyhow::Result` is fine. See [docs/error-handling.md](docs/error-handling.md).
 
 ## Adding a database driver

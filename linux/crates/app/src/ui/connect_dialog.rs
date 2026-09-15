@@ -48,8 +48,8 @@ const AUTH_MODE_ROWS: [AuthMode; 2] = [AuthMode::Password, AuthMode::Kerberos];
 
 fn auth_mode_label(mode: AuthMode) -> String {
     match mode {
-        AuthMode::Password => crate::tr!("Password"),
-        AuthMode::Kerberos => crate::tr!("Windows (Kerberos)"),
+        AuthMode::Password => crate::i18n::gettext("Password"),
+        AuthMode::Kerberos => crate::i18n::gettext("Windows (Kerberos)"),
     }
 }
 
@@ -137,7 +137,7 @@ impl Component for ConnectDialog {
 
     view! {
         adw::Dialog {
-            set_title: &crate::tr!("Connect"),
+            set_title: &crate::i18n::gettext("Connect"),
             set_content_width: 480,
             set_content_height: 720,
             connect_closed => ConnectDialogInput::Closed,
@@ -175,7 +175,7 @@ impl Component for ConnectDialog {
         let driver_model = gtk::StringList::new(&names_ref);
 
         let driver_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Driver"))
+            .title(crate::i18n::gettext("Driver"))
             .model(&driver_model)
             .build();
         let sender_for_combo = sender.clone();
@@ -184,31 +184,35 @@ impl Component for ConnectDialog {
         });
 
         let host = adw::EntryRow::builder()
-            .title(crate::tr!("Host"))
+            .title(crate::i18n::gettext("Host"))
             .text("localhost")
             .build();
         // Port is a u16 1-65535. AdwSpinRow enforces the range natively;
         // no parse + fallback dance, no inline-error CSS to maintain.
         let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
-        port.set_title(&crate::tr!("Port"));
+        port.set_title(&crate::i18n::gettext("Port"));
         port.set_value(5432.0);
         let database = adw::EntryRow::builder()
-            .title(crate::tr!("Database"))
+            .title(crate::i18n::gettext("Database"))
             .text("postgres")
             .build();
         let username = adw::EntryRow::builder()
-            .title(crate::tr!("Username"))
+            .title(crate::i18n::gettext("Username"))
             .text("postgres")
             .build();
-        let password = adw::PasswordEntryRow::builder().title(crate::tr!("Password")).build();
+        let password = adw::PasswordEntryRow::builder()
+            .title(crate::i18n::gettext("Password"))
+            .build();
         let use_tls = adw::SwitchRow::builder()
-            .title(crate::tr!("Use TLS"))
-            .subtitle(crate::tr!("Require encrypted connection"))
+            .title(crate::i18n::gettext("Use TLS"))
+            .subtitle(crate::i18n::gettext("Require encrypted connection"))
             .active(false)
             .build();
         let read_only = adw::SwitchRow::builder()
-            .title(crate::tr!("Read-only mode"))
-            .subtitle(crate::tr!("Block INSERT, UPDATE, DELETE, and DDL on this connection"))
+            .title(crate::i18n::gettext("Read-only mode"))
+            .subtitle(crate::i18n::gettext(
+                "Block INSERT, UPDATE, DELETE, and DDL on this connection",
+            ))
             .active(false)
             .build();
 
@@ -232,7 +236,9 @@ impl Component for ConnectDialog {
         // Semantic preferences groups: Connection / Authentication /
         // Options / SSH. AdwPreferencesPage renders them with the
         // standard Adwaita section spacing & headers.
-        let connection_group = adw::PreferencesGroup::builder().title(crate::tr!("Connection")).build();
+        let connection_group = adw::PreferencesGroup::builder()
+            .title(crate::i18n::gettext("Connection"))
+            .build();
         connection_group.add(&driver_combo);
         connection_group.add(&host);
         connection_group.add(&port);
@@ -242,7 +248,7 @@ impl Component for ConnectDialog {
         let auth_labels_ref: Vec<&str> = auth_labels.iter().map(String::as_str).collect();
         let auth_mode_model = gtk::StringList::new(&auth_labels_ref);
         let auth_combo = adw::ComboRow::builder()
-            .title(crate::tr!("Method"))
+            .title(crate::i18n::gettext("Method"))
             .model(&auth_mode_model)
             .build();
         let sender_for_authmode = sender.clone();
@@ -251,23 +257,25 @@ impl Component for ConnectDialog {
         });
 
         let auth_group = adw::PreferencesGroup::builder()
-            .title(crate::tr!("Authentication"))
+            .title(crate::i18n::gettext("Authentication"))
             .build();
         auth_group.add(&auth_combo);
         auth_group.add(&username);
         auth_group.add(&password);
 
-        let options_group = adw::PreferencesGroup::builder().title(crate::tr!("Options")).build();
+        let options_group = adw::PreferencesGroup::builder()
+            .title(crate::i18n::gettext("Options"))
+            .build();
         options_group.add(&use_tls);
         options_group.add(&read_only);
 
-        let test_button = gtk::Button::builder().label(crate::tr!("Test")).build();
+        let test_button = gtk::Button::builder().label(crate::i18n::gettext("Test")).build();
         let sender_for_test = sender.clone();
         test_button.connect_clicked(move |_| {
             sender_for_test.input(ConnectDialogInput::TestConnection);
         });
 
-        let submit = gtk::Button::builder().label(crate::tr!("Connect")).build();
+        let submit = gtk::Button::builder().label(crate::i18n::gettext("Connect")).build();
         submit.add_css_class("suggested-action");
         let sender_for_submit = sender.clone();
         submit.connect_clicked(move |_| {
@@ -307,7 +315,10 @@ impl Component for ConnectDialog {
             if let Some(driver) = model.registry.get(&first.id) {
                 model.apply_driver_form_visibility(driver.as_ref());
             }
-            root.set_title(&crate::tr!("Connect to {name}").replace("{name}", &first.display_name));
+            root.set_title(&crate::i18n::gettext_f(
+                "Connect to {name}",
+                &[("name", &first.display_name)],
+            ));
         }
         model.refresh_validity();
 
@@ -331,7 +342,10 @@ impl Component for ConnectDialog {
                     self.apply_driver_form_visibility(driver.as_ref());
                     self.port.set_value(driver.default_port() as f64);
                 }
-                root.set_title(&crate::tr!("Connect to {name}").replace("{name}", &entry.display_name));
+                root.set_title(&crate::i18n::gettext_f(
+                    "Connect to {name}",
+                    &[("name", &entry.display_name)],
+                ));
                 self.refresh_validity();
             }
 
@@ -360,7 +374,7 @@ impl Component for ConnectDialog {
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
                     self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::tr!("No driver selected"));
+                    self.show_toast(&crate::i18n::gettext("No driver selected"));
                     return;
                 };
 
@@ -368,7 +382,10 @@ impl Component for ConnectDialog {
                     Some(d) => d,
                     None => {
                         self.set_busy(BusyKind::None);
-                        self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
+                        self.show_toast(&crate::i18n::gettext_f(
+                            "Driver {id} not registered",
+                            &[("id", &entry.id)],
+                        ));
                         return;
                     }
                 };
@@ -415,12 +432,15 @@ impl Component for ConnectDialog {
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
                     self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::tr!("No driver selected"));
+                    self.show_toast(&crate::i18n::gettext("No driver selected"));
                     return;
                 };
                 let Some(driver) = self.registry.get(&entry.id) else {
                     self.set_busy(BusyKind::None);
-                    self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
+                    self.show_toast(&crate::i18n::gettext_f(
+                        "Driver {id} not registered",
+                        &[("id", &entry.id)],
+                    ));
                     return;
                 };
                 let opts = self.collect_options();
@@ -476,12 +496,13 @@ impl Component for ConnectDialog {
                 self.show_toast(&e);
             }
             ConnectDialogCmd::TestResult(Ok(table_count)) => {
-                self.show_toast(
-                    &crate::tr!("Connection ok · {n} table(s) visible").replace("{n}", &table_count.to_string()),
-                );
+                self.show_toast(&crate::i18n::gettext_f(
+                    "Connection ok · {n} table(s) visible",
+                    &[("n", &table_count.to_string())],
+                ));
             }
             ConnectDialogCmd::TestResult(Err(e)) => {
-                self.show_toast(&crate::tr!("Test failed: {error}").replace("{error}", &e));
+                self.show_toast(&crate::i18n::gettext_f("Test failed: {error}", &[("error", &e)]));
             }
         }
     }
@@ -528,9 +549,9 @@ impl ConnectDialog {
         self.form.supports_integrated = driver.supports_integrated_auth();
         self.apply_form_state();
         self.database.set_title(&if self.form.file_based {
-            crate::tr!("File path")
+            crate::i18n::gettext("File path")
         } else {
-            crate::tr!("Database")
+            crate::i18n::gettext("Database")
         });
     }
 
@@ -587,16 +608,16 @@ impl ConnectDialog {
         self.test_button.set_sensitive(!busy);
         match kind {
             BusyKind::None => {
-                self.submit.set_label(&crate::tr!("Connect"));
-                self.test_button.set_label(&crate::tr!("Test"));
+                self.submit.set_label(&crate::i18n::gettext("Connect"));
+                self.test_button.set_label(&crate::i18n::gettext("Test"));
             }
             BusyKind::Connecting => {
-                self.submit.set_label(&crate::tr!("Connecting…"));
-                self.test_button.set_label(&crate::tr!("Test"));
+                self.submit.set_label(&crate::i18n::gettext("Connecting…"));
+                self.test_button.set_label(&crate::i18n::gettext("Test"));
             }
             BusyKind::Testing => {
-                self.submit.set_label(&crate::tr!("Connect"));
-                self.test_button.set_label(&crate::tr!("Testing…"));
+                self.submit.set_label(&crate::i18n::gettext("Connect"));
+                self.test_button.set_label(&crate::i18n::gettext("Testing…"));
             }
         }
     }

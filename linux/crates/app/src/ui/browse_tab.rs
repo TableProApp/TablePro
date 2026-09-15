@@ -440,7 +440,7 @@ impl BrowseTab {
         // so a mis-aim toward Next doesn't land on Insert.
         let insert_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::LIST_ADD)
-            .tooltip_text(crate::tr!("Insert row (Ctrl+N)"))
+            .tooltip_text(crate::i18n::gettext("Insert row (Ctrl+N)"))
             .sensitive(false)
             .build();
         insert_button.add_css_class("flat");
@@ -449,22 +449,22 @@ impl BrowseTab {
 
         let first_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::GO_FIRST)
-            .tooltip_text(crate::tr!("First page"))
+            .tooltip_text(crate::i18n::gettext("First page"))
             .sensitive(false)
             .build();
         let prev_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::GO_PREVIOUS)
-            .tooltip_text(crate::tr!("Previous page (Page Up)"))
+            .tooltip_text(crate::i18n::gettext("Previous page (Page Up)"))
             .sensitive(false)
             .build();
         let next_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::GO_NEXT)
-            .tooltip_text(crate::tr!("Next page (Page Down)"))
+            .tooltip_text(crate::i18n::gettext("Next page (Page Down)"))
             .sensitive(false)
             .build();
         let last_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::GO_LAST)
-            .tooltip_text(crate::tr!("Last page"))
+            .tooltip_text(crate::i18n::gettext("Last page"))
             .sensitive(false)
             .build();
         let paginator_label = gtk::Label::builder().build();
@@ -508,7 +508,7 @@ impl BrowseTab {
                 sender_for_size.input(BrowseTabInput::PageSizeChanged(size));
             }
         });
-        let page_size_label = gtk::Label::builder().label(crate::tr!("Rows:")).build();
+        let page_size_label = gtk::Label::builder().label(crate::i18n::gettext("Rows:")).build();
         page_size_label.add_css_class("dim-label");
 
         let sender_for_first = sender.clone();
@@ -530,7 +530,7 @@ impl BrowseTab {
 
         let export_button = gtk::Button::builder()
             .icon_name(crate::ui::icons::DOCUMENT_SAVE)
-            .tooltip_text(crate::tr!("Export results"))
+            .tooltip_text(crate::i18n::gettext("Export results"))
             .build();
         export_button.add_css_class("flat");
         let export_sender = sender.clone();
@@ -550,7 +550,7 @@ impl BrowseTab {
         // text label reads as native here. The `filter_badge` label
         // shows the active rule count next to the word when ≥1 rule
         // applies; hidden otherwise.
-        let filter_label = gtk::Label::new(Some(&crate::tr!("Filter")));
+        let filter_label = gtk::Label::new(Some(&crate::i18n::gettext("Filter")));
         let filter_badge = gtk::Label::builder().label("").visible(false).build();
         filter_badge.add_css_class("numeric");
         filter_badge.add_css_class("caption-heading");
@@ -562,7 +562,7 @@ impl BrowseTab {
         filter_box.append(&filter_label);
         filter_box.append(&filter_badge);
         let filter_button = gtk::Button::builder()
-            .tooltip_text(crate::tr!("Filter rows (Ctrl+F)"))
+            .tooltip_text(crate::i18n::gettext("Filter rows (Ctrl+F)"))
             .action_name("win.open-filter")
             .child(&filter_box)
             .build();
@@ -615,15 +615,15 @@ impl BrowseTab {
         pending_label.add_css_class("caption");
 
         let discard_button = gtk::Button::builder()
-            .label(crate::tr!("Discard"))
-            .tooltip_text(crate::tr!("Discard all pending edits"))
+            .label(crate::i18n::gettext("Discard"))
+            .tooltip_text(crate::i18n::gettext("Discard all pending edits"))
             .build();
         let sender_for_discard = sender.clone();
         discard_button.connect_clicked(move |_| sender_for_discard.input(BrowseTabInput::DiscardAll));
 
         let save_button = gtk::Button::builder()
-            .label(crate::tr!("Save"))
-            .tooltip_text(crate::tr!("Save pending edits (Ctrl+S)"))
+            .label(crate::i18n::gettext("Save"))
+            .tooltip_text(crate::i18n::gettext("Save pending edits (Ctrl+S)"))
             .build();
         save_button.add_css_class("suggested-action");
         let sender_for_save = sender;
@@ -658,9 +658,14 @@ impl BrowseTab {
         let visible = count > 0;
         if visible {
             let label = if count == 1 {
-                crate::tr!("1 unsaved change")
+                crate::i18n::gettext("1 unsaved change")
             } else {
-                crate::tr!("{n} unsaved changes").replace("{n}", &count.to_string())
+                crate::i18n::ngettext_f(
+                    "{n} unsaved change",
+                    "{n} unsaved changes",
+                    count as u32,
+                    &[("n", &count.to_string())],
+                )
             };
             self.pending_label.set_label(&label);
         }
@@ -1202,12 +1207,12 @@ impl BrowseTab {
         // affordance stays discoverable; tooltip explains the gate.
         self.insert_button.set_sensitive(has_columns && has_pk);
         if has_columns && !has_pk {
-            self.insert_button.set_tooltip_text(Some(&crate::tr!(
-                "This table has no primary key. Inline editing is disabled."
+            self.insert_button.set_tooltip_text(Some(&crate::i18n::gettext(
+                "This table has no primary key. Inline editing is disabled.",
             )));
         } else {
             self.insert_button
-                .set_tooltip_text(Some(&crate::tr!("Insert row (Ctrl+N)")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Insert row (Ctrl+N)")));
         }
         self.refresh_banner_visibility();
     }
@@ -1224,13 +1229,16 @@ impl BrowseTab {
             self.filter_badge.set_visible(false);
             self.filter_badge.set_label("");
             self.filter_button
-                .set_tooltip_text(Some(&crate::tr!("Filter rows (Ctrl+F)")));
+                .set_tooltip_text(Some(&crate::i18n::gettext("Filter rows (Ctrl+F)")));
         } else {
             self.filter_badge.set_label(&n.to_string());
             self.filter_badge.set_visible(true);
-            self.filter_button.set_tooltip_text(Some(
-                &crate::tr!("{n} filter rule(s) active — click to edit").replace("{n}", &n.to_string()),
-            ));
+            self.filter_button.set_tooltip_text(Some(&crate::i18n::ngettext_f(
+                "{n} filter rule active. Click to edit",
+                "{n} filter rules active. Click to edit",
+                n as u32,
+                &[("n", &n.to_string())],
+            )));
         }
     }
 
@@ -1246,7 +1254,8 @@ impl BrowseTab {
             // RowCountLoaded clamps the offset back. Human
             // wording — the previous "No rows at offset N" read as
             // a bug message.
-            self.paginator_label.set_label(&crate::tr!("No rows on this page"));
+            self.paginator_label
+                .set_label(&crate::i18n::gettext("No rows on this page"));
             return;
         }
         let start = self.current_offset + 1;
@@ -1258,13 +1267,15 @@ impl BrowseTab {
         let start_s = format_thousands(start);
         let end_s = format_thousands(end);
         let label = match self.current_total_rows {
-            Some(total) => crate::tr!("Rows {start} – {end} of {total}")
-                .replace("{start}", &start_s)
-                .replace("{end}", &end_s)
-                .replace("{total}", &format_thousands(total)),
-            None => crate::tr!("Rows {start} – {end}")
-                .replace("{start}", &start_s)
-                .replace("{end}", &end_s),
+            Some(total) => crate::i18n::gettext_f(
+                "Rows {start} – {end} of {total}",
+                &[
+                    ("start", &start_s),
+                    ("end", &end_s),
+                    ("total", &format_thousands(total)),
+                ],
+            ),
+            None => crate::i18n::gettext_f("Rows {start} – {end}", &[("start", &start_s), ("end", &end_s)]),
         };
         self.paginator_label.set_label(&label);
     }
@@ -1298,7 +1309,7 @@ impl BrowseTab {
         // guessing what failed.
         let page = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::DIALOG_ERROR)
-            .title(crate::tr!("Couldn't load rows"))
+            .title(crate::i18n::gettext("Couldn't load rows"))
             .description(message)
             .build();
         self.replace_status_child("error", &page);
@@ -1350,13 +1361,16 @@ impl SimpleComponent for BrowseTab {
         inner_stack.add_named(&grid_holder, Some("grid"));
         // Initial state: loading. The first RowsLoaded swaps to "grid".
         let initial_loading = adw::StatusPage::builder()
-            .title(crate::tr!("Loading…"))
-            .description(crate::tr!("Fetching rows from {table}").replace(
-                "{table}",
-                &match init.schema.as_deref() {
-                    Some(s) => format!("{s}.{}", init.table),
-                    None => init.table.clone(),
-                },
+            .title(crate::i18n::gettext("Loading…"))
+            .description(crate::i18n::gettext_f(
+                "Fetching rows from {table}",
+                &[(
+                    "table",
+                    &match init.schema.as_deref() {
+                        Some(s) => format!("{s}.{}", init.table),
+                        None => init.table.clone(),
+                    },
+                )],
             ))
             .child(
                 &adw::Spinner::builder()
@@ -1382,12 +1396,12 @@ impl SimpleComponent for BrowseTab {
         // ActionBar footer ("N unsaved changes / Discard / Save") —
         // an additional banner would just duplicate that signal.
         let read_only_banner = adw::Banner::builder()
-            .title(crate::tr!("Read-only connection. Editing disabled."))
+            .title(crate::i18n::gettext("Read-only connection. Editing disabled."))
             .revealed(init.read_only)
             .build();
         let no_pk_banner = adw::Banner::builder()
-            .title(crate::tr!(
-                "This table has no primary key. Use the SQL editor to modify rows."
+            .title(crate::i18n::gettext(
+                "This table has no primary key. Use the SQL editor to modify rows.",
             ))
             .revealed(false)
             .build();
@@ -1843,8 +1857,8 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::Refresh => {
                 self.capture_focus_for_restore();
                 self.show_loading_inner(
-                    &crate::tr!("Loading…"),
-                    &crate::tr!("Fetching rows from {table}").replace("{table}", &self.table_label()),
+                    &crate::i18n::gettext("Loading…"),
+                    &crate::i18n::gettext_f("Fetching rows from {table}", &[("table", &self.table_label())]),
                 );
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::FetchRowCount);
@@ -2098,8 +2112,8 @@ impl SimpleComponent for BrowseTab {
                 // Pure-draft selections sail through to discard.
                 if had_persisted_row && pk_indices.is_empty() {
                     let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
-                        title: crate::tr!("Cannot delete"),
-                        body: crate::tr!("This table has no primary key — editing is disabled."),
+                        title: crate::i18n::gettext("Cannot delete"),
+                        body: crate::i18n::gettext("This table has no primary key, so editing is disabled."),
                     });
                     return;
                 }
@@ -2134,12 +2148,18 @@ impl SimpleComponent for BrowseTab {
                     // window. The inner_stack is always parented to
                     // the BrowseTab's root toolbar, so it resolves
                     // correctly while the tab is visible.
-                    let title = crate::tr!("Delete {n} rows?").replace("{n}", &count.to_string());
-                    let body =
-                        crate::tr!("These rows will be marked for deletion. They aren't removed until you click Save.");
+                    let title = crate::i18n::ngettext_f(
+                        "Delete {n} row?",
+                        "Delete {n} rows?",
+                        count as u32,
+                        &[("n", &count.to_string())],
+                    );
+                    let body = crate::i18n::gettext(
+                        "These rows will be marked for deletion. They aren't removed until you click Save.",
+                    );
                     let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
-                    dialog.add_response("cancel", &crate::tr!("Cancel"));
-                    dialog.add_response("delete", &crate::tr!("Delete"));
+                    dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                    dialog.add_response("delete", &crate::i18n::gettext("Delete"));
                     dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
                     dialog.set_default_response(Some("cancel"));
                     dialog.set_close_response("cancel");
@@ -2268,7 +2288,7 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::ExportCurrentPage => {
                 let Some(result) = self.export_payload() else {
-                    let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!("Nothing to export")));
+                    let _ = sender.output(BrowseTabOutput::ShowToast(crate::i18n::gettext("Nothing to export")));
                     return;
                 };
                 let _ = sender.output(BrowseTabOutput::ExportResults {
@@ -2319,15 +2339,16 @@ impl SimpleComponent for BrowseTab {
                         let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
                     }
                     Err(error) => {
-                        let _ = sender.output(BrowseTabOutput::ShowToast(
-                            crate::tr!("Couldn't copy the selection: {error}").replace("{error}", &error.to_string()),
-                        ));
+                        let _ = sender.output(BrowseTabOutput::ShowToast(crate::i18n::gettext_f(
+                            "Couldn't copy the selection: {error}",
+                            &[("error", &error.to_string())],
+                        )));
                     }
                 }
             }
             BrowseTabInput::PasteNotSupported => {
-                let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
-                    "Pasting rows isn't supported yet"
+                let _ = sender.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
+                    "Pasting rows isn't supported yet",
                 )));
             }
             BrowseTabInput::SelectAllRows => {
@@ -2398,7 +2419,7 @@ impl SimpleComponent for BrowseTab {
                     }
                     Some(Err(e)) => {
                         let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
-                            title: crate::tr!("Cannot save"),
+                            title: crate::i18n::gettext("Cannot save"),
                             body: format!("{e}"),
                         });
                     }
@@ -2450,7 +2471,7 @@ impl SimpleComponent for BrowseTab {
                 self.save_button.set_sensitive(true);
                 self.discard_button.set_sensitive(true);
                 let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
-                    title: crate::tr!("Save failed"),
+                    title: crate::i18n::gettext("Save failed"),
                     body: message,
                 });
             }
@@ -2612,7 +2633,10 @@ fn update_selection_chrome(label: &gtk::Label, n: u32) {
         return;
     }
     let count = n.to_string();
-    label.set_label(&crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count));
+    label.set_label(&crate::i18n::gettext_f(
+        "{n} selected · press Delete to remove",
+        &[("n", &count)],
+    ));
     label.set_visible(true);
 }
 
@@ -2640,7 +2664,7 @@ fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Result<Value,
         if col.nullable || col.default_value.is_some() {
             return Ok(Value::Null);
         }
-        return Err(crate::tr!("Field is required"));
+        return Err(crate::i18n::gettext("Field is required"));
     }
     let dt = col.data_type.to_ascii_lowercase();
     let trimmed = text.trim();
@@ -2742,46 +2766,46 @@ fn parse_bool_value(text: &str) -> Result<Value, String> {
     match text.to_ascii_lowercase().as_str() {
         "true" | "t" | "1" | "yes" | "y" | "on" => Ok(Value::Bool(true)),
         "false" | "f" | "0" | "no" | "n" | "off" => Ok(Value::Bool(false)),
-        _ => Err(crate::tr!("Invalid boolean. Use true/false, yes/no, or 1/0.")),
+        _ => Err(crate::i18n::gettext("Invalid boolean. Use true/false, yes/no, or 1/0.")),
     }
 }
 
 fn parse_int_value(text: &str) -> Result<Value, String> {
     text.parse::<i64>()
         .map(Value::Int)
-        .map_err(|_| crate::tr!("Invalid integer"))
+        .map_err(|_| crate::i18n::gettext("Invalid integer"))
 }
 
 fn parse_float_value(text: &str) -> Result<Value, String> {
     text.parse::<f64>()
         .map(Value::Float)
-        .map_err(|_| crate::tr!("Invalid number"))
+        .map_err(|_| crate::i18n::gettext("Invalid number"))
 }
 
 fn parse_decimal_value(text: &str) -> Result<Value, String> {
     text.parse::<rust_decimal::Decimal>()
         .map(Value::Decimal)
-        .map_err(|_| crate::tr!("Invalid decimal"))
+        .map_err(|_| crate::i18n::gettext("Invalid decimal"))
 }
 
 fn parse_uuid_value(text: &str) -> Result<Value, String> {
     uuid::Uuid::parse_str(text)
         .map(Value::Uuid)
-        .map_err(|_| crate::tr!("Invalid UUID. Expected 8-4-4-4-12 hex digits."))
+        .map_err(|_| crate::i18n::gettext("Invalid UUID. Expected 8-4-4-4-12 hex digits."))
 }
 
 fn parse_json_value(text: &str) -> Result<Value, String> {
     serde_json::from_str::<serde_json::Value>(text)
         .map(Value::Json)
-        .map_err(|e| crate::tr!("Invalid JSON: {error}").replace("{error}", &e.to_string()))
+        .map_err(|e| crate::i18n::gettext_f("Invalid JSON: {error}", &[("error", &e.to_string())]))
 }
 
 fn parse_timestamptz_value(text: &str) -> Result<Value, String> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(text) {
         return Ok(Value::TimestampTz(dt.with_timezone(&chrono::Utc)));
     }
-    Err(crate::tr!(
-        "Invalid timestamp. Use ISO 8601, e.g. 2024-01-15T14:30:00Z."
+    Err(crate::i18n::gettext(
+        "Invalid timestamp. Use ISO 8601, e.g. 2024-01-15T14:30:00Z.",
     ))
 }
 
@@ -2797,13 +2821,13 @@ fn parse_datetime_value(text: &str) -> Result<Value, String> {
             return Ok(Value::DateTime(dt));
         }
     }
-    Err(crate::tr!("Invalid datetime. Use YYYY-MM-DD HH:MM:SS."))
+    Err(crate::i18n::gettext("Invalid datetime. Use YYYY-MM-DD HH:MM:SS."))
 }
 
 fn parse_date_value(text: &str) -> Result<Value, String> {
     chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
         .map(Value::Date)
-        .map_err(|_| crate::tr!("Invalid date. Use YYYY-MM-DD."))
+        .map_err(|_| crate::i18n::gettext("Invalid date. Use YYYY-MM-DD."))
 }
 
 fn parse_time_value(text: &str) -> Result<Value, String> {
@@ -2813,7 +2837,7 @@ fn parse_time_value(text: &str) -> Result<Value, String> {
             return Ok(Value::Time(t));
         }
     }
-    Err(crate::tr!("Invalid time. Use HH:MM:SS."))
+    Err(crate::i18n::gettext("Invalid time. Use HH:MM:SS."))
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).

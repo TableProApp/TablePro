@@ -53,7 +53,7 @@ impl FactoryComponent for ConnectionRow {
             add_suffix = &gtk::Button {
                 set_icon_name: crate::ui::icons::USER_TRASH,
                 set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::tr!("Remove connection").as_str()),
+                set_tooltip_text: Some(crate::i18n::gettext("Remove connection").as_str()),
                 add_css_class: "flat",
                 add_css_class: "destructive-action",
                 connect_clicked => ConnectionRowMsg::RequestDelete,
@@ -91,14 +91,13 @@ impl FactoryComponent for ConnectionRow {
                 // make a misclick a no-op. Body copy spells out the
                 // blast radius so the user knows what's actually lost.
                 let dialog = adw::AlertDialog::new(None, None);
-                dialog.set_heading(Some(
-                    &crate::tr!("Remove “{name}”?").replace("{name}", &self.saved.name),
-                ));
-                dialog.set_body(&crate::tr!(
-                    "The saved credentials and SSH settings will be deleted from this device. The database itself is unaffected."
-                ));
-                dialog.add_response("cancel", &crate::tr!("Cancel"));
-                dialog.add_response("remove", &crate::tr!("Remove"));
+                dialog.set_heading(Some(&crate::i18n::gettext_f(
+                    "Remove “{name}”?",
+                    &[("name", &self.saved.name)],
+                )));
+                dialog.set_body(&crate::i18n::gettext("The saved credentials and SSH settings will be deleted from this device. The database itself is unaffected."));
+                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                dialog.add_response("remove", &crate::i18n::gettext("Remove"));
                 dialog.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
                 dialog.set_default_response(Some("cancel"));
                 dialog.set_close_response("cancel");

@@ -287,9 +287,14 @@ impl StructureTab {
         self.discard_button.set_sensitive(has_pending);
         if has_pending {
             let label = if pending_count == 1 {
-                crate::tr!("1 pending change")
+                crate::i18n::gettext("1 pending change")
             } else {
-                crate::tr!("{n} pending changes").replace("{n}", &pending_count.to_string())
+                crate::i18n::ngettext_f(
+                    "{n} pending change",
+                    "{n} pending changes",
+                    pending_count as u32,
+                    &[("n", &pending_count.to_string())],
+                )
             };
             self.pending_label.set_label(&label);
             self.pending_label.set_visible(true);
@@ -301,7 +306,7 @@ impl StructureTab {
     fn regenerate_sql_preview_from(&self, ops: &[StructureOp]) {
         let text = match materialize_ops(ops, &self.driver_id) {
             Ok(stmts) if !stmts.is_empty() => stmts.join(";\n\n") + ";",
-            Ok(_) => crate::tr!("-- No pending changes."),
+            Ok(_) => crate::i18n::gettext("-- No pending changes."),
             Err(e) => format!("-- {e}"),
         };
         self.sql_buffer.set_text(&text);
@@ -356,7 +361,7 @@ impl StructureTab {
             ));
         }
         let sender_for_add = sender.clone();
-        append_add_button(&list, &crate::tr!("Add Column"), move || {
+        append_add_button(&list, &crate::i18n::gettext("Add Column"), move || {
             sender_for_add.input(StructureTabInput::AddColumn);
         });
         self.columns_box.append(&list);
@@ -376,7 +381,7 @@ impl StructureTab {
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.indexes_box.clone();
-        append_add_button(&list, &crate::tr!("Add Index…"), move || {
+        append_add_button(&list, &crate::i18n::gettext("Add Index…"), move || {
             present_index_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
@@ -397,7 +402,7 @@ impl StructureTab {
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
         let driver_id_for_dialog = driver_id.clone();
-        append_add_button(&list, &crate::tr!("Add Foreign Key…"), move || {
+        append_add_button(&list, &crate::i18n::gettext("Add Foreign Key…"), move || {
             present_fk_dialog(
                 parent_box.upcast_ref(),
                 &columns_for_dialog.borrow(),
@@ -450,28 +455,37 @@ fn append_add_button(list: &gtk::ListBox, label: &str, on_activate: impl Fn() + 
 /// the first user-visible error string, or None if all checks pass.
 fn validate_save(table_name: &str, columns: &[DraftColumn], mode: StructureMode) -> Result<(), String> {
     if matches!(mode, StructureMode::New) && table_name.trim().is_empty() {
-        return Err(crate::tr!("Table name is required."));
+        return Err(crate::i18n::gettext("Table name is required."));
     }
     // Empty-columns guard applies in BOTH modes. In Edit mode, the
     // user pressing the trash on every row would otherwise produce
     // a Save that drops every column — most drivers either reject
     // this with an opaque error or silently degenerate the table.
     if columns.is_empty() {
-        return Err(crate::tr!("At least one column is required."));
+        return Err(crate::i18n::gettext("At least one column is required."));
     }
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for col in columns {
         if col.name.trim().is_empty() {
-            return Err(crate::tr!("Every column needs a name."));
+            return Err(crate::i18n::gettext("Every column needs a name."));
         }
         if !seen.insert(col.name.as_str()) {
-            return Err(crate::tr!("Duplicate column name: {name}").replace("{name}", &col.name));
+            return Err(crate::i18n::gettext_f(
+                "Duplicate column name: {name}",
+                &[("name", &col.name)],
+            ));
         }
         if col.data_type.trim().is_empty() {
-            return Err(crate::tr!("Column {name} needs a type.").replace("{name}", &col.name));
+            return Err(crate::i18n::gettext_f(
+                "Column {name} needs a type.",
+                &[("name", &col.name)],
+            ));
         }
         if col.primary_key && col.nullable {
-            return Err(crate::tr!("Primary key columns must be NOT NULL: {name}").replace("{name}", &col.name));
+            return Err(crate::i18n::gettext_f(
+                "Primary key columns must be NOT NULL: {name}",
+                &[("name", &col.name)],
+            ));
         }
     }
     Ok(())
@@ -501,7 +515,7 @@ impl SimpleComponent for StructureTab {
         let columns_page = view_stack.add_titled_with_icon(
             &columns_scroll,
             Some("columns"),
-            &crate::tr!("Columns"),
+            &crate::i18n::gettext("Columns"),
             crate::ui::icons::VIEW_LIST,
         );
         let _ = columns_page;
@@ -514,7 +528,7 @@ impl SimpleComponent for StructureTab {
         let indexes_page = view_stack.add_titled_with_icon(
             &indexes_scroll,
             Some("indexes"),
-            &crate::tr!("Indexes"),
+            &crate::i18n::gettext("Indexes"),
             crate::ui::icons::VIEW_SORT_ASCENDING,
         );
         let _ = indexes_page;
@@ -527,7 +541,7 @@ impl SimpleComponent for StructureTab {
         let fks_page = view_stack.add_titled_with_icon(
             &fks_scroll,
             Some("fks"),
-            &crate::tr!("Foreign Keys"),
+            &crate::i18n::gettext("Foreign Keys"),
             crate::ui::icons::TABLE_RELATION,
         );
         let _ = fks_page;
@@ -561,7 +575,7 @@ impl SimpleComponent for StructureTab {
         // the generated DDL into a different tool.
         let copy_sql_btn = gtk::Button::builder()
             .icon_name(crate::ui::icons::EDIT_COPY)
-            .tooltip_text(crate::tr!("Copy SQL to clipboard"))
+            .tooltip_text(crate::i18n::gettext("Copy SQL to clipboard"))
             .valign(gtk::Align::Center)
             .build();
         copy_sql_btn.add_css_class("flat");
@@ -586,7 +600,7 @@ impl SimpleComponent for StructureTab {
         let sql_page = view_stack.add_titled_with_icon(
             &sql_page_box,
             Some("sql"),
-            &crate::tr!("SQL Preview"),
+            &crate::i18n::gettext("SQL Preview"),
             crate::ui::icons::TEXT_X_GENERIC,
         );
         let _ = sql_page;
@@ -618,10 +632,12 @@ impl SimpleComponent for StructureTab {
         // is the same pattern GNOME Software / Console use for
         // in-flight load states.
         let loading_spinner = adw::Spinner::builder().width_request(48).height_request(48).build();
-        let loading_title = gtk::Label::builder().label(crate::tr!("Loading structure…")).build();
+        let loading_title = gtk::Label::builder()
+            .label(crate::i18n::gettext("Loading structure…"))
+            .build();
         loading_title.add_css_class("title-2");
         let loading_subtitle = gtk::Label::builder()
-            .label(crate::tr!("Reading columns, indexes, and foreign keys…"))
+            .label(crate::i18n::gettext("Reading columns, indexes, and foreign keys…"))
             .build();
         loading_subtitle.add_css_class("dim-label");
         let loading_box = gtk::Box::builder()
@@ -654,10 +670,10 @@ impl SimpleComponent for StructureTab {
         // GNOME Settings's text input pattern. The PreferencesGroup
         // around it carries only the helper description; no redundant
         // "New table" title since the tab title already says so.
-        let name_entry = adw::EntryRow::builder().title(crate::tr!("Name")).build();
+        let name_entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
         name_entry.set_text(&init.table);
         let name_row = adw::PreferencesGroup::builder()
-            .description(crate::tr!("Add a name and at least one column to save."))
+            .description(crate::i18n::gettext("Add a name and at least one column to save."))
             .margin_top(12)
             .margin_bottom(6)
             .margin_start(12)
@@ -685,7 +701,7 @@ impl SimpleComponent for StructureTab {
 
         let error_status = adw::StatusPage::builder()
             .icon_name(crate::ui::icons::DIALOG_ERROR)
-            .title(crate::tr!("Couldn't load structure"))
+            .title(crate::i18n::gettext("Couldn't load structure"))
             .build();
         // "Try again" — fires another FetchStructure round-trip via
         // the existing output channel. Without this, a transient
@@ -694,7 +710,7 @@ impl SimpleComponent for StructureTab {
         // GNOME Software's "Try Again" affordance on its own
         // load-failure page.
         let retry_button = gtk::Button::builder()
-            .label(crate::tr!("Try Again"))
+            .label(crate::i18n::gettext("Try Again"))
             .halign(gtk::Align::Center)
             .build();
         retry_button.add_css_class("suggested-action");
@@ -724,16 +740,16 @@ impl SimpleComponent for StructureTab {
         action_bar.pack_start(&pending_label);
 
         let discard_button = gtk::Button::builder()
-            .label(crate::tr!("Discard"))
+            .label(crate::i18n::gettext("Discard"))
             .sensitive(false)
             .build();
         let save_button = gtk::Button::builder()
-            .label(crate::tr!("Save"))
+            .label(crate::i18n::gettext("Save"))
             .sensitive(false)
             .build();
         save_button.add_css_class("suggested-action");
         let drop_button = gtk::Button::builder()
-            .label(crate::tr!("Drop Table…"))
+            .label(crate::i18n::gettext("Drop Table…"))
             .visible(matches!(init.mode, StructureMode::Edit))
             .build();
         drop_button.add_css_class("destructive-action");
@@ -985,17 +1001,17 @@ impl SimpleComponent for StructureTab {
                         let _ = sender.output(StructureTabOutput::ExecuteTransaction { statements });
                     }
                     Ok(_) => {
-                        let _ = sender.output(StructureTabOutput::ShowToast(crate::tr!("Nothing to save.")));
+                        let _ = sender.output(StructureTabOutput::ShowToast(crate::i18n::gettext("Nothing to save.")));
                     }
                     Err(BuildDdlError::SqliteNotSupported(detail)) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
-                            title: crate::tr!("Cannot save"),
-                            body: crate::tr!("SQLite doesn't support: {detail}").replace("{detail}", detail),
+                            title: crate::i18n::gettext("Cannot save"),
+                            body: crate::i18n::gettext_f("SQLite doesn't support: {detail}", &[("detail", detail)]),
                         });
                     }
                     Err(e) => {
                         let _ = sender.output(StructureTabOutput::ShowAlert {
-                            title: crate::tr!("Cannot save"),
+                            title: crate::i18n::gettext("Cannot save"),
                             body: format!("{e}"),
                         });
                     }
@@ -1068,7 +1084,7 @@ impl SimpleComponent for StructureTab {
             StructureTabInput::SaveFailed(message) => {
                 self.recompute_dirty_state(&sender);
                 let _ = sender.output(StructureTabOutput::ShowAlert {
-                    title: crate::tr!("Save failed"),
+                    title: crate::i18n::gettext("Save failed"),
                     body: message,
                 });
             }
