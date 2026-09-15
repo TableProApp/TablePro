@@ -10,6 +10,7 @@ internal struct WelcomeImportActions {
     let importConnectionsFile: () -> Void
     let importFromURL: () -> Void
     let importFromApp: () -> Void
+    let importFromAWS: () -> Void
     let openProjectFolder: () -> Void
 }
 
@@ -46,6 +47,7 @@ internal struct WelcomeImportMenuButton: NSViewRepresentable {
             case importConnectionsFile
             case importFromURL
             case importFromApp
+            case importFromAWS
             case openProjectFolder
         }
 
@@ -61,6 +63,7 @@ internal struct WelcomeImportMenuButton: NSViewRepresentable {
             menu.addItem(item(String(localized: "Import Connections…"), .importConnectionsFile))
             menu.addItem(item(String(localized: "Import from URL…"), .importFromURL))
             menu.addItem(item(String(localized: "Import from Other App…"), .importFromApp))
+            menu.addItem(item(String(localized: "Import from AWS…"), .importFromAWS))
             menu.addItem(.separator())
             menu.addItem(item(String(localized: "Open Project Folder…"), .openProjectFolder))
             return menu
@@ -73,6 +76,7 @@ internal struct WelcomeImportMenuButton: NSViewRepresentable {
             case .importConnectionsFile: actions.importConnectionsFile()
             case .importFromURL: actions.importFromURL()
             case .importFromApp: actions.importFromApp()
+            case .importFromAWS: actions.importFromAWS()
             case .openProjectFolder: actions.openProjectFolder()
             }
         }

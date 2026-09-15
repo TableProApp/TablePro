@@ -97,6 +97,11 @@ internal struct WelcomePresentations: ViewModifier {
                 vm.pendingImportResultCount = count
                 vm.activeSheet = nil
             }
+        case .importFromAWS:
+            ImportFromAWSSheet { count in
+                vm.pendingImportResultCount = count
+                vm.activeSheet = nil
+            }
         case .projectFolderScan(let url):
             ProjectFolderScanSheet(
                 rootURL: url,

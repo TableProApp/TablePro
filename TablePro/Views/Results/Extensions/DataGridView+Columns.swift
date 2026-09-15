@@ -103,7 +103,8 @@ extension TableViewCoordinator {
             palette: cellRegistry.palette,
             nullDisplayString: cellRegistry.nullDisplayString,
             onEmphasizedSelection: onEmphasizedSelection,
-            hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex)
+            hasOverlay: overlayCell == CellPosition(row: row, column: columnIndex),
+            checkboxMark: checkboxMark(row: row, columnIndex: columnIndex)
         )
     }
 

@@ -28,6 +28,7 @@ enum WelcomeActiveSheet: Identifiable {
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
+    case importFromAWS
     case projectFolderScan(URL)
     case deeplinkImport(ExportableConnection)
 
@@ -40,6 +41,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
+        case .importFromAWS: "importFromAWS"
         case .projectFolderScan(let u): "projectFolderScan-\(u.absoluteString)"
         case .deeplinkImport(let c): "deeplinkImport-\(c.type)-\(c.name)-\(c.host)-\(c.port)"
         }
@@ -576,6 +578,10 @@ final class WelcomeViewModel {
 
     func importConnectionsFromApp() {
         activeSheet = .importFromApp
+    }
+
+    func importConnectionsFromAWS() {
+        activeSheet = .importFromAWS
     }
 
     func importConnectionsFromFile() {

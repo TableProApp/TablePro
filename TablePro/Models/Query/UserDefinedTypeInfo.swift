@@ -17,14 +17,23 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
         case composite
         case domain
         case range
+        case aliasType
+        case tableType
+        case clrType
         case other
 
+        /// The engine's own word for the shape. A SQL Server reader has never met a domain or a
+        /// composite, so an alias type and a table type say so in SQL Server's vocabulary even
+        /// though their shapes are the same two.
         var displayName: String {
             switch self {
             case .enumeration: return String(localized: "Enum Type")
             case .composite:   return String(localized: "Composite Type")
             case .domain:      return String(localized: "Domain")
             case .range:       return String(localized: "Range Type")
+            case .aliasType:   return String(localized: "Alias Type")
+            case .tableType:   return String(localized: "Table Type")
+            case .clrType:     return String(localized: "CLR Type")
             case .other:       return String(localized: "Type")
             }
         }
@@ -35,8 +44,17 @@ struct UserDefinedTypeInfo: Identifiable, Hashable, Sendable {
             case .composite:   return "rectangle.split.3x1"
             case .domain:      return "checkmark.seal"
             case .range:       return "arrow.left.and.right.square"
+            case .aliasType:   return "character.textbox"
+            case .tableType:   return "tablecells"
+            case .clrType:     return "shippingbox"
             case .other:       return SidebarObjectKind.type.iconName
             }
+        }
+
+        /// A table type is only ever a table-valued parameter, so it must never reach the column
+        /// type picker; SQL Server rejects a column declared as one.
+        var isUsableAsColumnType: Bool {
+            self != .tableType
         }
     }
 

@@ -81,6 +81,10 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.importFromApp)
     }
 
+    @objc func importFromAWS(_ sender: Any?) {
+        WelcomeRouter.shared.route(.importFromAWS)
+    }
+
     @objc func openProjectFolder(_ sender: Any?) {
         WelcomeRouter.shared.route(.openProjectFolder)
     }

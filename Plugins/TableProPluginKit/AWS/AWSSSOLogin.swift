@@ -9,6 +9,61 @@ public struct AWSSSODeviceAuthorization: Sendable, Equatable {
     public let expiresIn: Int
 }
 
+public struct AWSSSOTokenCacheEntry: Sendable, Equatable {
+    public let accessToken: String
+    public let expiresAt: Date
+    public let region: String
+    public let startUrl: String
+    public let refreshToken: String?
+    public let clientId: String?
+    public let clientSecret: String?
+    public let registrationExpiresAt: Date?
+
+    public init(
+        accessToken: String,
+        expiresAt: Date,
+        region: String,
+        startUrl: String,
+        refreshToken: String? = nil,
+        clientId: String? = nil,
+        clientSecret: String? = nil,
+        registrationExpiresAt: Date? = nil
+    ) {
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+        self.region = region
+        self.startUrl = startUrl
+        self.refreshToken = refreshToken
+        self.clientId = clientId
+        self.clientSecret = clientSecret
+        self.registrationExpiresAt = registrationExpiresAt
+    }
+
+    internal var cachePayload: [String: String] {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        var payload: [String: String] = [
+            "accessToken": accessToken,
+            "expiresAt": formatter.string(from: expiresAt),
+            "region": region,
+            "startUrl": startUrl
+        ]
+        if let refreshToken, !refreshToken.isEmpty {
+            payload["refreshToken"] = refreshToken
+        }
+        if let clientId, !clientId.isEmpty {
+            payload["clientId"] = clientId
+        }
+        if let clientSecret, !clientSecret.isEmpty {
+            payload["clientSecret"] = clientSecret
+        }
+        if let registrationExpiresAt {
+            payload["registrationExpiresAt"] = formatter.string(from: registrationExpiresAt)
+        }
+        return payload
+    }
+}
+
 public enum AWSSSOLoginError: Error, LocalizedError, Equatable {
     case network(String)
     case unexpectedResponse
@@ -36,11 +91,17 @@ public enum AWSSSOLogin {
     public struct ClientRegistration: Decodable, Sendable, Equatable {
         public let clientId: String
         public let clientSecret: String
+        public let clientSecretExpiresAt: Int?
+
+        public var registrationExpiresAt: Date? {
+            clientSecretExpiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        }
     }
 
     public struct TokenResponse: Decodable, Sendable, Equatable {
         public let accessToken: String
         public let expiresIn: Int
+        public let refreshToken: String?
     }
 
     public static func registerClient(
@@ -131,15 +192,18 @@ public enum AWSSSOLogin {
         region: String,
         startUrl: String
     ) throws -> Data {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        let payload: [String: String] = [
-            "accessToken": accessToken,
-            "expiresAt": formatter.string(from: expiresAt),
-            "region": region,
-            "startUrl": startUrl
-        ]
-        return try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        try tokenCacheContents(
+            entry: AWSSSOTokenCacheEntry(
+                accessToken: accessToken,
+                expiresAt: expiresAt,
+                region: region,
+                startUrl: startUrl
+            )
+        )
+    }
+
+    public static func tokenCacheContents(entry: AWSSSOTokenCacheEntry) throws -> Data {
+        try JSONSerialization.data(withJSONObject: entry.cachePayload, options: [.sortedKeys])
     }
 
     public static func writeTokenCache(
@@ -150,13 +214,32 @@ public enum AWSSSOLogin {
         startUrl: String,
         cacheDirectory: String
     ) throws {
+        try writeTokenCache(
+            cacheKey: cacheKey,
+            entry: AWSSSOTokenCacheEntry(
+                accessToken: accessToken,
+                expiresAt: expiresAt,
+                region: region,
+                startUrl: startUrl
+            ),
+            cacheDirectory: cacheDirectory
+        )
+    }
+
+    public static func writeTokenCache(
+        cacheKey: String,
+        entry: AWSSSOTokenCacheEntry,
+        cacheDirectory: String
+    ) throws {
         try FileManager.default.createDirectory(atPath: cacheDirectory, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: cacheDirectory
+        )
         let fileName = AWSSSO.sha1Hex(Data(cacheKey.utf8)) + ".json"
         let path = (cacheDirectory as NSString).appendingPathComponent(fileName)
-        let contents = try tokenCacheContents(
-            accessToken: accessToken, expiresAt: expiresAt, region: region, startUrl: startUrl
-        )
-        try contents.write(to: URL(fileURLWithPath: path), options: .atomic)
+        try tokenCacheContents(entry: entry).write(to: URL(fileURLWithPath: path), options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
     public static func login(
@@ -183,21 +266,27 @@ public enum AWSSSOLogin {
         var interval = max(auth.interval, 1)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
-            let poll = try await pollToken(
+            let outcome = try await pollToken(
                 region: settings.region,
                 clientId: registration.clientId,
                 clientSecret: registration.clientSecret,
                 deviceCode: auth.deviceCode,
                 session: session
             )
-            switch poll {
+            switch outcome.poll {
             case .token(let accessToken, let expiresIn):
                 try writeTokenCache(
                     cacheKey: settings.ssoSession ?? settings.startUrl,
-                    accessToken: accessToken,
-                    expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
-                    region: settings.region,
-                    startUrl: settings.startUrl,
+                    entry: AWSSSOTokenCacheEntry(
+                        accessToken: accessToken,
+                        expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
+                        region: settings.region,
+                        startUrl: settings.startUrl,
+                        refreshToken: outcome.refreshToken,
+                        clientId: registration.clientId,
+                        clientSecret: registration.clientSecret,
+                        registrationExpiresAt: registration.registrationExpiresAt
+                    ),
                     cacheDirectory: cacheDirectory
                 )
                 return
@@ -216,21 +305,32 @@ public enum AWSSSOLogin {
         throw AWSSSOLoginError.authorizationTimedOut
     }
 
+    private struct TokenPollOutcome {
+        let poll: TokenPoll
+        let refreshToken: String?
+    }
+
+    private static func refreshToken(from data: Data) -> String? {
+        guard let token = try? JSONDecoder().decode(TokenResponse.self, from: data) else { return nil }
+        guard let refreshToken = token.refreshToken, !refreshToken.isEmpty else { return nil }
+        return refreshToken
+    }
+
     private static func pollToken(
         region: String,
         clientId: String,
         clientSecret: String,
         deviceCode: String,
         session: URLSession
-    ) async throws -> TokenPoll {
+    ) async throws -> TokenPollOutcome {
         let body: [String: Any] = [
             "clientId": clientId,
             "clientSecret": clientSecret,
             "grantType": "urn:ietf:params:oauth:grant-type:device_code",
             "deviceCode": deviceCode
         ]
-        guard let url = URL(string: "https://oidc.\(region).amazonaws.com/token") else {
-            return .failed("invalid token endpoint")
+        guard let url = URL(string: "https://\(AWSPartition.host(service: "oidc", region: region))/token") else {
+            return TokenPollOutcome(poll: .failed("invalid token endpoint"), refreshToken: nil)
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -239,7 +339,10 @@ public enum AWSSSOLogin {
         do {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            return interpretTokenResponse(status: status, data: data)
+            return TokenPollOutcome(
+                poll: interpretTokenResponse(status: status, data: data),
+                refreshToken: refreshToken(from: data)
+            )
         } catch {
             throw AWSSSOLoginError.network(error.localizedDescription)
         }
@@ -251,7 +354,7 @@ public enum AWSSSOLogin {
         body: [String: Any],
         session: URLSession
     ) async throws -> Data {
-        guard let url = URL(string: "https://oidc.\(region).amazonaws.com/\(path)") else {
+        guard let url = URL(string: "https://\(AWSPartition.host(service: "oidc", region: region))/\(path)") else {
             throw AWSSSOLoginError.unexpectedResponse
         }
         var request = URLRequest(url: url)
