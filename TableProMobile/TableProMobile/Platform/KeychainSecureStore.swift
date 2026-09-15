@@ -113,14 +113,22 @@ nonisolated final class KeychainSecureStore: SecureStore {
 
     /// Remove orphaned test connection credentials that may remain after a SIGKILL.
     /// Test credentials use temp UUIDs not associated with any saved connection.
+    ///
+    /// Two limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
+    /// simply not heard of yet. An empty valid set means the connections have not loaded, which is
+    /// every launch before the first sync merge, and sweeping then would delete all of them. And
+    /// only device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
+    /// deleting one here removes it from the Mac that wrote it too.
     func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
+        guard !validConnectionIds.isEmpty else { return }
+
         let prefixes = ["com.TablePro.password.", "com.TablePro.sshpassword.", "com.TablePro.keypassphrase."]
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitAll,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+            kSecAttrSynchronizable as String: false,
             kSecUseDataProtectionKeychain as String: true,
         ]
         var result: AnyObject?
@@ -134,9 +142,23 @@ nonisolated final class KeychainSecureStore: SecureStore {
                 let uuidString = String(account.dropFirst(prefix.count))
                 guard let uuid = UUID(uuidString: uuidString),
                       !validConnectionIds.contains(uuid) else { continue }
-                try? delete(forKey: account)
+                deleteDeviceLocal(forKey: account)
             }
         }
+    }
+
+    /// The sweep's own delete. `delete(forKey:)` matches `kSecAttrSynchronizableAny` because an
+    /// ordinary delete has to reach the item whichever it is; here that would let a device-local
+    /// match take an iCloud-shared item of the same name with it.
+    private func deleteDeviceLocal(forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: key,
+            kSecAttrSynchronizable as String: false,
+            kSecUseDataProtectionKeychain as String: true,
+        ]
+        SecItemDelete(applyingAccessGroup(query) as CFDictionary)
     }
 }
 

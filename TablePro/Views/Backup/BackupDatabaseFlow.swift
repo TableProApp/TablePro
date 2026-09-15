@@ -188,26 +188,11 @@ struct BackupDatabaseFlow: View {
         )
     }
 
-    /// One tool, `sqlpackage`, takes a password only in its argument list, where `ps` can read it.
-    /// The user is told before it runs rather than after, because the exposure lasts as long as the
-    /// dump and there is no other channel to move it to.
     @MainActor
     private func confirmPasswordExposureIfNeeded() async -> Bool {
-        guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId),
-              descriptor.exposesPasswordInArguments,
-              !connection.username.isEmpty,
-              ConnectionStorage.shared.loadPassword(for: connection.id) != nil else {
-            return true
-        }
-        return await AlertHelper.confirm(
-            title: String(localized: "This tool takes your password on its command line."),
-            message: String(
-                localized: """
-                    SqlPackage has no other way to receive one, so while the dump runs the password \
-                    is readable by other processes on this Mac. Windows or Entra authentication \
-                    avoids it.
-                    """),
-            confirmButton: String(localized: "Continue"),
+        await NativeDumpPasswordExposure.confirm(
+            connection: connection,
+            formatId: formatId,
             window: hostWindow
         )
     }

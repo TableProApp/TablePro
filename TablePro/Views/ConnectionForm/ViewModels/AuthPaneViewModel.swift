@@ -32,6 +32,10 @@ final class AuthPaneViewModel {
     var additionalFieldValues: [String: String] = [:]
     var pgpassStatus: PgpassStatus = .notChecked
 
+    /// What the keychain held when the form opened. An empty password field means the user cleared
+    /// it only if there was something to clear and the read succeeded.
+    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+
     var coordinator: WeakCoordinatorRef?
 
     var authFields: [ConnectionField] {
@@ -69,6 +73,13 @@ final class AuthPaneViewModel {
 
     var effectivePromptForPassword: Bool {
         promptForPassword && !hidesPassword
+    }
+
+    /// The user emptied a password field that had one in it. Saving then has to delete the stored
+    /// secret: leaving it behind means the next connect still authenticates with the old password,
+    /// an encrypted export still carries it, and a duplicate copies it.
+    var clearsStoredPassword: Bool {
+        !effectivePromptForPassword && password.isEmpty && storedPasswordState == .stored
     }
 
     var usePgpass: Bool {
@@ -133,6 +144,7 @@ final class AuthPaneViewModel {
 
         additionalFieldValues = values
 
+        storedPasswordState = storage.passwordState(for: connection.id)
         if let savedPassword = storage.loadPassword(for: connection.id) {
             password = savedPassword
         }

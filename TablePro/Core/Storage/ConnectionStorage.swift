@@ -557,9 +557,10 @@ final class ConnectionStorage {
 
     // MARK: - SSH Password Storage
 
-    func saveSSHPassword(_ password: String, for connectionId: UUID) {
+    @discardableResult
+    func saveSSHPassword(_ password: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        keychain.writeString(password, forKey: key)
+        return keychain.writeString(password, forKey: key)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
@@ -574,9 +575,10 @@ final class ConnectionStorage {
 
     // MARK: - Key Passphrase Storage
 
-    func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+    @discardableResult
+    func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        keychain.writeString(passphrase, forKey: key)
+        return keychain.writeString(passphrase, forKey: key)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
@@ -631,9 +633,10 @@ final class ConnectionStorage {
 
     // MARK: - TOTP Secret Storage
 
-    func saveTOTPSecret(_ secret: String, for connectionId: UUID) {
+    @discardableResult
+    func saveTOTPSecret(_ secret: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
-        keychain.writeString(secret, forKey: key)
+        return keychain.writeString(secret, forKey: key)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
@@ -710,6 +713,43 @@ final class ConnectionStorage {
     func deleteSOCKSProxyPassword(for connectionId: UUID) {
         let key = "com.TablePro.socksproxypassword.\(connectionId.uuidString)"
         keychain.delete(forKey: key)
+    }
+
+    // MARK: - Stored Secret State
+
+    /// What a keychain read actually said, which `loadPassword` and its siblings collapse to nil.
+    ///
+    /// The connection form prefills its secret fields from the keychain, so an empty field on save
+    /// means the user cleared it and the stored secret should go with it. That inference only holds
+    /// when the read succeeded: a locked, cancelled or otherwise unreadable keychain prefills
+    /// nothing either, and deleting on that would destroy a secret the user never touched.
+    enum StoredSecretState: Equatable {
+        case stored
+        case absent
+        case unreadable
+    }
+
+    func passwordState(for connectionId: UUID) -> StoredSecretState {
+        secretState(forKey: "com.TablePro.password.\(connectionId.uuidString)")
+    }
+
+    func sshPasswordState(for connectionId: UUID) -> StoredSecretState {
+        secretState(forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
+    }
+
+    func keyPassphraseState(for connectionId: UUID) -> StoredSecretState {
+        secretState(forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
+    }
+
+    private func secretState(forKey key: String) -> StoredSecretState {
+        switch keychain.readStringResult(forKey: key) {
+        case .found(let value):
+            return value.isEmpty ? .absent : .stored
+        case .notFound:
+            return .absent
+        case .locked, .userCancelled, .authFailed, .error:
+            return .unreadable
+        }
     }
 
     private struct SecretContext {

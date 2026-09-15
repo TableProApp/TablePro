@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connections still reaching an SSH profile's old host and username after the profile was edited.
+- SSH profile edits made on another Mac never reaching the connections that use it.
+- Deleting an SSH profile leaving the connections that used it without a tunnel.
+- SSH profile secrets left in the keychain when the profile was deleted on another Mac.
+- An SSH profile editor reporting a save or a delete that never reached disk.
+- Clearing a connection's password, or an inline SSH password or key passphrase, leaving the old one stored.
+- Backups and restores running with no password when the connection's password comes from a password source or `~/.pgpass`.
+- Password source failures during a backup or restore reported as a database authentication failure.
+- SqlPackage password-exposure warning skipped on a restore, and on a connection using a password source or `~/.pgpass`.
+- Saved passwords deleted from iCloud Keychain when TablePro for iPhone launched before its connections loaded.
 - Stutter when scrolling a very long line in the SQL editor.
 - Row inspector edits missing from the grid cell and gone from the inspector on reselect. (#2851)
 - Empty Procedures and Functions lists on every SQL Server connection.

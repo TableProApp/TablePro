@@ -377,8 +377,13 @@ final class ConnectionFormCoordinator {
 
         var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
-        if auth.effectivePromptForPassword {
-            storage.deletePassword(for: connectionToSave.id)
+        /// Removing a secret cannot be undone, so a clear waits until the connection record it
+        /// belongs to is on disk. Running it first and then failing the write leaves the old
+        /// connection in place with nothing left to authenticate it.
+        var clearedSecrets: [() -> Void] = []
+
+        if auth.effectivePromptForPassword || auth.clearsStoredPassword {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
         }
@@ -388,9 +393,13 @@ final class ConnectionFormCoordinator {
                 && !ssh.state.password.isEmpty
             {
                 storage.saveSSHPassword(ssh.state.password, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredPassword {
+                clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
             }
             if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
                 storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredKeyPassphrase {
+                clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
             }
             if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
                 storage.saveTOTPSecret(ssh.state.totpSecret, for: connectionToSave.id)
@@ -424,6 +433,7 @@ final class ConnectionFormCoordinator {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -448,6 +458,7 @@ final class ConnectionFormCoordinator {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }

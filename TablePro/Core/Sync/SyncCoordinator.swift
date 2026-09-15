@@ -620,10 +620,8 @@ final class SyncCoordinator {
             tags.removeAll { tagIdsToDelete.contains($0.id) }
             services.tagStorage.saveTags(tags)
         }
-        if !sshProfileIdsToDelete.isEmpty {
-            var profiles = services.sshProfileStorage.loadProfiles()
-            profiles.removeAll { sshProfileIdsToDelete.contains($0.id) }
-            services.sshProfileStorage.saveProfilesWithoutSync(profiles)
+        if !applyRemoteSSHProfileDeletions(sshProfileIdsToDelete) {
+            persistenceFailed = true
         }
         for id in tableFavoriteIdsToDelete {
             services.favoriteTablesStorage.removeFavoriteWithoutSync(id: id)
@@ -743,6 +741,33 @@ final class SyncCoordinator {
         return services.tagStorage.applyRemoteTag(remoteTag)
     }
 
+    /// Unlinking reads a profile's secrets, so it runs while they still exist. Dropping the record
+    /// alone left every connection using it addressing a profile id that no longer resolved, and
+    /// left its keychain items with nothing able to name them.
+    ///
+    /// Returns false when a conversion could not be persisted, which withholds the pull token: the
+    /// alternative is acknowledging a delete whose connections still point at the profile, with the
+    /// conversion lost and no tombstone left to replay it.
+    private func applyRemoteSSHProfileDeletions(_ profileIds: Set<UUID>) -> Bool {
+        guard !profileIds.isEmpty else { return true }
+
+        var profiles = services.sshProfileStorage.loadProfiles()
+        let deleted = profiles.filter { profileIds.contains($0.id) }
+        profiles.removeAll { profileIds.contains($0.id) }
+
+        for profile in deleted where !services.sshProfileStorage.unlinkConnections(fromProfile: profile) {
+            Self.logger.error(
+                "Kept SSH profile \(profile.id.uuidString, privacy: .public): its connections could not be converted"
+            )
+            return false
+        }
+        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return false }
+        for profile in deleted {
+            services.sshProfileStorage.deleteSecrets(for: profile.id)
+        }
+        return true
+    }
+
     private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
         let remoteProfile: SSHProfile
         do {
@@ -759,7 +784,10 @@ final class SyncCoordinator {
         } else {
             profiles.append(remoteProfile)
         }
-        services.sshProfileStorage.saveProfilesWithoutSync(profiles)
+        guard services.sshProfileStorage.saveProfilesWithoutSync(profiles) else { return }
+        /// A linked connection stores the profile's configuration, so an edit that arrives from
+        /// another Mac has to reach those connections too or they keep tunnelling to the old host.
+        services.sshProfileStorage.refreshLinkedConnections(with: remoteProfile)
     }
 
     private func applyRemoteSettings(_ record: CKRecord) {
