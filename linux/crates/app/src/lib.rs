@@ -11,6 +11,7 @@ pub mod i18n;
 pub mod logging;
 pub mod runtime;
 mod services;
+pub mod session;
 pub mod storage;
 #[cfg(test)]
 mod test_support;
