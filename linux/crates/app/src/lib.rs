@@ -8,6 +8,7 @@ use tablepro_core::DriverRegistry;
 
 pub mod config;
 pub mod i18n;
+pub mod logging;
 mod services;
 #[cfg(test)]
 mod test_support;
@@ -21,16 +22,21 @@ enum StartupError {
     Resources(#[source] glib::Error),
     #[error("could not open the settings schema: {0}")]
     Settings(#[from] tablepro_storage::SettingsError),
+    #[error("could not start logging: {0}")]
+    Logging(#[from] logging::LoggingError),
 }
 
 pub fn run() -> glib::ExitCode {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
-        .with_target(false)
-        .init();
-
     // SAFETY: nothing above spawns a thread; the tokio runtime and GTK start later.
-    if let Err(error) = unsafe { i18n::init() } {
+    let translations = unsafe { i18n::init() };
+
+    if let Err(error) = logging::init(config::profile()) {
+        // Nothing is journalling yet, so this is the one place that has
+        // to reach the session log by another route.
+        glib::g_critical!("tablepro", "{error}");
+        return glib::ExitCode::FAILURE;
+    }
+    if let Err(error) = translations {
         tracing::warn!(%error, "translations unavailable; falling back to the source strings");
     }
 
