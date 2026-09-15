@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Credential profiles, one username and password shared by any number of connections. (#2853)
+- **Profiles** pane in Settings, listing credential profiles and SSH servers with how many connections use each.
+- **Credentials** picker on a connection's Authentication section, with **Save These as a Profile…**.
 - **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
 - What's New window, from Help > What's New.
@@ -26,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Duplicate Connection shares a linked credential profile instead of copying its password.
 - **View > Zoom In** and **Zoom Out** (`Cmd+=`, `Cmd+-`) in place of Increase and Decrease Text Size, zooming a focused ER or query plan diagram.
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.

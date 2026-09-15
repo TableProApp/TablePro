@@ -19,6 +19,7 @@ struct ConnectionFormEdits: Equatable {
     var groupId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
+    var credentialMode: CredentialMode
     var cloudflareTunnelMode: CloudflareTunnelMode
     var cloudSQLProxyMode: CloudSQLProxyMode
     var socksProxyMode: SOCKSProxyMode
@@ -54,6 +55,7 @@ struct ConnectionFormEdits: Equatable {
         result.groupId = groupId
         result.sshProfileId = sshProfileId
         result.sshTunnelMode = sshTunnelMode
+        result.credentialMode = credentialMode
         result.cloudflareTunnelMode = cloudflareTunnelMode
         result.cloudSQLProxyMode = cloudSQLProxyMode
         result.socksProxyMode = socksProxyMode

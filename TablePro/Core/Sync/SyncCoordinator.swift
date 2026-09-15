@@ -715,6 +715,11 @@ final class SyncCoordinator {
             var merged = incoming
             merged.localOnly = connections[index].localOnly
             merged.passwordSource = connections[index].passwordSource
+            /// `credentialMode` has no field on the connection record yet, so a remote update
+            /// decodes as `.inline`. Adopting that would unlink the connection from its credential
+            /// profile, and linking has already deleted the password it used to hold, so the next
+            /// connect would go out with nothing.
+            merged.credentialMode = connections[index].credentialMode
             connections[index] = merged
         } else {
             connections.append(remoteConnection)

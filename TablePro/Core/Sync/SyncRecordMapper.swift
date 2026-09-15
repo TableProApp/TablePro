@@ -634,6 +634,85 @@ struct SyncRecordMapper {
         )
     }
 
+    // MARK: - Credential Profile
+
+    /// The password never goes in, and neither does the payload of a `.source` mode: it can name a
+    /// shell command, and one that arrived over iCloud is a command this Mac never agreed to run.
+    /// A source-backed profile therefore travels as `prompt`.
+    static func toCKRecord(_ profile: CredentialProfile, in zone: CKRecordZone.ID) -> CKRecord {
+        let recordID = recordID(type: .credentialProfile, id: profile.id.uuidString, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.credentialProfile.rawValue, recordID: recordID)
+
+        let fields = record.fields(CredentialProfileSyncField.self)
+        fields[.profileId] = profile.id.uuidString
+        fields[.name] = profile.name
+        fields[.username] = profile.username
+        fields[.passwordMode] = portablePasswordMode(profile.passwordMode)
+        fields[.sortOrder] = Int64(profile.sortOrder)
+        fields[.modifiedAtLocal] = Date()
+        fields[.schemaVersion] = schemaVersion
+
+        if !profile.secureFieldIds.isEmpty {
+            do {
+                fields[.secureFieldIdsJson] = try encoder.encode(profile.secureFieldIds)
+            } catch {
+                logger.warning("Failed to encode credential profile field ids for sync: \(error.localizedDescription)")
+            }
+        }
+
+        return record
+    }
+
+    static func toCredentialProfile(_ record: CKRecord) throws -> CredentialProfile {
+        let fields = record.fields(CredentialProfileSyncField.self)
+        guard let profileIdString = fields[.profileId] as? String,
+              let profileId = UUID(uuidString: profileIdString)
+        else {
+            throw SyncDecodeError.missingRequiredField("profileId")
+        }
+        guard let name = fields[.name] as? String else {
+            throw SyncDecodeError.missingRequiredField("name")
+        }
+
+        var secureFieldIds: [String] = []
+        if let data = fields[.secureFieldIdsJson] as? Data {
+            do {
+                secureFieldIds = try decoder.decode([String].self, from: data)
+            } catch {
+                throw SyncDecodeError.decodeFailure(field: "secureFieldIdsJson", underlying: error)
+            }
+        }
+
+        return CredentialProfile(
+            id: profileId,
+            name: name,
+            username: fields[.username] as? String ?? "",
+            passwordMode: passwordMode(fromPortable: fields[.passwordMode] as? String),
+            secureFieldIds: secureFieldIds,
+            sortOrder: Int(fields[.sortOrder] as? Int64 ?? 0)
+        )
+    }
+
+    static func portablePasswordModeForTesting(_ mode: CredentialPasswordMode) -> String {
+        portablePasswordMode(mode)
+    }
+
+    private static func portablePasswordMode(_ mode: CredentialPasswordMode) -> String {
+        switch mode {
+        case .stored: "stored"
+        case .prompt, .source: "prompt"
+        case .pgpass: "pgpass"
+        }
+    }
+
+    private static func passwordMode(fromPortable raw: String?) -> CredentialPasswordMode {
+        switch raw {
+        case "pgpass": .pgpass
+        case "prompt": .prompt
+        default: .stored
+        }
+    }
+
     // MARK: - Path Portability
     // Contract device-local paths to portable ~/… form before pushing to iCloud,
     // expand them back to device-local form when pulling. Matches the proven

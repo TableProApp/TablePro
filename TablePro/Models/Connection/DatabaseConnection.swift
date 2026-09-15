@@ -161,6 +161,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var groupId: UUID?
     var sshProfileId: UUID?
     var sshTunnelMode: SSHTunnelMode
+    var credentialMode: CredentialMode = .inline
     var cloudflareTunnelMode: CloudflareTunnelMode = .disabled
     var cloudSQLProxyMode: CloudSQLProxyMode = .disabled
     var socksProxyMode: SOCKSProxyMode = .disabled
@@ -267,6 +268,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
         sshTunnelMode: SSHTunnelMode = .disabled,
+        credentialMode: CredentialMode = .inline,
         cloudflareTunnelMode: CloudflareTunnelMode = .disabled,
         cloudSQLProxyMode: CloudSQLProxyMode = .disabled,
         socksProxyMode: SOCKSProxyMode = .disabled,
@@ -306,6 +308,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.tagIds = tagIds
         self.groupId = groupId
         self.sshProfileId = sshProfileId
+        self.credentialMode = credentialMode
         self.preferredSafeModeLevel = safeModeLevel
 
         // Auto-derive sshTunnelMode from legacy fields if not explicitly set
@@ -396,6 +399,7 @@ extension DatabaseConnection: Codable {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, tagIds, groupId, sshProfileId
         case sshTunnelMode, cloudflareTunnelMode, cloudSQLProxyMode, socksProxyMode, tunnelCommandMode
+        case credentialMode
         case safeModeLevel, aiPolicy, aiRules, aiAlwaysAllowedTools, externalAccess, additionalFields
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
@@ -421,6 +425,7 @@ extension DatabaseConnection: Codable {
         }
         groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
         sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        credentialMode = try container.decodeIfPresent(CredentialMode.self, forKey: .credentialMode) ?? .inline
         preferredSafeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
         aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
         aiRules = try container.decodeIfPresent(String.self, forKey: .aiRules)
@@ -473,6 +478,7 @@ extension DatabaseConnection: Codable {
         }
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encode(credentialMode, forKey: .credentialMode)
         try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
         if case .inline = cloudflareTunnelMode {
             try container.encode(cloudflareTunnelMode, forKey: .cloudflareTunnelMode)

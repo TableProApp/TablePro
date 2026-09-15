@@ -74,6 +74,7 @@ struct StoredConnection: Codable {
 
     // SSH tunnel mode (v2 JSON blob preserving jump hosts + profile links)
     let sshTunnelModeJson: Data?
+    let credentialModeJson: Data?
 
     // Cloudflare Access TCP tunnel mode (JSON blob)
     let cloudflareTunnelModeJson: Data?
@@ -158,6 +159,7 @@ struct StoredConnection: Codable {
 
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
+        self.credentialModeJson = try? JSONEncoder().encode(connection.credentialMode)
 
         // Cloudflare tunnel mode (only persisted when enabled)
         self.cloudflareTunnelModeJson = connection.isCloudflareEnabled
@@ -201,6 +203,7 @@ struct StoredConnection: Codable {
         case mongoAuthSource, mongoReadPreference, mongoWriteConcern, redisDatabase
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
+        case credentialModeJson
         case cloudflareTunnelModeJson
         case cloudSQLProxyModeJson
         case socksProxyModeJson
@@ -250,6 +253,7 @@ struct StoredConnection: Codable {
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
+        try container.encodeIfPresent(credentialModeJson, forKey: .credentialModeJson)
         try container.encodeIfPresent(cloudflareTunnelModeJson, forKey: .cloudflareTunnelModeJson)
         try container.encodeIfPresent(cloudSQLProxyModeJson, forKey: .cloudSQLProxyModeJson)
         try container.encodeIfPresent(socksProxyModeJson, forKey: .socksProxyModeJson)
@@ -327,6 +331,7 @@ struct StoredConnection: Codable {
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
+        credentialModeJson = try container.decodeIfPresent(Data.self, forKey: .credentialModeJson)
         cloudflareTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudflareTunnelModeJson)
         cloudSQLProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .cloudSQLProxyModeJson)
         socksProxyModeJson = try container.decodeIfPresent(Data.self, forKey: .socksProxyModeJson)
@@ -352,6 +357,9 @@ struct StoredConnection: Codable {
         sshConfig.totpAlgorithm = TOTPAlgorithm(rawValue: totpAlgorithm) ?? .sha1
         sshConfig.totpDigits = totpDigits
         sshConfig.totpPeriod = totpPeriod
+
+        let resolvedCredentialMode: CredentialMode = credentialModeJson
+            .flatMap { try? JSONDecoder().decode(CredentialMode.self, from: $0) } ?? .inline
 
         // Prefer sshTunnelModeJson (v2 format) over legacy flat fields
         let resolvedTunnelMode: SSHTunnelMode
@@ -460,6 +468,7 @@ struct StoredConnection: Codable {
             groupId: parsedGroupId,
             sshProfileId: parsedSSHProfileId,
             sshTunnelMode: resolvedTunnelMode,
+            credentialMode: resolvedCredentialMode,
             cloudflareTunnelMode: resolvedCloudflareMode,
             cloudSQLProxyMode: resolvedCloudSQLProxyMode,
             socksProxyMode: resolvedSOCKSProxyMode,

@@ -60,7 +60,7 @@ struct SyncSchemaGateTests {
     /// refreshed `production-schema.ckdb`. Anything gated and unlisted is a type that will never
     /// sync, which is what this test exists to catch; anything listed and no longer gated means the
     /// deploy landed and the entry is stale. Comparing sets catches both.
-    private static let pendingProductionDeploy: Set<SyncRecordType> = [.favoriteDatabase]
+    private static let pendingProductionDeploy: Set<SyncRecordType> = [.favoriteDatabase, .credentialProfile]
 
     @Test("Every record type the app declares is deployed, or is explicitly awaiting deployment")
     func allRecordTypesAreWritable() {

@@ -7,6 +7,10 @@ import Foundation
 import os
 import TableProSyncTransport
 
+extension Notification.Name {
+    static let sshProfilesDidChange = Notification.Name("SSHProfilesDidChange")
+}
+
 @MainActor
 final class SSHProfileStorage {
     static let shared = SSHProfileStorage()
@@ -73,6 +77,7 @@ final class SSHProfileStorage {
         do {
             let data = try encoder.encode(profiles)
             defaults.set(data, forKey: profilesKey)
+            NotificationCenter.default.post(name: .sshProfilesDidChange, object: nil)
             return true
         } catch {
             Self.logger.error("Failed to save SSH profiles: \(error)")

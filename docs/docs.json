@@ -126,6 +126,7 @@
               "connections/connection-form",
               "connections/urls",
               "connections/ssh-tunneling",
+              "connections/credential-profiles",
               "connections/ssh-profiles",
               "connections/remote-database-files",
               "connections/cloudflare-tunnel",

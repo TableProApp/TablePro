@@ -23,17 +23,16 @@ final class ConnectionStorage {
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
     private let appSettingsProvider: () -> AppSettingsStorage
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
 
     /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
     /// Whether the file on disk is the one TablePro last wrote. False once it has been edited by
     /// something else, which is the signal to refuse to run a connection's password source.
-    private(set) var storeIsTrusted = true
+    var storeIsTrusted: Bool { file.isTrusted }
 
-    private let fileURL: URL
+    private let file: IntegrityStampedFileStore<StoredConnection>
+    private var fileURL: URL { file.fileURL }
 
     private let keychain: any KeychainStoring
 
@@ -47,7 +46,12 @@ final class ConnectionStorage {
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
         appEvents: @escaping @autoclosure () -> AppEvents = .shared
     ) {
-        self.fileURL = fileURL
+        self.file = IntegrityStampedFileStore(
+            fileURL: fileURL,
+            label: "connections.json",
+            logger: Self.logger,
+            userSaveEstablishesTrust: true
+        )
         self.defaults = userDefaults
         self.syncTracker = syncTracker
         self.appSettingsProvider = appSettings
@@ -84,49 +88,23 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
-        guard let data = try? Data(contentsOf: fileURL) else {
-            storeIsTrusted = true
-            return []
+        guard let storedConnections = file.load() else { return [] }
+
+        let connections = storedConnections.map { stored in
+            stored.toConnection()
         }
 
-        switch ConnectionStoreIntegrity.shared.verify(data, fileURL: fileURL) {
-        case .trusted:
-            storeIsTrusted = true
-        case .unstamped:
-            // An install that predates the tag. Adopt the file as it stands, which is the only
-            // option without a prior baseline, and stamp it so later edits are detectable.
-            ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
-            storeIsTrusted = true
-        case .modified:
-            Self.logger.warning("connections.json changed outside TablePro; password sources will not run")
-            storeIsTrusted = false
-        case .unavailable:
-            Self.logger.warning("No connection store integrity key; password sources will not run")
-            storeIsTrusted = false
-        }
-
-        do {
-            let storedConnections = try decoder.decode([StoredConnection].self, from: data)
-
-            let connections = storedConnections.map { stored in
-                stored.toConnection()
+        let migrated = Self.numberingUnrankedGroups(connections)
+        if migrated != connections {
+            if storeIsTrusted {
+                saveConnections(migrated)
             }
-
-            let migrated = Self.numberingUnrankedGroups(connections)
-            if migrated != connections {
-                if storeIsTrusted {
-                    saveConnections(migrated)
-                }
-                cachedConnections = migrated
-                return migrated
-            }
-
-            cachedConnections = connections
-            return connections
-        } catch {
-            Self.logger.error("Failed to load connections: \(error)")
-            return []
+            cachedConnections = migrated
+            return migrated
         }
+
+        cachedConnections = connections
+        return connections
     }
 
     func loadConnection(id: UUID) -> DatabaseConnection? {
@@ -141,20 +119,9 @@ final class ConnectionStorage {
     /// iCloud too.
     @discardableResult
     func saveConnections(_ connections: [DatabaseConnection]) -> Bool {
-        let storedConnections = connections.map { StoredConnection(from: $0) }
-
-        do {
-            let data = try encoder.encode(storedConnections)
-            try data.write(to: fileURL, options: .atomic)
-            // Trust follows the tag. If no tag could be written, later edits are undetectable,
-            // so the store is not treated as trusted.
-            storeIsTrusted = ConnectionStoreIntegrity.shared.stamp(data, fileURL: fileURL)
-            cachedConnections = nil
-            return true
-        } catch {
-            Self.logger.error("Failed to save connections: \(error)")
-            return false
-        }
+        guard file.save(connections.map { StoredConnection(from: $0) }) else { return false }
+        cachedConnections = nil
+        return true
     }
 
     /// Invalidate the in-memory cache so the next load reads fresh from UserDefaults.
@@ -455,6 +422,7 @@ final class ConnectionStorage {
             groupId: connection.groupId,
             sshProfileId: connection.sshProfileId,
             sshTunnelMode: connection.sshTunnelMode,
+            credentialMode: connection.credentialMode,
             cloudflareTunnelMode: connection.cloudflareTunnelMode,
             cloudSQLProxyMode: connection.cloudSQLProxyMode,
             socksProxyMode: connection.socksProxyMode,
@@ -498,8 +466,12 @@ final class ConnectionStorage {
             .map { $0.id.uuidString }
         syncTracker.markDirty(.connection, ids: dirtyIds)
 
-        // Copy all passwords from source to duplicate (skip DB password in prompt mode)
-        if !connection.promptForPassword, let password = loadPassword(for: connection.id) {
+        /// A duplicate that shares a credential profile takes the link, not a copy of the secret.
+        /// Copying it would put the connection straight back into the N-copies-of-one-password
+        /// shape the profile exists to remove.
+        if connection.credentialMode == .inline,
+           !connection.promptForPassword,
+           let password = loadPassword(for: connection.id) {
             savePassword(password, for: newId)
         }
         if let sshPassword = loadSSHPassword(for: connection.id) {
@@ -540,9 +512,10 @@ final class ConnectionStorage {
 
     // MARK: - Keychain (Password Storage)
 
-    func savePassword(_ password: String, for connectionId: UUID) {
+    @discardableResult
+    func savePassword(_ password: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        keychain.writeString(password, forKey: key)
+        return keychain.writeString(password, forKey: key)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
@@ -610,9 +583,10 @@ final class ConnectionStorage {
 
     // MARK: - Plugin Secure Field Storage
 
-    func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) {
+    @discardableResult
+    func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
-        keychain.writeString(value, forKey: key)
+        return keychain.writeString(value, forKey: key)
     }
 
     func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {

@@ -9,17 +9,6 @@ import Testing
 
 @testable import TablePro
 
-/// Every read reports a locked keychain, which is what a secret that exists but cannot be copied
-/// looks like. Writes still succeed, so a test using it isolates the read half.
-private final class LockedKeychain: KeychainStoring, @unchecked Sendable {
-    @discardableResult
-    func writeString(_ value: String, forKey key: String) -> Bool { true }
-
-    func readStringResult(forKey key: String) -> KeychainStringResult { .locked }
-
-    func delete(forKey key: String) {}
-}
-
 @Suite("SSH profile storage")
 @MainActor
 struct SSHProfileStorageTests {
@@ -217,7 +206,7 @@ struct SSHProfileStorageTests {
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let lockedKeychain = LockedKeychain()
+        let lockedKeychain = UnreadableSecretKeychain()
         let lockedConnections = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: UserDefaults(suiteName: "com.TablePro.tests.SSHProfileLockedConn.\(unique)")!,

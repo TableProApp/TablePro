@@ -749,7 +749,7 @@ enum DatabaseDriverFactory {
         let config = DriverConnectionConfig(
             host: connection.host,
             port: connection.port,
-            username: connection.username,
+            username: ConnectionCredentialResolver.resolveUsername(for: connection),
             password: try await resolvePassword(for: connection, fields: additionalFields, override: passwordOverride),
             database: connection.database,
             ssl: ssl,
@@ -798,9 +798,18 @@ enum DatabaseDriverFactory {
         /// `resolveIAMPassword`, which reads `awsSecretAccessKey` from here. Loading only what the
         /// form renders today would leave that secret behind and fail the connect, with no AWS
         /// section left in the form to turn it off.
+        let credentialProfile = connection.credentialMode.profileId
+            .flatMap { CredentialProfileStorage.shared.profile(for: $0) }
         for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
             if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
-                if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
+                /// A linked profile owns the field when it declares it, so the secret lives once
+                /// under the profile's id rather than once per connection.
+                if let credentialProfile, credentialProfile.secureFieldIds.contains(fieldId),
+                   let profileValue = CredentialProfileStorage.shared.loadSecureField(
+                       fieldId: fieldId, for: credentialProfile.id
+                   ) {
+                    fields[fieldId] = profileValue
+                } else if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
                     fieldId: fieldId, for: connection.id
                 ) {
                     fields[fieldId] = secureValue

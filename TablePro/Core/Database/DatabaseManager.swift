@@ -22,6 +22,12 @@ final class DatabaseManager {
     @ObservationIgnored internal let pluginManager: PluginManager
     @ObservationIgnored internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
+    /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
+    /// credential profile when the connection links to one, the connection otherwise. Held here
+    /// rather than on the session because a profile's answer belongs to every connection using it,
+    /// and one of them being disconnected does not make it wrong for the rest.
+    @ObservationIgnored internal var promptedPasswords: [UUID: String] = [:]
+
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
         didSet {

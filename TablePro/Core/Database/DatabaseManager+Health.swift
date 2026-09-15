@@ -385,7 +385,7 @@ extension DatabaseManager {
 
             // Resolve password for prompt-for-password connections
             var passwordOverride = activeSessions[sessionId]?.cachedPassword
-            if session.connection.promptForPassword,
+            if ConnectionCredentialResolver.promptsForPassword(session.connection),
                !pluginManager.hidesPassword(for: session.connection),
                passwordOverride == nil
             {
@@ -522,7 +522,7 @@ extension DatabaseManager {
     ) async -> ReconnectCredentialResolution {
         /// An unattended reconnect never asks. See `performHealthMonitorReconnect`.
         guard allowsCredentialPrompt else { return .fail }
-        guard session.connection.promptForPassword,
+        guard ConnectionCredentialResolver.promptsForPassword(session.connection),
               !pluginManager.hidesPassword(for: session.connection),
               isAuthenticationFailure(error)
         else {

@@ -101,6 +101,28 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     ]
 }
 
+/// Everything except the password, which stays in the Keychain, and except the payload of a
+/// `.source` password mode, which can name a shell command this Mac would then run. `passwordMode`
+/// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives
+/// as `prompt` on a second Mac until its owner re-authors it there.
+///
+/// Empty on purpose, like `FavoriteDatabaseSyncField`. `CredentialProfile` is not in
+/// `CloudKit/production-schema.ckdb` yet, so the record type is declared and inert. Flip this set
+/// and `SyncRecordType.verifiedInProduction` together in the commit that carries the refreshed
+/// schema snapshot.
+public enum CredentialProfileSyncField: String, SyncSchemaField {
+    case profileId
+    case name
+    case username
+    case passwordMode
+    case secureFieldIdsJson
+    case sortOrder
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = []
+}
+
 public enum SSHProfileSyncField: String, SyncSchemaField {
     case profileId
     case name

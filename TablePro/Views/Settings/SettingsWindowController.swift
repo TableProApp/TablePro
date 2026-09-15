@@ -54,7 +54,9 @@ internal final class SettingsWindowController: NSWindowController {
 }
 
 internal final class SettingsPaneTabViewController: NSTabViewController {
-    internal static let paneSize = NSSize(width: 720, height: 500)
+    /// Wide enough for twelve items in a `.preference` toolbar. At 720 the last of them
+    /// falls into an overflow chevron, which is where a pane nobody can find comes from.
+    internal static let paneSize = NSSize(width: 800, height: 500)
     internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
@@ -155,6 +157,8 @@ private struct SettingsPaneContent: View {
             )
         case .keyboard:
             KeyboardSettingsView(settings: $settingsManager.keyboard)
+        case .profiles:
+            ProfilesSettingsView()
         case .notifications:
             NotificationsSettingsView(settings: $settingsManager.notifications)
         case .ai:
