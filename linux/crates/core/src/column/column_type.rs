@@ -91,6 +91,48 @@ impl ColumnType {
     pub fn read_form(&self) -> ReadForm {
         self.read_form
     }
+
+    /// The fractional-second digits the column declares, as in
+    /// `timestamp(6)`.
+    ///
+    /// `None` where the type names none, which is not the same as zero:
+    /// a value's own fraction is then all anyone knows about it.
+    pub fn fractional_digits(&self) -> Option<u32> {
+        if !matches!(self.kind, ColumnKind::Time | ColumnKind::Timestamp) {
+            return None;
+        }
+        type_arguments(self.name.as_sql()).first().copied()
+    }
+
+    /// The digits after the decimal point the column declares, as in
+    /// `numeric(38,10)`.
+    pub fn decimal_scale(&self) -> Option<u32> {
+        if self.kind != ColumnKind::Decimal {
+            return None;
+        }
+        let arguments = type_arguments(self.name.as_sql());
+        match arguments.len() {
+            // `numeric(10)` is `numeric(10,0)`.
+            1 => Some(0),
+            _ => arguments.get(1).copied(),
+        }
+    }
+}
+
+/// The numbers inside a type's parentheses, in order. A type with none,
+/// or with anything that is not a number, has no arguments to read.
+fn type_arguments(sql: &str) -> Vec<u32> {
+    let Some(open) = sql.find('(') else {
+        return Vec::new();
+    };
+    let Some(close) = sql[open..].find(')') else {
+        return Vec::new();
+    };
+    sql[open + 1..open + close]
+        .split(',')
+        .map(|part| part.trim().parse::<u32>())
+        .collect::<Result<Vec<u32>, _>>()
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -103,6 +145,68 @@ mod tests {
 
         assert_eq!(unknown.name().as_sql(), "");
         assert_eq!(unknown.kind(), ColumnKind::Other);
+    }
+
+    #[test]
+    fn a_declared_precision_is_read_from_the_type_the_server_named() {
+        let stamp = ColumnType::new(
+            SqlTypeExpr::from_catalog_text("timestamp(6) with time zone"),
+            ColumnKind::Timestamp,
+            CatalogType::Unknown,
+            false,
+            ReadForm::Native,
+        );
+
+        assert_eq!(stamp.fractional_digits(), Some(6));
+        assert_eq!(stamp.decimal_scale(), None, "a timestamp has no decimal scale");
+    }
+
+    #[test]
+    fn a_type_with_no_parentheses_declares_no_precision() {
+        let stamp = ColumnType::new(
+            SqlTypeExpr::from_catalog_text("timestamptz"),
+            ColumnKind::Timestamp,
+            CatalogType::Unknown,
+            false,
+            ReadForm::Native,
+        );
+
+        assert_eq!(stamp.fractional_digits(), None);
+    }
+
+    #[test]
+    fn a_decimal_reads_its_scale_and_defaults_it_to_zero() {
+        let scaled = ColumnType::new(
+            SqlTypeExpr::from_catalog_text("numeric(38,10)"),
+            ColumnKind::Decimal,
+            CatalogType::Unknown,
+            false,
+            ReadForm::Native,
+        );
+        let whole = ColumnType::new(
+            SqlTypeExpr::from_catalog_text("numeric(10)"),
+            ColumnKind::Decimal,
+            CatalogType::Unknown,
+            false,
+            ReadForm::Native,
+        );
+
+        assert_eq!(scaled.decimal_scale(), Some(10));
+        assert_eq!(whole.decimal_scale(), Some(0));
+    }
+
+    #[test]
+    fn a_length_is_not_read_as_a_precision() {
+        let text = ColumnType::new(
+            SqlTypeExpr::from_catalog_text("varchar(255)"),
+            ColumnKind::Text(crate::column::TextKind::Variable),
+            CatalogType::Unknown,
+            true,
+            ReadForm::Native,
+        );
+
+        assert_eq!(text.fractional_digits(), None);
+        assert_eq!(text.decimal_scale(), None);
     }
 
     #[test]
