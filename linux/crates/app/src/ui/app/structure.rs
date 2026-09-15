@@ -382,7 +382,7 @@ impl App {
                     schema.clone(),
                     name.clone(),
                     0,
-                    self.default_page_size,
+                    u64::from(self.settings.default_page_size()),
                     None,
                     sender.clone(),
                 );

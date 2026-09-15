@@ -7,8 +7,6 @@ use relm4::{adw, gtk};
 use tablepro_core::QueryResult;
 use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 
-use crate::services::preferences;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Format {
     Csv,
@@ -102,7 +100,13 @@ fn combo_row(title: &str, choices: &[&str]) -> adw::ComboRow {
         .build()
 }
 
-pub fn present(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverlay, result: QueryResult, name: String) {
+pub fn present(
+    parent: &adw::ApplicationWindow,
+    toast_overlay: &adw::ToastOverlay,
+    result: QueryResult,
+    name: String,
+    settings: &Rc<tablepro_storage::AppSettings>,
+) {
     let page = adw::PreferencesPage::new();
 
     let format_group = adw::PreferencesGroup::new();
@@ -149,7 +153,7 @@ pub fn present(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverla
             &[&crate::tr!("Period (.)"), &crate::tr!("Comma (,)")],
         ),
     });
-    rows.show(&preferences::load().csv_export);
+    rows.show(&settings.csv_options());
     for row in [
         &rows.null_to_empty,
         &rows.line_break_to_space,
@@ -163,11 +167,16 @@ pub fn present(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverla
     }
     page.add(&csv_group);
 
-    // Read-modify-write: the preferences dialog can be open over this
-    // one, and neither should overwrite the other's settings.
+    // GSettings is the single copy, so two open dialogs converge instead
+    // of overwriting each other.
     let persist = {
         let rows = rows.clone();
-        Rc::new(move || preferences::update(|prefs| prefs.csv_export = rows.read()))
+        let settings = settings.clone();
+        Rc::new(move || {
+            if let Err(error) = settings.set_csv_options(&rows.read()) {
+                tracing::warn!(%error, "could not save the CSV export options");
+            }
+        })
     };
     for row in [
         &rows.null_to_empty,
@@ -191,7 +200,11 @@ pub fn present(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverla
     let reset_button = gtk::Button::builder().label(crate::tr!("Reset to Defaults")).build();
     reset_button.add_css_class("flat");
     let rows_for_reset = rows.clone();
-    reset_button.connect_clicked(move |_| rows_for_reset.show(&CsvOptions::default()));
+    let settings_for_reset = settings.clone();
+    reset_button.connect_clicked(move |_| {
+        settings_for_reset.reset_csv_options();
+        rows_for_reset.show(&settings_for_reset.csv_options());
+    });
 
     let export_button = gtk::Button::builder().label(crate::tr!("Export\u{2026}")).build();
     export_button.add_css_class("suggested-action");

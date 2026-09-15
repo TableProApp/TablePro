@@ -1,5 +1,6 @@
 mod accessible_label;
 mod main_loop;
+mod memory_settings;
 mod signal_log;
 mod tests;
 mod unlabelled_widget;
@@ -8,6 +9,7 @@ mod widget_lookup;
 
 pub(crate) use accessible_label::assert_labelled;
 pub(crate) use main_loop::{drain_main_context, wait_until};
+pub(crate) use memory_settings::MemorySettings;
 pub(crate) use signal_log::SignalLog;
 pub(crate) use unlabelled_widget::UnlabelledWidget;
 pub(crate) use wait_timed_out::WaitTimedOut;

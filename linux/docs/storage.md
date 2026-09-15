@@ -71,30 +71,52 @@ Notes:
 
 ## App preferences with `gio::Settings`
 
-A GSchema XML file lives at `linux/data/app.tablepro.TablePro.gschema.xml`. It is compiled at build time and installed by Flatpak / `meson` / `cargo` build scripts.
+`data/app.tablepro.TablePro.gschema.xml` holds every app-wide preference and the window geometry. Meson installs it to `$datadir/glib-2.0/schemas` and compiles it; see [ADR 0007](decisions/0007-gsettings-preferences.md).
 
-Schema namespace: `app.tablepro.TablePro`. Keys we expect to start with:
+Schema id and path: `app.tablepro.TablePro`.
 
-| Key | Type | Default |
-|---|---|---|
-| `theme` | `s` (`auto` / `light` / `dark`) | `auto` |
-| `editor-font` | `s` | `JetBrains Mono 11` |
-| `editor-tab-width` | `u` | `4` |
-| `result-grid-row-height` | `u` | `28` |
-| `last-window-width` | `u` | `1200` |
-| `last-window-height` | `u` | `760` |
-| `last-window-maximised` | `b` | `false` |
+| Key | Type | Default | Range |
+|---|---|---|---|
+| `window-width` | `i` | `1200` | 360 to 32767 |
+| `window-height` | `i` | `760` | 294 to 32767 |
+| `is-maximized` | `b` | `false` | |
+| `default-page-size` | `u` | `1000` | 100 to 100000 |
+| `confirm-destructive` | `b` | `true` | |
+| `history-retention-days` | `u` | `30` | 0 to 365 |
+| `query-timeout-secs` | `u` | `60` | 0 to 3600 |
+| `use-system-font` | `b` | `true` | |
+| `custom-font` | `s` | `Monospace 12` | |
+| `style-scheme` | `s` | `Adwaita` | |
+| `csv-null-to-empty` | `b` | `true` | |
+| `csv-line-break-to-space` | `b` | `false` | |
+| `csv-header-row` | `b` | `true` | |
+| `csv-sanitize-formulas` | `b` | `true` | |
+| `csv-delimiter` | enum | `comma` | comma, semicolon, tab, pipe |
+| `csv-quote` | enum | `if-needed` | always, if-needed, never |
+| `csv-line-break` | enum | `lf` | lf, crlf, cr |
+| `csv-decimal` | enum | `period` | period, comma |
 
-`storage::settings` wraps `gio::Settings` so the rest of the app reads typed values:
+`tablepro_storage::AppSettings` wraps it in typed accessors:
 
 ```rust
-pub fn theme() -> Theme;
-pub fn set_theme(theme: Theme);
-pub fn editor_font() -> String;
-pub fn last_window_size() -> (u32, u32);
+pub fn open(schema_id: &str) -> Result<Self, SettingsError>;
+pub fn gio(&self) -> &gio::Settings;
+pub fn default_page_size(&self) -> u32;
+pub fn query_timeout(&self) -> Option<Duration>;
+pub fn editor_font(&self) -> EditorFont;
+pub fn csv_options(&self) -> CsvOptions;
+pub fn window_geometry(&self) -> WindowGeometry;
 ```
 
-Do not call `gio::Settings` directly from UI code. Always go through `storage::settings`. This isolates the schema from accidental misuse and makes future migration possible.
+Three points worth knowing:
+
+- `gio::Settings::new` aborts the process when the schema is missing, so `open` looks the id up through `SettingsSchemaSource::default()` first and returns `SettingsError::SchemaNotFound`.
+- A `<range>` makes GSettings refuse an out-of-bounds write. `AppSettings` surfaces that refusal as `SettingsError::Write` rather than silently storing it.
+- `query_timeout()` returns `Option<Duration>`; zero seconds means no timeout, and the type says so.
+
+Preference rows bind straight to the schema with `settings.gio().bind(key, &row, prop)`, so a change reaches every open view through `changed::<key>` without a save step.
+
+High-churn keyed data stays in files: column widths, per-table filters and workspace tabs are unbounded maps, which is not what GSettings is for.
 
 ## Errors
 

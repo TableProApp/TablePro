@@ -19,6 +19,8 @@ enum StartupError {
     HistoryRuntime(#[source] std::io::Error),
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
+    #[error("could not open the settings schema: {0}")]
+    Settings(#[from] tablepro_storage::SettingsError),
 }
 
 pub fn run() -> glib::ExitCode {
@@ -61,7 +63,8 @@ fn start() -> Result<(), StartupError> {
         }
     };
 
-    let prefs = services::preferences::load();
+    let settings = std::rc::Rc::new(tablepro_storage::AppSettings::open(config::SCHEMA_ID)?);
+    let retention = settings.history_retention_days();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
@@ -70,7 +73,7 @@ fn start() -> Result<(), StartupError> {
     runtime.block_on(async {
         if let Err(e) = tablepro_storage::query_history::init().await {
             tracing::warn!(error = %e, "history init failed; feature disabled");
-        } else if let Err(e) = tablepro_storage::query_history::prune_older_than(prefs.history_retention_days).await {
+        } else if let Err(e) = tablepro_storage::query_history::prune_older_than(retention).await {
             tracing::warn!(error = %e, "history prune failed");
         }
     });
@@ -86,7 +89,7 @@ fn start() -> Result<(), StartupError> {
             .resource_base_path(config::RESOURCE_BASE_PATH)
             .build(),
     );
-    app.run::<ui::App>(registry);
+    app.run::<ui::App>(ui::AppInit { registry, settings });
 
     // Explicit ordered shutdown: `app.run` returned (window closed),
     // so let the tokio runtime's worker threads finish in-flight

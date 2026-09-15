@@ -45,8 +45,16 @@ pub(super) fn dec_close_after_save(map: &mut std::collections::HashMap<Uuid, u32
     false
 }
 
+/// What `run()` hands the root component: the driver registry and the
+/// settings it opened before GTK started.
+pub struct AppInit {
+    pub registry: Arc<DriverRegistry>,
+    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
+}
+
 pub struct App {
     registry: Arc<DriverRegistry>,
+    settings: std::rc::Rc<tablepro_storage::AppSettings>,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
     window_title: adw::WindowTitle,
@@ -96,7 +104,6 @@ pub struct App {
     read_only: bool,
     /// Default page size for newly-opened browse tabs (from preferences).
     /// Per-tab page size lives on each BrowseTab.
-    default_page_size: u64,
     saved_connections: Vec<SavedConnection>,
     connected: bool,
     /// Tabs the user picked "Save" on in a close-confirmation dialog,
@@ -551,7 +558,7 @@ impl App {
 
 #[relm4::component(pub)]
 impl SimpleComponent for App {
-    type Init = Arc<DriverRegistry>;
+    type Init = AppInit;
     type Input = AppMsg;
     type Output = ();
 
@@ -703,23 +710,21 @@ impl SimpleComponent for App {
         }
     }
 
-    fn init(registry: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+        let AppInit { registry, settings } = init;
         let widgets = view_output!();
 
         if crate::config::profile() == crate::config::Profile::Development {
             widgets.window.add_css_class("devel");
         }
 
-        let restored = crate::services::window_state::load();
-        widgets.window.set_default_size(restored.width, restored.height);
-        if restored.maximized {
-            widgets.window.maximize();
-        }
+        crate::ui::window_geometry::restore(&widgets.window, &settings);
         // Window-close handler. Three responsibilities: persist window
         // size + maximize state, intercept close when any tab has
         // unsaved edits with a Cancel | Discard | Save dialog, and
         // route Save through the same SaveCompletedForTab plumbing as
         // a per-tab close so failures abort cleanly.
+        let settings_for_close = settings.clone();
         let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
         let force_close_for_close = force_close.clone();
         let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, u32>>> =
@@ -844,16 +849,7 @@ impl SimpleComponent for App {
                 dialog.present(Some(w));
                 return glib::Propagation::Stop;
             }
-            let (width, height) = if w.is_maximized() {
-                (w.default_width(), w.default_height())
-            } else {
-                (w.width(), w.height())
-            };
-            crate::services::window_state::save(crate::services::window_state::WindowState {
-                width,
-                height,
-                maximized: w.is_maximized(),
-            });
+            crate::ui::window_geometry::persist(w, &settings_for_close);
             glib::Propagation::Proceed
         });
 
@@ -1140,6 +1136,7 @@ impl SimpleComponent for App {
 
         let model = App {
             registry,
+            settings: settings.clone(),
             window: root.clone(),
             split_view: widgets.split_view.clone(),
             window_title: widgets.window_title.clone(),
@@ -1169,7 +1166,6 @@ impl SimpleComponent for App {
             current_driver_id: None,
             table_names: Vec::new(),
             read_only: false,
-            default_page_size: crate::services::preferences::load().default_page_size,
             saved_connections: Vec::new(),
             connected: false,
             close_after_save: close_after_save_handle,
@@ -1205,8 +1201,9 @@ impl SimpleComponent for App {
             glib::ControlFlow::Continue
         });
 
-        glib::timeout_add_seconds_local(3600, || {
-            let retention = crate::services::preferences::load().history_retention_days;
+        let settings_for_prune = settings.clone();
+        glib::timeout_add_seconds_local(3600, move || {
+            let retention = settings_for_prune.history_retention_days();
             relm4::spawn(async move {
                 if let Err(e) = tablepro_storage::query_history::prune_older_than(retention).await {
                     tracing::warn!(error = %e, "history prune failed");
@@ -1372,9 +1369,11 @@ impl SimpleComponent for App {
             AppMsg::PollHealth => self.on_poll_health(),
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowAbout => self.on_show_about(),
-            AppMsg::ShowPreferences => super::preferences::present(&self.window),
+            AppMsg::ShowPreferences => {
+                super::preferences_dialog::PreferencesDialog::new(&self.settings).present(Some(&self.window))
+            }
             AppMsg::ExportResults { result, name } => {
-                super::export_dialog::present(&self.window, &self.toast_overlay, result, name)
+                super::export_dialog::present(&self.window, &self.toast_overlay, result, name, &self.settings)
             }
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),

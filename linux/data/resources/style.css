@@ -1,3 +1,11 @@
+/* The SQL editor follows the desktop monospace font unless the user picked
+   one, in which case EditorFontProvider installs a display-scoped rule that
+   overrides these. */
+textview.sql-editor, textview.sql-editor text {
+  font-family: var(--monospace-font-family);
+  font-size: var(--monospace-font-size);
+}
+
 /* Pending-changeset cell and row states. The Adwaita classes
    (.warning, .success, .error) repaint the whole row, so these tint the
    libadwaita background colours instead, the way GNOME Builder marks a
