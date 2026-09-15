@@ -29,9 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-table row filter, with an optional separate target filter, and row limit in data Compare & Sync. (#2537)
 - Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
 - Acknowledgements entries for the four tree-sitter grammars the SQL editor ships.
+- **Edit > Find > Find and Replace…** (`Cmd+Option+F`) and **Use Selection for Find** (`Cmd+E`) in the SQL editor.
 
 ### Changed
 
+- Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
+- The editor's find panel keeps the mode it was left in instead of reverting to Find each time it opens.
 - Duplicate Connection shares a linked credential profile instead of copying its password.
 - **View > Zoom In** and **Zoom Out** (`Cmd+=`, `Cmd+-`) in place of Increase and Decrease Text Size, zooming a focused ER or query plan diagram.
 - Updates download in the background and install when you quit, instead of asking each time.

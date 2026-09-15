@@ -78,6 +78,7 @@ struct MenuValidationContext: Equatable {
     var canUndo = false
     var canRedo = false
     var hasEditorForFind = false
+    var hasSelectionForFind = false
     var hasActiveGridFind = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
@@ -106,6 +107,8 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// never reaches here. The Find commands rely on that: a focused editor claims and validates them
     /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
     static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        if let find = isFindCommandEnabled(selector, context: context) { return find }
+
         switch selector {
         case #selector(exportTables(_:)),
              #selector(refreshDatabase(_:)),
@@ -202,10 +205,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
         case #selector(truncateTable(_:)):
             return context.isConnected && context.canTruncateSelectedTables && !context.isReadOnly
-        case #selector(performFind(_:)):
-            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
-        case #selector(findNext(_:)), #selector(findPrevious(_:)):
-            return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(jumpToColumn(_:)):
             return context.isConnected && context.canJumpToColumn
         case #selector(undo(_:)):
@@ -290,6 +289,24 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    /// The Edit menu's Find commands, which are the window's last-resort answer. A focused editor claims and
+    /// validates them itself, so what these decide is only what happens when nothing nearer took the selector:
+    /// Find falls back to the result grid's find bar, and the two editor-only commands dim.
+    private static func isFindCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
+        case #selector(performFind(_:)):
+            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return context.hasEditorForFind || context.hasActiveGridFind
+        case #selector(performFindAndReplace(_:)):
+            return context.hasEditorForFind
+        case #selector(useSelectionForFind(_:)):
+            return context.hasSelectionForFind
+        default:
+            return nil
+        }
+    }
+
     /// The commands that act on the object selected in the sidebar. They answer on the same facts
     /// the sidebar's own contextual menu reads, so a command the sidebar omits is dimmed here rather
     /// than enabled over an object it cannot act on.
@@ -366,6 +383,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,
             hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
+            hasSelectionForFind: EditorEventRouter.shared.keyWindowEditorHasSelectionForFind,
             hasActiveGridFind: actions.hasActiveGridFind,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,

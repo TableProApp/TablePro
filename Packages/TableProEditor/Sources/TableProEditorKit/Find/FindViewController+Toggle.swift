@@ -15,15 +15,21 @@ extension FindViewController {
     /// - Sets the find panel to be just outside the visible area (`resolvedTopPadding - FindPanel.height`).
     /// - Animates the find panel into position (resolvedTopPadding).
     /// - Makes the find panel the first responder.
-    func showFindPanel(animated: Bool = true) {
+    ///
+    /// - Parameters:
+    ///   - mode: The mode to show, or `nil` to keep the mode the panel was last left in. A panel that
+    ///           reset itself to `.find` on every open made Replace unreachable from the keyboard and
+    ///           discarded the replacement text on the way past.
+    ///   - animated: Whether the panel slides into place.
+    func showFindPanel(mode: FindPanelMode? = nil, animated: Bool = true) {
+        if let mode {
+            viewModel.mode = mode
+        }
+
         if viewModel.isShowingFindPanel {
             // If panel is already showing, just focus the text field
             viewModel.isFocused = true
             return
-        }
-
-        if viewModel.mode == .replace {
-            viewModel.mode = .find
         }
 
         viewModel.isShowingFindPanel = true

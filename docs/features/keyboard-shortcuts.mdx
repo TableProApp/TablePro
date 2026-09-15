@@ -75,10 +75,16 @@ The grid meanings come back the moment you click into the grid, and `Delete` on 
 | Extend selection to next statement | `Option+Shift+Down` |
 | Show completions | `Ctrl+Space` |
 | Find | `Cmd+F` |
+| Find and Replace | `Cmd+Option+F` |
 | Find next | `Cmd+G` |
 | Find previous | `Cmd+Shift+G` |
+| Use selection for find | `Cmd+E` |
 
-Every row except Find, Find Next and Find Previous is built into the editor and cannot be rebound. Standard macOS text navigation and clipboard keys also apply.
+Find and Replace opens the same panel with a replacement field; the panel keeps whichever of the two
+modes you left it in. Use Selection for Find searches for the selected text without opening the panel,
+so `Cmd+G` moves straight to the next occurrence.
+
+Every row except the five find rows is built into the editor and cannot be rebound. Standard macOS text navigation and clipboard keys also apply.
 
 ## Data Grid
 
@@ -149,7 +155,7 @@ Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**
 | Next match | `Return` or `Cmd+G` |
 | Previous match | `Cmd+Shift+G` |
 | Close the find bar | `Escape` |
-| Toggle filter bar (table tab) | `Cmd+Option+F` |
+| Toggle filter bar (table tab) | `Cmd+Shift+F` |
 | Apply filters | `Cmd+Enter` |
 
 See [Filtering](/features/filtering) for the filter bar itself.

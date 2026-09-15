@@ -737,11 +737,23 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         controller?.showFindPanel()
     }
 
+    func showFindAndReplacePanel() {
+        controller?.showFindAndReplacePanel()
+    }
+
     func findNext() {
         controller?.findNext()
     }
 
     func findPrevious() {
         controller?.findPrevious()
+    }
+
+    var hasSelectionForFind: Bool {
+        controller?.hasSelectionForFind ?? false
+    }
+
+    func useSelectionForFind() {
+        controller?.useSelectionForFind()
     }
 }
