@@ -45,6 +45,7 @@ internal struct ThemeEditorColorsSection: View {
 
                 ColorPicker("", selection: binding(for: slot), supportsOpacity: true)
                     .labelsHidden()
+                    .accessibilityLabel(Text(slot.label))
             }
             .contextMenu {
                 if case .hex = value, case let .system(name) = BuiltInThemes.default(for: theme.appearance)[keyPath: slot.keyPath] {

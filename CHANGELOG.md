@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beancount connections held at Safe Mode Read-Only. (#2030)
 - MySQL sessions on the server's default `utf8mb4` collation.
 - Theme file format 2. Themes written for earlier versions are not read and need to be recreated.
+- Settings > Editor grouped into Display, Gutter and Editing.
 - Editor Font and Data Grid Font moved to Settings > Editor and Settings > Data & Results, and kept per Mac.
 - Editor font size range of 10 to 24 points everywhere, including zoom.
 - Structure editor options the connected PostgreSQL server does not support left out: generated columns before 12, BRIN before 9.5, and the MySQL-only FULLTEXT and SPATIAL index types.
@@ -79,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Content panes outside the editor and the data grid ignoring the theme.
 - JSON and PHP tree values colored differently from the same values in the row inspector.
 - Autocomplete icon colors ignoring the theme.
+- Theme color wells and the theme preview unreadable to VoiceOver.
 - Color with a typo in it rendering as a different color instead of being reported.
 - Text past the first 64 KB of a UTF-16 SQL import arriving byte-swapped.
 - SQL import failing on a file whose encoding is not UTF-8 when a character lands on a 64 KB boundary.
