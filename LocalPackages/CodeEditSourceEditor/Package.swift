@@ -18,11 +18,6 @@ let package = Package(
         .package(path: "../CodeEditTextView"),
         // tree-sitter languages (local override)
         .package(path: "../CodeEditLanguages"),
-        // CodeEditSymbols
-        .package(
-            url: "https://github.com/CodeEditApp/CodeEditSymbols.git",
-            exact: "0.2.3"
-        ),
         // Rules for indentation, pair completion, whitespace
         .package(
             url: "https://github.com/ChimeHQ/TextFormation",
@@ -37,8 +32,7 @@ let package = Package(
             dependencies: [
                 "CodeEditTextView",
                 "CodeEditLanguages",
-                "TextFormation",
-                "CodeEditSymbols"
+                "TextFormation"
             ]
         ),
 

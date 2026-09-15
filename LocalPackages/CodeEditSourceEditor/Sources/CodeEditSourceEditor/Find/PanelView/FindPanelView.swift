@@ -7,7 +7,6 @@
 
 import SwiftUI
 import AppKit
-import CodeEditSymbols
 import CodeEditTextView
 
 /// A SwiftUI view that provides a find and replace interface for the text editor.
