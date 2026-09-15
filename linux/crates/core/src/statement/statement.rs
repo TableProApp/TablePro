@@ -17,6 +17,12 @@ impl Statement {
         Self { sql, params }
     }
 
+    /// For a builder that assembled the SQL and the parameters itself,
+    /// in the order the placeholders name them.
+    pub fn from_parts(sql: String, params: Vec<BoundParam>) -> Self {
+        Self { sql, params }
+    }
+
     pub fn sql(&self) -> &str {
         &self.sql
     }
