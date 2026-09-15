@@ -22,7 +22,7 @@ The choice must work on both GNOME and KDE without per-DE branching, must have a
 
 Passwords are stored via the **Secret Service D-Bus API**, accessed through the **[`oo7`](https://crates.io/crates/oo7)** Rust crate.
 
-- Schema name: `com.tablepro.linux.Password`.
+- Schema name: `app.tablepro.TablePro.Password`.
 - Attributes: `connection-id` (the UUID).
 - Label: the human-readable connection name, kept in sync on rename.
 - Wrapper: `storage::secrets`, exposing `store_password`, `load_password`, `delete_password`.

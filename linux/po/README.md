@@ -24,7 +24,7 @@ ad-hoc testing).
    ```sh
    mkdir -p ~/.local/share/locale/xx/LC_MESSAGES
    msgfmt po/xx.po -o ~/.local/share/locale/xx/LC_MESSAGES/tablepro.mo
-   TABLEPRO_LOCALEDIR=~/.local/share/locale cargo run -p tablepro-app
+   TABLEPRO_LOCALEDIR=~/.local/share/locale cargo run -p tablepro
    ```
 
 ## Regenerating tablepro.pot

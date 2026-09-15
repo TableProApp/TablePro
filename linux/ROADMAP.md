@@ -41,7 +41,7 @@ Phases are ordered by **maturity**, not feature count. Each phase has a single c
 - [x] Flatpak manifest skeleton (not yet validated end-to-end — see Phase 3)
 - [x] Architecture decision records for stack picks
 
-Exit criterion: a fresh contributor can `cargo run -p tablepro-app` and reach a working window in under 15 minutes. **Met.**
+Exit criterion: a fresh contributor can `cargo run -p tablepro` and reach a working window in under 15 minutes. **Met.**
 
 ---
 
@@ -172,7 +172,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 ### Distribution scaffolding (~1 week)
 
-- [x] `com.tablepro.linux.metainfo.xml` skeleton
+- [x] `app.tablepro.TablePro.metainfo.xml` skeleton
 - [x] App icon: scalable SVG
 - [ ] Icon set: 16/32/48/64/128/256/512 PNG
 - [ ] 4–5 high-resolution screenshots showing key flows
@@ -189,7 +189,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [ ] Crash reporter: panic hook captures backtrace, writes to log, optional anonymous upload (with explicit opt-in)
 - [ ] "Help → Report bug" UI helper that opens the issue tracker pre-filled with sanitized log excerpt
 
-**Exit criterion**: app published to Flathub stable channel; user installs via `flatpak install com.tablepro.linux`; runs against their Postgres + MySQL daily for one week without unrecoverable failure.
+**Exit criterion**: app published to Flathub stable channel; user installs via `flatpak install app.tablepro.TablePro`; runs against their Postgres + MySQL daily for one week without unrecoverable failure.
 
 ---
 

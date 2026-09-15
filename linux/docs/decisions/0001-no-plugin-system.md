@@ -15,7 +15,7 @@ For the Linux subproject we have a chance to avoid that complexity from day one.
 
 ## Decision
 
-The Linux app does not have a runtime plugin system. Every database driver is a Rust crate inside `crates/drivers/`, statically linked into the `tablepro-app` binary, and registered in one place at startup.
+The Linux app does not have a runtime plugin system. Every database driver is a Rust crate inside `crates/drivers/`, statically linked into the `tablepro` binary, and registered in one place at startup.
 
 Adding a new database engine requires:
 

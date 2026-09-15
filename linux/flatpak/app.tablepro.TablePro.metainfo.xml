@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.tablepro.linux</id>
+  <id>app.tablepro.TablePro</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0-or-later</project_license>
   <name>TablePro</name>
@@ -21,10 +21,10 @@
       <li>TLS, read-only mode, auto-reconnect, and saved connections</li>
     </ul>
   </description>
-  <launchable type="desktop-id">com.tablepro.linux.desktop</launchable>
+  <launchable type="desktop-id">app.tablepro.TablePro.desktop</launchable>
   <url type="homepage">https://github.com/TableProApp/TablePro</url>
   <url type="bugtracker">https://github.com/TableProApp/TablePro/issues</url>
-  <developer id="com.tablepro">
+  <developer id="app.tablepro">
     <name>TablePro Authors</name>
   </developer>
   <categories>
@@ -47,7 +47,7 @@
     </release>
   </releases>
   <provides>
-    <binary>tablepro-app</binary>
+    <binary>tablepro</binary>
   </provides>
   <recommends>
     <control>keyboard</control>

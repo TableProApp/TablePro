@@ -65,15 +65,15 @@ Backed by the [`oo7`](https://crates.io/crates/oo7) crate, which speaks the Secr
 
 Notes:
 
-- Schema name: `com.tablepro.linux.Password`. Attributes: `connection-id`. Label: human-readable connection name (kept in sync on rename).
+- Schema name: `app.tablepro.TablePro.Password`. Attributes: `connection-id`. Label: human-readable connection name (kept in sync on rename).
 - If libsecret is not available (rare; truly minimal Linux installs), `load_password` returns `Ok(None)` and the UI prompts at connect time. The app does not crash and does not write passwords to plain files as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
 ## App preferences with `gio::Settings`
 
-A GSchema XML file lives at `linux/data/com.tablepro.linux.gschema.xml`. It is compiled at build time and installed by Flatpak / `meson` / `cargo` build scripts.
+A GSchema XML file lives at `linux/data/app.tablepro.TablePro.gschema.xml`. It is compiled at build time and installed by Flatpak / `meson` / `cargo` build scripts.
 
-Schema namespace: `com.tablepro.linux`. Keys we expect to start with:
+Schema namespace: `app.tablepro.TablePro`. Keys we expect to start with:
 
 | Key | Type | Default |
 |---|---|---|
