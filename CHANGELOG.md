@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Favorites and Recent sections, sorting, drag and drop into groups, inline rename and tag search tokens in the welcome window.
 - **File > New Group…**, **File > Rename** and **View > Sort Connections By** for the welcome window.
 - Favorites, Recent, nested groups, sorting and tag search tokens in the iOS connection list.
+- Per-table row filter, with an optional separate target filter, and row limit in data Compare & Sync. (#2537)
+- Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
 
 ### Changed
 
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection switcher lists Favorites, Recent and groups at every depth.
 - Connection rows without colored dots, on the Mac and on iOS.
 - SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
+- Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
 
 ### Fixed
 
@@ -44,6 +47,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server routines labelled encrypted when the account simply cannot read their source.
 - SQL Server version detection on a patched server, which left `CREATE OR ALTER` unused since 2016.
 - SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
+- Data sync scripts missing every UPDATE and DELETE. (#2537)
+- Data sync statements written to the source schema instead of the target.
+- Numeric-looking text such as `007` written unquoted by data sync, and key matches that hit extra rows.
+- Data sync pairing arbitrary rows on a key that is not unique.
+- Data sync inserts failing on SQL Server identity and PostgreSQL `GENERATED ALWAYS` columns.
+- Text columns compared as timestamps, and keys that differ only in case never synced.
+- Data sync scripts including tables never compared, or rows that changed after comparing.
+- Apply unavailable for a second sync in the same Compare & Sync window.
+- Choosing a source, target, mode or option during Apply cancelling the running sync.
+- Apply offered for a target switched to Read-Only after it was picked.
+- Compare & Sync reporting nothing written after a sync had written to the target.
+- Rolled-back data sync on MyISAM tables reported as leaving the target unchanged.
+- Cancelling a repeated data comparison clearing the previous results.
+- Table whose data comparison failed stuck included with no way to exclude it.
 - SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.

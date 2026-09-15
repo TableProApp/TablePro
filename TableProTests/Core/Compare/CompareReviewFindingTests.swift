@@ -13,12 +13,10 @@ import XCTest
 final class CompareRetentionCapTests: XCTestCase {
     private func engine(limit: Int) -> DataDiffEngine {
         var options = DataCompareOptions()
-        options.keyColumns = ["id"]
         options.maxRetainedEntries = limit
         return DataDiffEngine(
             options: options,
-            columns: ["id", "name"],
-            keyDescriptors: [KeyColumnDescriptor(name: "id", dataType: "int")]
+            shape: DataComparisonShape(keyColumns: ["id"], keyOrders: [.numeric], comparedColumns: ["name"])
         )
     }
 
@@ -199,8 +197,8 @@ final class CompareDataPlanSchemaTests: XCTestCase {
             table: "users",
             schema: "public",
             targetSchema: "audit",
-            columns: ["id"],
-            keyColumns: ["id"],
+            columns: [CompareColumn(name: "id")],
+            scope: DataTableScope(keyColumns: ["id"]),
             isEnabled: true
         )
 
@@ -210,7 +208,11 @@ final class CompareDataPlanSchemaTests: XCTestCase {
 
     func testAPlanWithNoTargetSchemaMirrorsTheSource() {
         let plan = DataComparePlan(
-            table: "users", schema: "public", columns: ["id"], keyColumns: ["id"], isEnabled: true
+            table: "users",
+            schema: "public",
+            columns: [CompareColumn(name: "id")],
+            scope: DataTableScope(keyColumns: ["id"]),
+            isEnabled: true
         )
 
         XCTAssertEqual(plan.targetSchema, "public")
