@@ -48,6 +48,7 @@ deny = [
     { crate = "bigdecimal", reason = "decimals use tablepro_core::value::SqlDecimal" },
     { crate = "backoff", reason = "unmaintained" },
     { crate = "instant", reason = "unmaintained" },
+    { crate = "tablepro-test-fixtures", wrappers = ["tablepro-driver-postgres"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
     { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
 ]
 

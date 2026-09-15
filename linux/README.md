@@ -33,19 +33,19 @@ System dependencies:
 
 ```bash
 # Ubuntu / Debian
-sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev clang
+sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libssl-dev libsecret-1-dev libsqlite3-dev libkrb5-dev clang libclang-dev
 
 # Fedora
-sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel krb5-devel clang
+sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel gtksourceview5-devel openssl-devel libsecret-devel sqlite-devel krb5-devel clang clang-devel
 
 # Arch
-sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret krb5 clang
+sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita gtksourceview5 openssl libsecret sqlite krb5 clang
 ```
 
 Verify the right versions are present:
 
 ```bash
-pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5   # need 4.14+ / 1.6+ / 5.12+
+pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5 sqlite3   # need 4.14+ / 1.6+ / 5.12+ / 3.46+
 rustc --version                                             # need 1.93+
 ```
 
@@ -59,6 +59,11 @@ cargo run -p tablepro-app
 Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands).
 
 Optional: if the system `-dev` packages above are missing, extract the package payloads under `../.local-deps/root/` (so headers land in `../.local-deps/root/usr/include`) and `source scripts/dev-env.sh` before cargo. Debian-family layouts only.
+
+`libsqlite3-dev` is there because the SQLite driver and the query history
+link the system SQLite through sqlx's `sqlite-unbundled` feature rather
+than compiling a second copy into the binary. `libclang-dev` lets
+`libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
 
 `libkrb5-dev` and `clang` are there for the app's default `kerberos`
 feature: SQL Server Windows integrated auth links MIT Kerberos and runs

@@ -18,7 +18,7 @@ futures.workspace = true
 rust_decimal.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
-sqlx = { workspace = true, features = ["mysql", "tls-rustls-aws-lc-rs"] }
+sqlx = { workspace = true, features = ["mysql", "mysql-rsa", "tls-rustls-aws-lc-rs"] }
 tokio.workspace = true
 uuid.workspace = true
 

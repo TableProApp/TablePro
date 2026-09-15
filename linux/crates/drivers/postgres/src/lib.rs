@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgRow};
-use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
+use sqlx::{AssertSqlSafe, Column, Pool, Postgres, Row, TypeInfo};
 
 use futures::stream::StreamExt;
 
@@ -177,7 +177,7 @@ impl Connection for PgConnection {
     }
 
     async fn query_params(&self, sql: &str, params: &[Value]) -> Result<QueryResult, DriverError> {
-        let q = bind_pg_params(sqlx::query(sql), params);
+        let q = bind_pg_params(sqlx::query(AssertSqlSafe(sql)), params);
         let mut stream = q.fetch(&self.pool);
         let mut collected: Vec<PgRow> = Vec::new();
         let mut truncated = false;
@@ -221,14 +221,17 @@ impl Connection for PgConnection {
     }
 
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
-        let res = sqlx::query(sql).execute(&self.pool).await.map_err(map_sqlx_error)?;
+        let res = sqlx::query(AssertSqlSafe(sql))
+            .execute(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
         Ok(ExecResult {
             rows_affected: res.rows_affected(),
         })
     }
 
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
-        let q = bind_pg_params(sqlx::query(sql), params);
+        let q = bind_pg_params(sqlx::query(AssertSqlSafe(sql)), params);
         let res = q.execute(&self.pool).await.map_err(map_sqlx_error)?;
         Ok(ExecResult {
             rows_affected: res.rows_affected(),
@@ -239,7 +242,7 @@ impl Connection for PgConnection {
         let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
         let mut affected = Vec::with_capacity(statements.len());
         for (idx, (sql, params)) in statements.iter().enumerate() {
-            let q = bind_pg_params(sqlx::query(sql), params);
+            let q = bind_pg_params(sqlx::query(AssertSqlSafe(sql.as_str())), params);
             match q.execute(&mut *tx).await {
                 Ok(res) => affected.push(res.rows_affected()),
                 Err(e) => {
@@ -359,7 +362,7 @@ impl Connection for PgConnection {
 }
 
 async fn stream_into_result(pool: &Pool<Postgres>, sql: &str, limit: usize) -> Result<QueryResult, DriverError> {
-    let mut stream = sqlx::query(sql).fetch(pool);
+    let mut stream = sqlx::query(AssertSqlSafe(sql)).fetch(pool);
     let mut collected: Vec<PgRow> = Vec::new();
     let mut truncated = false;
     while let Some(row_result) = stream.next().await {

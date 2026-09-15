@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{Row, SqlitePool};
+use sqlx::{AssertSqlSafe, Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StorageError;
@@ -274,7 +274,7 @@ pub async fn search(filter: SearchFilter) -> Result<Vec<Entry>, StorageError> {
     }
     sql.push_str("ORDER BY h.pinned DESC, h.executed_at DESC LIMIT ?");
 
-    let mut q = sqlx::query(&sql);
+    let mut q = sqlx::query(AssertSqlSafe(sql.as_str()));
     if let Some(needle) = &filter.needle {
         q = q.bind(needle);
     }
@@ -339,7 +339,7 @@ pub async fn delete_many(ids: &[i64]) -> Result<usize, StorageError> {
     let pool = pool()?;
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!("DELETE FROM history WHERE id IN ({placeholders})");
-    let mut q = sqlx::query(&sql);
+    let mut q = sqlx::query(AssertSqlSafe(sql.as_str()));
     for id in ids {
         q = q.bind(id);
     }
@@ -397,7 +397,7 @@ pub async fn fetch_by_ids(ids: &[i64]) -> Result<Vec<Entry>, StorageError> {
          duration_ms, rows_affected, success, cancelled, pinned, error \
          FROM history WHERE id IN ({placeholders}) ORDER BY pinned DESC, executed_at DESC"
     );
-    let mut q = sqlx::query(&sql);
+    let mut q = sqlx::query(AssertSqlSafe(sql.as_str()));
     for id in ids {
         q = q.bind(id);
     }
@@ -533,6 +533,27 @@ mod tests {
         };
         let err = record(entry).await.unwrap_err();
         assert!(matches!(err, StorageError::TooLarge { .. }));
+    }
+
+    #[tokio::test]
+    async fn history_fts5_available_on_system_sqlite() {
+        let pool = fresh_pool().await;
+        sqlx::query(
+            "INSERT INTO history (query, driver_id, connection_id, connection_name, executed_at, success, cancelled)
+             VALUES (?, 'sqlite', '', 'test', 0, 1, 0)",
+        )
+        .bind("SELECT name FROM widgets")
+        .execute(&pool)
+        .await
+        .expect("insert");
+
+        let matches: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM history_fts WHERE history_fts MATCH ?")
+            .bind("widgets")
+            .fetch_one(&pool)
+            .await
+            .expect("fts5 match");
+
+        assert_eq!(matches, 1);
     }
 
     #[test]
