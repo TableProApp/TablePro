@@ -25,11 +25,14 @@ extension TextViewController {
         textCoordinators.forEach { $0.val?.controllerDidDisappear(controller: self) }
     }
 
-    override public func loadView() {
-        /// Not `super.loadView()`. With a nil `nibName`, macOS 13 looks for a nib named after the
-        /// class and raises when there is none; macOS 14 quietly makes an empty view instead.
-        /// This controller has no nib on either, so it makes the view itself.
-        view = NSView()
+    override public func loadView() { // swiftlint:disable:this prohibited_super_call
+        /// macOS 13 raises out of `super.loadView()` for a controller with no nib. See
+        /// `PlainControllerView`, which is what `super` builds on 14.
+        if #available(macOS 14.0, *) {
+            super.loadView()
+        } else {
+            view = PlainControllerView.make()
+        }
 
         scrollView = SourceEditorScrollView()
         scrollView.documentView = textView
