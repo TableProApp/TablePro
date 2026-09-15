@@ -1,5 +1,6 @@
 mod format_plan;
 mod significant_tokens;
+mod statement_cursor;
 
 use std::time::SystemTime;
 
@@ -463,26 +464,28 @@ impl SimpleComponent for SqlEditor {
             SqlEditorInput::Grid(_) => {}
 
             SqlEditorInput::RunAtCursor => {
-                // Walk the buffer's SQL state machine and pick the
-                // statement segment containing the cursor. The user
-                // keeps several queries in one buffer and parks the
-                // cursor on one to run just that — standard DataGrip
-                // / DBeaver behaviour.
+                // The user keeps several queries in one buffer and
+                // parks the cursor on one to run just that. The script
+                // plan decides where that statement starts and ends,
+                // so a dollar-quoted body or a `GO` batch is one
+                // statement rather than several.
                 let buffer = self.source_view.buffer();
                 let (start, end) = buffer.bounds();
                 let sql = buffer.text(&start, &end, false).to_string();
-                let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
-                // GtkTextBuffer offsets are in *chars*, not bytes —
-                // translate so the cursor index lines up with
-                // `statement_at_cursor`'s char_indices walk. Without
-                // this, multi-byte identifiers (Vietnamese, emoji,
-                // German umlauts) would land mid-character.
-                let cursor_byte: usize = sql.chars().take(cursor_chars).map(char::len_utf8).sum();
-                let Some(statement) = statement_at_cursor(&sql, cursor_byte) else {
+                let grammar = self.grammar();
+                let plan = statement_cursor::plan_for(&sql, grammar);
+                let cursor_char = buffer.iter_at_mark(&buffer.get_insert()).offset().max(0) as usize;
+                let statement = statement_cursor::statement_bounds_at(&buffer, &plan, &sql, cursor_char)
+                    .map(|(from, to)| (buffer.text(&from, &to, false).to_string(), from, to))
+                    .filter(|(text, _, _)| !text.trim().is_empty());
+                let Some((text, from, to)) = statement else {
                     self.status.set_label(&crate::i18n::gettext("No statement at cursor"));
                     return;
                 };
-                self.execute_sql(statement, sender);
+                // Selecting it says which of the queries in the buffer
+                // is the one that ran.
+                buffer.select_range(&from, &to);
+                self.execute_sql(text.trim().to_owned(), sender);
             }
 
             SqlEditorInput::Cancel => {
@@ -619,6 +622,15 @@ impl SimpleComponent for SqlEditor {
 }
 
 impl SqlEditor {
+    /// The SQL grammar of the connection the editor is pointed at,
+    /// which decides where statements begin and end.
+    fn grammar(&self) -> tablepro_core::sql_syntax::SqlGrammar {
+        database_service::instance()
+            .active_metadata()
+            .map(|metadata| tablepro_core::dialect::grammar_for(&metadata.driver_id))
+            .unwrap_or(tablepro_core::sql_syntax::SqlGrammar::PostgreSql)
+    }
+
     /// The text buffer, so the draft writer can read the script once
     /// per write rather than carrying a copy of it per keystroke.
     pub fn buffer(&self) -> gtk::TextBuffer {
@@ -656,13 +668,14 @@ impl SqlEditor {
         self.executing_metadata = database_service::instance().active_metadata();
         self.executing_started_at = Some(SystemTime::now());
 
+        let statements = statement_cursor::script_statements(&trimmed, self.grammar());
         let timeout = self.settings.query_timeout();
         let timeout_secs = timeout.map_or(0, |duration| duration.as_secs() as u32);
         let sender_clone = sender.clone();
         sender.command(move |_, shutdown| {
+            let statements = statements.clone();
             shutdown
                 .register(async move {
-                    let statements = split_sql_statements(&trimmed);
                     // A `query_timeout_secs == 0` user opt-out turns
                     // the timeout branch off by holding a future that
                     // never resolves. Otherwise the tokio sleep races
@@ -1035,146 +1048,6 @@ fn toggle_line_comment(buffer: &gtk::TextBuffer) {
     buffer.end_user_action();
 }
 
-/// Find the SQL statement that contains the cursor at `cursor_byte`.
-/// Walks the same SQL state machine as `split_sql_statements`,
-/// tracking byte ranges per statement. The segment whose
-/// `[start, end]` brackets the cursor (or the trailing unterminated
-/// segment when the cursor sits past the last semicolon) is returned
-/// trimmed.
-///
-/// Returns `None` for empty / whitespace-only segments — the caller
-/// (Ctrl+Shift+Return path) shows a status hint in that case.
-fn statement_at_cursor(sql: &str, cursor_byte: usize) -> Option<String> {
-    let mut segments: Vec<(usize, usize)> = Vec::new();
-    let mut seg_start = 0usize;
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut in_line_comment = false;
-    let mut in_block_comment = false;
-    let mut chars = sql.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        if in_line_comment {
-            if c == '\n' {
-                in_line_comment = false;
-            }
-            continue;
-        }
-        if in_block_comment {
-            if c == '*'
-                && let Some(&(_, '/')) = chars.peek()
-            {
-                chars.next();
-                in_block_comment = false;
-            }
-            continue;
-        }
-        if !in_single && !in_double {
-            if c == '-'
-                && let Some(&(_, '-')) = chars.peek()
-            {
-                chars.next();
-                in_line_comment = true;
-                continue;
-            }
-            if c == '/'
-                && let Some(&(_, '*')) = chars.peek()
-            {
-                chars.next();
-                in_block_comment = true;
-                continue;
-            }
-        }
-        match c {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            ';' if !in_single && !in_double => {
-                segments.push((seg_start, i));
-                seg_start = i + c.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    segments.push((seg_start, sql.len()));
-    let cursor = cursor_byte.min(sql.len());
-    let pick = segments
-        .iter()
-        .find(|(start, end)| cursor >= *start && cursor <= *end)
-        .copied()
-        .or_else(|| segments.last().copied())?;
-    let trimmed = sql.get(pick.0..pick.1)?.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
-}
-
-fn split_sql_statements(sql: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut current = String::new();
-    let mut chars = sql.chars().peekable();
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut in_line_comment = false;
-    let mut in_block_comment = false;
-    while let Some(c) = chars.next() {
-        if in_line_comment {
-            current.push(c);
-            if c == '\n' {
-                in_line_comment = false;
-            }
-            continue;
-        }
-        if in_block_comment {
-            current.push(c);
-            if c == '*'
-                && let Some(slash) = chars.next_if_eq(&'/')
-            {
-                current.push(slash);
-                in_block_comment = false;
-            }
-            continue;
-        }
-        if !in_single && !in_double {
-            if c == '-'
-                && let Some(dash) = chars.next_if_eq(&'-')
-            {
-                current.push(c);
-                current.push(dash);
-                in_line_comment = true;
-                continue;
-            }
-            if c == '/'
-                && let Some(star) = chars.next_if_eq(&'*')
-            {
-                current.push(c);
-                current.push(star);
-                in_block_comment = true;
-                continue;
-            }
-        }
-        match c {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            ';' if !in_single && !in_double => {
-                let trimmed = current.trim().to_string();
-                if !trimmed.is_empty() {
-                    out.push(trimmed);
-                }
-                current.clear();
-                continue;
-            }
-            _ => {}
-        }
-        current.push(c);
-    }
-    let trimmed = current.trim().to_string();
-    if !trimmed.is_empty() {
-        out.push(trimmed);
-    }
-    out
-}
-
 pub const SQL_KEYWORDS: &str = "\
 SELECT FROM WHERE INSERT INTO VALUES UPDATE SET DELETE \
 JOIN INNER LEFT RIGHT FULL OUTER ON USING UNION INTERSECT EXCEPT \
@@ -1238,7 +1111,7 @@ pub fn derive_tab_label(query: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{export_name_for_query, split_sql_statements, sql_preview, statement_at_cursor, summary_label};
+    use super::{export_name_for_query, sql_preview, summary_label};
 
     #[test]
     fn export_name_slugs_the_statement() {
@@ -1249,49 +1122,6 @@ mod tests {
     #[test]
     fn export_name_falls_back_when_there_is_no_statement() {
         assert_eq!(export_name_for_query("   \n  "), crate::i18n::gettext("query-results"));
-    }
-
-    #[test]
-    fn splits_on_top_level_semicolons() {
-        let s = split_sql_statements("SELECT 1; SELECT 2");
-        assert_eq!(s, vec!["SELECT 1".to_string(), "SELECT 2".to_string()]);
-    }
-
-    #[test]
-    fn ignores_semicolons_in_string_literals() {
-        let s = split_sql_statements("INSERT INTO t VALUES ('a;b'); SELECT 1");
-        assert_eq!(s.len(), 2);
-        assert!(s[0].contains("'a;b'"));
-    }
-
-    #[test]
-    fn ignores_semicolons_in_double_quotes() {
-        let s = split_sql_statements("SELECT \"col;name\" FROM t; SELECT 2");
-        assert_eq!(s.len(), 2);
-    }
-
-    #[test]
-    fn ignores_semicolons_in_line_comment() {
-        let s = split_sql_statements("SELECT 1 -- comment ; here\n; SELECT 2");
-        assert_eq!(s.len(), 2);
-    }
-
-    #[test]
-    fn ignores_semicolons_in_block_comment() {
-        let s = split_sql_statements("SELECT 1 /* hi ; bye */; SELECT 2");
-        assert_eq!(s.len(), 2);
-    }
-
-    #[test]
-    fn trailing_semicolon_does_not_create_empty_statement() {
-        let s = split_sql_statements("SELECT 1;");
-        assert_eq!(s, vec!["SELECT 1".to_string()]);
-    }
-
-    #[test]
-    fn empty_input_returns_empty() {
-        assert!(split_sql_statements("").is_empty());
-        assert!(split_sql_statements("   \n\t  ").is_empty());
     }
 
     #[test]
@@ -1320,79 +1150,5 @@ mod tests {
         let s = summary_label(3, 2, 100, true);
         assert!(s.contains("2/3"));
         assert!(s.contains("100"));
-    }
-
-    // statement_at_cursor — Ctrl+Shift+Return path.
-
-    #[test]
-    fn cursor_in_first_statement() {
-        let sql = "SELECT 1; SELECT 2";
-        // Cursor mid-"SELECT 1".
-        let r = statement_at_cursor(sql, 4).unwrap();
-        assert_eq!(r, "SELECT 1");
-    }
-
-    #[test]
-    fn cursor_in_second_statement() {
-        let sql = "SELECT 1; SELECT 2";
-        // Cursor on "2" — byte offset 17.
-        let r = statement_at_cursor(sql, 17).unwrap();
-        assert_eq!(r, "SELECT 2");
-    }
-
-    #[test]
-    fn cursor_past_end_picks_last_statement() {
-        let sql = "SELECT 1; SELECT 2";
-        // Far past end — clamp to the last segment.
-        let r = statement_at_cursor(sql, 9999).unwrap();
-        assert_eq!(r, "SELECT 2");
-    }
-
-    #[test]
-    fn cursor_on_semicolon_takes_preceding_statement() {
-        // Cursor exactly on ';' (byte 8) — find returns the segment
-        // ending at that byte (start..end inclusive on cursor==end).
-        let sql = "SELECT 1; SELECT 2";
-        let r = statement_at_cursor(sql, 8).unwrap();
-        assert_eq!(r, "SELECT 1");
-    }
-
-    #[test]
-    fn cursor_in_string_literal_with_semicolon_inside() {
-        // The state machine must NOT treat a semicolon inside a
-        // single-quoted string as a statement boundary, otherwise
-        // INSERT INTO t VALUES ('a;b') would split into two
-        // ill-formed segments.
-        let sql = "INSERT INTO t VALUES ('a;b'); SELECT 2";
-        // Cursor at byte 24, inside 'a;b'.
-        let r = statement_at_cursor(sql, 24).unwrap();
-        assert!(r.starts_with("INSERT INTO t VALUES"));
-        assert!(r.contains("'a;b'"));
-    }
-
-    #[test]
-    fn cursor_in_block_comment_with_semicolon_inside() {
-        // Block-comment semicolons must be ignored too.
-        let sql = "SELECT 1 /* hi ; bye */; SELECT 2";
-        // Cursor inside the block comment.
-        let r = statement_at_cursor(sql, 16).unwrap();
-        assert!(r.starts_with("SELECT 1"));
-        assert!(r.contains("/* hi ; bye */"));
-    }
-
-    #[test]
-    fn empty_buffer_returns_none() {
-        assert!(statement_at_cursor("", 0).is_none());
-        assert!(statement_at_cursor("   \n\t  ", 3).is_none());
-    }
-
-    #[test]
-    fn multibyte_identifier_does_not_split_mid_char() {
-        // Unicode column / table identifier — ensure byte offset
-        // arithmetic doesn't land mid-codepoint and panic.
-        let sql = "SELECT \"chú_ý\" FROM t; SELECT 2";
-        let r = statement_at_cursor(sql, 0).unwrap();
-        assert!(r.starts_with("SELECT"));
-        assert!(r.contains("chú_ý"));
     }
 }
