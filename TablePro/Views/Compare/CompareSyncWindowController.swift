@@ -701,6 +701,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         guard let item else { return }
         PopoverPresenter.show(
             relativeTo: item,
+            in: window,
             contentSize: NSSize(width: 420, height: 520)
         ) { _ in
             CompareOptionsView(session: self.session)

@@ -91,6 +91,7 @@ internal final class CompareEndpointToolbarController: NSObject {
 
         let shown = PopoverPresenter.show(
             relativeTo: anchor,
+            in: windowProvider(),
             contentSize: DatabaseEndpointPicker.contentSize,
             behavior: .transient
         ) { dismiss in
