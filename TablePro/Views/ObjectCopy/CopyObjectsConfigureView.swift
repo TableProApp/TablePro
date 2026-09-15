@@ -8,7 +8,7 @@
 import SwiftUI
 
 internal struct CopyObjectsConfigureView: View {
-    @Bindable internal var session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
     @Binding internal var isChoosingTarget: Bool
 
     internal var body: some View {

@@ -13,7 +13,7 @@
 import SwiftUI
 
 internal struct CompareTableScopeEditor: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let plan: DataComparePlan
 
     private enum RowLimitMode: Hashable {
@@ -88,14 +88,14 @@ internal struct CompareTableScopeEditor: View {
         .padding(.vertical, 8)
         .disabled(!session.canChangeSetup)
         .onAppear(perform: prepare)
-        .onChange(of: plan.id) {
+        .onChange(of: plan.id) { _ in
             commitSourceFilter()
             commitTargetFilter()
             prepare()
         }
-        .onChange(of: plan.scope.sourceFilter) { syncDraftsFromScope() }
-        .onChange(of: plan.scope.targetFilter) { syncDraftsFromScope() }
-        .onChange(of: focusedField) { previous, current in
+        .onChange(of: plan.scope.sourceFilter) { _ in syncDraftsFromScope() }
+        .onChange(of: plan.scope.targetFilter) { _ in syncDraftsFromScope() }
+        .onValueChange(of: focusedField) { previous, current in
             if previous == sourceFieldIdentity, current != sourceFieldIdentity {
                 commitSourceFilter()
             }

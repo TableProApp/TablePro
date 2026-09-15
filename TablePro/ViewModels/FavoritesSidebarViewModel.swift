@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 internal struct FavoriteEditItem: Identifiable {
     let id = UUID()
@@ -153,17 +153,17 @@ internal extension [FavoriteNode] {
     }
 }
 
-@MainActor @Observable
-internal final class FavoritesSidebarViewModel {
-    var editDialogItem: FavoriteEditItem?
-    var renamingFolderId: UUID?
-    var showDeleteConfirmation = false
-    var favoritesToDelete: [SQLFavorite] = []
+@MainActor
+internal final class FavoritesSidebarViewModel: ObservableObject {
+    @Published var editDialogItem: FavoriteEditItem?
+    @Published var renamingFolderId: UUID?
+    @Published var showDeleteConfirmation = false
+    @Published var favoritesToDelete: [SQLFavorite] = []
 
-    @ObservationIgnored internal let connectionId: UUID
-    @ObservationIgnored private let cache: ConnectionDataCache
-    @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
+    internal let connectionId: UUID
+    private let cache: ConnectionDataCache
+    private let services: AppServices
+    private var manager: SQLFavoriteManager { services.sqlFavoriteManager }
 
     var isInitialLoadComplete: Bool { cache.isInitialLoadComplete }
 

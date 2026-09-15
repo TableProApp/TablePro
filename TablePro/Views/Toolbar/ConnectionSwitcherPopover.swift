@@ -154,7 +154,7 @@ struct ConnectionSwitcherPopover: View {
             reload()
             settleSelection()
         }
-        .onChange(of: searchText) { _, _ in
+        .onChange(of: searchText) { _ in
             settleSelection()
         }
     }

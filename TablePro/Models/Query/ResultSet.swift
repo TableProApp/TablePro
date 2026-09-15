@@ -5,8 +5,8 @@
 //  A single result set from one SQL statement execution.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 /// One execution's product: its rows, and the facts about how they were produced.
@@ -23,24 +23,23 @@ import os
 /// up here (#2243). `origin` is the one of those facts that earns its place: it describes this
 /// result rather than the tab, and the switch reads it.
 @MainActor
-@Observable
-final class ResultSet: Identifiable {
+final class ResultSet: ObservableObject, Identifiable {
     let id: UUID
-    var label: String
-    var tableRows: TableRows
-    var executionTime: TimeInterval?
-    var rowsAffected: Int = 0
-    var errorMessage: String?
-    var statusMessage: String?
-    var isPinned: Bool = false
-    var isTruncated: Bool = false
-    var baseQuery: String?
-    var baseQueryParameterValues: [String?]?
+    @Published var label: String
+    @Published var tableRows: TableRows
+    @Published var executionTime: TimeInterval?
+    @Published var rowsAffected: Int = 0
+    @Published var errorMessage: String?
+    @Published var statusMessage: String?
+    @Published var isPinned: Bool = false
+    @Published var isTruncated: Bool = false
+    @Published var baseQuery: String?
+    @Published var baseQueryParameterValues: [String?]?
 
     /// The table these rows came from, captured when the statement ran. Nil means the rows have no
     /// single writable table, which `ResultEditability` treats as a refusal rather than a licence
     /// to use whatever the tab is pointing at now.
-    var origin: ResultOrigin?
+    @Published var origin: ResultOrigin?
 
     /// The statement in the tab's query that produced these rows, kept so selecting this result can
     /// take the reader back to it. Nil for rows no editor statement stands behind: a table tab's
@@ -48,16 +47,16 @@ final class ResultSet: Identifiable {
     ///
     /// Like `origin` this describes the result rather than the tab, and like `origin` something
     /// reads it, which is what earns it a place here.
-    var statementAnchor: StatementAnchor?
+    @Published var statementAnchor: StatementAnchor?
 
     /// An EXPLAIN result is a result set like any other, so it rides the same tab strip, pinning
     /// and history. It carries a plan instead of rows.
-    var queryPlan: QueryPlan?
-    var explainRawText: String?
+    @Published var queryPlan: QueryPlan?
+    @Published var explainRawText: String?
 
     /// Where this plan sits in the statement's saved history, so the plan pane can offer a
     /// comparison without asking a coordinator anything.
-    var explainPlanContext: QueryPlanContext?
+    @Published var explainPlanContext: QueryPlanContext?
 
     var isExplainResult: Bool { explainRawText != nil }
 

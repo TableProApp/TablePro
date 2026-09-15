@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct CSVImportOptionsView: View {
-    let plugin: CSVImportPlugin
+    @ObservedObject var plugin: CSVImportPlugin
 
     var body: some View {
         HStack(alignment: .top, spacing: 32) {
@@ -15,7 +15,7 @@ struct CSVImportOptionsView: View {
                 GridRow {
                     Text("Delimiter:")
                         .gridColumnAlignment(.trailing)
-                    Picker(String(localized: "Delimiter", bundle: .main), selection: Bindable(plugin).settings.delimiter) {
+                    Picker(String(localized: "Delimiter", bundle: .main), selection: $plugin.settings.delimiter) {
                         Text("Auto-detect").tag(CSVImportOptions.Delimiter.auto)
                         Text("Comma (,)").tag(CSVImportOptions.Delimiter.comma)
                         Text("Semicolon (;)").tag(CSVImportOptions.Delimiter.semicolon)
@@ -29,7 +29,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("Quote character:")
-                    Picker(String(localized: "Quote character", bundle: .main), selection: Bindable(plugin).settings.quoteCharacter) {
+                    Picker(String(localized: "Quote character", bundle: .main), selection: $plugin.settings.quoteCharacter) {
                         Text("Double quote (\")").tag(CSVImportOptions.QuoteCharacter.doubleQuote)
                         Text("Single quote (')").tag(CSVImportOptions.QuoteCharacter.singleQuote)
                     }
@@ -40,7 +40,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("Encoding:")
-                    Picker(String(localized: "Encoding", bundle: .main), selection: Bindable(plugin).settings.encoding) {
+                    Picker(String(localized: "Encoding", bundle: .main), selection: $plugin.settings.encoding) {
                         Text("Auto-detect").tag(CSVImportOptions.TextEncoding.auto)
                         Text("UTF-8").tag(CSVImportOptions.TextEncoding.utf8)
                         Text("ISO Latin 1").tag(CSVImportOptions.TextEncoding.isoLatin1)
@@ -53,7 +53,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("On error:")
-                    Picker(String(localized: "On error", bundle: .main), selection: Bindable(plugin).settings.errorHandling) {
+                    Picker(String(localized: "On error", bundle: .main), selection: $plugin.settings.errorHandling) {
                         Text("Stop and Rollback").tag(ImportErrorHandling.stopAndRollback)
                         Text("Stop and Commit").tag(ImportErrorHandling.stopAndCommit)
                         Text("Skip and Continue").tag(ImportErrorHandling.skipAndContinue)
@@ -65,7 +65,7 @@ struct CSVImportOptionsView: View {
 
                 GridRow {
                     Text("NULL text:")
-                    TextField("", text: Bindable(plugin).settings.nullString, prompt: Text(verbatim: "\\N"))
+                    TextField("", text: $plugin.settings.nullString, prompt: Text(verbatim: "\\N"))
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 170)
                         .help("An extra value that should be imported as NULL, for example \\N.")
@@ -73,21 +73,21 @@ struct CSVImportOptionsView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Toggle("First row is a header", isOn: Bindable(plugin).settings.hasHeaderRow)
+                Toggle("First row is a header", isOn: $plugin.settings.hasHeaderRow)
                     .help("Use the first row as column names. Turn off to import every row as data.")
 
-                Toggle("Trim leading and trailing spaces", isOn: Bindable(plugin).settings.trimWhitespace)
+                Toggle("Trim leading and trailing spaces", isOn: $plugin.settings.trimWhitespace)
 
-                Toggle("Treat empty values as NULL", isOn: Bindable(plugin).settings.emptyAsNull)
+                Toggle("Treat empty values as NULL", isOn: $plugin.settings.emptyAsNull)
                     .help("Insert NULL for empty fields instead of an empty string.")
 
-                Toggle("Wrap in transaction (BEGIN/COMMIT)", isOn: Bindable(plugin).settings.wrapInTransaction)
+                Toggle("Wrap in transaction (BEGIN/COMMIT)", isOn: $plugin.settings.wrapInTransaction)
                     .disabled(plugin.settings.errorHandling == .skipAndContinue)
                     .help(plugin.settings.errorHandling == .skipAndContinue
                         ? String(localized: "Not available in skip-and-continue mode")
                         : String(localized: "Insert all rows in a single transaction. If any row fails, all changes are rolled back."))
 
-                Toggle("Delete existing rows before import", isOn: Bindable(plugin).settings.deleteExistingRows)
+                Toggle("Delete existing rows before import", isOn: $plugin.settings.deleteExistingRows)
                     .help("Remove every row from the target table before inserting the imported rows.")
             }
         }

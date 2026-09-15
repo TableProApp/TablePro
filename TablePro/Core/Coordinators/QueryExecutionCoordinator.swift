@@ -3,11 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@MainActor @Observable
-final class QueryExecutionCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class QueryExecutionCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     init(parent: MainContentCoordinator) {
         self.parent = parent

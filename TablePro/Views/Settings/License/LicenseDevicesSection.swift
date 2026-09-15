@@ -11,7 +11,7 @@ import SwiftUI
 /// and the proven shape for a list inside a grouped `Form` is `MCPTokenListView`, bounded by an
 /// explicit height because a list will not size itself to its content here.
 struct LicenseDevicesSection: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     @State private var releaseCandidate: LicenseActivationInfo?
 

@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct TunnelCommandTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var viewModel: TunnelCommandPaneViewModel { coordinator.tunnelCommand }
 

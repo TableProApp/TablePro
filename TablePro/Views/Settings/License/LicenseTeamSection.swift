@@ -10,7 +10,7 @@ import SwiftUI
 /// Invites, removals and seat counts are written through a token-authenticated API the app cannot
 /// authenticate against, so this reports the roster and links out for anything that changes it.
 struct LicenseTeamSection: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     var body: some View {
         Section {

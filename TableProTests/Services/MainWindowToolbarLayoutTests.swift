@@ -49,6 +49,7 @@ struct MainWindowToolbarInspectorPlacementTests {
     /// One flexible space, immediately after the separator, is what pushes the whole trailing group
     /// to the window edge. Everything after it is a pane toggle; a second flexible space in there
     /// would split the group and let the items drift apart as the pane opens.
+    @available(macOS 14.0, *)
     @Test("A flexible space anchors the trailing toggles to the window edge")
     func flexibleSpaceSeparatesTheTrackingSeparatorFromTheToggle() throws {
         let identifiers = MainWindowToolbar.defaultItemIdentifiers
@@ -75,12 +76,15 @@ struct MainWindowToolbarInspectorPlacementTests {
 
     /// Ahead of the separator the toggle lands in the content section, which measured wrong in both
     /// the open and the closed state.
+    @available(macOS 14.0, *)
     @Test("The inspector toggle stays behind its tracking separator")
     func toggleNeverPrecedesItsTrackingSeparator() throws {
         let identifiers = MainWindowToolbar.defaultItemIdentifiers
         let separatorIndex = try #require(identifiers.firstIndex(of: .inspectorTrackingSeparator))
         #expect(!identifiers[..<separatorIndex].contains(MainWindowToolbar.inspector))
     }
+
+    @available(macOS 14.0, *)
 
     @Test("The inspector item is AppKit's standard toggle, not a private identifier")
     func inspectorIsTheStandardIdentifier() {

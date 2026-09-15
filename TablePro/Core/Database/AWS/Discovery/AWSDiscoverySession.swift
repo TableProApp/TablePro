@@ -1,10 +1,10 @@
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class AWSDiscoverySession {
+final class AWSDiscoverySession: ObservableObject {
     enum RegionProgress: Equatable, Sendable {
         case pending
         case loading
@@ -21,26 +21,26 @@ final class AWSDiscoverySession {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AWSDiscovery")
 
-    var profileName: String {
+    @Published var profileName: String {
         didSet {
             guard profileName != oldValue else { return }
             refreshProfileMetadata()
         }
     }
 
-    var selectedRegionIds: [String] = []
-    var authenticationMode: AWSDiscoveryAuthentication.Mode = .iam
-    private(set) var profileKind: AWSProfileKind = .unknown
+    @Published var selectedRegionIds: [String] = []
+    @Published var authenticationMode: AWSDiscoveryAuthentication.Mode = .iam
+    @Published private(set) var profileKind: AWSProfileKind = .unknown
 
-    private(set) var isRunning = false
-    private(set) var isSigningIn = false
-    private(set) var regionProgress: [String: RegionProgress] = [:]
-    private(set) var databases: [DiscoveredDatabase] = []
-    private(set) var credentialFailure: CredentialFailure?
+    @Published private(set) var isRunning = false
+    @Published private(set) var isSigningIn = false
+    @Published private(set) var regionProgress: [String: RegionProgress] = [:]
+    @Published private(set) var databases: [DiscoveredDatabase] = []
+    @Published private(set) var credentialFailure: CredentialFailure?
 
     /// A cancelled run cannot be interrupted while `credential_process` blocks in its own
     /// process, so the UI is released by generation and the late completion discards itself.
-    private var runGeneration = 0
+    @Published private var runGeneration = 0
 
     init(profileName: String = "") {
         self.profileName = profileName

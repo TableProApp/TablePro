@@ -1,28 +1,26 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class PrincipalChangeManager {
-    private(set) var principals: [PluginPrincipalInfo] = []
-    private(set) var catalog: PluginPrivilegeCatalog?
+final class PrincipalChangeManager: ObservableObject {
+    @Published private(set) var principals: [PluginPrincipalInfo] = []
+    @Published private(set) var catalog: PluginPrivilegeCatalog?
 
-    private(set) var baselineGrants: [PluginPrincipalRef: [PluginGrantInfo]] = [:]
-    private(set) var grantDeltas: [PluginPrincipalRef: PrincipalGrantDelta] = [:]
+    @Published private(set) var baselineGrants: [PluginPrincipalRef: [PluginGrantInfo]] = [:]
+    @Published private(set) var grantDeltas: [PluginPrincipalRef: PrincipalGrantDelta] = [:]
 
-    private(set) var pendingCreates: [PluginPrincipalDefinition] = []
-    private(set) var pendingDrops: [PluginPrincipalRef: PluginPrincipalDropOptions] = [:]
-    private(set) var pendingPasswords: [PluginPrincipalRef: String] = [:]
-    private(set) var pendingAlters: [PluginPrincipalRef: PluginPrincipalDefinition] = [:]
+    @Published private(set) var pendingCreates: [PluginPrincipalDefinition] = []
+    @Published private(set) var pendingDrops: [PluginPrincipalRef: PluginPrincipalDropOptions] = [:]
+    @Published private(set) var pendingPasswords: [PluginPrincipalRef: String] = [:]
+    @Published private(set) var pendingAlters: [PluginPrincipalRef: PluginPrincipalDefinition] = [:]
 
-    private(set) var changeCount = 0
-    private(set) var grantClosureVersion = 0
+    @Published private(set) var changeCount = 0
+    @Published private(set) var grantClosureVersion = 0
 
     /// `groupsByEvent` is off: with it on, NSUndoManager coalesces every registration made in the
     /// same run-loop event into one group, so undo granularity would depend on how fast the user
     /// clicked. Each mutation opens and closes its own group instead.
-    @ObservationIgnored
     let undoManager: UndoManager = {
         let manager = UndoManager()
         manager.groupsByEvent = false
@@ -30,14 +28,11 @@ final class PrincipalChangeManager {
         return manager
     }()
 
-    @ObservationIgnored
-    private var baselineKeys: [PluginPrincipalRef: Set<PrincipalGrantKey>] = [:]
+    @Published private var baselineKeys: [PluginPrincipalRef: Set<PrincipalGrantKey>] = [:]
 
-    @ObservationIgnored
-    private var closureCache: [PluginPrincipalRef: Set<PluginPrivilegeScope>] = [:]
+    @Published private var closureCache: [PluginPrincipalRef: Set<PluginPrivilegeScope>] = [:]
 
-    @ObservationIgnored
-    var cascades: (PluginPrivilegeScope, PluginPrivilegeScope) -> Bool = { _, _ in false }
+    @Published var cascades: (PluginPrivilegeScope, PluginPrivilegeScope) -> Bool = { _, _ in false }
 
     var hasChanges: Bool { changeCount > 0 }
 

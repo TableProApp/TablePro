@@ -4,6 +4,7 @@
 //
 
 import CDuckDB
+import Combine
 import Foundation
 import os
 import SwiftUI
@@ -15,8 +16,7 @@ import TableProPluginKit
 /// column chunks, with per-column compression. Hand-writing that means owning an encoder whose
 /// correctness nothing local can check. DuckDB already ships one that every Parquet reader agrees
 /// with, and the library is already built for this app.
-@Observable
-final class ParquetExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "Parquet Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Apache Parquet"
@@ -36,7 +36,7 @@ final class ParquetExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked 
     /// many rows are held in Swift at once.
     private static let stagingBatchSize = 2_000
 
-    var settings = ParquetExportOptions() {
+    @Published var settings = ParquetExportOptions() {
         didSet { saveSettings() }
     }
 

@@ -6,7 +6,7 @@ internal struct ThemeListView: View {
     @Binding var selectedThemeId: String
     internal var slotAppearance: ThemeAppearance = .light
 
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
 
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?

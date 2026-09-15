@@ -3,13 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class SchemaService {
+final class SchemaService: ObservableObject {
     static let shared = SchemaService()
 
     /// The object kinds that are not tables, each behind its own load state so a list that is still
@@ -20,14 +20,14 @@ final class SchemaService {
         var userDefinedTypes: MetadataLoadState<[UserDefinedTypeInfo]> = .idle
     }
 
-    private(set) var states: [UUID: SchemaState] = [:]
-    private(set) var sideObjects: [UUID: SideObjects] = [:]
-    private(set) var schemasInOrder: [UUID: [String]] = [:]
-    private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
-    private(set) var perSchemaSideObjects: [UUID: [String: SideObjects]] = [:]
-    private(set) var generations: [UUID: Int] = [:]
-    private(set) var refreshingConnections: Set<UUID> = []
-    private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
+    @Published private(set) var states: [UUID: SchemaState] = [:]
+    @Published private(set) var sideObjects: [UUID: SideObjects] = [:]
+    @Published private(set) var schemasInOrder: [UUID: [String]] = [:]
+    @Published private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
+    @Published private(set) var perSchemaSideObjects: [UUID: [String: SideObjects]] = [:]
+    @Published private(set) var generations: [UUID: Int] = [:]
+    @Published private(set) var refreshingConnections: Set<UUID> = []
+    @Published private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
 
     func generationToken(for connectionId: UUID) -> Int {
         generations[connectionId] ?? 0
@@ -37,15 +37,15 @@ final class SchemaService {
         generations[connectionId, default: 0] &+= 1
     }
 
-    @ObservationIgnored private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
-    @ObservationIgnored private let routinesDedup = OnceTask<LoadKey, [RoutineInfo]>()
-    @ObservationIgnored private let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
-    @ObservationIgnored private let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
-    @ObservationIgnored private let schemasDedup = OnceTask<LoadKey, [String]>()
-    @ObservationIgnored private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
-    @ObservationIgnored private let perSchemaRoutinesDedup = OnceTask<SchemaKey, [RoutineInfo]>()
-    @ObservationIgnored private let perSchemaTriggersDedup = OnceTask<SchemaKey, [TriggerInfo]>()
-    @ObservationIgnored private let perSchemaTypesDedup = OnceTask<SchemaKey, [UserDefinedTypeInfo]>()
+    private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
+    private let routinesDedup = OnceTask<LoadKey, [RoutineInfo]>()
+    private let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
+    private let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
+    private let schemasDedup = OnceTask<LoadKey, [String]>()
+    private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
+    private let perSchemaRoutinesDedup = OnceTask<SchemaKey, [RoutineInfo]>()
+    private let perSchemaTriggersDedup = OnceTask<SchemaKey, [TriggerInfo]>()
+    private let perSchemaTypesDedup = OnceTask<SchemaKey, [UserDefinedTypeInfo]>()
 
     struct SchemaKey: Hashable, Sendable {
         let connectionId: UUID
@@ -78,11 +78,11 @@ final class SchemaService {
         let continuation: CheckedContinuation<Void, Never>
     }
 
-    @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
-    @ObservationIgnored private var schemaLoadGenerations: [SchemaKey: Int] = [:]
-    @ObservationIgnored private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
-    @ObservationIgnored private var nextLoadGeneration = 0
-    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
+    private var loadGenerations: [UUID: Int] = [:]
+    private var schemaLoadGenerations: [SchemaKey: Int] = [:]
+    private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
+    private var nextLoadGeneration = 0
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
     func state(for connectionId: UUID) -> SchemaState {
         states[connectionId] ?? .idle

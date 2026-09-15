@@ -3,20 +3,20 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import SwiftUI
 
-@MainActor @Observable
-final class DatabaseSwitcherViewModel {
+@MainActor
+final class DatabaseSwitcherViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseSwitcherViewModel")
 
-    var databases: [DatabaseMetadata] = []
-    var searchText = "" {
+    @Published var databases: [DatabaseMetadata] = []
+    @Published var searchText = "" {
         didSet { selectedDatabase = filteredDatabases.first?.name }
     }
-    var selectedDatabases: Set<String> = []
+    @Published var selectedDatabases: Set<String> = []
 
     /// The keyboard path (arrows, Return) drives one row at a time, so it reads and
     /// writes the selection as a single value while the mouse can extend it.
@@ -24,19 +24,19 @@ final class DatabaseSwitcherViewModel {
         get { selectedDatabases.count == 1 ? selectedDatabases.first : nil }
         set { selectedDatabases = newValue.map { [$0] } ?? [] }
     }
-    var isLoading = false
-    var errorMessage: String?
-    var showPreview = false
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var showPreview = false
 
     let switchTarget: ContainerSwitchTarget
 
     private let connectionId: UUID
     private let currentDatabase: String?
     private let databaseType: DatabaseType
-    @ObservationIgnored private let services: AppServices
+    private let services: AppServices
     private let sidebarState: SharedSidebarState?
-    @ObservationIgnored private var hasLoadedOnce = false
-    @ObservationIgnored private var loadToken: UUID?
+    private var hasLoadedOnce = false
+    private var loadToken: UUID?
 
     /// The sidebar's database filter narrows a database list only. In schema mode these rows are
     /// schemas, and the filter names databases.

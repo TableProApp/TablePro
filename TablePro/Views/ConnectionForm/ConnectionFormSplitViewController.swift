@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import SwiftUI
 
@@ -19,6 +20,8 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     private static let detailMinThickness: CGFloat = 480
 
     private let coordinator: ConnectionFormCoordinator
+
+    private var titleObservations: [AnyCancellable] = []
 
     internal init(coordinator: ConnectionFormCoordinator) {
         self.coordinator = coordinator
@@ -63,11 +66,17 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     /// writes `window.title` directly. `withObservationTracking` fires once per change, so the
     /// closure re-arms itself.
     private func trackTitle() {
-        withObservationTracking {
-            title = windowTitle
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.trackTitle() }
-        }
+        title = windowTitle
+        titleObservations = [
+            coordinator.onMainActorChange { [weak self] in
+                guard let self else { return }
+                self.title = self.windowTitle
+            },
+            coordinator.network.onMainActorChange { [weak self] in
+                guard let self else { return }
+                self.title = self.windowTitle
+            },
+        ]
     }
 
     private var windowTitle: String {

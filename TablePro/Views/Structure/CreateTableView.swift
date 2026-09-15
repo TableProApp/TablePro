@@ -38,15 +38,15 @@ struct CreateTableView: View {
     /// so taking the cursor created the table somewhere the tab never named.
     let scope: DatabaseScope?
     var coordinator: MainContentCoordinator?
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) private var services
 
     /// The definition in progress. Held outside this view because the view is destroyed the moment
     /// the tab is deselected, and nothing in a Create Table tab exists anywhere else yet.
-    @Bindable var draft: CreateTableDraft
+    @ObservedObject var draft: CreateTableDraft
 
-    @State private var wrappedChangeManager: AnyChangeManager
+    @StateObject private var wrappedChangeManager: AnyChangeManager
 
     private var structureChangeManager: StructureChangeManager { draft.changeManager }
 
@@ -77,7 +77,7 @@ struct CreateTableView: View {
         self.draft = draft
 
         let manager = draft.changeManager
-        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
+        _wrappedChangeManager = StateObject(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
             structureChangeManager: manager,
             structureTab: .columns,
@@ -133,9 +133,9 @@ struct CreateTableView: View {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { updateGridDelegate() }
-        .onChange(of: isReadyToCreate) { updateCreateTablePendingState() }
+        .onChange(of: selectedRows) { newRows in selectionState.indices = newRows }
+        .onChange(of: selectedTab) { _ in updateGridDelegate() }
+        .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -186,7 +186,7 @@ struct CreateTableView: View {
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: draft.tableOptions.charset) { _, newCharset in
+        .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first
             }

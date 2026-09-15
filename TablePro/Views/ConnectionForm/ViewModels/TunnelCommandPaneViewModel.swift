@@ -3,14 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class TunnelCommandPaneViewModel {
-    var state = TunnelCommandFormState()
+final class TunnelCommandPaneViewModel: ObservableObject {
+    @Published var state = TunnelCommandFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }

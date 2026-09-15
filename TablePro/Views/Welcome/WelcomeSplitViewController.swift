@@ -40,7 +40,12 @@ internal final class WelcomeSplitViewController: NSSplitViewController {
                 .environment(\.appServices, .live)
         )
         list.sizingOptions = []
-        list.sceneBridgingOptions = [.toolbars]
+        /// `sceneBridgingOptions` is macOS 14. It lets the hosted SwiftUI tree contribute toolbar
+        /// items to the window; on 13 the pane simply contributes none, and the window keeps the
+        /// toolbar the controller builds itself.
+        if #available(macOS 14.0, *) {
+            list.sceneBridgingOptions = [.toolbars]
+        }
         let listItem = NSSplitViewItem(viewController: list)
         listItem.minimumThickness = Self.listMinimumWidth
         addSplitViewItem(listItem)

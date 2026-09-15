@@ -3,12 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
 @MainActor
-@Observable
-final class ExternalSchemaTracker {
+final class ExternalSchemaTracker: ObservableObject {
     static let shared = ExternalSchemaTracker()
 
     struct Key: Hashable, Sendable {
@@ -18,9 +18,9 @@ final class ExternalSchemaTracker {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExternalSchemaTracker")
 
-    private var namesByDatabase: [Key: Set<String>] = [:]
+    @Published private var namesByDatabase: [Key: Set<String>] = [:]
 
-    @ObservationIgnored private let dedup = OnceTask<Key, Set<String>>()
+    private let dedup = OnceTask<Key, Set<String>>()
 
     private init() {}
 

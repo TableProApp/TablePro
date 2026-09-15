@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct JSONRowInspectorView: View {
-    @Bindable var viewModel: JSONRowInspectorViewModel
+    @ObservedObject var viewModel: JSONRowInspectorViewModel
 
     let snapshot: JSONRowSnapshot?
     let onOpenReferencedTable: (JSONForeignKeyRef, String) -> Void
@@ -33,7 +33,7 @@ struct JSONRowInspectorView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Row Selected"),
             systemImage: "curlybraces",
             description: Text(String(localized: "Select a row to view it as JSON"))
@@ -133,7 +133,7 @@ struct JSONRowInspectorView: View {
     }
 
     private var noMatches: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Matches"),
             systemImage: "magnifyingglass",
             description: Text(String(localized: "No key or value matches this filter"))

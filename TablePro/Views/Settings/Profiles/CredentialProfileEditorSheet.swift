@@ -167,7 +167,7 @@ struct CredentialProfileEditorSheet: View {
                     Text(type.rawValue).tag(type)
                 }
             }
-            .onChange(of: secureFieldType) { _, _ in reloadSecureFields() }
+            .onChange(of: secureFieldType) { _ in reloadSecureFields() }
             if secureFields.isEmpty {
                 Text("This database type signs in with the username and password above.")
                     .font(.caption)

@@ -6,9 +6,9 @@
 import SwiftUI
 
 struct AIChatWalkthroughBlockView: View {
-    @Bindable var block: ChatContentBlock
+    @ObservedObject var block: ChatContentBlock
 
-    @Environment(AIChatViewModel.self) private var viewModel
+    @EnvironmentObject private var viewModel: AIChatViewModel
     @Environment(\.commandActions) private var actions
 
     @State private var expandedStepIDs: Set<UUID> = []
@@ -108,7 +108,7 @@ struct AIChatWalkthroughBlockView: View {
             .frame(maxHeight: 260)
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            .onChange(of: scrollTarget) { _, target in
+            .onChange(of: scrollTarget) { target in
                 guard let target else { return }
                 withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }
@@ -253,7 +253,7 @@ struct AIChatWalkthroughBlockView: View {
             .frame(maxHeight: 220)
             .background(Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            .onChange(of: scrollTarget) { _, target in
+            .onChange(of: scrollTarget) { target in
                 guard let target else { return }
                 withMotion(.easeInOut(duration: 0.25)) { proxy.scrollTo(target, anchor: .center) }
             }

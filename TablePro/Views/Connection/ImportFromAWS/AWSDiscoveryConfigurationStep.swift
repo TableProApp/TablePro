@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct AWSDiscoveryConfigurationStep: View {
-    @Bindable var session: AWSDiscoverySession
+    @ObservedObject var session: AWSDiscoverySession
     let onStart: () -> Void
     let onCancel: () -> Void
 

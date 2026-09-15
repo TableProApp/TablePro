@@ -25,6 +25,19 @@ extension MainWindowToolbar {
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
         switch itemIdentifier {
+        case Self.inspector:
+            /// AppKit builds `.toggleInspector` itself and never asks the delegate for it, so this
+            /// arm is dead on macOS 14. Below that the identifier is app-owned, and an identifier
+            /// the delegate does not answer for simply never appears in the toolbar.
+            guard #unavailable(macOS 14.0) else { return nil }
+            return menuOnlyItem(
+                id: itemIdentifier,
+                label: String(localized: "Inspector"),
+                symbol: "sidebar.trailing",
+                action: #selector(MainSplitViewController.toggleInspector(_:)),
+                shortcut: .toggleInspector,
+                description: String(localized: "Toggle Inspector")
+            )
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.backForwardGroup:

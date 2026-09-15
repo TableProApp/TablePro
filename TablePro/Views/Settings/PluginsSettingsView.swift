@@ -7,7 +7,7 @@ import SwiftUI
 
 struct PluginsSettingsView: View {
     @State private var selectedTab: PluginsSubTab = .installed
-    private let navigation = PluginsSettingsNavigation.shared
+    @ObservedObject private var navigation = PluginsSettingsNavigation.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,7 +31,11 @@ struct PluginsSettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onChange(of: navigation.pendingRequest, initial: true) { _, request in
+        .onAppear {
+            guard navigation.pendingRequest != nil else { return }
+            selectedTab = .installed
+        }
+        .onChange(of: navigation.pendingRequest) { request in
             guard request != nil else { return }
             selectedTab = .installed
         }

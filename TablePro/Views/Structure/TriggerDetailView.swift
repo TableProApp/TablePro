@@ -5,13 +5,13 @@
 //  Read-only master-detail view of a table's triggers.
 //
 
+import Combine
 import SwiftUI
 
-@Observable
-final class TriggerInspectorState {
-    var searchText = ""
-    var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
-    var selectedID: TriggerInfo.ID?
+final class TriggerInspectorState: ObservableObject {
+    @Published var searchText = ""
+    @Published var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
+    @Published var selectedID: TriggerInfo.ID?
 
     func displayed(_ triggers: [TriggerInfo]) -> [TriggerInfo] {
         let filtered = searchText.isEmpty
@@ -49,7 +49,7 @@ struct TriggerDetailView: View {
     let isLoading: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @State private var state = TriggerInspectorState()
+    @StateObject private var state = TriggerInspectorState()
     @State private var editorSheet: TriggerEditorSheetItem?
     @State private var pendingDelete: TriggerInfo?
     @State private var actionError: String?
@@ -98,7 +98,7 @@ struct TriggerDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.ensureSelection(triggers) }
-        .onChange(of: triggers) { _, newTriggers in state.ensureSelection(newTriggers) }
+        .onChange(of: triggers) { newTriggers in state.ensureSelection(newTriggers) }
         .sheet(item: $editorSheet, content: makeEditorSheet(for:))
         .confirmationDialog(
             String(format: String(localized: "Drop trigger “%@”?"), pendingDelete?.name ?? ""),
@@ -182,7 +182,7 @@ struct TriggerDetailView: View {
 
 private struct TriggerActionBar: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let canEdit: Bool
     let onNew: () -> Void
     let onEdit: (TriggerInfo) -> Void
@@ -216,7 +216,7 @@ private struct TriggerActionBar: View {
 
 private struct TriggerListPane: View {
     let triggers: [TriggerInfo]
-    @Bindable var state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
 
     private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
@@ -269,7 +269,7 @@ private struct TriggerListPane: View {
 
 private struct TriggerDetailPane: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let databaseType: DatabaseType
     let onOpenInEditor: (TriggerInfo) -> Void
 

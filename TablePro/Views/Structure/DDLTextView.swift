@@ -41,13 +41,13 @@ struct DDLTextView: View {
                 state: $editorState,
                 foldProvider: foldProvider
             )
-            .onChange(of: ddl) { _, newDDL in
+            .onChange(of: ddl) { newDDL in
                 text = newDDL
             }
-            .onChange(of: colorScheme) {
+            .onChange(of: colorScheme) { _ in
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }
-            .onChange(of: fontSize) { _, newSize in
+            .onChange(of: fontSize) { newSize in
                 editorConfiguration = Self.makeConfiguration(fontSize: newSize)
             }
         }

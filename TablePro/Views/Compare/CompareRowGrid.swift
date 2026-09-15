@@ -173,7 +173,7 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
 }
 
 internal struct CompareRowGrid: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let plan: DataComparePlan
     internal let filter: RowDiffFilter
     internal let entries: [RowDiffEntry]
@@ -213,7 +213,7 @@ internal struct CompareRowGrid: View {
             /// repaints the checkboxes rather than leaving them until the next click or scroll.
             contentRevision: key.hashValue ^ plan.excludedRowKeys.hashValue
         )
-        .onChange(of: key) {
+        .onChange(of: key) { _ in
             selectedRows = []
         }
     }

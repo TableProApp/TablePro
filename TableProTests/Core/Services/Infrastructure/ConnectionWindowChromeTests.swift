@@ -144,6 +144,7 @@ struct ConnectionWindowChromeTests {
     /// Opening a row inspector needs rows. Closing one the user already opened does not, and the
     /// window no longer closes it for them, so leaving the command disabled would strand an empty
     /// column with no way to dismiss it.
+    @available(macOS 14.0, *)
     @Test("A trailing pane the user left open can still be closed with the session gone")
     func openTrailingPaneStaysClosable() throws {
         let harness = try Harness()
@@ -162,6 +163,7 @@ struct ConnectionWindowChromeTests {
     }
 
     /// The other half of the same rule: a pane the user never opened offers nothing to open.
+    @available(macOS 14.0, *)
     @Test("A closed trailing pane stays unavailable without a session")
     func closedTrailingPaneStaysUnavailable() throws {
         let harness = try Harness()

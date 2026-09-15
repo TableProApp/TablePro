@@ -110,6 +110,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     var tabStripObservationIsArmed = false
     var tabStripObservedManager: ObjectIdentifier?
+    var tabStripObservation: AnyCancellable?
 
     // MARK: - Panel Layout State
 

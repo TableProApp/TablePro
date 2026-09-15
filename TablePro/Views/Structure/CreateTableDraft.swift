@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 /// A table definition in progress, held outside the view that edits it.
 ///
@@ -13,12 +13,11 @@ import Observation
 /// definition in the view's `@State` meant switching to any other tab and back threw away the table
 /// name, the options and every column the user had defined, with no prompt and nothing in Undo.
 @MainActor
-@Observable
-internal final class CreateTableDraft {
+internal final class CreateTableDraft: ObservableObject {
     internal let changeManager = StructureChangeManager()
 
-    internal var tableName = ""
-    internal var tableOptions = CreateTableOptions()
+    @Published internal var tableName = ""
+    @Published internal var tableOptions = CreateTableOptions()
 
     /// Whether the draft holds anything worth losing. A tab that has only just opened does not: the
     /// editor seeds one blank column so the grid has a row to show, which registers as a pending

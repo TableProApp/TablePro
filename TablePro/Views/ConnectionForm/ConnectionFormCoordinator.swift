@@ -19,52 +19,51 @@ final class WeakCoordinatorRef {
     }
 }
 
-@Observable
 @MainActor
-final class ConnectionFormCoordinator {
+final class ConnectionFormCoordinator: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormCoordinator")
 
     let connectionId: UUID?
-    private(set) var originalConnection: DatabaseConnection?
+    @Published private(set) var originalConnection: DatabaseConnection?
 
-    var network: NetworkPaneViewModel
-    var auth: AuthPaneViewModel
-    var ssh: SSHPaneViewModel
-    var remoteFile: RemoteFilePaneViewModel
-    var cloudflareTunnel: CloudflareTunnelPaneViewModel
-    var cloudSQLProxy: CloudSQLProxyPaneViewModel
-    var socksProxy: SOCKSProxyPaneViewModel
-    var tunnelCommand: TunnelCommandPaneViewModel
-    var ssl: SSLPaneViewModel
-    var customization: CustomizationPaneViewModel
-    var advanced: AdvancedPaneViewModel
-    var aiRules: AIRulesPaneViewModel
+    @Published var network: NetworkPaneViewModel
+    @Published var auth: AuthPaneViewModel
+    @Published var ssh: SSHPaneViewModel
+    @Published var remoteFile: RemoteFilePaneViewModel
+    @Published var cloudflareTunnel: CloudflareTunnelPaneViewModel
+    @Published var cloudSQLProxy: CloudSQLProxyPaneViewModel
+    @Published var socksProxy: SOCKSProxyPaneViewModel
+    @Published var tunnelCommand: TunnelCommandPaneViewModel
+    @Published var ssl: SSLPaneViewModel
+    @Published var customization: CustomizationPaneViewModel
+    @Published var advanced: AdvancedPaneViewModel
+    @Published var aiRules: AIRulesPaneViewModel
 
-    var selectedTab: ConnectionFormTab = .general
-    var hasLoadedData: Bool = false
+    @Published var selectedTab: ConnectionFormTab = .general
+    @Published var hasLoadedData: Bool = false
 
-    var isTesting: Bool = false
-    var testSucceeded: Bool = false
-    var testTask: Task<Void, Never>?
+    @Published var isTesting: Bool = false
+    @Published var testSucceeded: Bool = false
+    @Published var testTask: Task<Void, Never>?
 
-    var isInstallingPlugin: Bool = false
-    var pluginInstallError: String?
-    var pluginInstallConnection: DatabaseConnection?
-    var pluginDiagnostic: PluginDiagnosticItem?
+    @Published var isInstallingPlugin: Bool = false
+    @Published var pluginInstallError: String?
+    @Published var pluginInstallConnection: DatabaseConnection?
+    @Published var pluginDiagnostic: PluginDiagnosticItem?
 
-    var saveError: String?
+    @Published var saveError: String?
 
-    var clipboardCandidate: ParsedConnection?
-    var clipboardBannerDismissed: Bool = false
+    @Published var clipboardCandidate: ParsedConnection?
+    @Published var clipboardBannerDismissed: Bool = false
 
-    var isChoosingType: Bool = false
+    @Published var isChoosingType: Bool = false
 
 
-    private var temporaryTestIds: Set<UUID> = []
+    @Published private var temporaryTestIds: Set<UUID> = []
 
-    @ObservationIgnored let services: AppServices
+    let services: AppServices
     var storage: ConnectionStorage { services.connectionStorage }
-    var dismissAction: (() -> Void)?
+    @Published var dismissAction: (() -> Void)?
 
     var isNew: Bool { connectionId == nil }
 

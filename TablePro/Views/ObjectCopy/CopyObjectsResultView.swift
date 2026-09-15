@@ -12,7 +12,7 @@
 import SwiftUI
 
 internal struct CopyObjectsResultView: View {
-    internal let session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
 
     internal var body: some View {
         if let result = session.result {

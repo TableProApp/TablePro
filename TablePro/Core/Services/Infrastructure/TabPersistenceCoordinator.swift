@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 internal struct RestoreResult {
@@ -20,20 +20,20 @@ internal struct RestoreResult {
     }
 }
 
-@MainActor @Observable
-internal final class TabPersistenceCoordinator {
+@MainActor
+internal final class TabPersistenceCoordinator: ObservableObject {
     nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     let connectionId: UUID
 
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
+    private var saveTask: Task<Void, Never>?
 
     /// Whether this window has ever had a tab of its own. Only a window that held tabs can report
     /// that the user closed them all; one that never saw any is not evidence of anything. A window
     /// left over from a disconnect is exactly that case, and treating its empty tab list as an
     /// instruction deleted the state the disconnect had just saved.
-    private(set) var hasObservedTabs = false
+    @Published private(set) var hasObservedTabs = false
 
-    @ObservationIgnored nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
+    nonisolated(unsafe) private static var shared: [UUID: TabPersistenceCoordinator] = [:]
 
     /// One per connection, however many windows host it.
     ///

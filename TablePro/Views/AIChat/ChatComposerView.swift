@@ -11,7 +11,7 @@ struct ChatComposerView: View {
     let placeholder: String
     let minLines: Int
     let maxLines: Int
-    @Bindable var mentionState: MentionPopoverState
+    @ObservedObject var mentionState: MentionPopoverState
     let onTextChange: (String, Int) -> Void
     let onSubmit: () -> Void
     let onAttach: (ContextItem) -> Void

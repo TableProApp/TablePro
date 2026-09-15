@@ -8,7 +8,7 @@ import SwiftUI
 import TableProConnectionLibrary
 
 internal struct WelcomeLibraryPane: View {
-    @Bindable var viewModel: WelcomeViewModel
+    @ObservedObject var viewModel: WelcomeViewModel
 
     var body: some View {
         content
@@ -57,7 +57,7 @@ internal struct WelcomeLibraryPane: View {
                 secondaryAction: viewModel.hasImportableApp ? { viewModel.importConnectionsFromApp() } : nil
             )
         case .noSearchMatch(let term):
-            ContentUnavailableView.search(text: term)
+            UnavailableStateView.search(text: term)
         case .noFilterMatch:
             EmptyStateView(
                 icon: "tag",
@@ -105,7 +105,7 @@ internal struct WelcomeLibraryToolbar: ToolbarContent {
 }
 
 internal struct WelcomeViewOptionsMenu: View {
-    @Bindable var viewModel: WelcomeViewModel
+    @ObservedObject var viewModel: WelcomeViewModel
 
     var body: some View {
         Menu {

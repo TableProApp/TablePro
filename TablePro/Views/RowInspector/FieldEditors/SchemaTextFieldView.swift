@@ -21,11 +21,11 @@ internal struct SchemaTextFieldView: View {
             .focused($isFocused)
             .disabled(context.isReadOnly)
             .onAppear { draft = context.value.wrappedValue }
-            .onChange(of: context.value.wrappedValue) { _, newValue in
+            .onChange(of: context.value.wrappedValue) { newValue in
                 guard !isFocused else { return }
                 draft = newValue
             }
-            .onChange(of: isFocused) { _, focused in
+            .onChange(of: isFocused) { focused in
                 guard !focused else { return }
                 commit()
             }

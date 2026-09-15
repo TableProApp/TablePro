@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProSyncTransport
 
@@ -23,8 +23,7 @@ enum CustomSlashCommandError: LocalizedError, Equatable {
 }
 
 @MainActor
-@Observable
-final class CustomSlashCommandStorage {
+final class CustomSlashCommandStorage: ObservableObject {
     static let shared = CustomSlashCommandStorage()
 
     static let syncCategory = "customSlashCommands"
@@ -34,7 +33,7 @@ final class CustomSlashCommandStorage {
     private let defaults: UserDefaults
     private let syncTracker: SyncChangeTracker
 
-    private(set) var commands: [CustomSlashCommand] = []
+    @Published private(set) var commands: [CustomSlashCommand] = []
 
     init(defaults: UserDefaults = .standard, syncTracker: SyncChangeTracker = .shared) {
         self.defaults = defaults

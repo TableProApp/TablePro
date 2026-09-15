@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct SQLExportOptionsView: View {
-    @Bindable var plugin: SQLExportPlugin
+    @ObservedObject var plugin: SQLExportPlugin
 
     private static let batchSizeOptions = [1, 100, 500, 1_000]
 

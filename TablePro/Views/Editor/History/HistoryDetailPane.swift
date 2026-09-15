@@ -15,7 +15,7 @@ struct HistoryDetailPane: View {
             if let entry {
                 detail(for: entry)
             } else {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label(String(localized: "No Query Selected"), systemImage: "doc.text.magnifyingglass")
                 } description: {
                     Text("Select a query to see its full text and details.")

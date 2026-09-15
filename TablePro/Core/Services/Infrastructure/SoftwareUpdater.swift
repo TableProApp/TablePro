@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import Sparkle
 
@@ -18,30 +18,29 @@ import Sparkle
 /// The published values are a mirror, not a store. Each is fed by KVO from the property that owns
 /// it, so a managed preference or Sparkle's own alert reaches the UI without anything having to
 /// notice it happened.
-@Observable
 @MainActor
-final class SoftwareUpdater {
+final class SoftwareUpdater: ObservableObject {
     static let shared = SoftwareUpdater()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SoftwareUpdater")
 
-    @ObservationIgnored private let controller: SPUStandardUpdaterController
+    private let controller: SPUStandardUpdaterController
     /// Retained here because `SPUStandardUpdaterController` holds both delegates weakly.
-    @ObservationIgnored private let delegate = SoftwareUpdaterDelegate()
-    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
-    @ObservationIgnored private var hasStarted = false
+    private let delegate = SoftwareUpdaterDelegate()
+    private var observations: [NSKeyValueObservation] = []
+    private var hasStarted = false
 
-    private(set) var canCheckForUpdates = false
-    private(set) var automaticallyChecksForUpdates = true
-    private(set) var automaticallyDownloadsUpdates = true
-    private(set) var allowsAutomaticUpdates = true
-    private(set) var updateCheckInterval: TimeInterval = 0
-    private(set) var lastUpdateCheckDate: Date?
+    @Published private(set) var canCheckForUpdates = false
+    @Published private(set) var automaticallyChecksForUpdates = true
+    @Published private(set) var automaticallyDownloadsUpdates = true
+    @Published private(set) var allowsAutomaticUpdates = true
+    @Published private(set) var updateCheckInterval: TimeInterval = 0
+    @Published private(set) var lastUpdateCheckDate: Date?
 
     /// A scheduled update the app declined to put in front of the user. Both the app menu item and
     /// the settings button read it, because a gentle reminder that shows in one place a person
     /// never opens is the same as no reminder at all.
-    private(set) var hasPendingUpdate = false
+    @Published private(set) var hasPendingUpdate = false
 
     private init() {
         controller = SPUStandardUpdaterController(

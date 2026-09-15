@@ -11,7 +11,7 @@ import SwiftUI
 /// what a pop-up button is for. Managing the profiles is a separate surface rather than another
 /// sheet on this window, so the same list serves every connection.
 struct CredentialProfilePicker: View {
-    @Bindable var auth: AuthPaneViewModel
+    @ObservedObject var auth: AuthPaneViewModel
 
     var body: some View {
         Picker(String(localized: "Credentials"), selection: $auth.credentialMode) {

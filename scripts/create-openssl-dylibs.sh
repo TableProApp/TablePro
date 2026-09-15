@@ -4,7 +4,7 @@ set -euo pipefail
 ARCH="${1:-both}"
 LIBS_DIR="Libs"
 OUT_DIR="$LIBS_DIR/dylibs"
-MIN_MACOS="14.0"
+MIN_MACOS="13.0"
 
 mkdir -p "$OUT_DIR"
 

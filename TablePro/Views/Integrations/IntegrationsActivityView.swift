@@ -66,7 +66,7 @@ struct IntegrationsActivityView: View {
         case .connectedClients:
             IntegrationsConnectedClientsPane()
         case .none:
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Selection"),
                 systemImage: "sidebar.left",
                 description: Text(String(localized: "Choose a section from the sidebar."))

@@ -42,7 +42,7 @@ internal struct CompareApplySheetView: View {
         }
     }
 
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let callback: (Choice) -> Void
 
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize = 13.0
@@ -319,7 +319,7 @@ internal struct CompareApplySheetView: View {
     private var warningsPane: some View {
         Group {
             if hazardStatements.isEmpty {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label("No Warnings", systemImage: "checkmark.shield")
                 } description: {
                     Text(String(format: String(localized: "Nothing in this script destroys data in %@."), targetName))

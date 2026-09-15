@@ -1,24 +1,22 @@
 import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-final class HistoryPanelViewModel {
+final class HistoryPanelViewModel: ObservableObject {
     static let pageSize = 60
     static let maximumRefreshWindow = 600
 
-    private(set) var sections: [QueryHistoryDaySection] = []
-    private(set) var isLoading = false
-    private(set) var isLoadingMore = false
-    private(set) var hasLoadedOnce = false
-    private(set) var hasMore = false
-    private(set) var totalLoaded = 0
+    @Published private(set) var sections: [QueryHistoryDaySection] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var isLoadingMore = false
+    @Published private(set) var hasLoadedOnce = false
+    @Published private(set) var hasMore = false
+    @Published private(set) var totalLoaded = 0
     /// An unreadable store returns the same empty page as a store with nothing in it, so without
     /// this the drawer stated positively that no query had ever been recorded.
-    private(set) var isStoreUnavailable = false
+    @Published private(set) var isStoreUnavailable = false
 
-    var selectedEntryId: UUID?
+    @Published var selectedEntryId: UUID?
 
     let state: HistoryPanelState
 
@@ -27,11 +25,11 @@ final class HistoryPanelViewModel {
     private let connectionDirectory: HistoryConnectionDirectory
     private let pageSize: Int
 
-    private var entries: [QueryHistoryEntry] = []
-    private var nextCursor: QueryHistoryCursor?
-    private var loadedPageCount = 1
+    @Published private var entries: [QueryHistoryEntry] = []
+    @Published private var nextCursor: QueryHistoryCursor?
+    @Published private var loadedPageCount = 1
     private var loadToken = UUID()
-    private var searchDebounce: Task<Void, Never>?
+    @Published private var searchDebounce: Task<Void, Never>?
     private var liveRefresh: Task<Void, Never>?
     private var updateSubscription: AnyCancellable?
 

@@ -8,7 +8,7 @@ import TableProImport
 import UniformTypeIdentifiers
 
 internal struct WelcomePresentations: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     let onSheetDismiss: () -> Void
 
     func body(content: Content) -> some View {
@@ -123,7 +123,7 @@ internal struct WelcomePresentations: ViewModifier {
 }
 
 private struct WelcomeDeletionAlerts: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
@@ -161,7 +161,7 @@ private struct WelcomeDeletionAlerts: ViewModifier {
 }
 
 private struct WelcomeLibraryAlerts: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
@@ -197,7 +197,7 @@ private struct WelcomeLibraryAlerts: ViewModifier {
 }
 
 private struct WelcomeImportResultAlert: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content
@@ -224,7 +224,7 @@ private struct WelcomeImportResultAlert: ViewModifier {
 }
 
 private struct WelcomeConnectionCreationOverlays: ViewModifier {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
         content

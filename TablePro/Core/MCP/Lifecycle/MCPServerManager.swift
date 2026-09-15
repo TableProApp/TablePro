@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os
 
@@ -8,8 +9,8 @@ internal enum MCPServerState: Sendable, Equatable {
     case failed(String)
 }
 
-@MainActor @Observable
-internal final class MCPServerManager {
+@MainActor
+internal final class MCPServerManager: ObservableObject {
     internal struct SessionSnapshot: Sendable, Identifiable {
         internal let id: String
         internal let clientName: String
@@ -33,22 +34,22 @@ internal final class MCPServerManager {
 
     internal static let shared = MCPServerManager()
 
-    internal private(set) var state: MCPServerState = .stopped
-    internal private(set) var connectedClients: [SessionSnapshot] = []
-    internal private(set) var tokenStore: MCPTokenStore?
+    @Published internal private(set) var state: MCPServerState = .stopped
+    @Published internal private(set) var connectedClients: [SessionSnapshot] = []
+    @Published internal private(set) var tokenStore: MCPTokenStore?
 
     private let lifecycle = MCPServerLifecycleQueue()
     private let handshake: MCPHandshakeFile
 
-    private var composition: MCPServerComposition?
-    private var bridgeCredential: BridgeCredential?
-    private var instanceId = ""
-    private var generation = 0
-    private var revocationObserverId: UUID?
-    private var dispatchTask: Task<Void, Never>?
-    private var stateTask: Task<Void, Never>?
-    private var clientRefreshTask: Task<Void, Never>?
-    private var tokenRenewalTask: Task<Void, Never>?
+    @Published private var composition: MCPServerComposition?
+    @Published private var bridgeCredential: BridgeCredential?
+    @Published private var instanceId = ""
+    @Published private var generation = 0
+    @Published private var revocationObserverId: UUID?
+    @Published private var dispatchTask: Task<Void, Never>?
+    @Published private var stateTask: Task<Void, Never>?
+    @Published private var clientRefreshTask: Task<Void, Never>?
+    @Published private var tokenRenewalTask: Task<Void, Never>?
 
     internal var isRunning: Bool {
         if case .running = state { return true }

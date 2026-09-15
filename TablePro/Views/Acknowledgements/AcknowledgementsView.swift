@@ -39,7 +39,7 @@ struct AcknowledgementsView: View {
             }
             .listStyle(.sidebar)
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No License Information"),
                 systemImage: "doc.text.magnifyingglass",
                 description: Text(String(localized: "The list of open source libraries is missing from this build."))
@@ -62,7 +62,7 @@ struct AcknowledgementsView: View {
         if let inventory, let component = selectedComponent(in: inventory) {
             ComponentLicenseDetail(component: component, text: inventory.licenseText(for: component))
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "Select a Library"),
                 systemImage: "sidebar.left",
                 description: Text(String(localized: "TablePro includes these open source libraries. Pick one to read its license."))

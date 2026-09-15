@@ -3,11 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@MainActor @Observable
-final class ClaudeAgentService {
+@MainActor
+final class ClaudeAgentService: ObservableObject {
     enum InstallState: Equatable {
         case unknown
         case notInstalled
@@ -25,8 +26,8 @@ final class ClaudeAgentService {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ClaudeAgentService")
 
-    private(set) var state: InstallState = .unknown
-    private(set) var isRefreshing = false
+    @Published private(set) var state: InstallState = .unknown
+    @Published private(set) var isRefreshing = false
 
     private var refreshTask: Task<Void, Never>?
 

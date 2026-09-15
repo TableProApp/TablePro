@@ -7,8 +7,8 @@
 //  Uses Apple's UndoManager (NSUndoManager) for undo/redo stack management.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -37,37 +37,37 @@ struct UndoResult {
 /// Manager for tracking and applying data changes
 /// @MainActor ensures thread-safe access - critical for avoiding EXC_BAD_ACCESS
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
-@MainActor @Observable
-final class DataChangeManager: ChangeManaging {
+@MainActor
+final class DataChangeManager: ObservableObject, ChangeManaging {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
 
-    private(set) var pending = PendingChanges()
-    var hasChanges: Bool = false
-    var reloadVersion: Int = 0
+    @Published private(set) var pending = PendingChanges()
+    @Published var hasChanges: Bool = false
+    @Published var reloadVersion: Int = 0
 
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIDs: Set<RowID> { pending.insertedRowIDs }
     var deletedRowIDs: Set<RowID> { pending.deletedRowIDs }
 
-    var tableName: String = ""
-    var schemaName: String?
-    var primaryKeyColumns: [String] = []
+    @Published var tableName: String = ""
+    @Published var schemaName: String?
+    @Published var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     /// Columns the server computes. They reject any written value, so they are
     /// never editable and never appear in a generated INSERT or UPDATE.
-    var generatedColumns: Set<String> = []
-    private(set) var rowMatchPolicy: RowMatchPolicy = .none
-    var databaseType: DatabaseType?
-    var pluginDriver: (any PluginDatabaseDriver)?
+    @Published var generatedColumns: Set<String> = []
+    @Published private(set) var rowMatchPolicy: RowMatchPolicy = .none
+    @Published var databaseType: DatabaseType?
+    @Published var pluginDriver: (any PluginDatabaseDriver)?
 
-    var columns: [String] = []
+    @Published var columns: [String] = []
 
-    var undoManagerProvider: (() -> UndoManager?)?
-    var onUndoApplied: ((UndoResult) -> Void)?
+    @Published var undoManagerProvider: (() -> UndoManager?)?
+    @Published var onUndoApplied: ((UndoResult) -> Void)?
 
-    private var lastUndoResult: UndoResult?
+    @Published private var lastUndoResult: UndoResult?
 
     /// The cells an open editor is still typing into, held back from the undo stack until the run
     /// ends so a typed word is one step rather than one per character.

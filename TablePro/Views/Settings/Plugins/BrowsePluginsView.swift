@@ -6,10 +6,10 @@
 import SwiftUI
 
 struct BrowsePluginsView: View {
-    private let registryClient = RegistryClient.shared
-    private let pluginManager = PluginManager.shared
-    private let installTracker = PluginInstallTracker.shared
-    private let downloadCountService = DownloadCountService.shared
+    @ObservedObject private var registryClient = RegistryClient.shared
+    @ObservedObject private var pluginManager = PluginManager.shared
+    @ObservedObject private var installTracker = PluginInstallTracker.shared
+    @ObservedObject private var downloadCountService = DownloadCountService.shared
 
     @State private var searchText = ""
     @State private var selectedCategory: RegistryCategory?
@@ -34,10 +34,10 @@ struct BrowsePluginsView: View {
         } message: {
             Text(errorMessage)
         }
-        .onChange(of: searchText) {
+        .onChange(of: searchText) { _ in
             clearSelectionIfNeeded()
         }
-        .onChange(of: selectedCategory) {
+        .onChange(of: selectedCategory) { _ in
             clearSelectionIfNeeded()
         }
     }
@@ -55,7 +55,7 @@ struct BrowsePluginsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             case .failed(let message):
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label("Failed to Load", systemImage: "wifi.slash")
                 } description: {
                     Text(message)
@@ -103,7 +103,7 @@ struct BrowsePluginsView: View {
                 }
 
                 if plugins.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    UnavailableStateView.search(text: searchText)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(plugins, selection: $selectedPluginId) { plugin in

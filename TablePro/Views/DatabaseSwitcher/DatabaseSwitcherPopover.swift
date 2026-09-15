@@ -65,7 +65,7 @@ struct DatabaseSwitcherPopover: View {
     /// An explicit closure rather than `@Environment(\.dismiss)`: the presenter owns the surface,
     /// and this content is hosted in an AppKit popover or panel that SwiftUI cannot dismiss.
     let dismiss: () -> Void
-    @State private var viewModel: DatabaseSwitcherViewModel
+    @StateObject private var viewModel: DatabaseSwitcherViewModel
     @State private var supportsCreateDatabase = false
     @State private var favoriteDatabases: Set<String> = []
 
@@ -118,7 +118,7 @@ struct DatabaseSwitcherPopover: View {
         self.onRequestDrop = onRequestDrop
         self.onRequestExport = onRequestExport
         self.dismiss = dismiss
-        self._viewModel = State(
+        self._viewModel = StateObject(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,

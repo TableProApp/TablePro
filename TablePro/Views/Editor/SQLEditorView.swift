@@ -47,7 +47,7 @@ struct SQLEditorView: View {
 
     @State private var editorState = SourceEditorState()
     @State private var completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
-    @State private var coordinator = SQLEditorCoordinator()
+    @StateObject private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
     @Environment(\.colorScheme) private var colorScheme
@@ -92,12 +92,12 @@ struct SQLEditorView: View {
         /// Applied on change rather than while building the view: this is an event, and an editor that is already
         /// mounted never rebuilds from scratch to notice a new value. Cleared whether or not the statement was still
         /// there, so a request that cannot be honoured does not sit pending and block the next one.
-        .onChange(of: pendingStatementJump) { _, newValue in
+        .onChange(of: pendingStatementJump) { newValue in
             guard let newValue else { return }
             coordinator.jumpToStatement(newValue)
             onStatementJumpHandled?()
         }
-        .onChange(of: editorState.cursorPositions) { _, newValue in
+        .onChange(of: editorState.cursorPositions) { newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus
             // (e.g., find panel match highlighting). Propagating triggers
@@ -115,13 +115,13 @@ struct SQLEditorView: View {
             }
             cursorPositions = positions
         }
-        .onChange(of: editorState.collapsedFoldRanges) { _, newValue in
+        .onChange(of: editorState.collapsedFoldRanges) { newValue in
             onFoldRangesChanged?(newValue ?? [])
         }
-        .onChange(of: tabID) { _, _ in
+        .onChange(of: tabID) { _ in
             coordinator.repointFolds(to: restoredFoldRanges)
         }
-        .onChange(of: connectionId) { _, _ in
+        .onChange(of: connectionId) { _ in
             configureCompletion()
             setupFavoritesObserver()
         }
@@ -129,17 +129,17 @@ struct SQLEditorView: View {
         /// moves. Without this the editor keeps completing against the previous database's
         /// provider until the profile resolution returns, which leases a metadata driver and on a
         /// non-poolable engine can queue behind a running query.
-        .onChange(of: databaseScope) { _, _ in
+        .onChange(of: databaseScope) { _ in
             completionProfile = nil
             configureCompletion()
         }
         .task(id: completionProfileRequest) {
             await resolveCompletionProfile()
         }
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) {
+        .onChange(of: AppSettingsManager.shared.editor) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
@@ -154,7 +154,7 @@ struct SQLEditorView: View {
         .onDisappear {
             teardownFavoritesObserver()
         }
-        .onChange(of: coordinator.vimMode) { _, newMode in
+        .onChange(of: coordinator.vimMode) { newMode in
             vimMode = newMode
         }
     }

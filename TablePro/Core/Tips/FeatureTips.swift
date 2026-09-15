@@ -6,6 +6,7 @@
 import SwiftUI
 import TipKit
 
+@available(macOS 14.0, *)
 internal struct KeepTableOpenTip: Tip {
     static let tipId = "keep-table-open"
     static let previewTabReplaced = Tips.Event(id: "preview-tab-replaced")
@@ -33,6 +34,7 @@ internal struct KeepTableOpenTip: Tip {
     }
 }
 
+@available(macOS 14.0, *)
 internal struct OpenQuicklyTip: Tip {
     static let tipId = "open-quickly"
     static let sidebarTableOpened = Tips.Event(id: "sidebar-table-opened")
@@ -62,6 +64,7 @@ internal struct OpenQuicklyTip: Tip {
     }
 }
 
+@available(macOS 14.0, *)
 internal struct FindPastQueriesTip: Tip {
     static let tipId = "find-past-queries"
     static let editorQueryRan = Tips.Event(id: "editor-query-ran")
@@ -117,6 +120,7 @@ internal enum FeatureTipCopy {
     }
 }
 
+@available(macOS 14.0, *)
 internal enum FeatureTipCatalog {
     static var ids: [String] {
         [KeepTableOpenTip.tipId, OpenQuicklyTip.tipId, FindPastQueriesTip.tipId]

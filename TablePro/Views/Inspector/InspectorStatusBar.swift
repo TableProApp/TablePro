@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct InspectorStatusBar: View {
-    @Bindable var state: InspectorViewState
+    @ObservedObject var state: InspectorViewState
     let onPreviousPage: () -> Void
     let onNextPage: () -> Void
 

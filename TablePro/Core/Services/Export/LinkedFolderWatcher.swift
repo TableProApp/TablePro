@@ -20,15 +20,14 @@ struct LinkedConnection: Identifiable, Sendable {
 }
 
 @MainActor
-@Observable
-final class LinkedFolderWatcher {
+final class LinkedFolderWatcher: ObservableObject {
     static let shared = LinkedFolderWatcher()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
 
-    private(set) var linkedConnections: [LinkedConnection] = []
-    private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
+    @Published private(set) var linkedConnections: [LinkedConnection] = []
+    @Published private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTask: Task<Void, Never>?
-    private var hasStarted = false
+    @Published private var hasStarted = false
 
     private init() {}
 

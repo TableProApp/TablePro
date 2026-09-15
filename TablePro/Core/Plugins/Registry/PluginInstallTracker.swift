@@ -3,13 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@MainActor @Observable
-final class PluginInstallTracker {
+@MainActor
+final class PluginInstallTracker: ObservableObject {
     static let shared = PluginInstallTracker()
 
-    private(set) var activeInstalls: [String: InstallProgress] = [:]
+    @Published private(set) var activeInstalls: [String: InstallProgress] = [:]
 
     private init() {}
 

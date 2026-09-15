@@ -4,6 +4,7 @@ import os
 
 @MainActor
 public final class MCPSubscriptionEventSource {
+    private var schemaObservation: AnyCancellable?
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Subscriptions")
 
     private weak var registry: MCPSubscriptionRegistry?
@@ -56,14 +57,9 @@ public final class MCPSubscriptionEventSource {
         guard isObserving else { return }
         observationGeneration &+= 1
         let generation = observationGeneration
-        withObservationTracking {
-            _ = SchemaService.shared.generations
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, self.isObserving, generation == self.observationGeneration else { return }
-                self.armSchemaObservation()
-                self.publishSchemaUpdates()
-            }
+        schemaObservation = SchemaService.shared.onMainActorChange { [weak self] in
+            guard let self, self.isObserving, generation == self.observationGeneration else { return }
+            self.publishSchemaUpdates()
         }
     }
 

@@ -12,7 +12,17 @@ struct HistoryPanelView: View {
     /// Held directly rather than resolved from a focused value. The app runs the AppKit lifecycle
     /// with no SwiftUI `Scene`, so `focusedSceneValue` has nothing to publish into and every action
     /// that read one was silently dead. Every other call site in the app reaches actions this way.
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
+
+    /// Resolved once in `init`. The state is a per-connection singleton reached through a
+    /// factory, so it cannot be a `@StateObject` (the view does not own it) and it cannot be
+    /// resolved in `body` (nothing would observe it).
+    @ObservedObject private var panelState: HistoryPanelState
+
+    internal init(coordinator: MainContentCoordinator) {
+        self.coordinator = coordinator
+        self.panelState = HistoryPanelState.forConnection(coordinator.connectionId)
+    }
 
     @Environment(\.appServices) private var services
 
@@ -22,9 +32,7 @@ struct HistoryPanelView: View {
     private var connectionId: UUID { coordinator.connectionId }
 
     var body: some View {
-        @Bindable var panelState = HistoryPanelState.forConnection(connectionId)
-
-        return Group {
+        Group {
             if let viewModel {
                 panel(viewModel)
             } else {

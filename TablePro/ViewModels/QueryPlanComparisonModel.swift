@@ -8,7 +8,6 @@
 
 import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// What the pane can show for the selected baseline.
@@ -55,8 +54,7 @@ enum QueryPlanComparisonEmptyReason: Hashable, Sendable {
 }
 
 @MainActor
-@Observable
-final class QueryPlanComparisonModel {
+final class QueryPlanComparisonModel: ObservableObject {
     enum State: Hashable, Sendable {
         case loading
         case empty(QueryPlanComparisonEmptyReason)
@@ -72,19 +70,19 @@ final class QueryPlanComparisonModel {
     /// Enough runs to find the one before yesterday's deploy, few enough to stay a menu.
     nonisolated static let baselineListLimit = 50
 
-    private(set) var baselines: [QueryPlanSnapshotSummary] = []
-    private(set) var state: State = .loading
+    @Published private(set) var baselines: [QueryPlanSnapshotSummary] = []
+    @Published private(set) var state: State = .loading
 
-    var selectedBaselineId: UUID? {
+    @Published var selectedBaselineId: UUID? {
         didSet {
             guard oldValue != selectedBaselineId else { return }
             reloadComparison()
         }
     }
 
-    private var context: QueryPlanContext?
-    private var currentPlan: QueryPlan?
-    private var currentRawText = ""
+    @Published private var context: QueryPlanContext?
+    @Published private var currentPlan: QueryPlan?
+    @Published private var currentRawText = ""
     private let history: QueryPlanSnapshotReading
     private let isCapturePaused: @MainActor () -> Bool
     private var updateSubscription: AnyCancellable?

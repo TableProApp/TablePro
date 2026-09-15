@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HistoryListPane: View {
-    @Bindable var viewModel: HistoryPanelViewModel
+    @ObservedObject var viewModel: HistoryPanelViewModel
 
     let canRunInNewTab: (QueryHistoryEntry) -> Bool
     let onLoadInEditor: (QueryHistoryEntry) -> Void
@@ -102,13 +102,13 @@ struct HistoryListPane: View {
     private var emptyState: some View {
         Group {
             if viewModel.isStoreUnavailable {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label(String(localized: "Query History Is Unavailable"), systemImage: "exclamationmark.triangle")
                 } description: {
                     Text("TablePro could not open its query history database, so nothing is being recorded and nothing can be shown. Your existing history is still on disk.")
                 }
             } else if viewModel.state.hasNarrowingFilter {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label(String(localized: "No Matching Queries"), systemImage: "magnifyingglass")
                 } description: {
                     Text("No query matches the current search and filters.")
@@ -119,7 +119,7 @@ struct HistoryListPane: View {
                     }
                 }
             } else {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label(String(localized: "No Query History"), systemImage: "clock.arrow.circlepath")
                 } description: {
                     Text("Queries you run appear here.")

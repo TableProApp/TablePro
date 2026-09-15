@@ -9,16 +9,15 @@ import Foundation
 import os
 
 @MainActor
-@Observable
-internal final class SQLFolderWatcher {
+internal final class SQLFolderWatcher: ObservableObject {
     static let shared = SQLFolderWatcher()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFolderWatcher")
 
-    private(set) var lastScanCompletedAt: Date?
+    @Published private(set) var lastScanCompletedAt: Date?
 
-    @ObservationIgnored private var eventStream: FSEventStreamRef?
-    @ObservationIgnored private var debounceTask: Task<Void, Never>?
-    @ObservationIgnored private var hasStarted = false
+    private var eventStream: FSEventStreamRef?
+    private var debounceTask: Task<Void, Never>?
+    private var hasStarted = false
 
     nonisolated private static let eventCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
         guard let info else { return }

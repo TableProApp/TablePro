@@ -10,7 +10,7 @@ import SwiftUI
 /// counter, no progress bar, no appeal. It is only ever reached because someone went looking for
 /// it in the Help menu.
 struct SupportView: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     var body: some View {
         VStack(spacing: 20) {

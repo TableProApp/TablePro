@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -950,21 +951,20 @@ private enum SortKey: Sendable {
 }
 
 @MainActor
-@Observable
-final class InspectorViewState {
-    var tableRows = TableRows()
-    var selectedRowIndices: Set<Int> = []
-    var sortState = SortState()
-    var columnLayout = ColumnLayoutState()
-    var columnNames: [String] = []
-    var totalRowCount: Int = 0
-    var visibleRowCount: Int = 0
-    var pageOffset: Int = 0
-    var pageSize: Int = 1_000
-    var pageCount: Int = 1
-    var isComputing: Bool = false
-    var isFilterVisible: Bool = false
-    var filters: [FilterClause] = []
+final class InspectorViewState: ObservableObject {
+    @Published var tableRows = TableRows()
+    @Published var selectedRowIndices: Set<Int> = []
+    @Published var sortState = SortState()
+    @Published var columnLayout = ColumnLayoutState()
+    @Published var columnNames: [String] = []
+    @Published var totalRowCount: Int = 0
+    @Published var visibleRowCount: Int = 0
+    @Published var pageOffset: Int = 0
+    @Published var pageSize: Int = 1_000
+    @Published var pageCount: Int = 1
+    @Published var isComputing: Bool = false
+    @Published var isFilterVisible: Bool = false
+    @Published var filters: [FilterClause] = []
 }
 
 @MainActor
@@ -1022,8 +1022,8 @@ private final class InspectorGridDelegate: DataGridViewDelegate {
 }
 
 private struct InspectorRootView: View {
-    @Bindable var state: InspectorViewState
-    let changeManager: AnyChangeManager
+    @ObservedObject var state: InspectorViewState
+    @ObservedObject var changeManager: AnyChangeManager
     let delegate: any DataGridViewDelegate
     let onFilterChanged: () -> Void
     let onPreviousPage: () -> Void
@@ -1062,7 +1062,7 @@ private struct InspectorRootView: View {
     }
 
     private var emptyStateView: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             state.totalRowCount == 0
                 ? String(localized: "No rows")
                 : String(localized: "No matching rows"),

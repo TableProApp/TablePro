@@ -49,27 +49,32 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
 }
 
 struct DatabaseTreeView: View {
-    @Bindable private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
 
     let connectionId: UUID
     let databaseType: DatabaseType
-    let viewModel: SidebarViewModel
-    let windowState: WindowSidebarState
+    @ObservedObject var viewModel: SidebarViewModel
+    @ObservedObject var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     let coordinator: MainContentCoordinator?
-    let sidebarState: SharedSidebarState
 
-    @State private var settingsManager = AppSettingsManager.shared
+    /// The publisher behind `activeDatabase` and `activeSchema` is the toolbar state, not the
+    /// coordinator, and `@ObservedObject` cannot wrap an optional. The coordinator holds it as
+    /// a stable `let`, so the view observes it directly.
+    @ObservedObject var toolbarState: ConnectionToolbarState
+    @ObservedObject var sidebarState: SharedSidebarState
+
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsDatabaseProgress = false
 
     private var activeDatabase: String? {
-        let name = coordinator?.toolbarState.currentDatabase ?? ""
+        let name = toolbarState.currentDatabase
         return name.isEmpty ? nil : name
     }
 
     private var activeSchema: String? {
-        coordinator?.toolbarState.currentSchema
+        toolbarState.currentSchema
     }
 
     private var isConnected: Bool {
@@ -216,7 +221,7 @@ struct DatabaseTreeView: View {
     }
 
     private var emptyDatabasesState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Databases"),
             systemImage: "cylinder",
             description: Text("This server has no databases yet.")
@@ -225,7 +230,7 @@ struct DatabaseTreeView: View {
     }
 
     private var filteredEmptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Databases Shown"), systemImage: "line.3.horizontal.decrease.circle")
         } description: {
             Text("The database filter hides every database on this connection.")

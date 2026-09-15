@@ -57,7 +57,7 @@ internal struct DatabaseEndpointPicker: View {
 
     internal static let contentSize = NSSize(width: 320, height: 400)
 
-    @State private var model = DatabaseEndpointPickerModel()
+    @StateObject private var model = DatabaseEndpointPickerModel()
     @State private var path: [DatabaseEndpointRoute] = []
     @State private var connections: [DatabaseConnection] = []
     @State private var filter = ""
@@ -74,7 +74,7 @@ internal struct DatabaseEndpointPicker: View {
         .onAppear { connections = ConnectionStorage.shared.loadConnections() }
         /// Each level filters its own list, so moving between them starts clean rather than
         /// arriving at a database list already narrowed by a connection's name.
-        .onChange(of: path) { _, _ in filter = "" }
+        .onChange(of: path) { _ in filter = "" }
     }
 
     // MARK: - Search
@@ -104,7 +104,7 @@ internal struct DatabaseEndpointPicker: View {
     }
 
     private var noMatchesPane: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label("No Matches", systemImage: "magnifyingglass")
         } description: {
             Text("Nothing here matches the search.")
@@ -116,7 +116,7 @@ internal struct DatabaseEndpointPicker: View {
     private var connectionList: some View {
         Group {
             if connections.isEmpty {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label("No Saved Connections", systemImage: "externaldrive.badge.questionmark")
                 } description: {
                     Text("Add a connection first.")
@@ -249,7 +249,7 @@ internal struct DatabaseEndpointPicker: View {
             failurePane(message) { await model.loadSchemas(for: endpoint, connection: connection, reload: true) }
         case let .loaded(names):
             if names.isEmpty {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label("No Schemas", systemImage: "tray")
                 } description: {
                     Text("This database reports no schemas.")
@@ -306,7 +306,7 @@ internal struct DatabaseEndpointPicker: View {
     }
 
     private func failurePane(_ message: String, retry: @escaping () async -> Void) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label("Cannot Read This Connection", systemImage: "exclamationmark.triangle")
         } description: {
             RevealedTextView(message)

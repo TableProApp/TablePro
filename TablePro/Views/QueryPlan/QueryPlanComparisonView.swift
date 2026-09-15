@@ -14,7 +14,7 @@
 import SwiftUI
 
 struct QueryPlanComparisonView: View {
-    let model: QueryPlanComparisonModel
+    @ObservedObject var model: QueryPlanComparisonModel
 
     var body: some View {
         switch model.state {
@@ -23,7 +23,7 @@ struct QueryPlanComparisonView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .empty(let reason):
-            ContentUnavailableView(
+            UnavailableStateView(
                 reason.title,
                 systemImage: reason.systemImage,
                 description: Text(reason.message)
@@ -32,7 +32,7 @@ struct QueryPlanComparisonView: View {
             .accessibilityIdentifier("query-plan-comparison-empty")
 
         case .unavailable(let message):
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "Comparison Unavailable"),
                 systemImage: "exclamationmark.triangle",
                 description: Text(message)

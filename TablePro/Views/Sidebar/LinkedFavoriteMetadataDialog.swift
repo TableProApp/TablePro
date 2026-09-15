@@ -12,7 +12,7 @@ internal struct LinkedFavoriteMetadataDialog: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
-    @State private var keywordField = SQLFavoriteKeywordField()
+    @StateObject private var keywordField = SQLFavoriteKeywordField()
     @State private var fileDescription: String = ""
     @State private var isSaving = false
     @State private var saveError: String?
@@ -83,7 +83,7 @@ internal struct LinkedFavoriteMetadataDialog: View {
     private var keywordSection: some View {
         Section {
             TextField(String(localized: "Keyword"), text: $keywordField.keyword)
-                .onChange(of: keywordField.keyword) {
+                .onChange(of: keywordField.keyword) { _ in
                     revalidateKeyword()
                 }
 

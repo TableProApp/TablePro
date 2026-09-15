@@ -18,8 +18,8 @@ struct BackupDatabaseFlow: View {
     /// to the database the window is browsing.
     var preselectedDatabases: Set<String> = []
 
-    @State private var model: BackupScopeModel
-    @State private var batch = NativeDumpBatch()
+    @StateObject private var model: BackupScopeModel
+    @StateObject private var batch = NativeDumpBatch()
     @State private var phase: Phase = .plan
     @State private var formatId: String
     @State private var directory: URL
@@ -50,7 +50,7 @@ struct BackupDatabaseFlow: View {
         self.preselectedDatabases = preselectedDatabases
         let formats = NativeDumpRegistry.formats(for: connection.type)
         self._formatId = State(initialValue: formats.first?.id ?? "default")
-        self._model = State(
+        self._model = StateObject(
             wrappedValue: BackupScopeModel(
                 connection: connection,
                 objectScope: NativeDumpRegistry.descriptor(for: connection.type)?.objectScope

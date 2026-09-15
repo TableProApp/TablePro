@@ -56,9 +56,9 @@ internal struct JSONViewerView: View {
             }
         }
         .onAppear { initializeView() }
-        .onChange(of: text) { syncFromExternal() }
-        .onChange(of: displayText) { handleDisplayTextChange() }
-        .onChange(of: viewMode) {
+        .onChange(of: text) { _ in syncFromExternal() }
+        .onChange(of: displayText) { _ in handleDisplayTextChange() }
+        .onChange(of: viewMode) { _ in
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
         .alert("Invalid JSON", isPresented: $showInvalidAlert) {
@@ -112,7 +112,7 @@ internal struct JSONViewerView: View {
     }
 
     private func treeErrorView(_ error: JSONTreeParseError) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(
                 error == .tooLarge
                     ? String(localized: "JSON Too Large")

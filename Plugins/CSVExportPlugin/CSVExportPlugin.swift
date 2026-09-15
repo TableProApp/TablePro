@@ -3,12 +3,12 @@
 //  CSVExportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class CSVExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "CSV Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to CSV format"
@@ -23,7 +23,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = CSVExportOptions
     static let settingsStorageId = "csv"
 
-    var settings = CSVExportOptions() {
+    @Published var settings = CSVExportOptions() {
         didSet { saveSettings() }
     }
 

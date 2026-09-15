@@ -5,15 +5,15 @@
 //  Read-only popover showing the referenced row for a foreign key cell.
 //
 
+import Combine
 import os
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class FKPreviewModel {
-    var cellValue: String?
-    var fkInfo: ForeignKeyInfo
+final class FKPreviewModel: ObservableObject {
+    @Published var cellValue: String?
+    @Published var fkInfo: ForeignKeyInfo
 
     init(cellValue: String?, fkInfo: ForeignKeyInfo) {
         self.cellValue = cellValue
@@ -27,7 +27,7 @@ private struct FKPreviewTaskKey: Equatable {
 }
 
 struct ForeignKeyPreviewView: View {
-    let model: FKPreviewModel
+    @ObservedObject var model: FKPreviewModel
     let scope: DatabaseScope
     let databaseType: DatabaseType
     let onNavigate: () -> Void

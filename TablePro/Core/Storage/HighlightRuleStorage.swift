@@ -3,13 +3,12 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 @MainActor
-@Observable
-final class HighlightRuleStorage: TableScopedSettingsStore {
+final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     static let shared = HighlightRuleStorage()
 
     nonisolated private static let logger = Logger(
@@ -17,16 +16,16 @@ final class HighlightRuleStorage: TableScopedSettingsStore {
         category: "HighlightRuleStorage"
     )
 
-    private(set) var revision = 0
+    @Published private(set) var revision = 0
 
-    @ObservationIgnored private let storageDirectory: URL
-    @ObservationIgnored private var cache: [UUID: [String: [HighlightRule]]] = [:]
-    @ObservationIgnored private let encoder: JSONEncoder = {
+    private let storageDirectory: URL
+    private var cache: [UUID: [String: [HighlightRule]]] = [:]
+    private let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         return encoder
     }()
-    @ObservationIgnored private let decoder = JSONDecoder()
+    private let decoder = JSONDecoder()
 
     init(storageDirectory: URL? = nil) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()

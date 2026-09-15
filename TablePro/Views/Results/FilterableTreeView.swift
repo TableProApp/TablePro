@@ -39,7 +39,7 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
             }
             content(projection: projection, documentInfo: documentInfo)
         }
-        .onChange(of: searchText) { _, newValue in
+        .onChange(of: searchText) { newValue in
             guard newValue.trimmingCharacters(in: .whitespaces).isEmpty else { return }
             disclosure.endFiltering()
         }
@@ -124,7 +124,7 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
     @ViewBuilder
     private func noMatchesView(isTruncated: Bool) -> some View {
         if isTruncated {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "No Results"), systemImage: "magnifyingglass")
             } description: {
                 Text(
@@ -138,7 +138,7 @@ internal struct FilterableTreeView<Node: FilterableTreeNode, Row: View>: View {
                 )
             }
         } else {
-            ContentUnavailableView.search(text: searchText)
+            UnavailableStateView.search(text: searchText)
         }
     }
 

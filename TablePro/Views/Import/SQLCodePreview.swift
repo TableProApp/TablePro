@@ -28,7 +28,7 @@ struct SQLCodePreview: View {
                 state: $editorState,
                 foldProvider: FoldProviderResolver.provider(for: CodeLanguage.sql)
             )
-            .onChange(of: colorScheme) {
+            .onChange(of: colorScheme) { _ in
                 editorConfiguration = Self.makeConfiguration()
             }
         }

@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct HistoryPanelToolbar: View {
-    let viewModel: HistoryPanelViewModel
-    @Bindable var state: HistoryPanelState
+    @ObservedObject var viewModel: HistoryPanelViewModel
+    @ObservedObject var state: HistoryPanelState
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,13 +35,13 @@ struct HistoryPanelToolbar: View {
             Divider()
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: state.searchText) {
+        .onChange(of: state.searchText) { _ in
             viewModel.scheduleSearchReload()
         }
-        .onChange(of: state.showsAllConnections) { reload() }
-        .onChange(of: state.dateRange) { reload() }
-        .onChange(of: state.outcome) { reload() }
-        .onChange(of: state.sources) { reload() }
+        .onChange(of: state.showsAllConnections) { _ in reload() }
+        .onChange(of: state.dateRange) { _ in reload() }
+        .onChange(of: state.outcome) { _ in reload() }
+        .onChange(of: state.sources) { _ in reload() }
     }
 
     private var scopePicker: some View {

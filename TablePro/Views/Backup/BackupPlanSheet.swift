@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 /// and this flow used to present a save panel as a sub-sheet over the database picker, so the user
 /// answered "which database" before seeing anything about the file and could not get back.
 internal struct BackupPlanSheet: View {
-    internal let model: BackupScopeModel
+    @ObservedObject internal var model: BackupScopeModel
     internal let formats: [NativeDumpDescriptor.ArchiveFormat]
     @Binding internal var formatId: String
     @Binding internal var directory: URL

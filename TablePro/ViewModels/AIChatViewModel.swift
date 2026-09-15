@@ -3,13 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
-@MainActor @Observable
-final class AIChatViewModel {
+@MainActor
+final class AIChatViewModel: ObservableObject {
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "AIChatViewModel")
 
     enum StreamingState {
@@ -21,35 +21,35 @@ final class AIChatViewModel {
         case failed(AIProviderError?)
     }
 
-    var messages: [ChatTurn] = []
-    var inputText: String = ""
-    var streamingState: StreamingState = .idle
-    var errorMessage: String?
-    var conversations: [AIConversation] = []
-    var activeConversationID: UUID?
-    var showAIAccessConfirmation = false
-    var selectedProviderId: UUID?
-    var selectedModel: String?
-    var availableModels: [UUID: [String]] = [:]
-    var attachedContext: [ContextItem] = []
-    var attachedImages: [ChatImageInput] = []
-    var savedQueries: [SQLFavorite] = []
+    @Published var messages: [ChatTurn] = []
+    @Published var inputText: String = ""
+    @Published var streamingState: StreamingState = .idle
+    @Published var errorMessage: String?
+    @Published var conversations: [AIConversation] = []
+    @Published var activeConversationID: UUID?
+    @Published var showAIAccessConfirmation = false
+    @Published var selectedProviderId: UUID?
+    @Published var selectedModel: String?
+    @Published var availableModels: [UUID: [String]] = [:]
+    @Published var attachedContext: [ContextItem] = []
+    @Published var attachedImages: [ChatImageInput] = []
+    @Published var savedQueries: [SQLFavorite] = []
 
-    var connection: DatabaseConnection?
+    @Published var connection: DatabaseConnection?
 
-    @ObservationIgnored var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
-    @ObservationIgnored var streamFlushInterval: Duration = .milliseconds(50)
+    var streamFlushClock: StreamFlushClock = ContinuousStreamFlushClock()
+    var streamFlushInterval: Duration = .milliseconds(50)
 
     var tables: [TableInfo] {
         guard let id = connection?.id else { return [] }
         return services.schemaService.tables(for: id)
     }
 
-    var columnsByTable: [String: [ColumnInfo]] = [:]
-    var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
+    @Published var columnsByTable: [String: [ColumnInfo]] = [:]
+    @Published var foreignKeysByTable: [String: [ForeignKeyInfo]] = [:]
 
-    var currentQuery: String?
-    var queryResults: String?
+    @Published var currentQuery: String?
+    @Published var queryResults: String?
 
     var isStreaming: Bool {
         switch streamingState {
@@ -81,16 +81,16 @@ final class AIChatViewModel {
         lastError?.isRetryable ?? true
     }
 
-    @ObservationIgnored var pendingWalkthroughBeforeSQL: String?
-    @ObservationIgnored var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored var inFlightSchemaLoad: Task<Void, Never>?
-    @ObservationIgnored nonisolated(unsafe) var streamingTask: Task<Void, Never>?
-    @ObservationIgnored var prepTask: Task<Void, Never>?
+    var pendingWalkthroughBeforeSQL: String?
+    var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
+    var inFlightSchemaLoad: Task<Void, Never>?
+    nonisolated(unsafe) var streamingTask: Task<Void, Never>?
+    var prepTask: Task<Void, Never>?
 
-    @ObservationIgnored let services: AppServices
+    let services: AppServices
     var chatStorage: AIChatStorage { services.aiChatStorage }
-    var sessionApprovedConnections: Set<UUID> = []
-    @ObservationIgnored var cachedSavedQueries: [UUID: SQLFavorite] = [:]
+    @Published var sessionApprovedConnections: Set<UUID> = []
+    var cachedSavedQueries: [UUID: SQLFavorite] = [:]
 
     static let maxMessageCount = 200
 

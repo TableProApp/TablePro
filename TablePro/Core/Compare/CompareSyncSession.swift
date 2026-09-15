@@ -11,8 +11,8 @@
 //  comparison is one click rather than walking backwards through a wizard.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 internal enum CompareSyncActivity: Equatable {
@@ -44,64 +44,63 @@ internal enum CompareDetailPane: String, CaseIterable, Hashable {
 }
 
 @MainActor
-@Observable
-internal final class CompareSyncSession {
+internal final class CompareSyncSession: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CompareSyncSession")
 
     // MARK: - Setup
 
-    internal var mode: CompareSyncMode = .structure
-    internal var source: DatabaseEndpoint?
-    internal var target: DatabaseEndpoint?
-    internal var structureOptions = StructureCompareOptions.default
-    internal var dataOptions = DataCompareOptions.default
-    internal var executionSettings = CompareSyncExecutionSettings()
-    internal var includedKinds: Set<CompareObjectKind> = [.table]
+    @Published internal var mode: CompareSyncMode = .structure
+    @Published internal var source: DatabaseEndpoint?
+    @Published internal var target: DatabaseEndpoint?
+    @Published internal var structureOptions = StructureCompareOptions.default
+    @Published internal var dataOptions = DataCompareOptions.default
+    @Published internal var executionSettings = CompareSyncExecutionSettings()
+    @Published internal var includedKinds: Set<CompareObjectKind> = [.table]
 
     // MARK: - Results
 
-    internal var report: CompareReport?
-    internal var dataPlans: [DataComparePlan] = []
+    @Published internal var report: CompareReport?
+    @Published internal var dataPlans: [DataComparePlan] = []
 
     /// True once the table list has been read for this pair, which an empty `dataPlans` cannot say
     /// on its own. Without it "not read yet" and "these two share no table" are the same state, and
     /// the pane claims the second whenever the first is true.
-    internal var hasLoadedDataPlans = false
+    @Published internal var hasLoadedDataPlans = false
 
     /// Tables that were listed on one side and whose metadata could not be read. An empty plan list
     /// with unreadable tables behind it is not "these two share no table", and saying so sent the
     /// reader looking for a naming difference that was not there.
-    internal var unreadableTableCount = 0
-    internal var actions: [String: TableSyncAction] = [:]
-    internal var statements: [SyncStatement] = []
-    internal var runResult: CompareSyncRunResult?
-    internal var sourceSnapshots: [String: TableStructureSnapshot] = [:]
-    internal var targetSnapshots: [String: TableStructureSnapshot] = [:]
+    @Published internal var unreadableTableCount = 0
+    @Published internal var actions: [String: TableSyncAction] = [:]
+    @Published internal var statements: [SyncStatement] = []
+    @Published internal var runResult: CompareSyncRunResult?
+    @Published internal var sourceSnapshots: [String: TableStructureSnapshot] = [:]
+    @Published internal var targetSnapshots: [String: TableStructureSnapshot] = [:]
 
     // MARK: - Presentation
 
-    internal var selectedObjectId: String?
-    internal var selectedPlanId: String?
-    internal var detailPane: CompareDetailPane = .definitions
-    internal var searchText = ""
-    internal var showsIdentical = false
-    internal var grouping: CompareGrouping = .byDifference
+    @Published internal var selectedObjectId: String?
+    @Published internal var selectedPlanId: String?
+    @Published internal var detailPane: CompareDetailPane = .definitions
+    @Published internal var searchText = ""
+    @Published internal var showsIdentical = false
+    @Published internal var grouping: CompareGrouping = .byDifference
 
     // MARK: - Activity
 
-    internal var activity: CompareSyncActivity = .idle
-    internal var errorMessage: String?
-    internal var informationalMessage: String?
-    internal var lastAction: CompareSyncLastAction = .none
-    internal var progress: Progress?
-    internal var hasWrittenToTarget = false
+    @Published internal var activity: CompareSyncActivity = .idle
+    @Published internal var errorMessage: String?
+    @Published internal var informationalMessage: String?
+    @Published internal var lastAction: CompareSyncLastAction = .none
+    @Published internal var progress: Progress?
+    @Published internal var hasWrittenToTarget = false
 
     /// True once a script has run against the target, until the next comparison.
-    internal var isStaleAfterApply = false
+    @Published internal var isStaleAfterApply = false
     internal var runTask: Task<Void, Never>?
-    internal var pendingSelection: Set<String> = []
-    internal var pendingTableScopes: [String: DataTableScope] = [:]
-    internal var pendingLegacyExcludedColumns: Set<String> = []
+    @Published internal var pendingSelection: Set<String> = []
+    @Published internal var pendingTableScopes: [String: DataTableScope] = [:]
+    @Published internal var pendingLegacyExcludedColumns: Set<String> = []
 
     /// Which setup the answers on screen belong to.
     ///
@@ -110,7 +109,7 @@ internal final class CompareSyncSession {
     /// answer. Publishing that answer puts one pair's plans, snapshots or statements behind another
     /// pair's Compare and Apply, which is the same trap `ConnectionAttemptRegistry` exists for on
     /// the connection side. Every async publisher captures this and drops its result if it moved.
-    private(set) var setupGeneration = 0
+    @Published private(set) var setupGeneration = 0
 
     /// Which set of choices the script on screen was built from.
     ///
@@ -119,7 +118,7 @@ internal final class CompareSyncSession {
     /// those controls stay live while a build is in flight. A build that finished after one of them
     /// would republish statements for an object the user had just excluded, and Apply would then
     /// open on them, because an ordinary INSERT or ALTER is not a hazard `runRefusalReason` catches.
-    private(set) var scriptRevision = 0
+    @Published private(set) var scriptRevision = 0
 
     /// Which question the answers on screen were computed for.
     ///
@@ -128,19 +127,19 @@ internal final class CompareSyncSession {
     /// Ticking a table or excluding a row is the other half of the same distinction. It changes
     /// which statements come out of an answer that still stands, so it invalidates the script and
     /// must not throw away a comparison that has been streaming rows for minutes.
-    private(set) var answerRevision = 0
+    @Published private(set) var answerRevision = 0
 
     /// A setup problem, which outlives the comparison it interrupted. `errorMessage` is cleared by
     /// the next reset, and a reset is exactly what changing the setup does, so a message about the
     /// setup itself cannot live there: loading a profile whose connection is gone reported the
     /// failure and had it wiped by the option change the same load caused.
-    internal var setupErrorMessage: String?
+    @Published internal var setupErrorMessage: String?
 
     /// The two things the setup needs from outside the session: where a saved comparison lives, and
     /// which connections a stored scope can resolve against. Injected rather than reached for, so
     /// the restore rules can be exercised without writing to the user's own defaults.
-    @ObservationIgnored internal let profileStorage: CompareSyncProfileStorage
-    @ObservationIgnored internal let connectionsProvider: @MainActor () -> [DatabaseConnection]
+    internal let profileStorage: CompareSyncProfileStorage
+    internal let connectionsProvider: @MainActor () -> [DatabaseConnection]
 
     internal init(
         profileStorage: CompareSyncProfileStorage = .shared,

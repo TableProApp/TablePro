@@ -6,8 +6,8 @@
 //  Tracks pending edits across multiple selected rows.
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// Represents the edit state for a single field across multiple rows
@@ -74,34 +74,34 @@ enum FieldEditContinuity {
 }
 
 /// Manages edit state for multi-row editing in sidebar
-@MainActor @Observable
-final class MultiRowEditState {
-    var fields: [FieldEditState] = []
+@MainActor
+final class MultiRowEditState: ObservableObject {
+    @Published var fields: [FieldEditState] = []
 
     /// A field's new value, and whether it arrived a character at a time. Typing is folded into one
     /// undo step; choosing NULL, DEFAULT, a function or a picker value is its own step.
-    var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
+    @Published var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
 
     /// A field the selected rows disagree on, cleared back to nothing. It has no single value to
     /// send, so it asks for each row's own configured value instead.
-    var onFieldReverted: ((Int, [RowID: PluginCellValue]) -> Void)?
+    @Published var onFieldReverted: ((Int, [RowID: PluginCellValue]) -> Void)?
 
     /// A value window still open over a selection that has moved on. It names the rows it was
     /// opened for, because the fields it was opened from are gone.
-    var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID]) -> Void)?
+    @Published var onDetachedFieldChanged: ((Int, PluginCellValue, [RowID]) -> Void)?
 
-    private(set) var selectedRowIndices: Set<Int> = []
+    @Published private(set) var selectedRowIndices: Set<Int> = []
 
     /// The rows an edit is staged against, captured when the selection was configured.
     ///
     /// `selectedRowIndices` are display positions, and a commit that resolves them when the
     /// keystroke arrives writes into whatever row the sort, the value filter or a later selection
     /// left at that position.
-    private(set) var rowIDs: [RowID] = []
+    @Published private(set) var rowIDs: [RowID] = []
 
-    private(set) var allRows: [[String?]] = []
-    private(set) var columns: [String] = []
-    private(set) var columnTypes: [ColumnType] = []
+    @Published private(set) var allRows: [[String?]] = []
+    @Published private(set) var columns: [String] = []
+    @Published private(set) var columnTypes: [ColumnType] = []
 
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }

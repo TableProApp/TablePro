@@ -68,7 +68,7 @@ struct ObjectCommentSheet: View {
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loadFailed(let message):
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Comment Unavailable", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(message)

@@ -33,10 +33,10 @@ internal struct JSONCodeEditor: View {
             state: $editorState
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             rebuildConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) {
+        .onChange(of: AppSettingsManager.shared.editor) { _ in
             rebuildConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in

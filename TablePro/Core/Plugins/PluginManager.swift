@@ -11,8 +11,8 @@ import Security
 import SwiftUI
 import TableProPluginKit
 
-@MainActor @Observable
-final class PluginManager {
+@MainActor
+final class PluginManager: ObservableObject {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
     /// Raised to 29 for `maintenanceOperations` on `PluginDatabaseDriver`, plus the
     /// `PluginMaintenanceOperation`, `PluginMaintenanceOption`, `PluginMaintenanceScope` and
@@ -74,9 +74,9 @@ final class PluginManager {
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let builtInPluginsURL: URL?
-    @ObservationIgnored internal let userPluginsDir: URL
+    private let defaults: UserDefaults
+    private let builtInPluginsURL: URL?
+    internal let userPluginsDir: URL
 
     internal(set) var plugins: [PluginEntry] = []
 
@@ -105,7 +105,7 @@ final class PluginManager {
         }
     }
 
-    @ObservationIgnored private var initialLoadWaiters: [LoadWaiter] = []
+    private var initialLoadWaiters: [LoadWaiter] = []
 
     private struct LoadWaiter {
         let id: UUID
@@ -137,7 +137,7 @@ final class PluginManager {
 
     internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
-    var needsRestart: Bool = false
+    @Published var needsRestart: Bool = false
 
     internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
 
@@ -156,30 +156,30 @@ final class PluginManager {
 
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
-    private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
+    @Published private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
-    @ObservationIgnored private(set) var lazyDriverURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorFileExtensions: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorUTIs: [String: URL] = [:]
-    @ObservationIgnored private var activatedBundleIds: Set<String> = []
+    private(set) var lazyDriverURLs: [String: URL] = [:]
+    private var lazyExportURLs: [String: URL] = [:]
+    private var lazyImportURLs: [String: URL] = [:]
+    internal var lazyInspectorURLs: [String: URL] = [:]
+    internal var lazyInspectorFileExtensions: [String: URL] = [:]
+    internal var lazyInspectorUTIs: [String: URL] = [:]
+    private var activatedBundleIds: Set<String> = []
 
-    @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
-    @ObservationIgnored internal var reconciliationActive = false
-    @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
-    @ObservationIgnored internal var reconciliationManifestAttempts = 0
-    @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
-    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
-    @ObservationIgnored internal var lastNetworkSatisfied = false
-    @ObservationIgnored internal var installsInFlight: Set<String> = []
+    internal var reconciliationTask: Task<Void, Never>?
+    internal var reconciliationActive = false
+    internal var reconciliationAttempts: [String: Int] = [:]
+    internal var reconciliationManifestAttempts = 0
+    private var connectionStatusSubscription: AnyCancellable?
+    internal var pluginNetworkMonitor: NWPathMonitor?
+    internal var lastNetworkSatisfied = false
+    internal var installsInFlight: Set<String> = []
 
     /// User-installed bundles discovered but not yet signature-checked. `sweepPluginSignatures()`
     /// drains it after the first frame.
-    @ObservationIgnored internal var pendingSignatureChecks: [URL] = []
+    internal var pendingSignatureChecks: [URL] = []
 
-    var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
+    @Published var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,

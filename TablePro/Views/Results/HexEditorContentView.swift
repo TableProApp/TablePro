@@ -139,7 +139,7 @@ struct HexEditorBody: View {
                 .padding(.vertical, 8)
             }
         }
-        .onChange(of: editableHex) { _, newValue in
+        .onChange(of: editableHex) { newValue in
             scheduleValidation(newValue)
         }
     }

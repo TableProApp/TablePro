@@ -3,12 +3,15 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 @testable import TablePro
 import Testing
 
+/// The granularity these assert is now `objectWillChange` per object rather than
+/// `@Observable`'s per property: a mutation inside a block must not wake the turn or the
+/// view model, or the whole chat re-renders on every streamed token.
 @Suite("ChatTurn observation granularity")
 @MainActor
 struct ChatTurnObservationTests {
@@ -24,11 +27,10 @@ struct ChatTurnObservationTests {
         viewModel.messages.append(turn)
 
         let messagesInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = viewModel.messages.count
-        } onChange: {
+        let observation = viewModel.objectWillChange.sink { _ in
             messagesInvalidated.withLock { $0 = true }
         }
+        defer { observation.cancel() }
 
         turn.appendStreamingToken("hello")
 
@@ -41,11 +43,10 @@ struct ChatTurnObservationTests {
         let (turn, _) = makeStreamingTurn()
 
         let blockListInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = turn.blocks.count
-        } onChange: {
+        let observation = turn.objectWillChange.sink { _ in
             blockListInvalidated.withLock { $0 = true }
         }
+        defer { observation.cancel() }
 
         turn.appendStreamingToken("hello")
 
@@ -57,11 +58,10 @@ struct ChatTurnObservationTests {
         let (turn, block) = makeStreamingTurn()
 
         let blockInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = block.kind
-        } onChange: {
+        let observation = block.objectWillChange.sink { _ in
             blockInvalidated.withLock { $0 = true }
         }
+        defer { observation.cancel() }
 
         turn.appendStreamingToken("hello")
 
@@ -76,17 +76,10 @@ struct ChatTurnObservationTests {
         viewModel.streamingState = .streaming(assistantID: turn.id)
 
         let panelInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            for message in viewModel.messages {
-                _ = message.id
-                _ = message.role
-                if !viewModel.isStreaming {
-                    _ = message.plainText
-                }
-            }
-        } onChange: {
+        let observation = viewModel.objectWillChange.sink { _ in
             panelInvalidated.withLock { $0 = true }
         }
+        defer { observation.cancel() }
 
         turn.appendStreamingToken("hello")
 
@@ -100,18 +93,16 @@ struct ChatTurnObservationTests {
         viewModel.messages.append(turn)
 
         let messagesInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = viewModel.messages.count
-        } onChange: {
+        let messagesObservation = viewModel.objectWillChange.sink { _ in
             messagesInvalidated.withLock { $0 = true }
         }
+        defer { messagesObservation.cancel() }
 
         let blockListInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = turn.blocks.count
-        } onChange: {
+        let blockListObservation = turn.objectWillChange.sink { _ in
             blockListInvalidated.withLock { $0 = true }
         }
+        defer { blockListObservation.cancel() }
 
         turn.appendBlock(.toolUse(ToolUseBlock(id: "t1", name: "noop", input: .object([:]))))
 
@@ -125,11 +116,10 @@ struct ChatTurnObservationTests {
         let (second, _) = makeStreamingTurn()
 
         let siblingInvalidated = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = first.usage
-        } onChange: {
+        let observation = first.objectWillChange.sink { _ in
             siblingInvalidated.withLock { $0 = true }
         }
+        defer { observation.cancel() }
 
         second.usage = AITokenUsage(inputTokens: 10, outputTokens: 20)
 

@@ -1,26 +1,26 @@
+import Combine
 import Foundation
 import os
 
 @MainActor
-@Observable
-final class ServerDashboardViewModel {
+final class ServerDashboardViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ServerDashboard")
 
     // MARK: - Configuration
 
     let connectionId: UUID
     let databaseType: DatabaseType
-    private(set) var provider: ServerDashboardQueryProvider?
+    @Published private(set) var provider: ServerDashboardQueryProvider?
 
     // MARK: - Data
 
-    var sessions: [DashboardSession] = []
-    var metrics: [DashboardMetric] = []
-    var slowQueries: [DashboardSlowQuery] = []
+    @Published var sessions: [DashboardSession] = []
+    @Published var metrics: [DashboardMetric] = []
+    @Published var slowQueries: [DashboardSlowQuery] = []
 
     // MARK: - Refresh State
 
-    var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
+    @Published var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
         didSet {
             guard oldValue != refreshInterval else { return }
             if refreshTask != nil || refreshInterval != .off {
@@ -29,31 +29,31 @@ final class ServerDashboardViewModel {
         }
     }
 
-    var isPaused: Bool = false
-    var isRefreshing: Bool = false
-    var lastRefreshDate: Date?
-    var panelErrors: [DashboardPanel: String] = [:]
+    @Published var isPaused: Bool = false
+    @Published var isRefreshing: Bool = false
+    @Published var lastRefreshDate: Date?
+    @Published var panelErrors: [DashboardPanel: String] = [:]
 
     // MARK: - Sort State
 
-    var sessionSortOrder: [KeyPathComparator<DashboardSession>] = [
+    @Published var sessionSortOrder: [KeyPathComparator<DashboardSession>] = [
         KeyPathComparator(\DashboardSession.durationSeconds, order: .reverse),
     ]
 
     // MARK: - Kill / Cancel Confirmation
 
-    var showKillConfirmation: Bool = false
-    var pendingKillProcessId: String?
-    var showCancelConfirmation: Bool = false
-    var pendingCancelProcessId: String?
-    var actionError: String?
+    @Published var showKillConfirmation: Bool = false
+    @Published var pendingKillProcessId: String?
+    @Published var showCancelConfirmation: Bool = false
+    @Published var pendingCancelProcessId: String?
+    @Published var actionError: String?
 
     // MARK: - Private
 
-    @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private var providerServerVersion: String?
-    @ObservationIgnored private var hasAdoptedServerVersion = false
+    nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
+    private let services: AppServices
+    private var providerServerVersion: String?
+    private var hasAdoptedServerVersion = false
 
     // MARK: - Computed Properties
 

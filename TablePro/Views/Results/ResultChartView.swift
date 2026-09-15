@@ -99,13 +99,13 @@ struct ResultChartView: View {
     @ViewBuilder
     private var content: some View {
         if tableRows.rows.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Data"),
                 systemImage: "chart.bar.xaxis",
                 description: Text(String(localized: "Execute a query to chart its loaded rows."))
             )
         } else if resolved == nil {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Numeric Column"),
                 systemImage: "slider.horizontal.3",
                 description: Text(String(localized: "Charts need a numeric column for the Y axis. This result has none."))
@@ -117,7 +117,7 @@ struct ResultChartView: View {
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Building chart"))
             case .loaded(let projection) where projection.points.isEmpty:
-                ContentUnavailableView(
+                UnavailableStateView(
                     String(localized: "No Chartable Rows"),
                     systemImage: "chart.bar.xaxis",
                     description: Text(String(localized: "The selected axes contain only null, binary, or invalid values."))

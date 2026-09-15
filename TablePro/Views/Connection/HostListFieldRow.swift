@@ -75,7 +75,7 @@ struct HostListFieldRow: View {
             Text(label)
         }
         .onAppear { parseValue() }
-        .onChange(of: value) { parseValue() }
+        .onChange(of: value) { _ in parseValue() }
     }
 
     /// A plugin can declare a per-field example, which matters when one form has two host lists

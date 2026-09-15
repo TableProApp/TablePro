@@ -3,13 +3,13 @@
 //  SQLExportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "SQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to SQL format"
@@ -44,7 +44,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = SQLExportOptions
     static let settingsStorageId = "sql"
 
-    var settings = SQLExportOptions() {
+    @Published var settings = SQLExportOptions() {
         didSet { saveSettings() }
     }
 

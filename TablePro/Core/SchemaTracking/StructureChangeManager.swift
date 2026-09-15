@@ -6,34 +6,34 @@
 //  Mirrors DataChangeManager architecture for schema modifications.
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// Manager for tracking and applying schema changes
-@MainActor @Observable
-final class StructureChangeManager: ChangeManaging {
-    private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
-    @ObservationIgnored private var changeOrder: [SchemaChangeIdentifier] = []
-    private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
+@MainActor
+final class StructureChangeManager: ObservableObject, ChangeManaging {
+    @Published private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
+    private var changeOrder: [SchemaChangeIdentifier] = []
+    @Published private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
     var hasChanges: Bool { !pendingChanges.isEmpty }
-    var reloadVersion: Int = 0
+    @Published var reloadVersion: Int = 0
 
     // Current state (loaded from database)
-    private(set) var currentColumns: [EditableColumnDefinition] = []
-    private(set) var currentIndexes: [EditableIndexDefinition] = []
-    private(set) var currentForeignKeys: [EditableForeignKeyDefinition] = []
-    private(set) var currentCheckConstraints: [EditableCheckConstraintDefinition] = []
-    private(set) var currentPrimaryKey: [String] = []
+    @Published private(set) var currentColumns: [EditableColumnDefinition] = []
+    @Published private(set) var currentIndexes: [EditableIndexDefinition] = []
+    @Published private(set) var currentForeignKeys: [EditableForeignKeyDefinition] = []
+    @Published private(set) var currentCheckConstraints: [EditableCheckConstraintDefinition] = []
+    @Published private(set) var currentPrimaryKey: [String] = []
 
     // Working state (includes uncommitted changes + placeholders)
-    var workingColumns: [EditableColumnDefinition] = []
-    var workingIndexes: [EditableIndexDefinition] = []
-    var workingForeignKeys: [EditableForeignKeyDefinition] = []
-    var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
-    var workingPrimaryKey: [String] = []
+    @Published var workingColumns: [EditableColumnDefinition] = []
+    @Published var workingIndexes: [EditableIndexDefinition] = []
+    @Published var workingForeignKeys: [EditableForeignKeyDefinition] = []
+    @Published var workingCheckConstraints: [EditableCheckConstraintDefinition] = []
+    @Published var workingPrimaryKey: [String] = []
 
-    var tableName: String?
+    @Published var tableName: String?
 
     // MARK: - Undo/Redo Support
 
