@@ -27,6 +27,10 @@ extension TextView: TextLayoutManagerDelegate {
         return unobscuredContentSize
     }
 
+    public func layoutManagerDidLayout(_ update: TextLayoutUpdate) {
+        emphasisManager?.layoutDidUpdate(update)
+    }
+
     public func layoutManagerYAdjustment(_ yAdjustment: CGFloat) {
         var point = scrollView?.documentVisibleRect.origin ?? .zero
         point.y += yAdjustment
