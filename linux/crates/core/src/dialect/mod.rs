@@ -18,7 +18,7 @@ mod test_dialect;
 pub use bind_error::BindError;
 pub use bind_target::BindTarget;
 pub use dialect_capabilities::DialectCapabilities;
-pub use engine_dialect::{EngineDialect, dialect_for, parse_for_column};
+pub use engine_dialect::{EngineDialect, dialect_for, grammar_for, parse_for_column};
 pub use keyset_direction::KeysetDirection;
 pub use like_form::{LikeCase, LikeForm};
 pub use literal_error::LiteralError;
