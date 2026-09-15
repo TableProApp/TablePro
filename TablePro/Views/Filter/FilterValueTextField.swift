@@ -60,10 +60,16 @@ struct FilterValueTextField: NSViewRepresentable {
         return !CharacterSet.whitespaces.contains(scalar)
     }
 
-    nonisolated static func splice(into current: String, range: NSRange, insertText: String) -> (text: String, caret: Int)? {
+    nonisolated static func splice(
+        into current: String,
+        range: NSRange,
+        insertText: String,
+        cursorOffset: Int? = nil
+    ) -> (text: String, caret: Int)? {
         let ns = current as NSString
         guard range.location >= 0, range.location + range.length <= ns.length else { return nil }
-        let caret = range.location + (insertText as NSString).length
+        let offset = cursorOffset ?? (insertText as NSString).length
+        let caret = range.location + min(max(offset, 0), (insertText as NSString).length)
         return (ns.replacingCharacters(in: range, with: insertText), caret)
     }
 
@@ -376,7 +382,7 @@ struct FilterValueTextField: NSViewRepresentable {
                     return
                 }
                 let items = result.items.map {
-                    SuggestionItem(label: $0.label, insertText: $0.insertText)
+                    SuggestionItem(label: $0.label, insertText: $0.insertText, cursorOffset: $0.cursorOffset)
                 }
                 self.presentSuggestions(items, for: textField, replacementRange: result.replacementRange)
             }
@@ -463,7 +469,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 text.wrappedValue = item.insertText
                 textField?.stringValue = item.insertText
             case .sqlTokens:
-                spliceTokenCompletion(item.insertText)
+                spliceTokenCompletion(item.insertText, cursorOffset: item.cursorOffset)
             }
             dismissSuggestions()
             if submitting {
@@ -471,10 +477,13 @@ struct FilterValueTextField: NSViewRepresentable {
             }
         }
 
-        private func spliceTokenCompletion(_ insertText: String) {
+        private func spliceTokenCompletion(_ insertText: String, cursorOffset: Int) {
             guard let textField, let range = latestReplacementRange,
                   let spliced = FilterValueTextField.splice(
-                      into: textField.stringValue, range: range, insertText: insertText
+                      into: textField.stringValue,
+                      range: range,
+                      insertText: insertText,
+                      cursorOffset: cursorOffset
                   )
             else { return }
 
@@ -529,6 +538,15 @@ struct FilterValueTextField: NSViewRepresentable {
     private struct SuggestionItem: Equatable {
         let label: String
         let insertText: String
+        /// Caret position relative to the insertion start, so a function completion parks the
+        /// caret between its parentheses here exactly as it does in the query editor.
+        let cursorOffset: Int
+
+        init(label: String, insertText: String, cursorOffset: Int? = nil) {
+            self.label = label
+            self.insertText = insertText
+            self.cursorOffset = cursorOffset ?? (insertText as NSString).length
+        }
     }
 
     @MainActor
