@@ -1061,7 +1061,7 @@ fn show_calendar_popover(label: &super::cell_editor::CellEditor, col_index: usiz
     if let Ok(parsed) = chrono::NaiveDate::parse_from_str(label.text().as_str(), "%Y-%m-%d")
         && let Ok(dt) = glib::DateTime::from_local(parsed.year(), parsed.month() as i32, parsed.day() as i32, 0, 0, 0.0)
     {
-        calendar.select_day(&dt);
+        calendar.set_date(&dt);
     }
 
     let popover = gtk::Popover::builder().child(&calendar).build();
@@ -2164,6 +2164,18 @@ fn truncate_for_display(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[gtk4::test]
+    fn calendar_selects_cell_date() {
+        let calendar = gtk::Calendar::new();
+        let date = glib::DateTime::from_local(2026, 9, 15, 0, 0, 0.0).unwrap();
+
+        calendar.set_date(&date);
+
+        assert_eq!(calendar.date().year(), 2026);
+        assert_eq!(calendar.date().month(), 9);
+        assert_eq!(calendar.date().day_of_month(), 15);
+    }
+
     use super::*;
 
     fn col(data_type: &str, primary_key: bool) -> ColumnInfo {

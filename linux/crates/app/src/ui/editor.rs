@@ -17,7 +17,7 @@ pub struct SqlEditor {
     source_view: sourceview5::View,
     run_button: gtk::Button,
     cancel_button: gtk::Button,
-    running_spinner: gtk::Spinner,
+    running_spinner: adw::Spinner,
     results_holder: gtk::Box,
     status: gtk::Label,
     grid_sender: relm4::Sender<GridMsg>,
@@ -138,9 +138,8 @@ impl SimpleComponent for SqlEditor {
                 },
 
                 #[name = "running_spinner"]
-                gtk::Spinner {
+                adw::Spinner {
                     set_visible: false,
-                    set_spinning: true,
                     set_size_request: (20, 20),
                 },
 

@@ -56,11 +56,11 @@ tower-service = "0.3"
 http = "1"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
 rustls-pki-types = { version = "1", features = ["std"] }
-gtk4 = { version = "0.11", features = ["v4_14"] }
-libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }
-sourceview5 = { version = "0.11", features = ["v5_12"] }
-gio = "0.22"
-glib = "0.22"
+gtk4 = { version = "0.11", features = ["gnome_50"] }
+libadwaita = { version = "0.9", features = ["v1_9"] }
+sourceview5 = { version = "0.11", features = ["v5_18"] }
+gio = { version = "0.22", features = ["v2_88"] }
+glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1.9"
@@ -68,7 +68,7 @@ tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["aws-lc-rs"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
 oo7 = { version = "0.6", default-features = false, features = ["tokio", "native_crypto"] }
-relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_47"] }
+relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita"] }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -90,11 +90,6 @@ impl App {
 
     pub(super) fn set_row_op_in_flight(&self, in_flight: bool) {
         self.row_op_spinner.set_visible(in_flight);
-        if in_flight {
-            self.row_op_spinner.start();
-        } else {
-            self.row_op_spinner.stop();
-        }
     }
 
     pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {

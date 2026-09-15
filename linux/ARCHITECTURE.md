@@ -171,7 +171,7 @@ Forward compat: `WorkspaceTabRecord` uses `#[serde(other)] Unknown` so an old bi
 
 Meson is the build system and Cargo is the Rust compiler; see [ADR 0006](docs/decisions/0006-meson-cargo-build.md). `meson setup _build && meson compile -C _build` produces `tablepro` and `tablepro-askpass`, and `meson test -C _build` runs the `unit`, `gtk` and `data` suites.
 
-The host runner image (`ubuntu-24.04`) ships glib 2.80, but the workspace pins `libadwaita = { version = "0.9", features = ["v1_6", "gtk_v4_6"] }` and `relm4 = { ..., features = ["gnome_47"] }`. Both `v1_6` and `gnome_47` transitively require `gio-2.0 >= 2.82` via `gio-sys`, so the system-deps check fails on the host runner.
+The floor is GNOME 50 (GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88); see [ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md). The host runner image (`ubuntu-24.04`) ships GLib 2.80, well below that, so the system-deps check fails there.
 
 `.github/workflows/build-linux.yml` runs the **Fast checks** job inside a `container: ubuntu:26.04`, which ships GLib 2.88 and the meson, appstream and desktop-file-utils packages the data suite needs. The container is minimal, so the install step pulls `ca-certificates`, `curl` and `git` before rust-toolchain and Swatinem can run. The **integration** job stays on the host runner because the driver crates depend only on `tablepro-core` and don't pull libadwaita.
 

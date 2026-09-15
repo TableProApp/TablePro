@@ -10,8 +10,8 @@ Phases 2 and 3 in progress (see [ROADMAP.md](ROADMAP.md)). The stack (Rust + GTK
 
 | Layer | Pick |
 |---|---|
-| Language | Rust 1.93+ |
-| GUI toolkit | GTK4 4.14+ + libadwaita 1.6+ + GtkSourceView 5.12+ |
+| Language | Rust 1.98+ |
+| GUI toolkit | GTK4 4.22+ + libadwaita 1.9+ + GtkSourceView 5.18+ (GNOME 50, [ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | [Relm4](https://relm4.org) — Elm-style components on gtk4-rs |
 | Async | tokio (DB drivers) bridged to glib main loop (UI) |
 | DB drivers | sqlx (PG / MySQL / SQLite), tiberius (MSSQL), official `clickhouse` crate; planned: fred (Redis), official mongodb / duckdb crates, etc. |
@@ -45,8 +45,8 @@ sudo pacman -S --needed base-devel pkg-config meson ninja gettext desktop-file-u
 Verify the right versions are present:
 
 ```bash
-pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5 sqlite3   # need 4.14+ / 1.6+ / 5.12+ / 3.46+
-rustc --version                                             # need 1.93+
+pkg-config --modversion gtk4 libadwaita-1 gtksourceview-5 glib-2.0 sqlite3   # need 4.22+ / 1.9+ / 5.18+ / 2.88+ / 3.46+
+rustc --version                                                             # need 1.98+
 ```
 
 Build and run:
