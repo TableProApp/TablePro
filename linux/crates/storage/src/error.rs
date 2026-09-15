@@ -55,4 +55,7 @@ pub enum StorageError {
 
     #[error("{0}")]
     DocumentUnavailable(#[source] crate::document_problem::DocumentProblem),
+
+    #[error("{} is not valid UTF-8 from byte {offset}", .path.display())]
+    DraftNotUtf8 { path: std::path::PathBuf, offset: usize },
 }

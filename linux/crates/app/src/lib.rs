@@ -17,6 +17,7 @@ pub mod storage;
 #[cfg(test)]
 mod test_support;
 mod ui;
+mod workspace;
 
 #[derive(Debug, Error)]
 enum StartupError {

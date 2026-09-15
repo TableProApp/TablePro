@@ -93,7 +93,7 @@ impl<T: Send + Sync + 'static> LatestWinsWriter<T> {
     ///
     /// The app awaits this before it quits, so the last drag of a
     /// column edge is not lost to a runtime that stopped first.
-    pub fn flush(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn flush(&self) -> impl Future<Output = ()> + Send + use<T> {
         let target = self.sequence.load(Ordering::Relaxed);
         let mut written = self.written.clone();
         async move {

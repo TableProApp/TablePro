@@ -62,7 +62,7 @@ impl FilterSettingsStore {
             .update(|document| document.connections.remove(&connection_id.to_string()).is_some());
     }
 
-    pub fn flush(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn flush(&self) -> impl Future<Output = ()> + Send + use<> {
         self.file.flush()
     }
 }

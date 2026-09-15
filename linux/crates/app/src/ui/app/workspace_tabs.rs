@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
@@ -199,6 +200,7 @@ impl App {
             let slot = EditorTabSlot {
                 controller: editor,
                 page: page.clone(),
+                draft: tablepro_storage::DraftId::new(),
                 query: String::new(),
             };
             {
@@ -220,7 +222,11 @@ impl App {
         self.workspace_tab_view = Some(tab_view);
     }
 
-    /// Restore workspace tabs from disk for the just-connected database.
+    /// Read the saved tabs for the just-connected database, plus the
+    /// editor text that goes with them.
+    ///
+    /// A restored script can be megabytes, so it is read on a blocking
+    /// thread and the tabs are built once it arrives.
     pub(super) fn restore_workspace_tabs(&mut self, connection_id: Uuid, sender: ComponentSender<Self>) {
         let Some(saved) = workspace_state::load_connection(connection_id) else {
             self.workspace_outer_stack.set_visible_child_name("empty");
@@ -230,13 +236,56 @@ impl App {
             self.workspace_outer_stack.set_visible_child_name("empty");
             return;
         }
+        let referenced: HashSet<tablepro_storage::DraftId> = saved
+            .tabs
+            .iter()
+            .filter_map(|record| match record {
+                WorkspaceTabRecord::Editor { draft, .. } => Some(*draft),
+                _ => None,
+            })
+            .collect();
+        // Drafts from tabs the user closed in a session that did not
+        // shut down cleanly have nothing pointing at them.
+        self.drafts
+            .retain(&tablepro_storage::DraftScope::default(), referenced.clone());
+
+        let store = self.drafts.store().clone();
+        let reading = self.tasks.spawn_blocking_task(move || {
+            let scope = tablepro_storage::DraftScope::default();
+            referenced
+                .into_iter()
+                .filter_map(|draft| match store.read_blocking(&scope, draft) {
+                    Ok(text) => text.map(|text| (draft, text)),
+                    Err(error) => {
+                        tracing::warn!(%error, "could not read an editor draft");
+                        None
+                    }
+                })
+                .collect::<HashMap<_, _>>()
+        });
+        glib::spawn_future_local(async move {
+            let drafts = reading.await.unwrap_or_default();
+            sender.input(AppMsg::WorkspaceTabsRead { saved, drafts });
+        });
+    }
+
+    /// Build the tabs once their text has been read.
+    pub(super) fn on_workspace_tabs_read(
+        &mut self,
+        saved: workspace_state::ConnectionWorkspaceState,
+        drafts: HashMap<tablepro_storage::DraftId, String>,
+        sender: ComponentSender<Self>,
+    ) {
         // Legacy Browse / Structure records are migrated to Table by
         // `clamp_connection`, so the load path only has to handle
         // Editor + Table. Unknown variants are stripped by clamp too.
         for record in &saved.tabs {
             match record {
-                WorkspaceTabRecord::Editor { query } => {
-                    self.append_editor_tab(Some(query.clone()), sender.clone());
+                WorkspaceTabRecord::Editor { draft, query } => {
+                    // A record written before drafts carries its text
+                    // inline; the first write moves it into the file.
+                    let text = drafts.get(draft).cloned().unwrap_or_else(|| query.clone());
+                    self.append_editor_tab_with_draft(Some(text), *draft, sender.clone());
                 }
                 WorkspaceTabRecord::Table {
                     schema,
@@ -504,6 +553,17 @@ impl App {
 
     /// Public entry: append an Editor tab with optional initial query.
     pub(super) fn append_editor_tab(&mut self, initial_query: Option<String>, sender: ComponentSender<Self>) {
+        self.append_editor_tab_with_draft(initial_query, tablepro_storage::DraftId::new(), sender);
+    }
+
+    /// Append an Editor tab that writes to a given draft, so a restored
+    /// tab keeps the file it was already using.
+    pub(super) fn append_editor_tab_with_draft(
+        &mut self,
+        initial_query: Option<String>,
+        draft: tablepro_storage::DraftId,
+        sender: ComponentSender<Self>,
+    ) {
         self.ensure_workspace_root(sender.clone());
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
@@ -536,9 +596,17 @@ impl App {
         }
         write_workspace_tab_id(&page, tab_id);
 
+        // Track the buffer from the start, so text restored into a tab
+        // is written back even if the user never types in it.
+        self.drafts.schedule(
+            &tablepro_storage::DraftScope::default(),
+            draft,
+            &editor.model().buffer(),
+        );
         let slot = EditorTabSlot {
             controller: editor,
             page: page.clone(),
+            draft,
             query,
         };
         self.workspace_tabs
@@ -698,6 +766,10 @@ impl App {
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
+                // The record no longer names this draft, so the file has
+                // nothing left pointing at it.
+                self.drafts
+                    .discard(&tablepro_storage::DraftScope::default(), slot.draft);
             }
             WorkspaceTab::Structure(slot) => {
                 crate::services::structure_tracker::close_tab(slot.id);
@@ -864,15 +936,11 @@ impl App {
     /// (selection-change, drag-reorder, page-size change, state-
     /// changed) into a single write 500ms after the last call.
     pub(super) fn persist_workspace_state(&self) {
-        if self.persist_pending.get() {
-            return;
-        }
-        self.persist_pending.set(true);
-        let pending = self.persist_pending.clone();
+        // Trailing: a run of keystrokes writes the tab list once at the
+        // end rather than once at the start and never again.
         let workspace_tabs = self.workspace_tabs.clone();
         let tab_view = self.workspace_tab_view.clone();
-        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-            pending.set(false);
+        self.persist_debouncer.request(move || {
             do_persist_workspace_state(&workspace_tabs, tab_view.as_ref());
         });
     }
@@ -914,7 +982,10 @@ fn do_persist_workspace_state(
         };
         let Some(slot) = tabs.get(&id) else { continue };
         tab_records.push(match slot {
-            WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor { query: s.query.clone() },
+            WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor {
+                draft: s.draft,
+                query: String::new(),
+            },
             // Structure tabs only exist for the New-Table draft flow
             // post-M-1 cleanup; never persist (the table the user is
             // drafting doesn't exist yet, so a restore would be a
@@ -1141,14 +1212,23 @@ impl App {
         } else {
             derive_tab_label(&query)
         };
-        if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+        let scheduled = {
+            let mut tabs = self.workspace_tabs.borrow_mut();
+            let Some(WorkspaceTab::Editor(slot)) = tabs.get_mut(&id) else {
+                return;
+            };
             slot.page.set_title(&label);
             // Pass empty when no extra info to clear any prior tooltip;
             // libadwaita treats empty-string as no tooltip.
             let tooltip = editor_tab_tooltip(&query, &label).unwrap_or_default();
             slot.page.set_tooltip(&tooltip);
             slot.query = query;
-        }
+            (slot.draft, slot.controller.model().buffer())
+        };
+        // The buffer is read once when the write fires, not once per
+        // keystroke, so a long script costs nothing to type in.
+        self.drafts
+            .schedule(&tablepro_storage::DraftScope::default(), scheduled.0, &scheduled.1);
         self.persist_workspace_state();
     }
 
