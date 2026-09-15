@@ -1,8 +1,11 @@
 use async_trait::async_trait;
 
+use crate::column::ColumnInfo;
 use crate::connection::Connection;
 use crate::error::DriverError;
-use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
+use crate::query::{ExecResult, ForeignKeyInfo, IndexInfo, TableInfo};
+use crate::query_result::QueryResult;
+use crate::value::Value;
 
 pub struct ReadOnlyConnection {
     inner: Box<dyn Connection>,
@@ -96,14 +99,14 @@ mod tests {
         }
         async fn fetch_rows(&self, _: Option<&str>, _: &str, _: u64, _: u64) -> Result<QueryResult, DriverError> {
             Ok(QueryResult {
-                columns: vec![],
+                columns: std::sync::Arc::from([]),
                 rows: vec![],
                 truncated: false,
             })
         }
         async fn query(&self, _: &str) -> Result<QueryResult, DriverError> {
             Ok(QueryResult {
-                columns: vec![],
+                columns: std::sync::Arc::from([]),
                 rows: vec![],
                 truncated: false,
             })

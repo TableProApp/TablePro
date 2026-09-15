@@ -62,9 +62,9 @@ impl App {
         // circuits to a toast without spawning the async command.
         // Build returns None when the filter is empty; that path
         // matches today's no-filter behaviour exactly.
-        let where_result = tablepro_core::build_filter_where(&driver_id, &columns, &filter);
-        let (where_sql, params) = match where_result {
-            Ok(Some((sql, p))) => (Some(sql), p),
+        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
+        let (where_sql, params) = match tablepro_core::build_filter(dialect, &columns, &filter, 1) {
+            Ok(Some((sql, bound))) => (Some(sql), bound_values(bound)),
             Ok(None) => (None, Vec::new()),
             Err(e) => {
                 sender.input(AppMsg::ShowToast(format!("{e}")));
@@ -164,8 +164,9 @@ impl App {
         // the filtered result set. Validation errors are silently
         // suppressed here — fetch_browse_page surfaces the toast for
         // the same filter on the same tick, no need to double-toast.
-        let (where_sql, params) = match tablepro_core::build_filter_where(&driver_id, &columns, &filter) {
-            Ok(Some((sql, p))) => (Some(sql), p),
+        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
+        let (where_sql, params) = match tablepro_core::build_filter(dialect, &columns, &filter, 1) {
+            Ok(Some((sql, bound))) => (Some(sql), bound_values(bound)),
             _ => (None, Vec::new()),
         };
 
@@ -196,9 +197,9 @@ impl App {
                         && let Some(value) = row.first()
                     {
                         let count = match value {
-                            tablepro_core::Value::Int(i) if *i >= 0 => Some(*i as u64),
-                            tablepro_core::Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
-                            tablepro_core::Value::Decimal(d) => d.to_string().parse::<u64>().ok(),
+                            tablepro_core::Value::Int(i) if *i >= 0 => u64::try_from(*i).ok(),
+                            tablepro_core::Value::UInt(i) => Some(*i),
+                            tablepro_core::Value::Decimal(_) => value.as_exact_u64(),
                             _ => None,
                         };
                         if let Some(count) = count {
@@ -282,4 +283,12 @@ impl App {
         });
         dialog.present(Some(&self.window));
     }
+}
+
+/// The values a dialect bound, for the driver's own parameter list.
+///
+/// The bound form carries the type the server expects; the driver
+/// binds by the value, so only that part travels on.
+fn bound_values(bound: Vec<tablepro_core::statement::BoundParam>) -> Vec<tablepro_core::Value> {
+    bound.into_iter().map(|param| param.value().clone()).collect()
 }

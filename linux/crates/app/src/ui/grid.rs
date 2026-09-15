@@ -8,6 +8,7 @@ use relm4::adw;
 use relm4::adw::prelude::*;
 use sourceview5::prelude::*;
 
+use tablepro_core::column::ResultColumn;
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::row_object::RowObject;
@@ -188,7 +189,7 @@ pub fn build_column_view(
     let grid_menus = install_grid_context_menus(GridMenuInit {
         column_view: &column_view,
         sender: sender.clone(),
-        columns: Rc::new(result.columns.clone()),
+        columns: result.columns.clone(),
         truncated: result.truncated,
         tab_ctx: tab_ctx.clone(),
         editable,
@@ -209,17 +210,22 @@ pub fn build_column_view(
     };
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result.columns.len());
     for (i, column) in result.columns.iter().enumerate() {
-        // `schema_columns` is preferred when populated (it carries
-        // accurate primary_key / is_generated / is_auto_increment from
-        // the driver's information_schema fetch). When ColumnsLoaded
-        // hasn't fired yet we fall back to the QueryResult's column
-        // metadata, which only knows name + data_type and conservatively
-        // reports the rest as false.
-        let cell_editable = editable && is_cell_editable(schema_columns.get(i).unwrap_or(column));
+        // The catalogue is the authority on what can be edited: it
+        // knows the keys, the generated columns and the defaults. Until
+        // it has loaded, the type alone decides, which is what a
+        // result column can say.
+        let cell_editable = editable
+            && match schema_columns.get(i) {
+                Some(catalog) => is_cell_editable(catalog),
+                None => !is_bytes_kind(column.column_type.kind()),
+            };
         let col = build_column(
             column,
             i,
             cell_editable,
+            schema_columns
+                .get(i)
+                .is_some_and(|catalog| catalog.is_auto_increment || catalog.is_generated),
             sender.clone(),
             sort_sender.clone(),
             tab_ctx.clone(),
@@ -296,9 +302,12 @@ pub fn build_column_view(
     reason = "each argument is captured by a different column factory closure"
 )]
 fn build_column(
-    info: &ColumnInfo,
+    info: &ResultColumn,
     idx: usize,
     editable: bool,
+    // Whether the server fills this column in, so a draft row shows a
+    // placeholder rather than an empty cell the user should type in.
+    auto_filled: bool,
     sender: relm4::Sender<GridMsg>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
     tab_ctx: TabGridContext,
@@ -308,9 +317,9 @@ fn build_column(
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
 
-    let column_data_type = info.data_type.clone();
+    let column_data_type = info.column_type.name().as_sql().to_owned();
     let column_name = info.name.clone();
-    let accepts_empty = column_accepts_empty(&info.data_type);
+    let accepts_empty = info.column_type.kind().accepts_empty_string();
     let column_view_for_setup = column_view.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -359,7 +368,7 @@ fn build_column(
     // shouldn't think those cells are "stored as null", they're
     // computed by the DB at commit time. Captured by value so the
     // bind closure doesn't borrow `info`.
-    let column_auto_filled = info.is_auto_increment || info.is_generated;
+    let column_auto_filled = auto_filled;
     let tab_ctx_for_bind = tab_ctx.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -846,44 +855,6 @@ fn is_float_type(data_type: &str) -> bool {
 fn is_json_type(data_type: &str) -> bool {
     let dt = data_type.to_ascii_lowercase();
     dt.contains("json")
-}
-
-/// Whether a column can hold an empty string, which is what the "Set
-/// Value > Empty" preset writes. A number, a date, a UUID or a JSON
-/// column cannot: the server rejects `''` for them, and NULL is what
-/// the menu's other preset is for. The list is positive on purpose, so
-/// a type nobody here recognises offers NULL alone rather than an
-/// UPDATE the server will refuse.
-///
-/// This is the single rule behind both halves of the preset: the grid
-/// arms the menu item with it, and the browse tab resolves the preset
-/// to a `Value` with it.
-pub(super) fn column_accepts_empty(data_type: &str) -> bool {
-    let dt = data_type.to_ascii_lowercase();
-    let base = dt.split('(').next().unwrap_or(&dt).trim();
-    matches!(
-        base,
-        "text"
-            | "varchar"
-            | "char"
-            | "character"
-            | "character varying"
-            | "bpchar"
-            | "string"
-            | "nvarchar"
-            | "nchar"
-            | "varchar2"
-            | "nvarchar2"
-            | "clob"
-            | "nclob"
-            | "citext"
-            | "name"
-            | "tinytext"
-            | "mediumtext"
-            | "longtext"
-            | "enum"
-            | "set"
-    )
 }
 
 /// Per-type cell editor selection. Bool is handled separately via
@@ -1502,7 +1473,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
 struct GridMenuInit<'a> {
     column_view: &'a gtk::ColumnView,
     sender: relm4::Sender<GridMsg>,
-    columns: Rc<Vec<ColumnInfo>>,
+    columns: std::sync::Arc<[ResultColumn]>,
     /// Carried from the fetch that produced this grid so the menu's
     /// Export Results reports the same truncation the paginator does.
     truncated: bool,
@@ -1890,7 +1861,7 @@ fn rows_for_menu(column_view: &gtk::ColumnView, ctx: &TabGridContext, clicked: u
 /// label cannot mean two different files.
 pub(super) fn export_snapshot(
     column_view: &gtk::ColumnView,
-    columns: &[ColumnInfo],
+    columns: &[ResultColumn],
     truncated: bool,
     ctx: &TabGridContext,
 ) -> QueryResult {
@@ -1901,11 +1872,7 @@ pub(super) fn export_snapshot(
             .collect(),
         None => Vec::new(),
     };
-    QueryResult {
-        columns: columns.to_vec(),
-        rows,
-        truncated,
-    }
+    QueryResult::new(columns.to_vec(), rows).truncated(truncated)
 }
 
 fn show_row_json_dialog(parent: &impl IsA<gtk::Widget>, json: String) {
@@ -2052,12 +2019,12 @@ fn is_cell_editable(col: &ColumnInfo) -> bool {
     // a user-supplied value would be rejected at commit.
     // Auto-increment non-PK: rare but possible; same rejection at commit.
     // Bytes / blobs: not text-editable in any meaningful way.
-    !col.primary_key && !col.is_generated && !col.is_auto_increment && !is_bytes_type(&col.data_type)
+    !col.primary_key && !col.is_generated && !col.is_auto_increment && !is_bytes_kind(col.column_type.kind())
 }
 
-fn is_bytes_type(s: &str) -> bool {
-    let lower = s.to_ascii_lowercase();
-    lower.contains("blob") || lower.contains("bytea") || lower == "binary" || lower == "varbinary"
+/// A blob has no text form to type into, so the grid never offers one.
+fn is_bytes_kind(kind: tablepro_core::column::ColumnKind) -> bool {
+    matches!(kind, tablepro_core::column::ColumnKind::Binary)
 }
 
 #[derive(Debug)]
@@ -2157,18 +2124,18 @@ const DISPLAY_TEXT_BYTES_THRESHOLD: usize = DISPLAY_TEXT_MAX_CHARS * 4;
 pub fn value_to_display_text(value: &Value) -> String {
     match value {
         Value::Null => readonly_null_sentinel(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Text(s) => truncate_for_display(s),
+        // A blob has no readable text form, so the grid says how big
+        // it is rather than showing bytes.
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
-        Value::Date(d) => d.format("%Y-%m-%d").to_string(),
-        Value::Time(t) => t.format("%H:%M:%S").to_string(),
-        Value::DateTime(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
-        Value::TimestampTz(ts) => ts.format("%Y-%m-%d %H:%M:%S%:z").to_string(),
-        Value::Decimal(d) => d.to_string(),
-        Value::Uuid(u) => u.to_string(),
-        Value::Json(j) => truncate_for_display(&j.to_string()),
+        // The driver could not read this, and saying so is better than
+        // an empty cell that looks like a NULL.
+        Value::Undecodable(undecodable) => format!("<unreadable {}>", undecodable.type_name),
+        // Everything else renders the way it exports, so what the grid
+        // shows and what a copy produces are the same text.
+        other => match tablepro_core::export::value_to_text(other) {
+            Some(text) => truncate_for_display(&text),
+            None => readonly_null_sentinel(),
+        },
     }
 }
 
@@ -2220,15 +2187,26 @@ mod tests {
 
     use super::*;
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
+    )]
     fn col(data_type: &str, primary_key: bool) -> ColumnInfo {
+        let kind = tablepro_core::column::classify_type_name(data_type);
         ColumnInfo {
             name: "x".into(),
-            data_type: data_type.into(),
+            column_type: tablepro_core::column::ColumnType::new(
+                tablepro_core::column::SqlTypeExpr::from_catalog_text(data_type),
+                kind,
+                tablepro_core::column::CatalogType::Unknown,
+                tablepro_core::column::has_dynamic_storage(kind),
+                tablepro_core::column::ReadForm::Native,
+            ),
             nullable: true,
             primary_key,
             is_auto_increment: false,
-            default_value: None,
             is_generated: false,
+            default: tablepro_core::column::ColumnDefault::None,
         }
     }
 
@@ -2267,16 +2245,14 @@ mod tests {
     }
 
     #[test]
-    fn only_text_columns_accept_an_empty_string() {
-        for text in [
-            "text",
-            "VARCHAR(255)",
-            "char(3)",
-            "character varying",
-            "longtext",
-            "citext",
-        ] {
-            assert!(column_accepts_empty(text), "{text} should accept an empty string");
+    fn only_columns_with_an_empty_value_accept_an_empty_string() {
+        // Clearing a text cell stores the empty string; clearing a
+        // number or a date can only mean NULL.
+        for text in ["text", "VARCHAR(255)", "char(3)", "longtext"] {
+            assert!(
+                col(text, false).column_type.kind().accepts_empty_string(),
+                "{text} should accept an empty string"
+            );
         }
         for other in [
             "integer",
@@ -2285,29 +2261,33 @@ mod tests {
             "date",
             "timestamp",
             "uuid",
-            "jsonb",
             "boolean",
-            "bytea",
-            "some_extension_type",
         ] {
             assert!(
-                !column_accepts_empty(other),
+                !col(other, false).column_type.kind().accepts_empty_string(),
                 "{other} should not accept an empty string"
             );
         }
     }
 
     #[test]
-    fn bytes_type_detection() {
-        assert!(is_bytes_type("BYTEA"));
-        assert!(is_bytes_type("blob"));
-        assert!(is_bytes_type("LONGBLOB"));
-        assert!(is_bytes_type("mediumblob"));
-        assert!(is_bytes_type("tinyblob"));
-        assert!(is_bytes_type("VARBINARY"));
-        assert!(is_bytes_type("binary"));
-        assert!(!is_bytes_type("text"));
-        assert!(!is_bytes_type("integer"));
+    fn a_blob_is_never_editable_whatever_the_engine_calls_it() {
+        for name in [
+            "BYTEA",
+            "blob",
+            "LONGBLOB",
+            "mediumblob",
+            "tinyblob",
+            "VARBINARY",
+            "binary",
+        ] {
+            assert!(
+                !is_cell_editable(&col(name, false)),
+                "{name} was offered as an editable cell"
+            );
+        }
+        assert!(is_cell_editable(&col("text", false)));
+        assert!(is_cell_editable(&col("integer", false)));
     }
 
     #[test]
@@ -2319,38 +2299,65 @@ mod tests {
         assert_eq!(value_to_display_text(&Value::Bytes(vec![0u8; 16])), "<16 bytes>");
     }
 
+    fn date_value(year: i32, month: u32, day: u32) -> Value {
+        Value::Date(tablepro_core::value::Temporal::Finite(
+            chrono::NaiveDate::from_ymd_opt(year, month, day).expect("a date"),
+        ))
+    }
+
     #[test]
     fn display_text_temporal_variants() {
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 4, 26).unwrap();
-        assert_eq!(value_to_display_text(&Value::Date(date)), "2026-04-26");
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 4, 26).expect("a date");
+        assert_eq!(value_to_display_text(&date_value(2026, 4, 26)), "2026-04-26");
 
-        let time = chrono::NaiveTime::from_hms_opt(14, 30, 0).unwrap();
-        assert_eq!(value_to_display_text(&Value::Time(time)), "14:30:00");
+        let time = chrono::NaiveTime::from_hms_opt(14, 30, 0).expect("a time");
+        assert_eq!(
+            value_to_display_text(&Value::Time(tablepro_core::value::SqlTime::from_time_of_day(time))),
+            "14:30:00"
+        );
 
         let datetime = chrono::NaiveDateTime::new(date, time);
-        assert_eq!(value_to_display_text(&Value::DateTime(datetime)), "2026-04-26 14:30:00");
+        assert_eq!(
+            value_to_display_text(&Value::Timestamp(tablepro_core::value::Temporal::Finite(datetime))),
+            "2026-04-26 14:30:00"
+        );
 
         let tz = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(datetime, chrono::Utc);
         assert_eq!(
-            value_to_display_text(&Value::TimestampTz(tz)),
+            value_to_display_text(&Value::TimestampTz(tablepro_core::value::Temporal::Finite(
+                tablepro_core::value::OffsetTimestamp::from_datetime(tz.fixed_offset())
+            ))),
             "2026-04-26 14:30:00+00:00"
         );
     }
 
     #[test]
     fn display_text_extended_variants() {
-        let dec: rust_decimal::Decimal = "1234.56789".parse().unwrap();
+        let dec: tablepro_core::value::SqlDecimal = "1234.56789".parse().expect("a decimal");
         assert_eq!(value_to_display_text(&Value::Decimal(dec)), "1234.56789");
 
-        let id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").expect("a uuid");
         assert_eq!(
             value_to_display_text(&Value::Uuid(id)),
             "550e8400-e29b-41d4-a716-446655440000"
         );
 
-        let json = serde_json::json!({"a": 1, "b": [2, 3]});
+        let json = tablepro_core::value::JsonText::parse(r#"{"a":1,"b":[2,3]}"#.to_owned()).expect("valid json");
         let text = value_to_display_text(&Value::Json(json));
-        assert!(text.contains("\"a\":1"));
+        assert!(text.contains("\"a\":1"), "{text}");
+    }
+
+    #[test]
+    fn a_value_the_driver_could_not_read_says_so() {
+        let undecodable = Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+            type_name: "geography".to_owned(),
+            reason: tablepro_core::value::UndecodableReason::UnsupportedType,
+        }));
+
+        let text = value_to_display_text(&undecodable);
+
+        assert!(text.contains("geography"), "{text}");
+        assert_ne!(text, "NULL", "an unreadable value looked like a missing one");
     }
 
     #[test]
@@ -2362,8 +2369,7 @@ mod tests {
 
     #[test]
     fn edit_text_keeps_extended_variants_visible() {
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 4, 26).unwrap();
-        assert_eq!(value_to_edit_text(&Value::Date(date)), "2026-04-26");
+        assert_eq!(value_to_edit_text(&date_value(2026, 4, 26)), "2026-04-26");
 
         let id = uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         assert_eq!(

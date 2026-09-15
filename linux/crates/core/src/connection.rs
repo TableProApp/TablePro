@@ -2,8 +2,11 @@ use async_trait::async_trait;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 
+use crate::column::ColumnInfo;
 use crate::error::DriverError;
-use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
+use crate::query::{ExecResult, ForeignKeyInfo, IndexInfo, TableInfo};
+use crate::query_result::QueryResult;
+use crate::value::Value;
 
 /// How a driver authenticates to the database. Most drivers only
 /// support [`AuthMode::Password`]; the SQL Server driver also supports

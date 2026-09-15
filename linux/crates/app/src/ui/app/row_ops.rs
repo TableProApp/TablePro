@@ -1,6 +1,7 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 
+use tablepro_core::column::ColumnType;
 use tablepro_core::{DriverError, Value};
 use uuid::Uuid;
 
@@ -113,14 +114,19 @@ impl App {
         let Some(row) = snapshot.rows.get(row_position as usize) else {
             return;
         };
-        let cols: Vec<String> = columns
+        let dialect = tablepro_core::dialect::dialect_for(&driver_id);
+        let cols: Vec<String> = columns.iter().map(|c| dialect.quote_identifier(&c.name)).collect();
+        let values: Vec<String> = row
             .iter()
-            .map(|c| tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name))
+            .enumerate()
+            .map(|(index, value)| match columns.get(index) {
+                Some(column) => format_sql_literal(dialect, value, &column.column_type),
+                None => "NULL".to_owned(),
+            })
             .collect();
-        let values: Vec<String> = row.iter().map(format_sql_literal).collect();
         let sql = format!(
             "INSERT INTO {} ({}) VALUES ({});",
-            tablepro_core::sql_dialect::quote_ident(&driver_id, &table),
+            dialect.quote_identifier(&table),
             cols.join(", "),
             values.join(", "),
         );
@@ -170,24 +176,16 @@ fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[
     ))
 }
 
-/// Render a `Value` as a SQL literal — used by the "Copy row as
-/// INSERT" clipboard helper to produce a self-contained statement
-/// that round-trips through any SQL client.
-fn format_sql_literal(v: &Value) -> String {
-    match v {
-        Value::Null => "NULL".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Decimal(d) => d.to_string(),
-        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        Value::Bytes(_) => "/* bytes omitted */ NULL".into(),
-        Value::Date(d) => format!("'{}'", d.format("%Y-%m-%d")),
-        Value::Time(t) => format!("'{}'", t.format("%H:%M:%S")),
-        Value::DateTime(dt) => format!("'{}'", dt.format("%Y-%m-%d %H:%M:%S")),
-        Value::TimestampTz(ts) => format!("'{}'", ts.to_rfc3339()),
-        Value::Uuid(u) => format!("'{u}'"),
-        Value::Json(j) => format!("'{}'", j.to_string().replace('\'', "''")),
+/// A value as a SQL literal for the "Copy row as INSERT" clipboard
+/// helper, in the dialect of the connection it came from.
+///
+/// A blob is left out with a comment rather than guessed at: its
+/// literal spelling differs on every engine, and getting it wrong
+/// writes the wrong bytes instead of failing.
+fn format_sql_literal(dialect: &dyn tablepro_core::dialect::SqlDialect, v: &Value, column_type: &ColumnType) -> String {
+    match dialect.literal(v, column_type) {
+        Ok(text) => text,
+        Err(_) => "/* omitted */ NULL".into(),
     }
 }
 

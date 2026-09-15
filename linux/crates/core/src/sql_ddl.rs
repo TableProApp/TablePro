@@ -14,7 +14,8 @@
 
 use thiserror::Error;
 
-use crate::query::{ColumnInfo, ForeignKeyInfo, IndexInfo};
+use crate::column::ColumnInfo;
+use crate::query::{ForeignKeyInfo, IndexInfo};
 use crate::sql_dialect::quote_ident;
 
 #[derive(Debug, Error)]
@@ -144,7 +145,7 @@ fn validate_fk_action(driver_id: &str, s: &str) -> Result<&'static str, BuildDdl
 /// User-edited column draft. Carries both the original (loaded from
 /// `fetch_columns`) and the in-flight edit. `original` is `None` for
 /// newly-added columns.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DraftColumn {
     pub original: Option<ColumnInfo>,
     pub name: String,
@@ -155,16 +156,28 @@ pub struct DraftColumn {
     pub default_value: Option<String>,
 }
 
+/// A column default as the DDL text the form edits.
+///
+/// A literal keeps the value's own text; an expression is already the
+/// server's spelling.
+fn default_text(default: &crate::column::ColumnDefault) -> Option<String> {
+    match default {
+        crate::column::ColumnDefault::None => None,
+        crate::column::ColumnDefault::Literal(value) => crate::export::value_to_text(value),
+        crate::column::ColumnDefault::Expression(expression) => Some(expression.as_sql().to_owned()),
+    }
+}
+
 impl DraftColumn {
     /// Build a `DraftColumn` from a `ColumnInfo` returned by
     /// `fetch_columns` so the user starts with the live state and
     /// edits diff against `original`.
     pub fn from_info(info: ColumnInfo) -> Self {
-        let data_type = info.data_type.clone();
+        let data_type = info.column_type.name().as_sql().to_owned();
         let nullable = info.nullable;
         let primary_key = info.primary_key;
         let auto_increment = info.is_auto_increment;
-        let default_value = info.default_value.clone();
+        let default_value = default_text(&info.default);
         let name = info.name.clone();
         Self {
             original: Some(info),
@@ -186,11 +199,11 @@ impl DraftColumn {
             None => true,
             Some(orig) => {
                 orig.name != self.name
-                    || orig.data_type != self.data_type
+                    || orig.column_type.name().as_sql() != self.data_type
                     || orig.nullable != self.nullable
                     || orig.primary_key != self.primary_key
                     || orig.is_auto_increment != self.auto_increment
-                    || orig.default_value != self.default_value
+                    || default_text(&orig.default) != self.default_value
             }
         }
     }
@@ -203,7 +216,7 @@ impl DraftColumn {
 /// Identity-bearing fields (`schema`, `table`, name fields) are
 /// captured at op-build time; `materialize_ops` doesn't reach back
 /// into the model.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StructureOp {
     /// Whole-table create — emitted by `New` mode where the user is
     /// drafting a fresh table. `Edit` mode never produces this op.
@@ -632,10 +645,12 @@ pub fn build_alter_column(
             // over nullable wins over default), silently losing the
             // user's other edits when more than one attribute moved.
             let original = column.original.as_ref();
-            let type_changed = original.map(|o| o.data_type != column.data_type).unwrap_or(true);
+            let type_changed = original
+                .map(|o| o.column_type.name().as_sql() != column.data_type)
+                .unwrap_or(true);
             let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
             let default_changed = original
-                .map(|o| o.default_value.as_deref() != column.default_value.as_deref())
+                .map(|o| default_text(&o.default).as_deref() != column.default_value.as_deref())
                 .unwrap_or(column.default_value.is_some());
             let mut stmts: Vec<String> = Vec::new();
             if type_changed {
@@ -688,10 +703,12 @@ pub fn build_alter_column(
         }
         "mssql" => {
             let original = column.original.as_ref();
-            let type_changed = original.map(|o| o.data_type != column.data_type).unwrap_or(true);
+            let type_changed = original
+                .map(|o| o.column_type.name().as_sql() != column.data_type)
+                .unwrap_or(true);
             let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
             let default_changed = original
-                .map(|o| o.default_value.as_deref() != column.default_value.as_deref())
+                .map(|o| default_text(&o.default).as_deref() != column.default_value.as_deref())
                 .unwrap_or(column.default_value.is_some());
             let mut stmts: Vec<String> = Vec::new();
             // ALTER COLUMN carries type and nullability together: T-SQL
@@ -1119,6 +1136,20 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
 
 #[cfg(test)]
 mod tests {
+    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextKind};
+
+    /// A column type carrying only the server's spelling, which is all
+    /// the DDL builder reads.
+    fn test_column_type(name: &str) -> ColumnType {
+        ColumnType::new(
+            SqlTypeExpr::from_catalog_text(name),
+            ColumnKind::Text(TextKind::Variable),
+            CatalogType::Unknown,
+            true,
+            ReadForm::Native,
+        )
+    }
+
     use super::*;
 
     fn dc(name: &str, ty: &str) -> DraftColumn {
@@ -1473,11 +1504,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "integer".into(),
+                column_type: test_column_type("integer"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1498,11 +1529,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "text".into(),
+                column_type: test_column_type("text"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1521,11 +1552,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "text".into(),
+                column_type: test_column_type("text"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1555,11 +1586,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "integer".into(),
+                column_type: test_column_type("integer"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1591,11 +1622,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "int".into(),
+                column_type: test_column_type("int"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1615,11 +1646,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "text".into(),
+                column_type: test_column_type("text"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1643,11 +1674,13 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "text".into(),
+                column_type: test_column_type("text"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: Some("'pending'".into()),
+                default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text(
+                    "'pending'",
+                )),
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1668,11 +1701,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "int".into(),
+                column_type: test_column_type("int"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1694,11 +1727,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "int".into(),
+                column_type: test_column_type("int"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -1717,11 +1750,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "o'brien".into(),
-                data_type: "int".into(),
+                column_type: test_column_type("int"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: Some("0".into()),
+                default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text("0")),
                 is_generated: false,
             }),
             name: "o'brien".into(),
@@ -2018,11 +2051,11 @@ mod tests {
         let col = DraftColumn {
             original: Some(ColumnInfo {
                 name: "x".into(),
-                data_type: "integer".into(),
+                column_type: test_column_type("integer"),
                 nullable: true,
                 primary_key: false,
                 is_auto_increment: false,
-                default_value: None,
+                default: crate::column::ColumnDefault::None,
                 is_generated: false,
             }),
             name: "x".into(),
@@ -2058,11 +2091,11 @@ mod tests {
                 column: DraftColumn {
                     original: Some(ColumnInfo {
                         name: "x".into(),
-                        data_type: "text".into(),
+                        column_type: test_column_type("text"),
                         nullable: true,
                         primary_key: false,
                         is_auto_increment: false,
-                        default_value: None,
+                        default: crate::column::ColumnDefault::None,
                         is_generated: false,
                     }),
                     name: "x".into(),

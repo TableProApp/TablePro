@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 use secrecy::SecretString;
 
 use drivers_mssql::MssqlDriver;
+use tablepro_core::value::{SqlTime, Temporal};
 use tablepro_core::{ConnectOptions, DatabaseDriver, Value};
 use testcontainers::{ContainerAsync, TestcontainersError};
 use testcontainers_modules::mssql_server::MssqlServer;
@@ -96,13 +97,13 @@ async fn value_roundtrip_representative_types() {
         Value::Bool(true),
         Value::Int(42),
         Value::Int(9_000_000_000),
-        Value::Float(2.5),
-        Value::Decimal(dec),
+        Value::Float64(2.5),
+        Value::Decimal(dec.to_string().parse().expect("a decimal")),
         Value::Text("héllo".into()),
         Value::Bytes(vec![1, 2, 3, 4]),
-        Value::Date(date),
-        Value::Time(time),
-        Value::DateTime(dt2),
+        Value::Date(Temporal::Finite(date)),
+        Value::Time(SqlTime::from_time_of_day(time)),
+        Value::Timestamp(Temporal::Finite(dt2)),
         Value::Uuid(uid),
     ];
     conn.execute_params(
@@ -122,13 +123,13 @@ async fn value_roundtrip_representative_types() {
     assert_eq!(row[0], Value::Bool(true));
     assert_eq!(row[1], Value::Int(42));
     assert_eq!(row[2], Value::Int(9_000_000_000));
-    assert_eq!(row[3], Value::Float(2.5));
-    assert_eq!(row[4], Value::Decimal(dec));
+    assert_eq!(row[3], Value::Float64(2.5));
+    assert_eq!(row[4], Value::Decimal(dec.to_string().parse().expect("a decimal")));
     assert_eq!(row[5], Value::Text("héllo".into()));
     assert_eq!(row[6], Value::Bytes(vec![1, 2, 3, 4]));
-    assert_eq!(row[7], Value::Date(date));
-    assert_eq!(row[8], Value::Time(time));
-    assert_eq!(row[9], Value::DateTime(dt2));
+    assert_eq!(row[7], Value::Date(Temporal::Finite(date)));
+    assert_eq!(row[8], Value::Time(SqlTime::from_time_of_day(time)));
+    assert_eq!(row[9], Value::Timestamp(Temporal::Finite(dt2)));
     assert_eq!(row[10], Value::Uuid(uid));
 }
 
@@ -262,7 +263,7 @@ async fn alter_column_default_round_trips() {
     }
     let status = |cols: Vec<tablepro_core::ColumnInfo>| cols.into_iter().find(|c| c.name == "status").unwrap();
     let after_add = status(conn.fetch_columns(None, "def_demo").await.unwrap());
-    assert_eq!(after_add.default_value.as_deref(), Some("pending"));
+    assert_eq!(default_expression(&after_add).as_deref(), Some("pending"));
 
     conn.execute("INSERT INTO def_demo (id) VALUES (1)").await.unwrap();
     let rows = conn.query("SELECT status FROM def_demo").await.unwrap();
@@ -275,7 +276,7 @@ async fn alter_column_default_round_trips() {
     }
     assert!(
         status(conn.fetch_columns(None, "def_demo").await.unwrap())
-            .default_value
+            .default
             .is_none()
     );
 }
@@ -358,4 +359,39 @@ async fn empty_result_set_still_reports_columns() {
     let paged = conn.fetch_rows(None, "empty_demo", 0, 50).await.unwrap();
     assert!(paged.rows.is_empty());
     assert_eq!(paged.columns.len(), 2);
+}
+
+/// The DEFAULT clause as the catalogue text it came from.
+fn default_expression(column: &tablepro_core::ColumnInfo) -> Option<String> {
+    match &column.default {
+        tablepro_core::column::ColumnDefault::Expression(expression) => Some(expression.as_sql().to_owned()),
+        tablepro_core::column::ColumnDefault::Literal(value) => tablepro_core::export::value_to_text(value),
+        tablepro_core::column::ColumnDefault::None => None,
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_decimal_past_a_fixed_width_type_reads_back_whole() {
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
+
+    conn.execute("CREATE TABLE wide_numbers (id int PRIMARY KEY, amount decimal(38,10), nothing decimal(18,2))")
+        .await
+        .unwrap();
+    conn.execute(
+        "INSERT INTO wide_numbers (id, amount, nothing) VALUES (1, 1234567890123456789012345678.9012345678, NULL)",
+    )
+    .await
+    .unwrap();
+
+    let q = conn.query("SELECT amount, nothing FROM wide_numbers").await.unwrap();
+    let row = &q.rows[0];
+
+    // 38 digits, past the 28 a fixed-width decimal type holds.
+    match &row[0] {
+        Value::Decimal(d) => assert_eq!(d.to_string(), "1234567890123456789012345678.9012345678"),
+        v => panic!("expected a wide decimal, got {v:?}"),
+    }
+    assert_eq!(row[1], Value::Null);
 }

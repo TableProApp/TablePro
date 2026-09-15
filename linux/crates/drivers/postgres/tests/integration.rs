@@ -6,6 +6,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use drivers_postgres::PgDriver;
+use tablepro_core::value::{JsonText, OffsetTimestamp, SqlTime, Temporal};
 use tablepro_core::{ConnectOptions, DatabaseDriver, Value};
 use testcontainers::ImageExt;
 use testcontainers::{ContainerAsync, TestcontainersError};
@@ -112,17 +113,17 @@ async fn value_roundtrip_all_types() {
         Value::Int(123),
         Value::Int(2_000_000_000),
         Value::Int(9_000_000_000_000_000_000),
-        Value::Float(1.5_f64),
-        Value::Float(std::f64::consts::PI),
-        Value::Decimal(dec),
+        Value::Float64(1.5_f64),
+        Value::Float64(std::f64::consts::PI),
+        Value::Decimal(dec.to_string().parse().expect("a decimal")),
         Value::Text("hello\nworld".into()),
         Value::Bytes(vec![0xde, 0xad, 0xbe, 0xef]),
-        Value::Date(date),
-        Value::Time(time),
-        Value::DateTime(dt),
-        Value::TimestampTz(tz),
+        Value::Date(Temporal::Finite(date)),
+        Value::Time(SqlTime::from_time_of_day(time)),
+        Value::Timestamp(Temporal::Finite(dt)),
+        Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(tz.fixed_offset()))),
         Value::Uuid(uuid),
-        Value::Json(json_val.clone()),
+        Value::Json(JsonText::parse(json_val.to_string()).expect("valid json")),
         Value::Null,
     ];
 
@@ -151,12 +152,14 @@ async fn value_roundtrip_all_types() {
     assert!(matches!(row[1], Value::Int(123)));
     assert!(matches!(row[2], Value::Int(2_000_000_000)));
     assert!(matches!(row[3], Value::Int(9_000_000_000_000_000_000)));
+    // A real keeps its own width: widening it to f64 and back does
+    // not round-trip.
     match &row[4] {
-        Value::Float(f) => assert!((*f - 1.5).abs() < 1e-5),
-        v => panic!("expected float, got {v:?}"),
+        Value::Float32(f) => assert_eq!(*f, 1.5_f32),
+        v => panic!("expected a 32-bit float, got {v:?}"),
     }
     match &row[5] {
-        Value::Float(f) => assert!((*f - std::f64::consts::PI).abs() < 1e-9),
+        Value::Float64(f) => assert!((*f - std::f64::consts::PI).abs() < 1e-9),
         v => panic!("expected float, got {v:?}"),
     }
     match &row[6] {
@@ -165,13 +168,19 @@ async fn value_roundtrip_all_types() {
     }
     assert_eq!(row[7], Value::Text("hello\nworld".into()));
     assert_eq!(row[8], Value::Bytes(vec![0xde, 0xad, 0xbe, 0xef]));
-    assert_eq!(row[9], Value::Date(date));
-    assert_eq!(row[10], Value::Time(time));
-    assert_eq!(row[11], Value::DateTime(dt));
-    assert_eq!(row[12], Value::TimestampTz(tz));
+    assert_eq!(row[9], Value::Date(Temporal::Finite(date)));
+    assert_eq!(row[10], Value::Time(SqlTime::from_time_of_day(time)));
+    assert_eq!(row[11], Value::Timestamp(Temporal::Finite(dt)));
+    assert_eq!(
+        row[12],
+        Value::TimestampTz(Temporal::Finite(OffsetTimestamp::from_datetime(tz.fixed_offset())))
+    );
     assert_eq!(row[13], Value::Uuid(uuid));
+    // The document comes back the way jsonb prints it, not the way
+    // it was written: jsonb stores a parsed document, so the grid
+    // shows the server's own rendering.
     match &row[14] {
-        Value::Json(v) => assert_eq!(v, &json_val),
+        Value::Json(v) => assert_eq!(v.as_str(), r#"{"k": [1, 2, 3], "nested": {"flag": true}}"#),
         v => panic!("expected json, got {v:?}"),
     }
     assert_eq!(row[15], Value::Null);
@@ -222,4 +231,74 @@ async fn bad_sql_returns_query_error() {
         msg.to_lowercase().contains("no_such_table") || msg.to_lowercase().contains("relation"),
         "expected error to mention missing relation, got: {msg}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn binary_only_types_read_back() {
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
+
+    conn.execute(
+        "CREATE TABLE wire_types (
+            id serial PRIMARY KEY,
+            wide numeric,
+            bits bit(5),
+            varying_bits varbit,
+            span interval,
+            clock timetz,
+            nothing numeric
+        )",
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "INSERT INTO wire_types (wide, bits, varying_bits, span, clock, nothing)
+         VALUES (123456789012345678901234567890.123456789,
+                 B'10110',
+                 B'1101',
+                 INTERVAL '1 year 2 mons 3 days 04:05:06.5',
+                 TIMETZ '13:45:30+07:00',
+                 NULL)",
+    )
+    .await
+    .unwrap();
+
+    let q = conn
+        .query("SELECT wide, bits, varying_bits, span, clock, nothing FROM wire_types")
+        .await
+        .unwrap();
+    let row = &q.rows[0];
+
+    match &row[0] {
+        Value::Decimal(d) => assert_eq!(d.to_string(), "123456789012345678901234567890.123456789"),
+        v => panic!("expected a numeric past 28 digits, got {v:?}"),
+    }
+    match &row[1] {
+        Value::Bits(b) => assert_eq!(b.to_string(), "10110"),
+        v => panic!("expected bits, got {v:?}"),
+    }
+    match &row[2] {
+        Value::Bits(b) => assert_eq!(b.to_string(), "1101"),
+        v => panic!("expected varying bits, got {v:?}"),
+    }
+    match &row[3] {
+        Value::Interval(i) => {
+            assert_eq!(i.months, 14);
+            assert_eq!(i.days, 3);
+            assert_eq!(i.microseconds, 14_706_500_000);
+        }
+        v => panic!("expected an interval, got {v:?}"),
+    }
+    match &row[4] {
+        Value::TimeTz(t) => {
+            let expected = NaiveTime::from_hms_opt(13, 45, 30).expect("a time");
+            assert_eq!(t.time, SqlTime::from_time_of_day(expected));
+            assert_eq!(t.offset.local_minus_utc(), 7 * 3600);
+        }
+        v => panic!("expected a time with offset, got {v:?}"),
+    }
+    // A NULL in a type the driver reads through the wire form still
+    // reads as a NULL, not as an unreadable value.
+    assert_eq!(row[5], Value::Null);
 }

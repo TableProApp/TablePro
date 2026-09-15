@@ -1,3 +1,4 @@
+mod classify;
 mod column_info;
 mod column_type;
 mod default;
@@ -6,6 +7,7 @@ mod read_form;
 mod result_column;
 mod sql_type_expr;
 
+pub use classify::{classify_type_name, has_dynamic_storage};
 pub use column_info::ColumnInfo;
 pub use column_type::{CatalogType, ColumnType};
 pub use default::ColumnDefault;

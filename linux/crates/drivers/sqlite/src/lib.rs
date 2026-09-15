@@ -3,10 +3,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow};
-use sqlx::{AssertSqlSafe, Column, Pool, Row, Sqlite, TypeInfo};
+use sqlx::{AssertSqlSafe, Column, Pool, Row, Sqlite, TypeInfo, ValueRef};
 
 use futures::stream::StreamExt;
 
+use tablepro_core::column::{
+    CatalogType, ColumnDefault, ColumnType, ReadForm, ResultColumn, SqlExpression, SqlTypeExpr, classify_type_name,
+    has_dynamic_storage,
+};
+use tablepro_core::value::{SqlTime, Temporal};
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
     MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
@@ -136,15 +141,18 @@ impl Connection for SqliteConnection {
                 // insert UI.
                 let is_auto_increment =
                     primary_key && is_int_type && single_col_pk && (table_has_autoincrement || dflt.is_none());
-                let default_value = dflt.map(normalize_default_value);
+                let default = match dflt.map(normalize_default_value) {
+                    Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
+                    None => ColumnDefault::None,
+                };
                 ColumnInfo {
                     name,
-                    data_type,
+                    column_type: column_type_of(&data_type),
                     nullable: r.get::<i64, _>(3) == 0,
                     primary_key,
                     is_auto_increment,
-                    default_value,
                     is_generated,
+                    default,
                 }
             })
             .collect())
@@ -179,34 +187,19 @@ impl Connection for SqliteConnection {
             collected.push(row);
         }
         if collected.is_empty() {
-            return Ok(QueryResult {
-                columns: Vec::new(),
-                rows: Vec::new(),
-                truncated,
-            });
+            return Ok(QueryResult::empty().truncated(truncated));
         }
-        let columns: Vec<ColumnInfo> = collected[0]
+        let columns: Vec<ResultColumn> = collected[0]
             .columns()
             .iter()
-            .map(|c| ColumnInfo {
-                name: c.name().to_string(),
-                data_type: c.type_info().name().to_string(),
-                nullable: true,
-                primary_key: false,
-                is_auto_increment: false,
-                default_value: None,
-                is_generated: false,
-            })
+            .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
             .collect();
+        let width = columns.len();
         let data: Vec<Vec<Value>> = collected
             .iter()
-            .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+            .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
             .collect();
-        Ok(QueryResult {
-            columns,
-            rows: data,
-            truncated,
-        })
+        Ok(QueryResult::new(columns, data).truncated(truncated))
     }
 
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError> {
@@ -371,60 +364,108 @@ async fn stream_into_result(pool: &Pool<Sqlite>, sql: &str, limit: usize) -> Res
         collected.push(row);
     }
     if collected.is_empty() {
-        return Ok(QueryResult {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            truncated,
-        });
+        return Ok(QueryResult::empty().truncated(truncated));
     }
-    let columns: Vec<ColumnInfo> = collected[0]
+    let columns: Vec<ResultColumn> = collected[0]
         .columns()
         .iter()
-        .map(|c| ColumnInfo {
-            name: c.name().to_string(),
-            data_type: c.type_info().name().to_string(),
-            nullable: true,
-            primary_key: false,
-            is_auto_increment: false,
-            default_value: None,
-            is_generated: false,
-        })
+        .map(|c| ResultColumn::new(c.name(), column_type_of(c.type_info().name())))
         .collect();
+    let width = columns.len();
     let data: Vec<Vec<Value>> = collected
         .iter()
-        .map(|r| (0..columns.len()).map(|i| extract_value(r, i)).collect())
+        .map(|r| (0..width).map(|i| extract_value(r, i)).collect())
         .collect();
-    Ok(QueryResult {
-        columns,
-        rows: data,
-        truncated,
-    })
+    Ok(QueryResult::new(columns, data).truncated(truncated))
 }
 
 fn extract_value(row: &SqliteRow, idx: usize) -> Value {
-    let type_name = row.columns()[idx].type_info().name().to_ascii_uppercase();
-    match type_name.as_str() {
-        "INTEGER" => row.try_get::<i64, _>(idx).map(Value::Int).unwrap_or(Value::Null),
-        "REAL" => row.try_get::<f64, _>(idx).map(Value::Float).unwrap_or(Value::Null),
-        "BLOB" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes).unwrap_or(Value::Null),
-        "BOOLEAN" => row.try_get::<bool, _>(idx).map(Value::Bool).unwrap_or(Value::Null),
-        "DATE" => row
-            .try_get::<chrono::NaiveDate, _>(idx)
-            .map(Value::Date)
-            .or_else(|_| row.try_get::<String, _>(idx).map(Value::Text))
-            .unwrap_or(Value::Null),
-        "TIME" => row
-            .try_get::<chrono::NaiveTime, _>(idx)
-            .map(Value::Time)
-            .or_else(|_| row.try_get::<String, _>(idx).map(Value::Text))
-            .unwrap_or(Value::Null),
-        "DATETIME" | "TIMESTAMP" => row
-            .try_get::<chrono::NaiveDateTime, _>(idx)
-            .map(Value::DateTime)
-            .or_else(|_| row.try_get::<String, _>(idx).map(Value::Text))
-            .unwrap_or(Value::Null),
-        _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
+    let declared = row.columns()[idx].type_info().name().to_ascii_uppercase();
+    let storage = match row.try_get_raw(idx) {
+        Ok(raw) => raw.type_info().name().to_ascii_uppercase(),
+        Err(_) => return undecodable(&declared),
+    };
+    // SQLite keeps the storage class of the value, not of the column,
+    // so an INTEGER column holding text reads as the text it holds.
+    match storage.as_str() {
+        "NULL" => Value::Null,
+        "INTEGER" => decode(row, idx, &declared, |v: i64| {
+            Some(match (declared.as_str(), v) {
+                ("BOOLEAN", 0) => Value::Bool(false),
+                ("BOOLEAN", 1) => Value::Bool(true),
+                _ => Value::Int(v),
+            })
+        }),
+        "REAL" => decode(row, idx, &declared, |v: f64| Some(Value::Float64(v))),
+        "BLOB" => decode(row, idx, &declared, |v: Vec<u8>| Some(Value::Bytes(v))),
+        _ => match declared.as_str() {
+            "DATE" => temporal_cell(row, idx, &declared, |v: chrono::NaiveDate| {
+                Value::Date(Temporal::Finite(v))
+            }),
+            "TIME" => temporal_cell(row, idx, &declared, |v: chrono::NaiveTime| {
+                Value::Time(SqlTime::from_time_of_day(v))
+            }),
+            "DATETIME" | "TIMESTAMP" => temporal_cell(row, idx, &declared, |v: chrono::NaiveDateTime| {
+                Value::Timestamp(Temporal::Finite(v))
+            }),
+            _ => text_cell(row, idx, &declared),
+        },
     }
+}
+
+/// Read one cell, keeping three outcomes apart: a real NULL, a value
+/// the driver read, and one it could not read. A type with no decoder
+/// says so rather than reading as an empty cell the user would take
+/// for a NULL.
+fn decode<'r, T, F>(row: &'r SqliteRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    T: sqlx::Decode<'r, Sqlite> + sqlx::Type<Sqlite>,
+    F: FnOnce(T) -> Option<Value>,
+{
+    match row.try_get::<Option<T>, _>(idx) {
+        Ok(Some(raw)) => into_value(raw).unwrap_or_else(|| undecodable(type_name)),
+        Ok(None) => Value::Null,
+        Err(_) => undecodable(type_name),
+    }
+}
+
+/// SQLite stores a date as whatever text was written, so a value that
+/// is not one keeps the text it holds.
+fn temporal_cell<'r, T, F>(row: &'r SqliteRow, idx: usize, type_name: &str, into_value: F) -> Value
+where
+    T: sqlx::Decode<'r, Sqlite> + sqlx::Type<Sqlite>,
+    F: FnOnce(T) -> Value,
+{
+    match row.try_get::<T, _>(idx) {
+        Ok(value) => into_value(value),
+        Err(_) => text_cell(row, idx, type_name),
+    }
+}
+
+fn text_cell(row: &SqliteRow, idx: usize, type_name: &str) -> Value {
+    decode(row, idx, type_name, |v: String| Some(Value::Text(v)))
+}
+
+/// A value the driver could not read, so the grid says so rather than
+/// showing an empty cell that looks like a NULL.
+fn undecodable(type_name: &str) -> Value {
+    Value::Undecodable(Box::new(tablepro_core::value::UndecodedValue {
+        type_name: type_name.to_owned(),
+        reason: tablepro_core::value::UndecodableReason::UnsupportedType,
+    }))
+}
+
+/// A column type from the name the catalogue gave, classified by the
+/// shared rules. The engine's own spelling is kept for DDL.
+fn column_type_of(type_name: &str) -> ColumnType {
+    let kind = classify_type_name(type_name);
+    ColumnType::new(
+        SqlTypeExpr::from_catalog_text(type_name),
+        kind,
+        CatalogType::Named(SqlTypeExpr::from_catalog_text(type_name)),
+        has_dynamic_storage(kind),
+        ReadForm::Native,
+    )
 }
 
 fn bind_sqlite_params<'q>(
@@ -436,16 +477,26 @@ fn bind_sqlite_params<'q>(
             Value::Null => q.bind(Option::<&str>::None),
             Value::Bool(b) => q.bind(*b),
             Value::Int(i) => q.bind(*i),
-            Value::Float(f) => q.bind(*f),
+            // SQLite has no unsigned integer, so anything past i64
+            // binds as text rather than wrapping into a negative.
+            Value::UInt(i) => match i64::try_from(*i) {
+                Ok(value) => q.bind(value),
+                Err(_) => q.bind(i.to_string()),
+            },
+            Value::Float32(f) => q.bind(f64::from(*f)),
+            Value::Float64(f) => q.bind(*f),
             Value::Text(s) => q.bind(s.clone()),
             Value::Bytes(b) => q.bind(b.clone()),
-            Value::Date(d) => q.bind(*d),
-            Value::Time(t) => q.bind(*t),
-            Value::DateTime(dt) => q.bind(*dt),
-            Value::TimestampTz(ts) => q.bind(*ts),
-            Value::Decimal(d) => q.bind(d.to_string()),
+            Value::Date(Temporal::Finite(d)) => q.bind(*d),
+            Value::Timestamp(Temporal::Finite(t)) => q.bind(*t),
             Value::Uuid(u) => q.bind(u.to_string()),
-            Value::Json(j) => q.bind(j.to_string()),
+            Value::Json(j) => q.bind(j.as_str().to_owned()),
+            // Everything else is stored as the text SQLite would have
+            // written anyway, which is what its dynamic typing does.
+            other => match tablepro_core::export::value_to_text(other) {
+                Some(text) => q.bind(text),
+                None => q.bind(Option::<&str>::None),
+            },
         };
     }
     q

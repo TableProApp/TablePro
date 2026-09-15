@@ -211,7 +211,7 @@ pub fn build_insert_from_draft(
             continue;
         }
         let value_is_null = matches!(values[i], Value::Null);
-        if value_is_null && col.default_value.is_some() {
+        if value_is_null && !col.default.is_none() {
             // Let the server apply its default rather than overriding
             // it with an explicit NULL — matters when the default is
             // CURRENT_TIMESTAMP, gen_random_uuid(), etc.
@@ -273,16 +273,30 @@ fn build_where_clause(
 
 #[cfg(test)]
 mod tests {
+    use crate::column::{CatalogType, ColumnKind, ColumnType, ReadForm, SqlTypeExpr, TextKind};
+
+    /// A column type carrying only the server's spelling, which is all
+    /// these builders read.
+    fn test_column_type(name: &str) -> ColumnType {
+        ColumnType::new(
+            SqlTypeExpr::from_catalog_text(name),
+            ColumnKind::Text(TextKind::Variable),
+            CatalogType::Unknown,
+            true,
+            ReadForm::Native,
+        )
+    }
+
     use super::*;
 
     fn col(name: &str, pk: bool) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "text".into(),
+            column_type: test_column_type("text"),
             nullable: false,
             primary_key: pk,
             is_auto_increment: false,
-            default_value: None,
+            default: crate::column::ColumnDefault::None,
             is_generated: false,
         }
     }
@@ -494,11 +508,11 @@ mod tests {
     fn col_auto(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "integer".into(),
+            column_type: test_column_type("integer"),
             nullable: false,
             primary_key: true,
             is_auto_increment: true,
-            default_value: None,
+            default: crate::column::ColumnDefault::None,
             is_generated: false,
         }
     }
@@ -506,11 +520,11 @@ mod tests {
     fn col_with_default(name: &str, default: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "timestamp".into(),
+            column_type: test_column_type("timestamp"),
             nullable: true,
             primary_key: false,
             is_auto_increment: false,
-            default_value: Some(default.into()),
+            default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text(default)),
             is_generated: false,
         }
     }
@@ -518,11 +532,11 @@ mod tests {
     fn col_generated(name: &str) -> ColumnInfo {
         ColumnInfo {
             name: name.into(),
-            data_type: "integer".into(),
+            column_type: test_column_type("integer"),
             nullable: false,
             primary_key: false,
             is_auto_increment: false,
-            default_value: None,
+            default: crate::column::ColumnDefault::None,
             is_generated: true,
         }
     }

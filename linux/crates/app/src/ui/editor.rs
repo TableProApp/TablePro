@@ -824,7 +824,7 @@ fn build_outcome_widget(o: &StatementOutcome, idx: usize, grid_sender: &relm4::S
         StatementOutcomeKind::Rows(result) if !result.rows.is_empty() => {
             let (column_view, _selection) = build_column_view(
                 result,
-                &result.columns,
+                &[],
                 grid_sender.clone(),
                 false,
                 None,
