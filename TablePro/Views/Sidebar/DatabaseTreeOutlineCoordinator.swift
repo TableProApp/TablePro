@@ -34,6 +34,23 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
+
+    /// The row this coordinator's tree hangs under when the outline view is shared with other
+    /// connections, and nil when it owns the whole view.
+    ///
+    /// One outline view now lists every connection, so a coordinator can no longer assume that
+    /// every row it can see is its own. Three places asked that question implicitly and got the
+    /// wrong answer: the selection handler read every selected `DatabaseTreeNode` whoever built it,
+    /// the row refresher reconfigured other connections' rows with this connection's context, and
+    /// `refresh` called `reloadData`, which collapses every connection in the window to repaint
+    /// one.
+    internal var embeddedRoot: AnyObject?
+
+    /// Identity, not the id: two connections can produce the same id for a `public` schema, and
+    /// only the object a coordinator built is the object it owns.
+    internal func owns(_ node: DatabaseTreeNode) -> Bool {
+        nodeCache[node.id] === node
+    }
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
@@ -286,7 +303,11 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         objectBucketsCache.removeAll()
         routineDisplayLabels.removeAll()
         invalidateRowConfiguration()
-        outlineView.reloadData()
+        if let embeddedRoot {
+            outlineView.reloadItem(embeddedRoot, reloadChildren: true)
+        } else {
+            outlineView.reloadData()
+        }
         applyDesiredExpansion()
         syncSelectionToModel()
         restoreRenameAfterReload()
@@ -300,6 +321,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         guard let outlineView else { return }
         for row in 0..<outlineView.numberOfRows {
             guard let node = outlineView.item(atRow: row) as? DatabaseTreeNode,
+                  owns(node),
                   let cell = outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? DatabaseTreeCellView
             else { continue }
             cell.configure(
@@ -375,9 +397,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
 
     private func selectedNodes() -> [DatabaseTreeNode] {
         guard let outlineView else { return [] }
-        return outlineView.selectedRowIndexes.compactMap {
-            outlineView.item(atRow: $0) as? DatabaseTreeNode
-        }
+        return outlineView.selectedRowIndexes
+            .compactMap { outlineView.item(atRow: $0) as? DatabaseTreeNode }
+            .filter(owns)
     }
 
     internal func syncSelectionToModel() {
