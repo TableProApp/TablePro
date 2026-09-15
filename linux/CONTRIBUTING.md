@@ -15,9 +15,19 @@ meson devenv -C _build cargo test   # cargo against the configured app ID
 cargo fmt --all                # format
 ```
 
-`cargo build` and `cargo run -p tablepro` still work for a quick edit. They
-fall back to the `app.tablepro.TablePro.Devel` application ID, so a
-development build never writes over an installed one.
+`cargo build` works on its own for a quick edit. Running needs the compiled
+GSettings schema on the search path, which `meson devenv` puts there:
+
+```bash
+meson compile -C _build        # keeps the schema in step with data/*.gschema.xml
+meson devenv -C _build cargo run -p tablepro
+```
+
+A bare `cargo run -p tablepro` aborts with `GSettings schema
+app.tablepro.TablePro is not installed`, because the compiled schema lives in
+`_build/data` and nothing points GLib at it. Both fall back to the
+`app.tablepro.TablePro.Devel` application ID, so a development build never
+writes over an installed one.
 
 ### Fast-job commands
 
