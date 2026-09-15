@@ -6,7 +6,7 @@
 import SwiftUI
 
 internal struct WelcomeConnectionsPanel: View {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     var focus: FocusState<WelcomeFocusField?>.Binding
     @State private var searchFocusTrigger = 0
 
@@ -38,7 +38,7 @@ internal struct WelcomeConnectionsPanel: View {
         case .firstRun:
             firstRunState
         case .noSearchMatch(let term):
-            ContentUnavailableView.search(text: term)
+            UnavailableStateView.search(text: term)
         case .noFilterMatch:
             EmptyStateView(
                 icon: "tag",

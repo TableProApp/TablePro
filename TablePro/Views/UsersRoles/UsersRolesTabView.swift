@@ -3,7 +3,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct UsersRolesTabView: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let coordinator: MainContentCoordinator?
     let tabID: UUID
 
@@ -47,7 +47,7 @@ struct UsersRolesTabView: View {
         }
         .onAppear { install() }
         .onDisappear { teardown() }
-        .onChange(of: viewModel.changeCount) { _, _ in
+        .onChange(of: viewModel.changeCount) { _ in
             publishChangeState()
         }
     }

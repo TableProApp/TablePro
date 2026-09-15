@@ -6,8 +6,8 @@
 //  Tracks pending edits across multiple selected rows.
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// Represents the edit state for a single field across multiple rows
@@ -69,16 +69,16 @@ struct FieldEditState: Identifiable {
 }
 
 /// Manages edit state for multi-row editing in sidebar
-@MainActor @Observable
-final class MultiRowEditState {
-    var fields: [FieldEditState] = []
+@MainActor
+final class MultiRowEditState: ObservableObject {
+    @Published var fields: [FieldEditState] = []
 
-    var onFieldChanged: ((Int, PluginCellValue) -> Void)?
+    @Published var onFieldChanged: ((Int, PluginCellValue) -> Void)?
 
-    private(set) var selectedRowIndices: Set<Int> = []
-    private(set) var allRows: [[String?]] = []
-    private(set) var columns: [String] = []
-    private(set) var columnTypes: [ColumnType] = []
+    @Published private(set) var selectedRowIndices: Set<Int> = []
+    @Published private(set) var allRows: [[String?]] = []
+    @Published private(set) var columns: [String] = []
+    @Published private(set) var columnTypes: [ColumnType] = []
 
     var hasEdits: Bool {
         fields.contains { $0.hasEdit }

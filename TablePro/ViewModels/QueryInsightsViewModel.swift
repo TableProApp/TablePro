@@ -1,29 +1,27 @@
 import Combine
 import Foundation
-import Observation
 import os
 
 @MainActor
-@Observable
-final class QueryInsightsViewModel {
+final class QueryInsightsViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QueryInsights")
 
     /// Recording a grid full of edits broadcasts once per statement, and every panel on this screen
     /// is a full aggregate. Collapsing the burst keeps one user action to one recomputation.
     private static let refreshDebounce = Duration.milliseconds(400)
 
-    private(set) var snapshot: QueryInsightsSnapshot = .empty
-    private(set) var hasLoadedContent = false
-    private(set) var isRefreshing = false
-    private(set) var isStoreUnavailable = false
-    private(set) var lastRefreshDate: Date?
+    @Published private(set) var snapshot: QueryInsightsSnapshot = .empty
+    @Published private(set) var hasLoadedContent = false
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var isStoreUnavailable = false
+    @Published private(set) var lastRefreshDate: Date?
 
     let connectionId: UUID
 
-    var showsAllConnections: Bool { didSet { persistAndReload(oldValue != showsAllConnections) } }
-    var sources: Set<QueryHistorySource> { didSet { persistAndReload(oldValue != sources) } }
-    var dateRange: HistoryDateRange { didSet { persistAndReload(oldValue != dateRange) } }
-    var slowestRanking: QueryInsightsSlowestRanking { didSet { persistAndReload(oldValue != slowestRanking) } }
+    @Published var showsAllConnections: Bool { didSet { persistAndReload(oldValue != showsAllConnections) } }
+    @Published var sources: Set<QueryHistorySource> { didSet { persistAndReload(oldValue != sources) } }
+    @Published var dateRange: HistoryDateRange { didSet { persistAndReload(oldValue != dateRange) } }
+    @Published var slowestRanking: QueryInsightsSlowestRanking { didSet { persistAndReload(oldValue != slowestRanking) } }
 
     private let history: QueryHistoryReading
     private var isApplyingBulkChange = false

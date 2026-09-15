@@ -15,11 +15,11 @@ import SwiftUI
 internal struct CopyObjectsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @State private var session: ObjectCopySession
+    @StateObject private var session: ObjectCopySession
     @State private var isChoosingTarget = false
 
     internal init(launch: ObjectCopyLaunchRequest, connection: DatabaseConnection) {
-        _session = State(initialValue: ObjectCopySession(
+        _session = StateObject(wrappedValue: ObjectCopySession(
             mode: launch.mode,
             source: launch.source,
             sourceConnection: connection,

@@ -3,19 +3,20 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@MainActor @Observable
-final class RowEditingCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class RowEditingCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     /// A save is between assembling its statements and hearing back.
     ///
     /// Nothing clears the pending changes until the write returns, so a second Cmd+S inside the
     /// round trip finds them still there, assembles the same statements again and commits them
     /// twice. Over a slow link that is easy to do by accident.
-    @ObservationIgnored private(set) var isSaveInFlight = false
+    private(set) var isSaveInFlight = false
 
     init(parent: MainContentCoordinator) {
         self.parent = parent

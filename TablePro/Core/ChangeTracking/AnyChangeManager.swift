@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
@@ -28,10 +28,9 @@ extension ChangeManaging {
     var generatedColumns: Set<String> { [] }
 }
 
-@Observable
 @MainActor
-final class AnyChangeManager {
-    @ObservationIgnored private let wrapped: any ChangeManaging
+final class AnyChangeManager: ObservableObject {
+    private let wrapped: any ChangeManaging
 
     var hasChanges: Bool { wrapped.hasChanges }
     var reloadVersion: Int { wrapped.reloadVersion }

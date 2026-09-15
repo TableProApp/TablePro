@@ -13,7 +13,7 @@ struct WelcomeActionsPanel: View {
     let onImportConnectionsFile: () -> Void
     let onOpenProjectFolder: () -> Void
 
-    private let updaterBridge = UpdaterBridge.shared
+    @ObservedObject private var updaterBridge = UpdaterBridge.shared
 
     /// Captured once, because the stored value is overwritten on the same appearance that reads
     /// it. Without the capture the line would replace itself with nothing on the next redraw.

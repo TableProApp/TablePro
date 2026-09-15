@@ -6,7 +6,7 @@
 import SwiftUI
 
 internal struct WelcomeConnectionList: View {
-    @Bindable var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     var focus: FocusState<WelcomeFocusField?>.Binding
 
     var body: some View {
@@ -72,46 +72,7 @@ internal struct WelcomeConnectionList: View {
             } primaryAction: { ids in
                 primaryAction(for: ids)
             }
-            .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
-                guard keyPress.modifiers.contains(.command) else { return .ignored }
-                let toDelete = vm.selectedConnections
-                guard !toDelete.isEmpty else { return .ignored }
-                vm.requestDeleteConnections(toDelete)
-                return .handled
-            }
-            .onKeyPress(characters: .init(charactersIn: "a"), phases: .down) { keyPress in
-                guard keyPress.modifiers.contains(.command) else { return .ignored }
-                vm.selectedConnectionIds = Set(vm.flatVisibleConnections.map(\.id))
-                return .handled
-            }
-            .onKeyPress(.escape) {
-                if !vm.selectedConnectionIds.isEmpty {
-                    vm.selectedConnectionIds = []
-                }
-                return .handled
-            }
-            .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
-                guard keyPress.modifiers.contains(.control) else { return .ignored }
-                vm.moveToNextConnection()
-                scrollToSelection(proxy)
-                return .handled
-            }
-            .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
-                guard keyPress.modifiers.contains(.control) else { return .ignored }
-                vm.moveToPreviousConnection()
-                scrollToSelection(proxy)
-                return .handled
-            }
-            .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
-                guard keyPress.modifiers.contains(.control) else { return .ignored }
-                vm.collapseSelectedGroup()
-                return .handled
-            }
-            .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
-                guard keyPress.modifiers.contains(.control) else { return .ignored }
-                vm.expandSelectedGroup()
-                return .handled
-            }
+            .modifier(WelcomeConnectionKeyShortcuts(vm: vm, proxy: proxy, scrollToSelection: scrollToSelection))
         }
     }
 
@@ -156,6 +117,65 @@ internal struct WelcomeConnectionList: View {
     private func scrollToSelection(_ proxy: ScrollViewProxy) {
         if let id = vm.selectedConnectionIds.first {
             proxy.scrollTo(id, anchor: .center)
+        }
+    }
+}
+
+/// `onKeyPress` is macOS 14. The whole run is gated together rather than key by key, because
+/// `KeyPress` is itself macOS 14 and cannot appear in a signature outside the check. Every one
+/// of these has a pointer equivalent in the same list, so macOS 13 loses the shortcut, not the
+/// action.
+private struct WelcomeConnectionKeyShortcuts: ViewModifier {
+    @ObservedObject var vm: WelcomeViewModel
+    let proxy: ScrollViewProxy
+    let scrollToSelection: (ScrollViewProxy) -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+            .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.command) else { return .ignored }
+                let toDelete = vm.selectedConnections
+                guard !toDelete.isEmpty else { return .ignored }
+                vm.requestDeleteConnections(toDelete)
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "a"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.command) else { return .ignored }
+                vm.selectedConnectionIds = Set(vm.flatVisibleConnections.map(\.id))
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                if !vm.selectedConnectionIds.isEmpty {
+                    vm.selectedConnectionIds = []
+                }
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                vm.moveToNextConnection()
+                scrollToSelection(proxy)
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                vm.moveToPreviousConnection()
+                scrollToSelection(proxy)
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                vm.collapseSelectedGroup()
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                vm.expandSelectedGroup()
+                return .handled
+            }
+        } else {
+            content
         }
     }
 }

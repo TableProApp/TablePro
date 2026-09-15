@@ -131,7 +131,7 @@ struct PairingApprovalSheet: View {
                 Text(String(localized: "Select Connections")).tag(ConnectionAccessMode.selected)
             }
             .labelsHidden()
-            .onChange(of: connectionAccess) { _, newValue in
+            .onChange(of: connectionAccess) { newValue in
                 if newValue == .all {
                     selectedConnectionIds = Set(connections.map(\.id))
                 } else if selectedConnectionIds.isEmpty {

@@ -9,7 +9,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
-    var updaterBridge: UpdaterBridge
+    @ObservedObject var updaterBridge: UpdaterBridge
     var onResetAll: () -> Void
 
     @State private var initialLanguage: AppLanguage?

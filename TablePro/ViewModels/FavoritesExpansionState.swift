@@ -3,24 +3,23 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-internal final class FavoritesExpansionState {
+internal final class FavoritesExpansionState: ObservableObject {
     static let shared = FavoritesExpansionState()
 
-    private(set) var foldersByConnection: [UUID: Set<UUID>] = [:]
-    private(set) var linkedNodesByConnection: [UUID: Set<String>] = [:]
-    private(set) var collapsedDatabaseEnvironmentsByConnection: [UUID: Set<FavoriteDatabaseEnvironment>] = [:]
+    @Published private(set) var foldersByConnection: [UUID: Set<UUID>] = [:]
+    @Published private(set) var linkedNodesByConnection: [UUID: Set<String>] = [:]
+    @Published private(set) var collapsedDatabaseEnvironmentsByConnection: [UUID: Set<FavoriteDatabaseEnvironment>] = [:]
 
-    @ObservationIgnored private let foldersKey = "com.TablePro.favoritesExpandedFolders"
-    @ObservationIgnored private let linkedKey = "com.TablePro.favoritesExpandedLinkedNodes"
-    @ObservationIgnored private let collapsedDatabaseEnvironmentsKey =
+    private let foldersKey = "com.TablePro.favoritesExpandedFolders"
+    private let linkedKey = "com.TablePro.favoritesExpandedLinkedNodes"
+    private let collapsedDatabaseEnvironmentsKey =
         "com.TablePro.favoritesCollapsedDatabaseEnvironments"
 
-    @ObservationIgnored private let defaults: UserDefaults
+    private let defaults: UserDefaults
 
     internal init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
         self.defaults = defaults

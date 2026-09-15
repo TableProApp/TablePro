@@ -8,7 +8,7 @@ import Combine
 import SwiftUI
 
 internal struct WelcomeNewConnectionMenu: View {
-    let vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     var body: some View {
         Button(action: { WindowOpener.shared.openConnectionForm() }) {

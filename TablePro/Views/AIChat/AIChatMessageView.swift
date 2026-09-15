@@ -11,7 +11,7 @@ import SwiftUI
 struct AIChatMessageView: View, Equatable {
     private static let userBubbleTintOpacity: Double = 0.08
 
-    let message: ChatTurn
+    @ObservedObject var message: ChatTurn
     var onRetry: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onEdit: (() -> Void)?
@@ -206,7 +206,7 @@ struct AIChatMessageView: View, Equatable {
 }
 
 private struct AIChatBlockView: View, Equatable {
-    @Bindable var block: ChatContentBlock
+    @ObservedObject var block: ChatContentBlock
 
     static func == (lhs: AIChatBlockView, rhs: AIChatBlockView) -> Bool {
         lhs.block === rhs.block

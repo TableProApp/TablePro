@@ -3,22 +3,22 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Network
 import TableProPluginKit
 
-@Observable
 @MainActor
-final class NetworkPaneViewModel {
-    var name: String = ""
-    var type: DatabaseType = .mysql
-    var host: String = ""
-    var port: String = ""
-    var database: String = ""
-    var sshForwardUnixSocketPath: String = ""
-    var additionalFieldValues: [String: String] = [:]
+final class NetworkPaneViewModel: ObservableObject {
+    @Published var name: String = ""
+    @Published var type: DatabaseType = .mysql
+    @Published var host: String = ""
+    @Published var port: String = ""
+    @Published var database: String = ""
+    @Published var sshForwardUnixSocketPath: String = ""
+    @Published var additionalFieldValues: [String: String] = [:]
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var forwardsToUnixSocket: Bool {
         !sshForwardUnixSocketPath.trimmingCharacters(in: .whitespaces).isEmpty

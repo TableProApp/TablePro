@@ -45,7 +45,13 @@ enum PopoverPresenter {
         @ViewBuilder content: (_ dismiss: @escaping () -> Void) -> Content
     ) -> NSPopover {
         let popover = make(contentSize: contentSize, behavior: behavior, content: content)
-        popover.show(relativeTo: toolbarItem)
+        if #available(macOS 14.0, *) {
+            popover.show(relativeTo: toolbarItem)
+        } else if let anchor = toolbarItem.view {
+            /// `show(relativeTo: NSToolbarItem)` is macOS 14. Anchoring on the item's own view
+            /// puts the popover in the same place; an item with no view has nothing to point at.
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        }
         return popover
     }
 

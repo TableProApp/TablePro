@@ -13,7 +13,7 @@ import SwiftUI
 import TableProPluginKit
 
 internal struct CompareOptionsView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     @State private var savedProfiles: [CompareSyncProfile] = []
     @State private var newProfileName = ""
@@ -30,13 +30,13 @@ internal struct CompareOptionsView: View {
         .onAppear {
             savedProfiles = session.savedProfiles
         }
-        .onChange(of: session.includedKinds) {
+        .onChange(of: session.includedKinds) { _ in
             session.resetComparison()
         }
-        .onChange(of: session.structureOptions) {
+        .onChange(of: session.structureOptions) { _ in
             session.resetComparison()
         }
-        .onChange(of: session.dataOptions) { previous, current in
+        .onValueChange(of: session.dataOptions) { previous, current in
             applyDataOptionChange(from: previous, to: current)
         }
     }

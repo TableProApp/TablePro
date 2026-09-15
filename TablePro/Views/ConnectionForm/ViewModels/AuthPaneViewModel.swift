@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
@@ -23,16 +24,15 @@ enum PgpassStatus {
     }
 }
 
-@Observable
 @MainActor
-final class AuthPaneViewModel {
-    var username: String = ""
-    var password: String = ""
-    var promptForPassword: Bool = false
-    var additionalFieldValues: [String: String] = [:]
-    var pgpassStatus: PgpassStatus = .notChecked
+final class AuthPaneViewModel: ObservableObject {
+    @Published var username: String = ""
+    @Published var password: String = ""
+    @Published var promptForPassword: Bool = false
+    @Published var additionalFieldValues: [String: String] = [:]
+    @Published var pgpassStatus: PgpassStatus = .notChecked
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var authFields: [ConnectionField] {
         guard let type = coordinator?.value?.network.type else { return [] }

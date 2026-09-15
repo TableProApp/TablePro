@@ -12,7 +12,7 @@ import SwiftUI
 /// controls and its own command, because a chat is not one of the views of a selected row.
 internal struct AssistantPaneView: View {
     internal let connection: DatabaseConnection
-    @Bindable internal var state: AssistantState
+    @ObservedObject internal var state: AssistantState
 
     @State private var showsClearConfirmation = false
 

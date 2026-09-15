@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import Observation
 
@@ -63,10 +64,9 @@ internal enum SQLFavoriteKeywordValidator {
 }
 
 @MainActor
-@Observable
-internal final class SQLFavoriteKeywordField {
-    var keyword = ""
-    private(set) var validation: SQLFavoriteKeywordValidation = .valid
+internal final class SQLFavoriteKeywordField: ObservableObject {
+    @Published var keyword = ""
+    @Published private(set) var validation: SQLFavoriteKeywordValidation = .valid
 
     private var validationId = 0
     private let availabilityCheck: (String, UUID?, UUID?) async -> Bool

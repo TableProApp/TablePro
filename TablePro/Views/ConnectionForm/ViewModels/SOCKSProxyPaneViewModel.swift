@@ -3,14 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class SOCKSProxyPaneViewModel {
-    var state = SOCKSProxyFormState()
+final class SOCKSProxyPaneViewModel: ObservableObject {
+    @Published var state = SOCKSProxyFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }

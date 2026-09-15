@@ -59,7 +59,7 @@ private struct ColorSwatchButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.88 : 1)
             .background(
                 Circle()
-                    .fill(Color(nsColor: .quaternarySystemFill))
+                    .fill(Color(nsColor: .quaternaryFill))
                     .opacity(isHovering && !configuration.isPressed ? 1 : 0)
             )
             .onHover { isHovering = $0 }

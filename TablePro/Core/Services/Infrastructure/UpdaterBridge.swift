@@ -5,7 +5,7 @@
 //  Observable mirror of SPUUpdater's own preferences for SwiftUI.
 //
 
-import Observation
+import Combine
 import os
 import Sparkle
 
@@ -21,9 +21,8 @@ import Sparkle
 /// The values here are a mirror, not a store. Each is fed by KVO from the property that owns it,
 /// so an external write (a managed preference, Sparkle's own permission prompt) shows up without
 /// anything having to notice it happened.
-@Observable
 @MainActor
-final class UpdaterBridge: UpdaterSettingsWriting {
+final class UpdaterBridge: ObservableObject, UpdaterSettingsWriting {
     static let shared = UpdaterBridge()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "UpdaterBridge")
@@ -36,14 +35,14 @@ final class UpdaterBridge: UpdaterSettingsWriting {
         "SUAutomaticallyUpdate",
     ]
 
-    @ObservationIgnored private let controller: SPUStandardUpdaterController
-    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    private let controller: SPUStandardUpdaterController
+    private var observations: [NSKeyValueObservation] = []
 
-    private(set) var canCheckForUpdates = false
-    private(set) var automaticallyChecksForUpdates = true
-    private(set) var automaticallyDownloadsUpdates = false
-    private(set) var allowsAutomaticUpdates = true
-    private(set) var updateCheckInterval: TimeInterval = UpdateCheckFrequency.daily.seconds
+    @Published private(set) var canCheckForUpdates = false
+    @Published private(set) var automaticallyChecksForUpdates = true
+    @Published private(set) var automaticallyDownloadsUpdates = false
+    @Published private(set) var allowsAutomaticUpdates = true
+    @Published private(set) var updateCheckInterval: TimeInterval = UpdateCheckFrequency.daily.seconds
 
     deinit {
         observations.forEach { $0.invalidate() }

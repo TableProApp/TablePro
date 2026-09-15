@@ -21,7 +21,7 @@
 import SwiftUI
 
 internal struct CompareStatusBar: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 

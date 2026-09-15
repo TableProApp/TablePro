@@ -46,7 +46,7 @@ struct SheetChrome<Content: View, Footer: View>: View {
 // MARK: - Create
 
 struct CreatePrincipalSheet: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -132,7 +132,7 @@ struct CreatePrincipalSheet: View {
 // MARK: - Change password
 
 struct ChangePasswordSheet: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let principal: PluginPrincipalRef
 
     @Environment(\.dismiss) private var dismiss
@@ -185,7 +185,7 @@ struct ChangePasswordSheet: View {
 // MARK: - Drop
 
 struct DropPrincipalSheet: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let prompt: PrincipalDropPrompt
 
     @Environment(\.dismiss) private var dismiss
@@ -252,7 +252,7 @@ struct DropPrincipalSheet: View {
 // MARK: - Role membership
 
 struct RoleMembershipSheet: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let principal: PluginPrincipalRef
 
     @Environment(\.dismiss) private var dismiss
@@ -281,7 +281,7 @@ struct RoleMembershipSheet: View {
                         .toggleStyle(.checkbox)
                 }
                 .listStyle(.plain)
-                .alternatingRowBackgrounds(.enabled)
+                .alternatingRowBackgroundsCompat()
             }
         } footer: {
             Button(String(localized: "Cancel"), role: .cancel) { dismiss() }
@@ -339,7 +339,7 @@ struct RoleMembershipSheet: View {
 // MARK: - Copy privileges
 
 struct CopyPrivilegesSheet: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
     let target: PluginPrincipalRef
 
     @Environment(\.dismiss) private var dismiss
@@ -374,7 +374,7 @@ struct CopyPrivilegesSheet: View {
                         .tag(row.ref)
                 }
                 .listStyle(.plain)
-                .alternatingRowBackgrounds(.enabled)
+                .alternatingRowBackgroundsCompat()
             }
         } footer: {
             Button(String(localized: "Cancel"), role: .cancel) { dismiss() }

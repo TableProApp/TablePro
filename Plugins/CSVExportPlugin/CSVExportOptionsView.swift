@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct CSVExportOptionsView: View {
-    @Bindable var plugin: CSVExportPlugin
+    @ObservedObject var plugin: CSVExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

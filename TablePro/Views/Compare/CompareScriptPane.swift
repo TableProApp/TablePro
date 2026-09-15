@@ -14,7 +14,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 internal struct CompareScriptPane: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let onGenerateScript: () -> Void
 
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) private var fontSize = 13.0
@@ -155,7 +155,7 @@ internal struct CompareScriptPane: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label("No Script Yet", systemImage: "doc.plaintext")
         } description: {
             Text(emptyDescription)
@@ -177,7 +177,7 @@ internal struct CompareScriptPane: View {
 
 internal struct CompareHeldBackStatementRow: View {
     internal let statement: SyncStatement
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 4) {

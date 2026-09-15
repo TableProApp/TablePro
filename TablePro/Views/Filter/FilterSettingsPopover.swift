@@ -38,7 +38,7 @@ struct FilterSettingsPopover: View {
         }
         .formStyle(.grouped)
         .frame(width: 280)
-        .onChange(of: settings) { _, newValue in
+        .onChange(of: settings) { newValue in
             FilterSettingsStorage.shared.saveSettings(newValue)
         }
     }

@@ -28,16 +28,20 @@ struct MainEditorContentView: View {
 
     // MARK: - Dependencies
 
-    var tabManager: QueryTabManager
-    var coordinator: MainContentCoordinator
-    var changeManager: DataChangeManager
+    @ObservedObject var tabManager: QueryTabManager
+    @ObservedObject var coordinator: MainContentCoordinator
+
+    /// The drawer state is a per-connection singleton behind a factory, so it is handed in
+    /// rather than resolved in `body`, where nothing would observe it.
+    @ObservedObject var historyState: HistoryPanelState
+    @ObservedObject var changeManager: DataChangeManager
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
 
     // MARK: - Selection State
 
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     // MARK: - Callbacks
 
@@ -64,7 +68,7 @@ struct MainEditorContentView: View {
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
     @State private var dataTabDelegate = DataTabGridDelegate()
 
-    @Bindable private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
 
@@ -89,8 +93,6 @@ struct MainEditorContentView: View {
     // MARK: - Body
 
     var body: some View {
-        @Bindable var historyState = HistoryPanelState.forConnection(connectionId)
-
         VerticalCollapsibleSplitView(
             isBottomCollapsed: Binding(
                 get: { !historyState.isVisible },
@@ -113,9 +115,18 @@ struct MainEditorContentView: View {
             }
         )
         .background(.background)
-        .onChange(of: historyState.isVisible, initial: true) { _, isVisible in
+        .onAppear {
+            if historyState.isVisible {
+                if #available(macOS 14.0, *) {
+                    FeatureTipSignals.queryHistoryShown()
+                }
+            }
+        }
+        .onChange(of: historyState.isVisible) { isVisible in
             if isVisible {
-                FeatureTipSignals.queryHistoryShown()
+                if #available(macOS 14.0, *) {
+                    FeatureTipSignals.queryHistoryShown()
+                }
             }
         }
         .sheet(item: Binding(
@@ -154,7 +165,7 @@ struct MainEditorContentView: View {
                 }
             )
         }
-        .onChange(of: tabManager.tabStructureVersion) { _, _ in
+        .onChange(of: tabManager.tabStructureVersion) { _ in
             let openTabIds = Set(tabManager.tabIds)
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
@@ -163,7 +174,7 @@ struct MainEditorContentView: View {
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
-        .onChange(of: tabManager.selectedTabId) { _, _ in
+        .onChange(of: tabManager.selectedTabId) { _ in
             updateHasQueryText()
         }
         .onAppear {
@@ -182,19 +193,19 @@ struct MainEditorContentView: View {
         )) {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
-        .onChange(of: selectionState.indices) { _, newIndices in
+        .onChange(of: selectionState.indices) { newIndices in
             onSelectionChange(newIndices)
         }
-        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _, _ in
+        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _ in
             refreshDataTabDelegateMutableRefs()
         }
-        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _, _ in
+        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _ in
             refreshDataTabDelegateMutableRefs()
         }
-        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _, _ in
+        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _ in
             refreshDataTabDelegateMutableRefs()
         }
-        .onChange(of: coordinator.safeModeLevel) { _, _ in
+        .onChange(of: coordinator.safeModeLevel) { _ in
             refreshDataTabDelegateMutableRefs()
         }
     }
@@ -254,7 +265,7 @@ struct MainEditorContentView: View {
             )
             .id(objectRef)
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Object"),
                 systemImage: "questionmark.square.dashed"
             )
@@ -408,7 +419,6 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func queryTabContent(tab: QueryTab) -> some View {
-        @Bindable var bindableCoordinator = coordinator
         let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
         let queryScope = coordinator.scope(for: tab)
         VerticalCollapsibleSplitView(
@@ -432,7 +442,7 @@ struct MainEditorContentView: View {
                     }
                     QueryEditorView(
                         queryText: queryTextBinding(for: tab),
-                        cursorPositions: $bindableCoordinator.cursorPositions,
+                        cursorPositions: $coordinator.cursorPositions,
                         parameters: parameterBinding(for: tab),
                         isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery(viewport: .firstRow) },
@@ -588,7 +598,7 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func tableTabContent(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
-            if tab.isPreview {
+            if tab.isPreview, #available(macOS 14.0, *) {
                 FeatureTipInline(tip: KeepTableOpenTip())
             }
             resultsSection(tab: tab)
@@ -726,7 +736,7 @@ struct MainEditorContentView: View {
                         isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
                     )
                 } else {
-                    ContentUnavailableView(
+                    UnavailableStateView(
                         String(localized: "No Data"),
                         systemImage: "chart.bar.xaxis",
                         description: Text(String(localized: "Execute a query to chart its loaded rows."))
@@ -758,7 +768,7 @@ struct MainEditorContentView: View {
                     )
                     .id(tab.id)
                 } else {
-                    ContentUnavailableView(
+                    UnavailableStateView(
                         String(localized: "No Data"),
                         systemImage: "map",
                         description: Text(String(localized: "Execute a query to map its loaded rows."))
@@ -900,7 +910,7 @@ struct MainEditorContentView: View {
 
     private func emptyResultView(executionTime: TimeInterval?) -> some View {
         let description: String? = executionTime.map { String(format: "%.3fs", $0) }
-        return ContentUnavailableView {
+        return UnavailableStateView {
             Label(String(localized: "No rows returned"), systemImage: "tray")
         } description: {
             if let description {

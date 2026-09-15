@@ -4,15 +4,16 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
 
-@MainActor @Observable
-final class PaginationCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class PaginationCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     init(parent: MainContentCoordinator) {
         self.parent = parent

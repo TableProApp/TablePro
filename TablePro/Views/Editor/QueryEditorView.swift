@@ -186,10 +186,7 @@ struct QueryEditorView: View {
             .help(shortcutHint(String(localized: "Execute"), for: .executeQuery))
             .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .executeQuery))
             .accessibilityIdentifier("query-execute-menu")
-            .modifier(FeatureTipPopoverAnchor(
-                tip: FindPastQueriesTip(shortcut: FeatureTipShortcut.display(for: .toggleHistory)),
-                isEnabled: showsHistoryTip
-            ))
+            .historyTipAnchor(isEnabled: showsHistoryTip)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

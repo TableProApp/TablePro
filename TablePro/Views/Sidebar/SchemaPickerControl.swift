@@ -19,8 +19,8 @@ struct SchemaPickerControl: View {
     let databaseType: DatabaseType
     let coordinator: MainContentCoordinator?
 
-    @Bindable private var schemaService = SchemaService.shared
-    @Bindable private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var schemaService = SchemaService.shared
+    @ObservedObject private var databaseManager = DatabaseManager.shared
 
     private var currentSchema: String? {
         databaseManager.session(for: connectionId)?.browseSchema

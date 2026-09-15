@@ -13,7 +13,7 @@
 import SwiftUI
 
 internal struct CompareWindowContentView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal var onCompare: () -> Void
     internal var onGenerateScript: () -> Void
     internal var onApply: () -> Void
@@ -60,7 +60,7 @@ internal struct CompareWindowContentView: View {
 /// It sits at the top rather than the bottom for the reason the HIG gives about bottom bars, and
 /// it is deliberately not an action bar: it carries state and a Cancel, never a primary action.
 internal struct CompareStatusStrip: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     internal var body: some View {
         HStack(spacing: 12) {

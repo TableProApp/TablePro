@@ -3,13 +3,13 @@
 //  MarkdownExportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class MarkdownExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class MarkdownExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "Markdown Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Markdown tables"
@@ -25,7 +25,7 @@ final class MarkdownExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked
     /// would mean holding the whole table in memory to decide a column width.
     private static let alignmentSampleRows = 200
 
-    var settings = MarkdownExportOptions() {
+    @Published var settings = MarkdownExportOptions() {
         didSet { saveSettings() }
     }
 

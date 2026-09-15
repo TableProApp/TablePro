@@ -3,12 +3,12 @@
 //  JSONImportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class JSONImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "JSON Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from JSON files"
@@ -21,7 +21,7 @@ final class JSONImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sen
     typealias Settings = JSONImportOptions
     static let settingsStorageId = "json-import"
 
-    var settings = JSONImportOptions() {
+    @Published var settings = JSONImportOptions() {
         didSet { saveSettings() }
     }
 

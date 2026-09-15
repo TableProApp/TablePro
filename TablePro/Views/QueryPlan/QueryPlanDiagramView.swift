@@ -11,7 +11,7 @@ import SwiftUI
 struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?
 
-    @State private var viewport = DiagramViewportController()
+    @StateObject private var viewport = DiagramViewportController()
 
     /// Derived from the plan on every update, so a second EXPLAIN in the same tab redraws
     /// instead of keeping the layout the first one produced.

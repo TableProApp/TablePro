@@ -165,18 +165,18 @@ struct RowImportSheet: View {
             await loadTables()
             await loadNewColumns()
         }
-        .onChange(of: destination) { _, newValue in
+        .onChange(of: destination) { newValue in
             guard newValue == .newTable else { return }
             suggestNewTableName()
             newTableNameFocused = true
         }
-        .onChange(of: selectedTargetTable) { _, newValue in
+        .onChange(of: selectedTargetTable) { newValue in
             mappings = []
             targetColumns = []
             guard destination == .existingTable, let table = newValue else { return }
             Task { await loadExistingContext(table: table) }
         }
-        .onChange(of: currentPlugin?.fieldDetectionSignature) { _, _ in
+        .onChange(of: currentPlugin?.fieldDetectionSignature) { _ in
             Task { await redetectFields() }
         }
         .onDisappear {
@@ -190,7 +190,7 @@ struct RowImportSheet: View {
                     .interactiveDismissDisabled()
             }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
@@ -203,7 +203,7 @@ struct RowImportSheet: View {
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .onChange(of: showErrorDialog) { _, isShowing in
+        .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
@@ -358,7 +358,7 @@ struct RowImportSheet: View {
     /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
     /// message as grey placeholder text left the sheet with nothing to press but Cancel.
     private func unreadableFile(reason: String) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "Cannot read this file"), systemImage: "exclamationmark.triangle")
         } description: {
             Text(reason)

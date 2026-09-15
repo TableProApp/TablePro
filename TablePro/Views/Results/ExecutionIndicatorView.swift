@@ -69,7 +69,7 @@ struct ExecutionIndicatorView: View {
                 durationReadout(timing)
             }
         }
-        .onChange(of: isExecuting) { _, nowExecuting in
+        .onChange(of: isExecuting) { nowExecuting in
             if nowExecuting { showsBreakdown = false }
         }
         .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)

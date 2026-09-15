@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 /// Everything about how the bytes get there belongs to `NetworkPaneView`, so a connection that
 /// needs no tunnel and no TLS never sees a control about either.
 struct GeneralPaneView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
     @FocusState private var nameFocused: Bool
 
     private var type: DatabaseType { coordinator.network.type }

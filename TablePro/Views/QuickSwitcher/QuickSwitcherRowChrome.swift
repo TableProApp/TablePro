@@ -34,7 +34,7 @@ internal struct QuickSwitcherKeyHint: View {
                 .frame(minWidth: 20, minHeight: 17)
                 .background(
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color(nsColor: .quaternarySystemFill))
+                        .fill(Color(nsColor: .quaternaryFill))
                 )
             Text(label)
                 .font(.caption)

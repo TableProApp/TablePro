@@ -3,13 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class DatabaseTreeMetadataService: CatalogChangeTarget {
+final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     static let shared = DatabaseTreeMetadataService()
 
     struct DatabaseKey: Hashable, Sendable {
@@ -30,31 +30,31 @@ final class DatabaseTreeMetadataService: CatalogChangeTarget {
         let table: String
     }
 
-    private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
-    private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
-    private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
-    private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
-    private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
-    private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
-    private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
+    @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
+    @Published private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
+    @Published private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
+    @Published private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
+    @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
+    @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
+    @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
 
-    @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
-    @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
-    @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
-    @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
-    @ObservationIgnored private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
-    @ObservationIgnored private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
-    @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
+    private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
+    private let schemaDedup = OnceTask<DatabaseKey, [String]>()
+    private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
+    private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
+    private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
+    private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
+    private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
 
-    @ObservationIgnored private var databaseListFence = CommitFence<UUID>()
-    @ObservationIgnored private var schemaListFence = CommitFence<DatabaseKey>()
-    @ObservationIgnored private var tablesFence = CommitFence<ObjectsKey>()
-    @ObservationIgnored private var routinesFence = CommitFence<ObjectsKey>()
-    @ObservationIgnored private var triggersFence = CommitFence<ObjectsKey>()
-    @ObservationIgnored private var typesFence = CommitFence<ObjectsKey>()
-    @ObservationIgnored private var partitionsFence = CommitFence<PartitionsKey>()
+    private var databaseListFence = CommitFence<UUID>()
+    private var schemaListFence = CommitFence<DatabaseKey>()
+    private var tablesFence = CommitFence<ObjectsKey>()
+    private var routinesFence = CommitFence<ObjectsKey>()
+    private var triggersFence = CommitFence<ObjectsKey>()
+    private var typesFence = CommitFence<ObjectsKey>()
+    private var partitionsFence = CommitFence<PartitionsKey>()
 
-    @ObservationIgnored nonisolated private static let logger = Logger(
+    nonisolated private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
     )
 

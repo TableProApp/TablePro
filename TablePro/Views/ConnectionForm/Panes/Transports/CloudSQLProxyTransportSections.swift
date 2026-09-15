@@ -7,7 +7,7 @@ import AppKit
 import SwiftUI
 
 struct CloudSQLProxyTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var viewModel: CloudSQLProxyPaneViewModel { coordinator.cloudSQLProxy }
 

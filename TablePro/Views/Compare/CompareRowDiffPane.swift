@@ -56,7 +56,7 @@ internal enum RowDiffFilter: String, CaseIterable, Hashable {
 }
 
 internal struct CompareRowDiffPane: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let onCompare: () -> Void
 
     @State private var filter: RowDiffFilter = .difference
@@ -65,13 +65,13 @@ internal struct CompareRowDiffPane: View {
         if let plan = session.selectedPlan {
             planBody(plan)
         } else if session.mode == .structure {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Rows Compare Data", systemImage: "tablecells")
             } description: {
                 Text("Switch the comparison to Data to see row differences.")
             }
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("No Table Selected", systemImage: "tablecells")
             } description: {
                 Text("Select a table to see its row differences.")
@@ -236,7 +236,7 @@ internal struct CompareRowDiffPane: View {
         if let summary = plan.summary {
             let entries = summary.entries.filter { filter.matches($0) }
             if entries.isEmpty {
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label("No Rows Match", systemImage: "line.3.horizontal.decrease.circle")
                 } description: {
                     Text("Change the filter to see the other rows.")
@@ -251,7 +251,7 @@ internal struct CompareRowDiffPane: View {
                 .listStyle(.inset)
             }
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Not Compared Yet", systemImage: "arrow.clockwise")
             } description: {
                 Text(notComparedDescription(for: plan))

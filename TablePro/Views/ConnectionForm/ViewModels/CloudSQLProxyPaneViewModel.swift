@@ -3,23 +3,23 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@Observable
 @MainActor
-final class CloudSQLProxyPaneViewModel {
+final class CloudSQLProxyPaneViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
 
-    var state = CloudSQLProxyFormState()
+    @Published var state = CloudSQLProxyFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
-    var resolvedBinaryPath: String?
-    var didResolveBinary: Bool = false
-    var downloadedVersion: String?
-    var isDownloading: Bool = false
-    var downloadError: String?
+    @Published var resolvedBinaryPath: String?
+    @Published var didResolveBinary: Bool = false
+    @Published var downloadedVersion: String?
+    @Published var isDownloading: Bool = false
+    @Published var downloadError: String?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }

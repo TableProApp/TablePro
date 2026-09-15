@@ -3,23 +3,23 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
-@Observable
 @MainActor
-final class CloudflareTunnelPaneViewModel {
+final class CloudflareTunnelPaneViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareTunnelPane")
 
-    var state = CloudflareTunnelFormState()
+    @Published var state = CloudflareTunnelFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
-    var resolvedBinaryPath: String?
-    var didResolveBinary: Bool = false
-    var signInError: String?
+    @Published var resolvedBinaryPath: String?
+    @Published var didResolveBinary: Bool = false
+    @Published var signInError: String?
 
-    @ObservationIgnored private var loginProcess: Process?
+    private var loginProcess: Process?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }

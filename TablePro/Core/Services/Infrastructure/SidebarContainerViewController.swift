@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -164,13 +165,11 @@ internal final class SidebarContainerViewController: NSViewController {
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 box.attach(continuation)
-                withObservationTracking {
-                    _ = state.selectedSidebarTab
-                    _ = state.searchText
-                    _ = state.favoritesSearchText
-                } onChange: {
+                /// One-shot: the continuation resumes on the first change, and the sink is
+                /// released with the box, so nothing needs re-arming.
+                box.hold(state.onMainActorChange {
                     box.resume()
-                }
+                })
             }
         } onCancel: {
             box.resume()
@@ -242,6 +241,16 @@ private final class ObservationContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
     private var resumed = false
+    private var observation: AnyCancellable?
+
+    /// Keeps the subscription alive until the continuation resumes. `withObservationTracking`
+    /// needed nothing here because it fired once and released itself.
+    func hold(_ cancellable: AnyCancellable) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return }
+        observation = cancellable
+    }
 
     func attach(_ continuation: CheckedContinuation<Void, Never>) {
         lock.lock()
@@ -257,6 +266,7 @@ private final class ObservationContinuationBox: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard !resumed else { return }
+        observation = nil
         resumed = true
         continuation?.resume()
         continuation = nil

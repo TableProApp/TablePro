@@ -74,7 +74,7 @@ struct QueryPlanResultView: View {
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var viewMode: QueryPlanViewMode = .diagram
-    @State private var comparison = QueryPlanComparisonModel()
+    @StateObject private var comparison = QueryPlanComparisonModel()
 
     /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
     @State private var selectedNodeId: UUID?
@@ -121,7 +121,7 @@ struct QueryPlanResultView: View {
         .task(id: plan?.rootNode.id) {
             availableMetrics = plan.map(QueryPlanMetricIndex.availableMetrics) ?? []
         }
-        .onChange(of: availableModes) { _, modes in
+        .onChange(of: availableModes) { modes in
             guard !modes.contains(viewMode) else { return }
             viewMode = .diagram
         }

@@ -201,7 +201,7 @@ struct FilterRowView: View {
                 nestedFieldPathButton
             }
         }
-        .onChange(of: filter.columnName) { _, _ in
+        .onChange(of: filter.columnName) { _ in
             filter.elementScope = nil
         }
     }

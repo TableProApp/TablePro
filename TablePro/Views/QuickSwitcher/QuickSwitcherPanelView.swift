@@ -15,7 +15,7 @@ struct QuickSwitcherPanelView: View {
     let onSelect: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
     let onDismiss: () -> Void
 
-    @State private var viewModel: QuickSwitcherViewModel
+    @StateObject private var viewModel: QuickSwitcherViewModel
 
     init(
         schemaProvider: SQLSchemaProvider,
@@ -33,7 +33,7 @@ struct QuickSwitcherPanelView: View {
         self.browseSchema = browseSchema
         self.onSelect = onSelect
         self.onDismiss = onDismiss
-        self._viewModel = State(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
+        self._viewModel = StateObject(wrappedValue: QuickSwitcherViewModel(connectionId: connectionId))
     }
 
     var body: some View {
@@ -68,7 +68,7 @@ struct QuickSwitcherPanelView: View {
 struct QuickSwitcherPanelContent: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    @Bindable var viewModel: QuickSwitcherViewModel
+    @ObservedObject var viewModel: QuickSwitcherViewModel
     let onCommit: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
 
     @State private var keyMonitor: Any?
@@ -203,7 +203,7 @@ struct QuickSwitcherPanelContent: View {
                 .padding(.vertical, QuickSwitcherMetrics.listVerticalPadding)
             }
             .frame(height: listHeight)
-            .onChange(of: viewModel.selectedItemId) { _, newValue in
+            .onChange(of: viewModel.selectedItemId) { newValue in
                 if let id = newValue {
                     proxy.scrollTo(id)
                 }
@@ -311,7 +311,7 @@ struct QuickSwitcherPanelContent: View {
                     .fill(
                         isSelected
                             ? Color.emphasizedSelectionLabel.opacity(0.2)
-                            : Color(nsColor: .quaternarySystemFill)
+                            : Color(nsColor: .quaternaryFill)
                     )
             )
             .accessibilityHidden(true)
@@ -327,7 +327,7 @@ struct QuickSwitcherPanelContent: View {
                 .foregroundStyle(secondaryColor)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
-                .background(Capsule().fill(Color(nsColor: .quaternarySystemFill)))
+                .background(Capsule().fill(Color(nsColor: .quaternaryFill)))
         }
 
         if showsSubtitle(for: item, isSelected: isSelected) {

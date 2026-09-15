@@ -3,20 +3,20 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@Observable
 @MainActor
-final class AdvancedPaneViewModel {
-    var additionalFieldValues: [String: String] = [:]
-    var startupCommands: String = ""
-    var preConnectScript: String = ""
-    var externalAccess: ExternalAccessLevel = .readOnly
-    var localOnly: Bool = false
-    var aiPolicy: AIConnectionPolicy?
+final class AdvancedPaneViewModel: ObservableObject {
+    @Published var additionalFieldValues: [String: String] = [:]
+    @Published var startupCommands: String = ""
+    @Published var preConnectScript: String = ""
+    @Published var externalAccess: ExternalAccessLevel = .readOnly
+    @Published var localOnly: Bool = false
+    @Published var aiPolicy: AIConnectionPolicy?
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var advancedFields: [ConnectionField] {
         guard let type = coordinator?.value?.network.type else { return [] }

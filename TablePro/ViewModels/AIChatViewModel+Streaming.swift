@@ -531,9 +531,9 @@ extension AIChatViewModel {
             self.streamingState = .pausedAtToolLimit(count: count)
             self.streamingTask = nil
             self.persistCurrentConversation()
-            AccessibilityNotification.Announcement(
+            AccessibilityAnnouncement.post(
                 String(format: String(localized: "Paused after %d tool calls."), count)
-            ).post()
+            )
         }
     }
 

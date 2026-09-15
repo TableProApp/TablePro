@@ -94,7 +94,7 @@ enum HighlightMenuBuilder {
         for template in templates {
             let existing = context.existingRules.first { $0.hasSameCondition(as: template) }
             if let existing { existingMatches.append(existing) }
-            submenu.addItem(.sectionHeader(title: sectionTitle(for: template)))
+            submenu.addItem(.sectionHeaderCompat(title: sectionTitle(for: template)))
             submenu.addItem(paletteItem(for: template, existing: existing, actions: actions))
         }
 
@@ -118,12 +118,8 @@ enum HighlightMenuBuilder {
         actions: Actions
     ) -> NSMenuItem {
         let colors = HighlightColor.allCases
-        let palette = NSMenu.palette(
-            colors: colors.map(\.systemColor),
-            titles: colors.map(\.displayName)
-        ) { menu in
-            let selected = menu.selectedItems.compactMap { menu.items.firstIndex(of: $0) }
-            guard let index = selected.first, colors.indices.contains(index) else {
+        let apply: (Int) -> Void = { index in
+            guard colors.indices.contains(index) else {
                 if let existing { actions.remove(existing) }
                 return
             }
@@ -132,13 +128,46 @@ enum HighlightMenuBuilder {
             rule.isEnabled = true
             actions.apply(rule)
         }
-        palette.selectionMode = .selectOne
-        if let existing, let index = colors.firstIndex(of: existing.color), index < palette.items.count {
-            palette.selectedItems = [palette.items[index]]
+
+        let palette: NSMenu
+        if #available(macOS 14.0, *) {
+            let menu = NSMenu.palette(
+                colors: colors.map(\.systemColor),
+                titles: colors.map(\.displayName)
+            ) { menu in
+                apply(menu.selectedItems.compactMap { menu.items.firstIndex(of: $0) }.first ?? -1)
+            }
+            menu.selectionMode = .selectOne
+            if let existing, let index = colors.firstIndex(of: existing.color), index < menu.items.count {
+                menu.selectedItems = [menu.items[index]]
+            }
+            palette = menu
+        } else {
+            /// `NSMenu.palette` is macOS 14. The fallback is a plain menu of the same colours,
+            /// each drawn with its own swatch and check-marked when it is the rule's colour, so
+            /// the same choice is offered a row at a time instead of as one strip.
+            let menu = NSMenu()
+            for (index, color) in colors.enumerated() {
+                let entry = ClosureMenuTarget.item(title: color.displayName) { apply(index) }
+                entry.image = Self.swatch(for: color.systemColor)
+                entry.state = existing?.color == color ? .on : .off
+                menu.addItem(entry)
+            }
+            palette = menu
         }
 
         let item = NSMenuItem(title: sectionTitle(for: template), action: nil, keyEquivalent: "")
         item.submenu = palette
         return item
+    }
+
+    private static func swatch(for color: NSColor) -> NSImage {
+        let size = NSSize(width: 12, height: 12)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(origin: .zero, size: size)).fill()
+        image.unlockFocus()
+        return image
     }
 }

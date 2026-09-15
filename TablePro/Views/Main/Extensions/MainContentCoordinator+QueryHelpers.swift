@@ -20,9 +20,9 @@ extension MainContentCoordinator {
     /// talking over whatever the front one is doing.
     func announceQueryError(_ message: String) {
         guard contentWindow?.isKeyWindow == true else { return }
-        AccessibilityNotification.Announcement(
+        AccessibilityAnnouncement.post(
             String(format: String(localized: "Query failed. %@"), message)
-        ).post()
+        )
     }
 
     /// A table tab's SELECT is the app's own, so it may follow a database switch it waited through

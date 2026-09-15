@@ -12,7 +12,7 @@ struct WelcomeConnectionRow: View {
     let isSelected: Bool
     let onToggleFavorite: () -> Void
     @State private var isHovering = false
-    private let pluginManager = PluginManager.shared
+    @ObservedObject private var pluginManager = PluginManager.shared
 
     private var showsLocalOnly: Bool {
         connection.localOnly && !connection.isSample

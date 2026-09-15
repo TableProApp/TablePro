@@ -10,14 +10,12 @@ import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
 import Combine
-import Observation
 import os
 import TableProPluginKit
 
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
-@Observable
 @MainActor
-final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
+final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextViewDelegate {
     // MARK: - Properties
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
@@ -26,38 +24,38 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     /// so a large document does not copy its whole contents to the assistant on every keystroke.
     private static let languageServiceLengthLimit = EditorHighlighting.maxHighlightableCharacters
 
-    @ObservationIgnored weak var controller: TextViewController?
-    @ObservationIgnored private lazy var diagnosticsController = QueryDiagnosticsController(
+    weak var controller: TextViewController?
+    private lazy var diagnosticsController = QueryDiagnosticsController(
         databaseType: databaseType
     )
-    @ObservationIgnored private let statementRunController = StatementRunController()
+    private let statementRunController = StatementRunController()
     /// Shared schema provider for inline AI suggestions (avoids duplicate schema fetches)
-    @ObservationIgnored var schemaProvider: SQLSchemaProvider?
+    var schemaProvider: SQLSchemaProvider?
     /// Connection-level AI policy for inline suggestions
-    @ObservationIgnored var connectionAIPolicy: AIConnectionPolicy?
-    @ObservationIgnored private var contextMenu: AIEditorContextMenu?
-    @ObservationIgnored private var inlineSuggestionManager: InlineSuggestionManager?
-    @ObservationIgnored private var aiChatInlineSource: AIChatInlineSource?
-    @ObservationIgnored private var copilotDocumentSync: CopilotDocumentSync?
-    @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
-    @ObservationIgnored private var editorSettingsCancellable: AnyCancellable?
-    @ObservationIgnored private var aiSettingsCancellable: AnyCancellable?
-    @ObservationIgnored private var lastInlineSourceKind: InlineSourceKind = .off
+    var connectionAIPolicy: AIConnectionPolicy?
+    private var contextMenu: AIEditorContextMenu?
+    private var inlineSuggestionManager: InlineSuggestionManager?
+    private var aiChatInlineSource: AIChatInlineSource?
+    private var copilotDocumentSync: CopilotDocumentSync?
+    private var copilotInlineSource: CopilotInlineSource?
+    private var editorSettingsCancellable: AnyCancellable?
+    private var aiSettingsCancellable: AnyCancellable?
+    private var lastInlineSourceKind: InlineSourceKind = .off
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
-    @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
-    @ObservationIgnored private var isUppercasing = false
-    @ObservationIgnored private var wasEditorFocused = false
-    @ObservationIgnored private var didDestroy = false
-    @ObservationIgnored private var focusClaimPending = false
+    private var frameChangeTask: Task<Void, Never>?
+    private var isUppercasing = false
+    private var wasEditorFocused = false
+    private var didDestroy = false
+    private var focusClaimPending = false
 
     /// One way. `destroy()` runs when the editor is dismantled, which it never comes back from.
     var isDestroyed: Bool { didDestroy }
 
-    @ObservationIgnored private var hasInstalledEditorServices = false
-    @ObservationIgnored private weak var windowSentinel: WindowAccessorView?
+    private var hasInstalledEditorServices = false
+    private weak var windowSentinel: WindowAccessorView?
 
-    @ObservationIgnored private var cursorRestorePending: NSRange?
+    private var cursorRestorePending: NSRange?
 
     var pendingFocusClaim: Bool { focusClaimPending }
 
@@ -78,7 +76,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         cursorRestorePending = range
     }
 
-    @ObservationIgnored private var foldRestorePending: [Range<Int>]?
+    private var foldRestorePending: [Range<Int>]?
 
     /// Collapsed folds are replayed once, the same way the cursor is, because the fold state the editor reports back
     /// is written on every collapse the user makes.
@@ -100,20 +98,20 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     }
 
     /// Vim mode for UI observation
-    private(set) var vimMode: VimMode = .normal
-    @ObservationIgnored private var vimEngine: VimEngine?
-    @ObservationIgnored private var vimKeyInterceptor: VimKeyInterceptor?
-    @ObservationIgnored private var commandHandler = VimCommandLineHandler()
-    @ObservationIgnored private var vimCursorManager: VimCursorManager?
-    @ObservationIgnored var onCloseTab: (() -> Void)?
-    @ObservationIgnored var onExecuteQuery: (() -> Void)?
-    @ObservationIgnored var onRunStatement: ((String, Int) -> Bool)?
-    @ObservationIgnored var onAIExplain: ((String) -> Void)?
-    @ObservationIgnored var onAIOptimize: ((String) -> Void)?
-    @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
-    @ObservationIgnored var databaseType: DatabaseType?
-    @ObservationIgnored var tabID: UUID?
-    @ObservationIgnored var connectionId: UUID?
+    @Published private(set) var vimMode: VimMode = .normal
+    private var vimEngine: VimEngine?
+    private var vimKeyInterceptor: VimKeyInterceptor?
+    private var commandHandler = VimCommandLineHandler()
+    private var vimCursorManager: VimCursorManager?
+    var onCloseTab: (() -> Void)?
+    var onExecuteQuery: (() -> Void)?
+    var onRunStatement: ((String, Int) -> Bool)?
+    var onAIExplain: ((String) -> Void)?
+    var onAIOptimize: ((String) -> Void)?
+    var onSaveAsFavorite: ((String) -> Void)?
+    var databaseType: DatabaseType?
+    var tabID: UUID?
+    var connectionId: UUID?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -420,7 +418,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         controller.textView?.menu = menu
     }
 
-    @ObservationIgnored private let foldPreview = FoldPreviewController()
+    private let foldPreview = FoldPreviewController()
 
     func toggleFoldAtCursor() {
         controller?.toggleFoldAtCursor()

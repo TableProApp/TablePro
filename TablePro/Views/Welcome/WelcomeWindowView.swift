@@ -11,7 +11,7 @@ internal enum WelcomeFocusField: Hashable {
 }
 
 struct WelcomeWindowView: View {
-    let vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     @FocusState private var focus: WelcomeFocusField?
 
     var body: some View {

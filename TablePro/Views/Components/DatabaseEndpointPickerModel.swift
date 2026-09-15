@@ -12,6 +12,7 @@
 //  their server has no databases.
 //
 
+import Combine
 import Foundation
 
 internal enum DatabaseEndpointListState: Equatable {
@@ -21,13 +22,12 @@ internal enum DatabaseEndpointListState: Equatable {
 }
 
 @MainActor
-@Observable
-internal final class DatabaseEndpointPickerModel {
-    private var databaseStates: [UUID: DatabaseEndpointListState] = [:]
-    private var schemaStates: [String: DatabaseEndpointListState] = [:]
-    @ObservationIgnored private var inFlight: Set<String> = []
-    @ObservationIgnored private let databaseLoader: (DatabaseConnection) async throws -> [String]
-    @ObservationIgnored private let schemaLoader: (DatabaseEndpoint, DatabaseConnection) async throws -> [String]
+internal final class DatabaseEndpointPickerModel: ObservableObject {
+    @Published private var databaseStates: [UUID: DatabaseEndpointListState] = [:]
+    @Published private var schemaStates: [String: DatabaseEndpointListState] = [:]
+    private var inFlight: Set<String> = []
+    private let databaseLoader: (DatabaseConnection) async throws -> [String]
+    private let schemaLoader: (DatabaseEndpoint, DatabaseConnection) async throws -> [String]
 
     internal convenience init() {
         let metadata = CompareMetadataService()

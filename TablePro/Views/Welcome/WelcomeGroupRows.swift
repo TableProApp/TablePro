@@ -8,7 +8,7 @@ import SwiftUI
 internal struct WelcomeTreeRows<ConnectionContent: View>: View {
     let items: [ConnectionGroupTreeNode]
     let parentGroupId: UUID?
-    var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
     let connectionRowBuilder: (DatabaseConnection) -> ConnectionContent
 
     private var hasGroups: Bool {
@@ -67,7 +67,7 @@ internal struct WelcomeTreeRows<ConnectionContent: View>: View {
 
 private struct WelcomeGroupLabel: View {
     let group: ConnectionGroup
-    var vm: WelcomeViewModel
+    @ObservedObject var vm: WelcomeViewModel
 
     var body: some View {
         HStack(spacing: 6) {

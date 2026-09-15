@@ -217,7 +217,7 @@ private struct CreateTagSheet: View {
         }
         .padding(20)
         .frame(width: 300)
-        .onChange(of: tagName) { _, _ in errorMessage = nil }
+        .onChange(of: tagName) { _ in errorMessage = nil }
         .onExitCommand {
             dismiss()
         }

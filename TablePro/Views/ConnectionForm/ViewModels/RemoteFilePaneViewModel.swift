@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
 /// Validation for the Remote File pane.
@@ -11,10 +12,9 @@ import Foundation
 /// connection reaches its server with the same credentials a tunnel would. Only two fields are its
 /// own, and only one of them can be wrong: a connection that names a server and no file has nothing
 /// to open.
-@Observable
 @MainActor
-final class RemoteFilePaneViewModel {
-    var coordinator: WeakCoordinatorRef?
+final class RemoteFilePaneViewModel: ObservableObject {
+    @Published var coordinator: WeakCoordinatorRef?
 
     /// Nothing to say unless this pane is the one on screen.
     ///

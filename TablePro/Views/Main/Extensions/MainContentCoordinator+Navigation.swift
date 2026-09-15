@@ -353,7 +353,9 @@ extension MainContentCoordinator {
         }
         lazyLoadCurrentTabIfNeeded()
         if replacesPreviewTab, createAsPreview {
-            FeatureTipSignals.previewTabReplaced()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.previewTabReplaced()
+            }
         }
         return true
     }

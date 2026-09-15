@@ -12,7 +12,7 @@ import SwiftUI
 /// read as one family of chooser: a search field that keeps focus, a ranked list under it, and a
 /// footer that says what Return and Escape will do.
 struct ColumnJumpPanelView: View {
-    @State private var viewModel: ColumnJumpViewModel
+    @StateObject private var viewModel: ColumnJumpViewModel
     private let onCommit: (GridColumnEntry) -> Void
 
     init(
@@ -21,7 +21,7 @@ struct ColumnJumpPanelView: View {
         cursorColumnIndex: Int? = nil,
         onCommit: @escaping (GridColumnEntry) -> Void
     ) {
-        _viewModel = State(wrappedValue: ColumnJumpViewModel(
+        _viewModel = StateObject(wrappedValue: ColumnJumpViewModel(
             entries: entries,
             initialQuery: initialQuery,
             cursorColumnIndex: cursorColumnIndex
@@ -37,7 +37,7 @@ struct ColumnJumpPanelView: View {
 struct ColumnJumpPanelContent: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    @Bindable var viewModel: ColumnJumpViewModel
+    @ObservedObject var viewModel: ColumnJumpViewModel
     let onCommit: (GridColumnEntry) -> Void
 
     @State private var keyMonitor: Any?
@@ -123,7 +123,7 @@ struct ColumnJumpPanelContent: View {
                     proxy.scrollTo(id)
                 }
             }
-            .onChange(of: viewModel.selectedId) { _, newValue in
+            .onChange(of: viewModel.selectedId) { newValue in
                 if let id = newValue {
                     proxy.scrollTo(id)
                 }
@@ -176,7 +176,7 @@ struct ColumnJumpPanelContent: View {
                     .foregroundStyle(secondaryColor)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(Color(nsColor: .quaternarySystemFill)))
+                    .background(Capsule().fill(Color(nsColor: .quaternaryFill)))
             } else if let position = entry.position {
                 Text(positionLabel(position))
                     .font(.callout)
@@ -223,7 +223,7 @@ struct ColumnJumpPanelContent: View {
                     .fill(
                         isSelected
                             ? Color.emphasizedSelectionLabel.opacity(0.2)
-                            : Color(nsColor: .quaternarySystemFill)
+                            : Color(nsColor: .quaternaryFill)
                     )
             )
             .accessibilityHidden(true)

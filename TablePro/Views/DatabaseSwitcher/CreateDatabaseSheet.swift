@@ -4,7 +4,7 @@ struct CreateDatabaseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let databaseType: DatabaseType
-    let viewModel: DatabaseSwitcherViewModel
+    @ObservedObject var viewModel: DatabaseSwitcherViewModel
     var onCreated: ((String) -> Void)?
 
     @State private var loadState: LoadState = .loading

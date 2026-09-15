@@ -4,23 +4,22 @@
 //
 
 import AppKit
-import Observation
+import Combine
 import os
 
 @MainActor
-@Observable
-internal final class WindowOpener {
+internal final class WindowOpener: ObservableObject {
     internal static let shared = WindowOpener()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
 
-    @ObservationIgnored private var openWelcomeAction: (() -> Void)?
-    @ObservationIgnored private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
-    @ObservationIgnored private var openIntegrationsActivityAction: (() -> Void)?
-    @ObservationIgnored private var openCompareSyncAction: ((UUID?) -> Void)?
-    @ObservationIgnored private var openSettingsAction: ((SettingsPane?) -> Void)?
-    @ObservationIgnored private var stagedDraftId: UUID?
-    @ObservationIgnored private var pendingCalls: [() -> Void] = []
+    private var openWelcomeAction: (() -> Void)?
+    private var openConnectionFormAction: ((ConnectionFormRequest) -> Void)?
+    private var openIntegrationsActivityAction: (() -> Void)?
+    private var openCompareSyncAction: ((UUID?) -> Void)?
+    private var openSettingsAction: ((SettingsPane?) -> Void)?
+    private var stagedDraftId: UUID?
+    private var pendingCalls: [() -> Void] = []
 
     /// Not private so a test can exercise the queue on an instance with no presenters
     /// registered. Production code uses `shared`.

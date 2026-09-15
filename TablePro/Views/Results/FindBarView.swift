@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct FindBarView: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let findState: TabFindState
     /// Changes whenever the rows under the bar are replaced: a page change, a refresh, a re-run, a
     /// sort, or a value filter. The match list describes display positions, so it is stale the
@@ -27,7 +27,7 @@ struct FindBarView: View {
                 accessibilityIdentifier: "find-in-results-field"
             )
             .frame(maxWidth: 320)
-            .onChange(of: term) { _, newValue in
+            .onChange(of: term) { newValue in
                 coordinator.findCoordinator.setTerm(newValue)
             }
 
@@ -68,7 +68,7 @@ struct FindBarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .onAppear { term = findState.term }
-        .onChange(of: rowsRevision) { _, _ in
+        .onChange(of: rowsRevision) { _ in
             coordinator.findCoordinator.runSearch()
         }
     }

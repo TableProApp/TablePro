@@ -124,8 +124,8 @@ struct CreateGroupSheet: View {
         }
         .padding(20)
         .frame(width: 300)
-        .onChange(of: groupName) { _, _ in errorMessage = nil }
-        .onChange(of: selectedParentId) { _, _ in errorMessage = nil }
+        .onChange(of: groupName) { _ in errorMessage = nil }
+        .onChange(of: selectedParentId) { _ in errorMessage = nil }
         .onAppear {
             allGroups = GroupStorage.shared.loadGroups()
             selectedParentId = initialParentId

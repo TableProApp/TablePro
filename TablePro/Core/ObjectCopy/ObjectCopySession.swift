@@ -13,8 +13,8 @@
 //  both databases. Configuring is free; reviewing costs one round of reads.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -44,8 +44,7 @@ internal enum ObjectCopyFormState: Hashable {
 }
 
 @MainActor
-@Observable
-internal final class ObjectCopySession {
+internal final class ObjectCopySession: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ObjectCopySession")
 
     // MARK: - Fixed at launch
@@ -56,41 +55,41 @@ internal final class ObjectCopySession {
 
     // MARK: - Choices
 
-    internal var target: DatabaseEndpoint?
-    internal var newDatabaseName = ""
-    internal var newDatabaseValues: [String: String] = [:]
-    internal var createDatabaseForm: CreateDatabaseFormSpec?
-    internal var createDatabaseFormState: ObjectCopyFormState = .loading
-    internal var content: ObjectCopyContent = .structureAndData
-    internal var existingPolicy: ObjectCopyExistingPolicy = .skip
-    internal var errorHandling: ImportErrorHandling = .stopAndRollback
-    internal var searchText = ""
+    @Published internal var target: DatabaseEndpoint?
+    @Published internal var newDatabaseName = ""
+    @Published internal var newDatabaseValues: [String: String] = [:]
+    @Published internal var createDatabaseForm: CreateDatabaseFormSpec?
+    @Published internal var createDatabaseFormState: ObjectCopyFormState = .loading
+    @Published internal var content: ObjectCopyContent = .structureAndData
+    @Published internal var existingPolicy: ObjectCopyExistingPolicy = .skip
+    @Published internal var errorHandling: ImportErrorHandling = .stopAndRollback
+    @Published internal var searchText = ""
     /// A `WHERE` and a row limit per table, keyed by the selection's own id so two overloads or two
     /// same-named triggers cannot share one. Absent means every row, which is what a copy did
     /// before this existed.
-    internal var rowScopes: [String: PluginExportRowScope] = [:]
+    @Published internal var rowScopes: [String: PluginExportRowScope] = [:]
     /// The table whose filter popover is open, if any. Held here rather than in the row, because a
     /// row is rebuilt whenever the search text changes and a popover anchored to `@State` inside
     /// one closes as soon as the list diffs under a keystroke.
-    internal var rowFilterObjectId: String?
+    @Published internal var rowFilterObjectId: String?
 
     // MARK: - Catalog
 
-    internal var availableObjects: [ObjectCopySelection] = []
-    internal var selectedObjectIds: Set<String> = []
-    internal var isLoadingObjects = true
-    internal var catalogError: String?
+    @Published internal var availableObjects: [ObjectCopySelection] = []
+    @Published internal var selectedObjectIds: Set<String> = []
+    @Published internal var isLoadingObjects = true
+    @Published internal var catalogError: String?
 
     // MARK: - Run
 
-    internal var step: ObjectCopyStep = .configuring
-    internal var plan: ObjectCopyPlan?
-    internal var progress: Progress?
-    internal var copiedRows = 0
-    internal var currentObject = ""
-    internal var result: ObjectCopyRunResult?
-    internal var errorMessage: String?
-    @ObservationIgnored internal var runTask: Task<Void, Never>?
+    @Published internal var step: ObjectCopyStep = .configuring
+    @Published internal var plan: ObjectCopyPlan?
+    @Published internal var progress: Progress?
+    @Published internal var copiedRows = 0
+    @Published internal var currentObject = ""
+    @Published internal var result: ObjectCopyRunResult?
+    @Published internal var errorMessage: String?
+    internal var runTask: Task<Void, Never>?
 
     internal init(
         mode: ObjectCopyMode,
@@ -107,7 +106,7 @@ internal final class ObjectCopySession {
         }
     }
 
-    @ObservationIgnored private let pendingPreselection: [ObjectCopySelection]
+    private let pendingPreselection: [ObjectCopySelection]
 
     // MARK: - Naming
 
@@ -487,7 +486,7 @@ internal final class ObjectCopySession {
         runTask?.cancel()
     }
 
-    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    private var observations: [NSKeyValueObservation] = []
 
     private func observe(_ runProgress: Progress) {
         observations.forEach { $0.invalidate() }

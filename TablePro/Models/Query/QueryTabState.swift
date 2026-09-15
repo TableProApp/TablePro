@@ -3,12 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@MainActor @Observable
-final class GridSelectionState {
-    var indices: Set<Int> = []
+@MainActor
+final class GridSelectionState: ObservableObject {
+    @Published var indices: Set<Int> = []
 }
 
 /// Type of tab

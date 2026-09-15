@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 import os
 
 internal struct RecentlyClosedTabEntry: Codable, Identifiable {
@@ -44,8 +44,7 @@ internal extension RecentlyClosedTabEntry {
 /// windows on every save, so a closed tab necessarily falls out of it. This store is the
 /// append-and-prune log that lets a closed tab come back.
 @MainActor
-@Observable
-internal final class RecentlyClosedTabStore {
+internal final class RecentlyClosedTabStore: ObservableObject {
     internal static let shared = RecentlyClosedTabStore()
 
     internal static let maxEntries = 20
@@ -53,9 +52,9 @@ internal final class RecentlyClosedTabStore {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RecentlyClosedTabStore")
 
-    internal private(set) var entries: [RecentlyClosedTabEntry] = []
+    @Published internal private(set) var entries: [RecentlyClosedTabEntry] = []
 
-    @ObservationIgnored private let directory: URL
+    private let directory: URL
 
     internal init(directory: URL = RecentlyClosedTabStore.defaultDirectory()) {
         self.directory = directory
