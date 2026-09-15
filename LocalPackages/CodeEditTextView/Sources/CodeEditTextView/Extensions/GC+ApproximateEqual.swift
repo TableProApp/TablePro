@@ -15,14 +15,14 @@ extension CGFloat {
 
 extension CGPoint {
     func approxEqual(_ other: CGPoint, tolerance: CGFloat = 0.5) -> Bool {
-        return self.x.approxEqual(other.x, tolerance: tolerance)
+        self.x.approxEqual(other.x, tolerance: tolerance)
         && self.y.approxEqual(other.y, tolerance: tolerance)
     }
 }
 
 extension CGRect {
     func approxEqual(_ other: CGRect, tolerance: CGFloat = 0.5) -> Bool {
-        return self.origin.approxEqual(other.origin, tolerance: tolerance)
+        self.origin.approxEqual(other.origin, tolerance: tolerance)
         && self.width.approxEqual(other.width, tolerance: tolerance)
         && self.height.approxEqual(other.height, tolerance: tolerance)
     }

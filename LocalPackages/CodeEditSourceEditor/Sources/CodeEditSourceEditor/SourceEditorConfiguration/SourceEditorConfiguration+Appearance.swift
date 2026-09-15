@@ -7,9 +7,9 @@
 
 import AppKit
 
-extension SourceEditorConfiguration {
+public extension SourceEditorConfiguration {
     /// Configure the appearance of the editor. Font, theme, line height, etc.
-    public struct Appearance: Equatable {
+    struct Appearance: Equatable {
         /// The theme for syntax highlighting.
         public var theme: EditorTheme
 

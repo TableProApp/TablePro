@@ -14,11 +14,11 @@ extension TextView {
         selectionManager.updateSelectionViews(skipTimerReset: true)
     }
 
-    open override class var isCompatibleWithResponsiveScrolling: Bool {
+    override open class var isCompatibleWithResponsiveScrolling: Bool {
         true
     }
 
-    open override func prepareContent(in rect: NSRect) {
+    override open func prepareContent(in rect: NSRect) {
         needsLayout = true
         super.prepareContent(in: rect)
     }
@@ -26,7 +26,7 @@ extension TextView {
     /// `open` so a subclass in another module can paint its own decorations under the text. Everything drawn here
     /// lands beneath the line fragment views, so an override that paints before `super` sits under the caret line
     /// highlight and the selection as well.
-    open override func draw(_ dirtyRect: NSRect) {
+    override open func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         if isSelectable {
             selectionManager.drawSelections(in: dirtyRect)

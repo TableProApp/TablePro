@@ -45,7 +45,7 @@ public class CEUndoManager: UndoManager {
     private var redoStack: [UndoGroup] = []
 
     private weak var textView: TextView?
-    private(set) public var isGrouping: Bool = false
+    public private(set) var isGrouping: Bool = false
 
     /// After ``endUndoGrouping`` is called, we'd expect the next mutation to be exclusive no matter what. This
     /// flag facilitates that, and is set by ``endUndoGrouping``
@@ -156,7 +156,7 @@ public class CEUndoManager: UndoManager {
 
     // MARK: - Mutations
 
-    public override func registerUndo(withTarget target: Any, selector: Selector, object anObject: Any?) {
+    override public func registerUndo(withTarget target: Any, selector: Selector, object anObject: Any?) {
         // no-op, but just in case to save resources:
         removeAllActions()
     }
@@ -238,8 +238,8 @@ public class CEUndoManager: UndoManager {
 
             // Only attempt this check if the mutations are small enough.
             // If the last mutation was not whitespace, and the new one is, break the group.
-            if lastMutation.mutation.string.count < 1024
-                && mutation.mutation.string.count < 1024
+            if lastMutation.mutation.string.count < 1_024
+                && mutation.mutation.string.count < 1_024
                 && !lastMutation.mutation.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && mutation.mutation.string.trimmingCharacters(in: .whitespaces).isEmpty {
                 return false

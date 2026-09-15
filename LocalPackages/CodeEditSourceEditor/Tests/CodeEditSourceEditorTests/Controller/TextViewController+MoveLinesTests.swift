@@ -5,9 +5,9 @@
 //  Created by Bogdan Belogurov on 01/06/2025.
 //
 
-import XCTest
 @testable import CodeEditSourceEditor
 @testable import CodeEditTextView
+import XCTest
 
 final class TextViewControllerMoveLinesTests: XCTestCase {
     var controller: TextViewController!

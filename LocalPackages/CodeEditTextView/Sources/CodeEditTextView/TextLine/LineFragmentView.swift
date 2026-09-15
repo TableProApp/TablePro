@@ -15,21 +15,21 @@ open class LineFragmentView: NSView {
     private var backgroundAnimation: CABasicAnimation?
 #endif
 
-    open override var isFlipped: Bool {
+    override open var isFlipped: Bool {
         true
     }
 
-    open override var isOpaque: Bool {
+    override open var isOpaque: Bool {
         false
     }
 
-    open override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override open func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    public override init(frame frameRect: NSRect) {
+    override public init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
-    required public init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         super.init(coder: coder)
     }
 
@@ -62,7 +62,7 @@ open class LineFragmentView: NSView {
     }
 #endif
 
-    open override func prepareForReuse() {
+    override open func prepareForReuse() {
         super.prepareForReuse()
         lineFragment = nil
 
@@ -80,7 +80,7 @@ open class LineFragmentView: NSView {
     }
 
     /// Draws the line fragment in the graphics context.
-    open override func draw(_ dirtyRect: NSRect) {
+    override open func draw(_ dirtyRect: NSRect) {
         guard let lineFragment, let context = NSGraphicsContext.current?.cgContext else {
             return
         }

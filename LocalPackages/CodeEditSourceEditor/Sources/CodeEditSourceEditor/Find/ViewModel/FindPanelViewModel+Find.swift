@@ -114,5 +114,4 @@ extension FindPanelViewModel {
 
         return bestIndex >= 0 ? bestIndex : nil
     }
-
 }

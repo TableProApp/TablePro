@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditTextView
+import XCTest
 
 final class DemoTextAttachment: TextAttachment {
     var width: CGFloat
@@ -120,8 +120,8 @@ class TypesetterTests: XCTestCase {
     func test_wrapLinesReturnsValidFragmentRanges() throws {
         // Ensure that when wrapping, each wrapped line fragment has correct ranges.
         typesetter.typeset(
-            NSAttributedString(string: String(repeating: "A", count: 1000), attributes: attributes),
-            documentRange: NSRange(location: 0, length: 1000),
+            NSAttributedString(string: String(repeating: "A", count: 1_000), attributes: attributes),
+            documentRange: NSRange(location: 0, length: 1_000),
             displayData: TextLine.DisplayData(
                 maxWidth: 150,
                 lineHeightMultiplier: 1.0,
@@ -136,7 +136,7 @@ class TypesetterTests: XCTestCase {
 
         for fragment in typesetter.lineFragments {
             // The end of the fragment shouldn't extend beyond the valid document range
-            XCTAssertLessThanOrEqual(fragment.range.max, 1000)
+            XCTAssertLessThanOrEqual(fragment.range.max, 1_000)
             // Because we're breaking on characters, and filling each line with the same char
             // Each fragment should be as long or shorter than the first fragment.
             XCTAssertLessThanOrEqual(fragment.range.length, firstFragment.range.length)
@@ -268,7 +268,7 @@ class TypesetterTests: XCTestCase {
 
     func test_wrapLinesDoesNotBreakOnLastNewline() throws {
         let attachment = DemoTextAttachment(width: 50)
-        let string =  NSAttributedString(string: "AB CD\n12 34\nWX YZ\n", attributes: attributes)
+        let string = NSAttributedString(string: "AB CD\n12 34\nWX YZ\n", attributes: attributes)
         typesetter.typeset(
             string,
             documentRange: NSRange(location: 0, length: 15),

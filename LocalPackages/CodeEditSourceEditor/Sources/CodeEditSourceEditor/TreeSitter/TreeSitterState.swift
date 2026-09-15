@@ -220,7 +220,7 @@ public final class TreeSitterState {
         cursor.matchLimit = TreeSitterClient.Constants.matchLimit
 
         let languageRanges = self.injectedLanguagesFrom(cursor: cursor) { range, point in
-            return readCallback(range, point)
+            readCallback(range, point)
         }
 
         var updatedRanges = IndexSet()

@@ -61,6 +61,6 @@ public protocol HighlightProviding: AnyObject {
     )
 }
 
-extension HighlightProviding {
-    public func willApplyEdit(textView: TextView, range: NSRange) { }
+public extension HighlightProviding {
+    func willApplyEdit(textView: TextView, range: NSRange) { }
 }

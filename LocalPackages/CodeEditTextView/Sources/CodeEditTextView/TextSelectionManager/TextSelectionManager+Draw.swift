@@ -87,5 +87,4 @@ extension TextSelectionManager {
         context.fill(getFillRects(in: rect, for: textSelection))
         context.restoreGState()
     }
-
 }

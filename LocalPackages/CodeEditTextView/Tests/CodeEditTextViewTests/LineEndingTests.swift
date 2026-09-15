@@ -1,29 +1,29 @@
-import XCTest
 @testable import CodeEditTextView
+import XCTest
 
 class LineEndingTests: XCTestCase {
     func test_lineEndingCreateUnix() {
         // The \n character
-        XCTAssertTrue(LineEnding(rawValue: "\n") != nil, "Line ending failed to initialize with the \\n character")
+        XCTAssertNotNil(LineEnding(rawValue: "\n"), "Line ending failed to initialize with the \\n character")
 
         let line = "Loren Ipsum\n"
-        XCTAssertTrue(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\n")
+        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\n")
     }
 
     func test_lineEndingCreateCRLF() {
         // The \r\n sequence
-        XCTAssertTrue(LineEnding(rawValue: "\r\n") != nil, "Line ending failed to initialize with the \\r\\n sequence")
+        XCTAssertNotNil(LineEnding(rawValue: "\r\n"), "Line ending failed to initialize with the \\r\\n sequence")
 
         let line = "Loren Ipsum\r\n"
-        XCTAssertTrue(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\r\\n")
+        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\r\\n")
     }
 
     func test_lineEndingCreateMacOS() {
         // The \r character
-        XCTAssertTrue(LineEnding(rawValue: "\r") != nil, "Line ending failed to initialize with the \\r character")
+        XCTAssertNotNil(LineEnding(rawValue: "\r"), "Line ending failed to initialize with the \\r character")
 
         let line = "Loren Ipsum\r"
-        XCTAssertTrue(LineEnding(line: line) != nil, "Line ending failed to initialize with a line ending in \\r")
+        XCTAssertNotNil(LineEnding(line: line), "Line ending failed to initialize with a line ending in \\r")
     }
 
     func test_detectLineEndingDefault() {
@@ -41,9 +41,9 @@ class LineEndingTests: XCTestCase {
 
     let corpus = "abcdefghijklmnopqrstuvwxyz123456789"
     func makeRandomText(_ goalLineEnding: LineEnding) -> String {
-        (10..<Int.random(in: 20..<100)).reduce("") { partialResult, _ in
-            return partialResult + String(
-                (0..<Int.random(in: 1..<20)).map { _ in corpus.randomElement()! }
+        (10..<Int.random(in: 20..<100)).reduce(into: "") { partialResult, _ in
+            partialResult += String(
+                (0..<Int.random(in: 1..<20)).compactMap { _ in corpus.randomElement() }
             ) + goalLineEnding.rawValue
         }
     }

@@ -170,7 +170,7 @@ extension TextLayoutManager {
         case .text(let ctLine):
             let fragmentIndex = CTLineGetStringIndexForPosition(
                 ctLine,
-                CGPoint(x: xPos - edgeInsets.left - contentPosition.xPos, y: fragment.height/2)
+                CGPoint(x: xPos - edgeInsets.left - contentPosition.xPos, y: fragment.height / 2)
             )
             return fragmentIndex + contentPosition.offset + linePosition.range.location
         case .attachment:
@@ -232,7 +232,7 @@ extension TextLayoutManager {
     ///   - line: The line to calculate rects for.
     /// - Returns: Multiple bounding rects. Will return one rect for each line fragment that overlaps the given range.
     public func rectsFor(range: NSRange) -> [CGRect] {
-        return linesInRange(range).flatMap { self.rectsFor(range: range, in: $0) }
+        linesInRange(range).flatMap { self.rectsFor(range: range, in: $0) }
     }
 
     /// Calculates all text bounding rects that intersect with a given range, with a given line position.
@@ -358,7 +358,7 @@ extension TextLayoutManager {
     ///   - offset: The offset, relative to the start of the *line*.
     /// - Returns: The x position of the character in the drawn line, from the left.
     public func characterXPosition(in lineFragment: LineFragment, for offset: Int) -> CGFloat {
-        renderDelegate?.characterXPosition(in: lineFragment, for: offset) ?? lineFragment._xPos(for: offset)
+        renderDelegate?.characterXPosition(in: lineFragment, for: offset) ?? lineFragment.xPosition(for: offset)
     }
 
     public func characterRect(in lineFragment: LineFragment, for range: NSRange) -> CGRect {

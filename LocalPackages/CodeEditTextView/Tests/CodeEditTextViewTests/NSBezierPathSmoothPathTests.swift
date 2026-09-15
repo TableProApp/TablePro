@@ -1,6 +1,6 @@
 import AppKit
-import Testing
 @testable import CodeEditTextView
+import Testing
 
 @Suite()
 struct NSBezierPathSmoothPathTests {

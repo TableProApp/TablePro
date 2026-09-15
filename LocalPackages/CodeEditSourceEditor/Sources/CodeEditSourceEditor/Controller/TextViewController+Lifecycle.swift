@@ -25,7 +25,7 @@ extension TextViewController {
         textCoordinators.forEach { $0.val?.controllerDidDisappear(controller: self) }
     }
 
-    override public func loadView() {
+    override public func loadView() { // swiftlint:disable:this prohibited_super_call
         super.loadView()
 
         scrollView = SourceEditorScrollView()
@@ -46,8 +46,8 @@ extension TextViewController {
         findViewController.view.viewDidMoveToSuperview()
         self.findViewController = findViewController
 
-        if let _undoManager {
-            textView.setUndoManager(_undoManager)
+        if let editorUndoManager {
+            textView.setUndoManager(editorUndoManager)
         }
 
         styleTextView()

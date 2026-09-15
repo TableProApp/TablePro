@@ -27,7 +27,7 @@ import TableProGrammars
 /// implementation may return synchronously or asynchronously depending on a variety of factors such as document
 /// length, edit length, highlight length and if the object is available for a synchronous call.
 public final class TreeSitterClient: HighlightProviding {
-    static let logger: Logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "TreeSitterClient")
+    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "TreeSitterClient")
 
     enum TreeSitterClientError: Error {
         case invalidEdit
@@ -73,18 +73,18 @@ public final class TreeSitterClient: HighlightProviding {
         public static var parserTimeout: TimeInterval = 0.05
 
         /// The maximum length of an edit before it must be processed asynchronously
-        public static var maxSyncEditLength: Int = 1024
+        public static var maxSyncEditLength: Int = 1_024
 
         /// The maximum length a document can be before all queries and edits must be processed asynchronously.
         public static var maxSyncContentLength: Int = 1_000_000
 
         /// The maximum length a query can be before it must be performed asynchronously.
-        public static var maxSyncQueryLength: Int = 4096
+        public static var maxSyncQueryLength: Int = 4_096
 
         /// The number of characters to read in a read block.
         ///
         /// This has diminishing returns on the number of times the read block is called as this number gets large.
-        public static let charsToReadInBlock: Int = 4096
+        public static let charsToReadInBlock: Int = 4_096
 
         /// The duration before a long parse notification is sent.
         public static var longParseTimeout: Duration = .seconds(0.5)
@@ -248,14 +248,14 @@ public final class TreeSitterClient: HighlightProviding {
         completion: @escaping @MainActor (Result<[HighlightRange], Error>) -> Void
     ) {
         let operation = { [weak self] in
-            return (self?.queryHighlightsForRange(range: range) ?? []).sorted { $0.range.location < $1.range.location }
+            (self?.queryHighlightsForRange(range: range) ?? []).sorted { $0.range.location < $1.range.location }
         }
 
         let longQuery = range.length > Constants.maxSyncQueryLength
         // For small highlight queries (typical per-keystroke chunks of 4096 chars),
         // run synchronously to avoid the async cancellation delay that causes
         // highlights to only appear after typing stops.
-        let isSmallQuery = range.length <= 8192
+        let isSmallQuery = range.length <= 8_192
         let longDocument = !isSmallQuery && textView.documentRange.length > Constants.maxSyncContentLength
         let execAsync = longQuery || longDocument
 

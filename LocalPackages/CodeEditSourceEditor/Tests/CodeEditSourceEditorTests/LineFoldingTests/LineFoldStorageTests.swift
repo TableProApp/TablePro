@@ -5,13 +5,13 @@
 //  Created by Khan Winter on 5/29/25.
 //
 
-import Testing
 @testable import CodeEditSourceEditor
+import Testing
 
 struct LineFoldStorageTests {
     // Helper to create a collapsed provider set
     private func collapsedSet(_ items: (Int, Int)...) -> Set<LineFoldStorage.DepthStartPair> {
-        Set(items.map { (depth, start) in
+        Set(items.map { depth, start in
             LineFoldStorage.DepthStartPair(depth: depth, start: start)
         })
     }

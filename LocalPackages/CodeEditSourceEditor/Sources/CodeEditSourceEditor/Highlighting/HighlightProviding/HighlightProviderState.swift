@@ -30,7 +30,7 @@ class HighlightProviderState {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "", category: "HighlightProviderState")
 
     /// The length to chunk ranges into when passing to the highlighter.
-    private static let rangeChunkLimit = 4096
+    private static let rangeChunkLimit = 4_096
 
     private static let largeDocThreshold = 50_000
 
@@ -42,10 +42,10 @@ class HighlightProviderState {
     /// Any indexes that highlights have been requested for, but haven't been applied.
     /// Indexes/ranges are added to this when highlights are requested and removed
     /// after they are applied
-    private var pendingSet: IndexSet = IndexSet()
+    private var pendingSet = IndexSet()
 
     /// The set of valid indexes
-    private var validSet: IndexSet = IndexSet()
+    private var validSet = IndexSet()
 
     // MARK: - Providers
 

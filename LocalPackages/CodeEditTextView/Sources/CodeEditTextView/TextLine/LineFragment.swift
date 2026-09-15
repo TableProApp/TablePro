@@ -150,12 +150,12 @@ public final class LineFragment: Identifiable, Equatable {
 
     /// Finds the x position of the offset in the string the fragment represents.
     ///
-    /// Underscored, because although this needs to be accessible outside this class, the relevant layout manager method
-    /// should be used.
+    /// Callers outside this class should prefer ``TextLayoutManager/characterXPosition(in:for:)``, which gives the
+    /// render delegate a chance to override the position.
     ///
     /// - Parameter offset: The offset, relative to the start of the *line*.
     /// - Returns: The x position of the character in the drawn line, from the left.
-    func _xPos(for offset: Int) -> CGFloat {
+    func xPosition(for offset: Int) -> CGFloat {
         guard let (content, position) = findContent(at: offset) else {
             return width
         }

@@ -101,20 +101,20 @@ extension ButtonStyle where Self == IconButtonStyle {
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default),
         size: CGFloat? = 24
     ) -> IconButtonStyle {
-        return IconButtonStyle(isActive: isActive, font: font, size: size)
+        IconButtonStyle(isActive: isActive, font: font, size: size)
     }
     static func icon(
         isActive: Bool? = false,
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default),
         size: CGSize? = CGSize(width: 24, height: 24)
     ) -> IconButtonStyle {
-        return IconButtonStyle(isActive: isActive, font: font, size: size)
+        IconButtonStyle(isActive: isActive, font: font, size: size)
     }
     static func icon(
         isActive: Bool? = false,
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default)
     ) -> IconButtonStyle {
-        return IconButtonStyle(isActive: isActive, font: font)
+        IconButtonStyle(isActive: isActive, font: font)
     }
     static var icon: IconButtonStyle { .init() }
 }

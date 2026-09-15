@@ -3,7 +3,7 @@ import AppKit
 import XCTest
 
 final class SuggestionWindowPlacementTests: XCTestCase {
-    private let screenFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    private let screenFrame = NSRect(x: 0, y: 0, width: 1_440, height: 900)
     private let editorFrame = NSRect(x: 100, y: 150, width: 900, height: 600)
     private let font = NSFont.systemFont(ofSize: 12)
 
@@ -96,7 +96,7 @@ final class SuggestionWindowPlacementTests: XCTestCase {
     }
 
     func test_compute_fallsBackToScreenFrameWhenEditorFrameIsNil() {
-        let cursorRect = NSRect(x: 1300, y: 500, width: 6, height: 16)
+        let cursorRect = NSRect(x: 1_300, y: 500, width: 6, height: 16)
         let windowSize = NSSize(width: 280, height: 200)
 
         let placement = SuggestionWindowPlacement.compute(

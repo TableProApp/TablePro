@@ -26,7 +26,7 @@ extension StyledRangeContainer {
         }
 
         // Ordered by priority, lower = higher priority.
-        var allRuns = _storage.values
+        var allRuns = providerStores.values
             .sorted(by: { $0.priority < $1.priority })
             .map { $0.store.runs(in: range.intRange) }
 

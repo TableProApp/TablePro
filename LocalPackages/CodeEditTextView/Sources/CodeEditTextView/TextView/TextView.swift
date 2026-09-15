@@ -44,10 +44,8 @@ open class TextView: NSView, NSTextContent {
         [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.textColor, .kern: 0.0]
     }
 
-    // swiftlint:disable:next line_length
     public static let textDidChangeNotification: Notification.Name = .init(rawValue: "com.CodeEdit.TextView.TextDidChangeNotification")
 
-    // swiftlint:disable:next line_length
     public static let textWillChangeNotification: Notification.Name = .init(rawValue: "com.CodeEdit.TextView.TextWillChangeNotification")
 
     // MARK: - Configuration
@@ -289,9 +287,9 @@ open class TextView: NSView, NSTextContent {
         (" " as NSString).size(withAttributes: [.font: font]).width
     }
 
-    internal(set) public var _undoManager: CEUndoManager?
+    public internal(set) var editorUndoManager: CEUndoManager?
 
-    @objc dynamic open var allowsUndo: Bool
+    @objc open dynamic var allowsUndo: Bool
 
     var scrollView: NSScrollView? {
         guard let enclosingScrollView, enclosingScrollView.documentView == self else { return nil }
@@ -364,13 +362,13 @@ open class TextView: NSView, NSTextContent {
 
         layoutManager.attachments.setUpSelectionListener(for: selectionManager)
 
-        _undoManager = CEUndoManager(textView: self)
+        editorUndoManager = CEUndoManager(textView: self)
 
         layoutManager.layoutLines()
         setUpDragGesture()
     }
 
-    required public init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 

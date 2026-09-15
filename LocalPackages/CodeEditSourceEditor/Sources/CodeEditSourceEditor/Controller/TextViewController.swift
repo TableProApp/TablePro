@@ -17,24 +17,22 @@ import TextFormation
 /// A view controller class for managing a source editor. Uses ``CodeEditTextView/TextView`` for input and rendering,
 /// tree-sitter for syntax highlighting, and TextFormation for live editing completions.
 public class TextViewController: NSViewController {
-    // swiftlint:disable:next line_length
     public static let cursorPositionUpdatedNotification: Notification.Name = .init("TextViewController.cursorPositionNotification")
-    // swiftlint:disable:next line_length
     public static let scrollPositionDidUpdateNotification: Notification.Name = .init("TextViewController.scrollPositionDidUpdateNotification")
 
     // MARK: - Views and Child VCs
 
     weak var findViewController: FindViewController?
 
-    internal(set) public var scrollView: SourceEditorScrollView!
-    internal(set) public var textView: TextView!
+    public internal(set) var scrollView: SourceEditorScrollView!
+    public internal(set) var textView: TextView!
     var gutterView: GutterView!
 
     /// Middleman between the text view to our invisible characters config, with knowledge of things like the
     ///  /// user's theme and indent option to help correctly draw invisible character placeholders.
     var invisibleCharactersCoordinator: InvisibleCharactersCoordinator
 
-    var _undoManager: CEUndoManager!
+    var editorUndoManager: CEUndoManager!
     var systemAppearance: NSAppearance.Name?
 
     var localEventMonitor: Any?
@@ -79,7 +77,7 @@ public class TextViewController: NSViewController {
     }
 
     /// The current cursors' positions ordered by the location of the cursor.
-    internal(set) public var cursorPositions: [CursorPosition] = []
+    public internal(set) var cursorPositions: [CursorPosition] = []
 
     /// The provided highlight provider.
     public var highlightProviders: [HighlightProviding]
@@ -167,7 +165,7 @@ public class TextViewController: NSViewController {
     /// The tree sitter client managed by the source editor.
     ///
     /// This will be `nil` if another highlighter provider is passed to the source editor.
-    internal(set) public var treeSitterClient: TreeSitterClient?
+    public internal(set) var treeSitterClient: TreeSitterClient?
 
     var foldProvider: LineFoldProvider
 
@@ -222,7 +220,7 @@ public class TextViewController: NSViewController {
         self.cursorPositions = cursorPositions
         self.highlightProviders = highlightProviders
         self.foldProvider = foldProvider ?? LineIndentationFoldProvider()
-        self._undoManager = undoManager
+        self.editorUndoManager = undoManager
         self.invisibleCharactersCoordinator = InvisibleCharactersCoordinator(configuration: configuration)
         self.completionDelegate = completionDelegate
 
@@ -254,7 +252,6 @@ public class TextViewController: NSViewController {
             $0.prepareCoordinator(controller: self)
         }
         self.textCoordinators = coordinators.map { WeakCoordinator($0) }
-
     }
 
     required init?(coder: NSCoder) {

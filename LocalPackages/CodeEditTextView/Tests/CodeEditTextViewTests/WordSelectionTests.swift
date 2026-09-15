@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 @Suite
 @MainActor

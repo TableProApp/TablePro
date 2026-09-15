@@ -58,7 +58,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         await model.itemsRequestTask?.value
 
         XCTAssertEqual(presentedWindows.count, 1)
-        XCTAssertTrue(presentedWindows.first === window)
+        XCTAssertIdentical(presentedWindows.first, window)
     }
 }
 

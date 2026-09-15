@@ -5,8 +5,8 @@
 //  Created by Austin Condiff on 11/2/23.
 //
 
-import SwiftUI
 import Combine
+import SwiftUI
 
 struct PanelTextField<LeadingAccessories: View, TrailingAccessories: View>: View {
     @Environment(\.colorScheme)
@@ -54,7 +54,7 @@ struct PanelTextField<LeadingAccessories: View, TrailingAccessories: View>: View
     }
 
     @ViewBuilder
-    public func selectionBackground(
+    func selectionBackground(
         _ isFocused: Bool = false
     ) -> some View {
         if self.controlActive != .inactive || !text.isEmpty {

@@ -69,7 +69,7 @@ class LineFoldRibbonView: NSView {
         let color: NSColor
     }
 
-    override public var isFlipped: Bool {
+    override var isFlipped: Bool {
         true
     }
 
@@ -86,7 +86,7 @@ class LineFoldRibbonView: NSView {
 
     /// A chevron is a control, not text, so the pointer says so by staying an arrow. Disclosure triangles elsewhere
     /// in the system do the same.
-    override public func resetCursorRects() {
+    override func resetCursorRects() {
         addCursorRect(bounds, cursor: .arrow)
     }
 

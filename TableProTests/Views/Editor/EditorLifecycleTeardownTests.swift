@@ -67,11 +67,11 @@ struct EditorLifecycleTeardownTests {
     func releaseHeavyStateKeepsUndoStack() {
         let controller = EditorControllerFixture.make(string: "SELECT 1")
         controller.textView.replaceCharacters(in: NSRange(location: 8, length: 0), with: " -- note")
-        #expect(controller.textView._undoManager?.canUndo == true)
+        #expect(controller.textView.editorUndoManager?.canUndo == true)
 
         controller.releaseHeavyState()
 
-        #expect(controller.textView._undoManager?.canUndo == true)
+        #expect(controller.textView.editorUndoManager?.canUndo == true)
     }
 
     @Test("SQLEditorCoordinator.destroy keeps the document")

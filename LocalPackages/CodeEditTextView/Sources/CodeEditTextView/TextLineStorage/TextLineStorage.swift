@@ -7,10 +7,6 @@
 
 import Foundation
 
-// Disabling the file length here due to the fact that we want to keep certain methods private even to this package.
-// Specifically, all rotation methods, fixup methods, and internal search methods must be kept private.
-// swiftlint:disable file_length
-
 // There is some ugly `Unmanaged` code in this class. This is due to the fact that Swift often has a hard time
 // optimizing retain/release calls for object trees. For instance, the `metaFixup` method has a lot of retain/release
 // calls to each node/parent as we do a little walk up the tree.
@@ -33,11 +29,11 @@ public final class TextLineStorage<Data: Identifiable> {
     var root: Node<Data>?
 
     /// The number of characters in the storage object.
-    private(set) public var length: Int = 0
+    public private(set) var length: Int = 0
     /// The number of lines in the storage object
-    private(set) public var count: Int = 0
+    public private(set) var count: Int = 0
 
-    public var isEmpty: Bool { count == 0 }
+    public var isEmpty: Bool { count == 0 } // swiftlint:disable:this empty_count
 
     public var height: CGFloat = 0
 
@@ -47,17 +43,17 @@ public final class TextLineStorage<Data: Identifiable> {
     }
 
     public var first: TextLinePosition? {
-        guard count > 0, let position = search(forIndex: 0) else { return nil }
+        guard !isEmpty, let position = search(forIndex: 0) else { return nil }
         return TextLinePosition(position: position)
     }
 
     public var last: TextLinePosition? {
-        guard count > 0, let position = search(forIndex: count - 1) else { return nil }
+        guard !isEmpty, let position = search(forIndex: count - 1) else { return nil }
         return TextLinePosition(position: position)
     }
 
     private var lastNode: NodePosition? {
-        guard count > 0, let position = search(forIndex: count - 1) else { return nil }
+        guard !isEmpty, let position = search(forIndex: count - 1) else { return nil }
         return position
     }
 
@@ -88,30 +84,30 @@ public final class TextLineStorage<Data: Identifiable> {
         }
 
         let insertedNode = Node(length: length, data: line, height: height)
-        guard root != nil else {
+        guard let rootNode = root else {
             root = insertedNode
             return
         }
         insertedNode.color = .red
 
-        var currentNode: Unmanaged<Node<Data>> = Unmanaged<Node<Data>>.passUnretained(root!)
+        var currentNode = Unmanaged<Node<Data>>.passUnretained(rootNode)
         var shouldContinue = true
-        var currentOffset: Int = root?.leftSubtreeOffset ?? 0
+        var currentOffset: Int = rootNode.leftSubtreeOffset
         while shouldContinue {
             let node = currentNode.takeUnretainedValue()
             if currentOffset >= index {
-                if node.left != nil {
-                    currentNode = Unmanaged<Node<Data>>.passUnretained(node.left!)
-                    currentOffset = (currentOffset - node.leftSubtreeOffset) + (node.left?.leftSubtreeOffset ?? 0)
+                if let leftChild = node.left {
+                    currentNode = Unmanaged<Node<Data>>.passUnretained(leftChild)
+                    currentOffset = (currentOffset - node.leftSubtreeOffset) + leftChild.leftSubtreeOffset
                 } else {
                     node.left = insertedNode
                     insertedNode.parent = node
                     shouldContinue = false
                 }
             } else {
-                if node.right != nil {
-                    currentNode = Unmanaged<Node<Data>>.passUnretained(node.right!)
-                    currentOffset += node.length + (node.right?.leftSubtreeOffset ?? 0)
+                if let rightChild = node.right {
+                    currentNode = Unmanaged<Node<Data>>.passUnretained(rightChild)
+                    currentOffset += node.length + rightChild.leftSubtreeOffset
                 } else {
                     node.right = insertedNode
                     insertedNode.parent = node
@@ -316,9 +312,9 @@ public final class TextLineStorage<Data: Identifiable> {
         left: Int,
         right: Int,
         parent: Node<Data>?
-    ) -> (Node<Data>?, Int?, CGFloat?, Int) { // swiftlint:disable:this large_tuple
+    ) -> (Node<Data>?, Int?, CGFloat?, Int) {
         guard left < right else { return (nil, nil, nil, 0) }
-        let mid = left + (right - left)/2
+        let mid = left + (right - left) / 2
         let node = Node(
             length: lines[mid].length,
             data: lines[mid].data,
@@ -437,12 +433,8 @@ private extension TextLineStorage {
         // The lowest node whose children change. Every width aggregate from there to the root has to be recomputed.
         let lowestChangedNode: Node<Data>?
 
-        if nodeZ.left == nil || nodeZ.right == nil {
-            lowestChangedNode = nodeZ.parent
-            nodeX = nodeZ.right ?? nodeZ.left
-            transplant(nodeZ, with: nodeX)
-        } else {
-            nodeY = nodeZ.right!.minimum()
+        if nodeZ.left != nil, let nodeZRight = nodeZ.right {
+            nodeY = nodeZRight.minimum()
             lowestChangedNode = nodeY.parent === nodeZ ? nodeY : nodeY.parent
 
             // Delete nodeY from it's original place in the tree.
@@ -472,6 +464,10 @@ private extension TextLineStorage {
 
             // We've inserted nodeY again into a new spot. Update tree meta
             metaFixup(startingAt: nodeY, delta: nodeY.length, deltaHeight: nodeY.height, nodeAction: .inserted)
+        } else {
+            lowestChangedNode = nodeZ.parent
+            nodeX = nodeZ.right ?? nodeZ.left
+            transplant(nodeZ, with: nodeX)
         }
 
         updateSubtreeWidths(upFrom: lowestChangedNode)
@@ -601,8 +597,8 @@ private extension TextLineStorage {
         deltaHeight: CGFloat,
         nodeAction: MetaFixupAction = .none
     ) {
-        guard node.parent != nil, root != nil else { return }
-        let rootRef = Unmanaged<Node<Data>>.passUnretained(root!)
+        guard node.parent != nil, let rootNode = root else { return }
+        let rootRef = Unmanaged<Node<Data>>.passUnretained(rootNode)
         var ref = Unmanaged<Node<Data>>.passUnretained(node)
         while let node = ref._withUnsafeGuaranteedRef({ $0.parent }),
               ref.takeUnretainedValue() !== rootRef.takeUnretainedValue() {
@@ -696,5 +692,3 @@ private extension TextLineStorage {
         ) + getSubtreeMeta(startingAt: node.right)
     }
 }
-
-// swiftlint:enable file_length

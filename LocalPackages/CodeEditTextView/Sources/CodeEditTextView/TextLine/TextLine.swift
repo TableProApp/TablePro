@@ -5,15 +5,15 @@
 //  Created by Khan Winter on 6/21/23.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 /// Represents a displayable line of text.
 public final class TextLine: Identifiable, Equatable {
-    public let id: UUID = UUID()
+    public let id = UUID()
     private var needsLayout: Bool = true
     var maxWidth: CGFloat?
-    private(set) var typesetter: Typesetter = Typesetter()
+    private(set) var typesetter = Typesetter()
 
     /// The line fragments contained by this text line.
     public var lineFragments: TextLineStorage<LineFragment> {

@@ -46,7 +46,7 @@ final class FindViewController: NSViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func loadView() {
+    override func loadView() { // swiftlint:disable:this prohibited_super_call
         super.loadView()
 
         // Set up the `childView` as a subview of our view. Constrained to all edges, except the top is constrained to

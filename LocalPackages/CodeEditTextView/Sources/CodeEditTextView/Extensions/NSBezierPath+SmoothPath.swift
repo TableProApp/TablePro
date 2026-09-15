@@ -22,10 +22,9 @@ extension NSBezierPath {
     }
 
     private func pointIsValid(_ point: CGPoint) -> Bool {
-        return !point.x.isNaN && !point.y.isNaN
+        !point.x.isNaN && !point.y.isNaN
     }
 
-    // swiftlint:disable:next function_body_length
     static func smoothPath(_ points: [NSPoint], radius cornerRadius: CGFloat) -> NSBezierPath? {
         // Normalizing radius to compensate for the quadraticCurve
         let radius = cornerRadius * 1.15
@@ -116,7 +115,6 @@ extension NSBezierPath {
             path.line(to: finalCornerStart)
             path.quadCurve(to: initialCornerEnd, controlPoint: firstPoint)
             path.close()
-
         } else if let lastPoint = points.last {  // For open paths, just connect to the last point
             path.line(to: lastPoint)
         }

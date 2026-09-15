@@ -1,13 +1,11 @@
-import XCTest
+import AppKit
 @testable import CodeEditSourceEditor
 import SwiftTreeSitter
-import AppKit
 import SwiftUI
 import TextStory
+import XCTest
 
-// swiftlint:disable:next type_body_length
 final class TextViewControllerTests: XCTestCase {
-
     var controller: TextViewController!
     var theme: EditorTheme!
 
@@ -16,7 +14,7 @@ final class TextViewControllerTests: XCTestCase {
         controller = Mock.textViewController(theme: theme)
 
         controller.loadView()
-        controller.view.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        controller.view.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         controller.view.layoutSubtreeIfNeeded()
     }
 
@@ -207,13 +205,13 @@ final class TextViewControllerTests: XCTestCase {
         XCTAssertEqual(controller.textView.string, "\t")
 
         // Insert lots of spaces
-        controller.configuration.behavior.indentOption = .spaces(count: 1000)
+        controller.configuration.behavior.indentOption = .spaces(count: 1_000)
         controller.textView.replaceCharacters(
             in: NSRange(location: 0, length: controller.textView.textStorage.length),
             with: ""
         )
         controller.textView.insertText("\t", replacementRange: .zero)
-        XCTAssertEqual(controller.textView.string, String(repeating: " ", count: 1000))
+        XCTAssertEqual(controller.textView.string, String(repeating: " ", count: 1_000))
     }
 
     func test_letterSpacing() throws {
@@ -289,41 +287,43 @@ final class TextViewControllerTests: XCTestCase {
 
         // Test walking forwards
         idx = controller.findClosingPair("{", "}", from: 1, limit: 18, reverse: false)
-        XCTAssert(idx == 17, "Walking forwards failed. Expected `17`, found: `\(String(describing: idx))`")
+        XCTAssertEqual(idx, 17, "Walking forwards failed. Expected `17`, found: `\(String(describing: idx))`")
 
         // Test walking backwards
         idx = controller.findClosingPair("}", "{", from: 17, limit: 0, reverse: true)
-        XCTAssert(idx == 0, "Walking backwards failed. Expected `0`, found: `\(String(describing: idx))`")
+        XCTAssertEqual(idx, 0, "Walking backwards failed. Expected `0`, found: `\(String(describing: idx))`")
 
         // Test extra pair
         controller.textView.string = "{ Loren Ipsum {}} }"
         idx = controller.findClosingPair("{", "}", from: 1, limit: 19, reverse: false)
-        XCTAssert(
-            idx == 16,
+        XCTAssertEqual(
+            idx,
+            16,
             "Walking forwards with extra bracket pair failed. Expected `16`, found: `\(String(describing: idx))`"
         )
 
         // Text extra pair backwards
         controller.textView.string = "{ Loren Ipsum {{} }"
         idx = controller.findClosingPair("}", "{", from: 18, limit: 0, reverse: true)
-        XCTAssert(
-            idx == 14,
+        XCTAssertEqual(
+            idx,
+            14,
             "Walking backwards with extra bracket pair failed. Expected `14`, found: `\(String(describing: idx))`"
         )
 
         // Test missing pair
         controller.textView.string = "{ Loren Ipsum { }"
         idx = controller.findClosingPair("{", "}", from: 1, limit: 17, reverse: false)
-        XCTAssert(
-            idx == nil,
+        XCTAssertNil(
+            idx,
             "Walking forwards with missing pair failed. Expected `nil`, found: `\(String(describing: idx))`"
         )
 
         // Test missing pair backwards
         controller.textView.string = " Loren Ipsum {} }"
         idx = controller.findClosingPair("}", "{", from: 17, limit: 0, reverse: true)
-        XCTAssert(
-            idx == nil,
+        XCTAssertNil(
+            idx,
             "Walking backwards with missing pair failed. Expected `nil`, found: `\(String(describing: idx))`"
         )
     }
@@ -337,7 +337,7 @@ final class TextViewControllerTests: XCTestCase {
 
         controller.setText("\nHello World with newline!")
 
-        XCTAssert(controller.text == "\nHello World with newline!")
+        XCTAssertEqual(controller.text, "\nHello World with newline!")
         XCTAssertEqual(controller.cursorPositions.count, 1)
         XCTAssertEqual(controller.cursorPositions[0].start.line, 2)
         XCTAssertEqual(controller.cursorPositions[0].start.column, 1)
@@ -364,7 +364,7 @@ final class TextViewControllerTests: XCTestCase {
 
         // Test an invalid position is ignored
         controller.setCursorPositions([CursorPosition(range: NSRange(location: -1, length: 25))])
-        XCTAssertTrue(controller.cursorPositions.count == 0)
+        XCTAssertTrue(controller.cursorPositions.isEmpty)
 
         // Test that column and line are correct
         controller.setText("1\n2\n3\n4\n")
@@ -425,7 +425,7 @@ final class TextViewControllerTests: XCTestCase {
 
         // Test an invalid position is ignored
         controller.setCursorPositions([CursorPosition(line: -1, column: 10)])
-        XCTAssertTrue(controller.cursorPositions.count == 0)
+        XCTAssertTrue(controller.cursorPositions.isEmpty)
 
         // Test that column and line are correct
         controller.setText("1\n2\n3\n4\n")
@@ -604,5 +604,3 @@ final class TextViewControllerTests: XCTestCase {
         }
     }
 }
-
-// swiftlint:disable:this file_length

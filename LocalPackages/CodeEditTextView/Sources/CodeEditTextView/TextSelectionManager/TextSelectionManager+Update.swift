@@ -7,8 +7,8 @@
 
 import Foundation
 
-extension TextSelectionManager {
-    public func didReplaceCharacters(in range: NSRange, replacementLength: Int) {
+public extension TextSelectionManager {
+    func didReplaceCharacters(in range: NSRange, replacementLength: Int) {
         // Net shift = chars added - chars removed. Selections past `range.max` move by this delta.
         // The previous formula short-circuited to `replacementLength` when non-zero, which dropped
         // the chars-removed term and over-shifted selections after a same-length replace (e.g. the
@@ -47,7 +47,7 @@ extension TextSelectionManager {
         }
     }
 
-    public func notifyAfterEdit(force: Bool = false) {
+    func notifyAfterEdit(force: Bool = false) {
         updateSelectionViews(force: force)
         notifySelectionChanged()
     }

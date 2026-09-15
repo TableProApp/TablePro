@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// The fold chevrons are drawn rather than hosted as views, which is what keeps scrolling a long document cheap. A
 /// drawn control is not a control as far as assistive technology is concerned unless the view says so, so the ribbon
@@ -20,10 +20,10 @@ struct LineFoldAccessibilityTests {
     init() throws {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.textView.string = "A\nB\nC\nD\nE\nF\n"
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         ribbon = LineFoldRibbonView(controller: controller)
-        ribbon.frame = NSRect(x: 0, y: 0, width: 14, height: 1000)
+        ribbon.frame = NSRect(x: 0, y: 0, width: 14, height: 1_000)
         model = try #require(ribbon.model)
         model.foldCache = LineFoldStorage(
             documentLength: controller.textView.textStorage.length,

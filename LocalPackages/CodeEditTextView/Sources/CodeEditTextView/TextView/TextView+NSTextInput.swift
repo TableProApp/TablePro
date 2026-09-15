@@ -137,7 +137,7 @@ extension TextView: NSTextInputClient {
     @objc public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         guard isEditable, let insertString = typedText(from: string) else { return }
         // Needs to insert text, but not notify the undo manager.
-        _undoManager?.disable()
+        editorUndoManager?.disable()
         layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
         let shouldInsert = layoutManager.markedTextManager.markedRanges.isEmpty
 
@@ -163,7 +163,7 @@ extension TextView: NSTextInputClient {
             layoutManager.markedTextManager.removeAll()
         }
 
-        _undoManager?.enable()
+        editorUndoManager?.enable()
     }
 
     /// Unmarks text and causes layout if needed after a selection update.
@@ -188,10 +188,10 @@ extension TextView: NSTextInputClient {
     /// If there is no marked text, the invocation of this method has no effect.
     @objc public func unmarkText() {
         if layoutManager.markedTextManager.hasMarkedText {
-            _undoManager?.disable()
+            editorUndoManager?.disable()
             layoutManager.markedTextManager.resolveRanges(inDocumentOfLength: textStorage.length)
             replaceCharacters(in: layoutManager.markedTextManager.markedRanges, with: "")
-            _undoManager?.enable()
+            editorUndoManager?.enable()
             layoutManager.markedTextManager.removeAll()
             layoutManager.setNeedsLayout()
             needsLayout = true
@@ -204,7 +204,7 @@ extension TextView: NSTextInputClient {
     /// length.
     /// - Returns: The range of selected text or {NSNotFound, 0} if there is no selection.
     @objc public func selectedRange() -> NSRange {
-        return selectionManager?.textSelections.first?.range ?? NSRange(location: NSNotFound, length: 0)
+        selectionManager?.textSelections.first?.range ?? NSRange(location: NSNotFound, length: 0)
     }
 
     /// Returns the range of the marked text.
@@ -214,7 +214,7 @@ extension TextView: NSTextInputClient {
     ///
     /// - Returns: The range of marked text or {NSNotFound, 0} if there is no marked range.
     @objc public func markedRange() -> NSRange {
-        return layoutManager?.markedTextManager.markedRanges.first ?? NSRange(location: NSNotFound, length: 0)
+        layoutManager?.markedTextManager.markedRanges.first ?? NSRange(location: NSNotFound, length: 0)
     }
 
     /// Returns a Boolean value indicating whether the receiver has marked text.
@@ -224,7 +224,7 @@ extension TextView: NSTextInputClient {
     ///
     /// - Returns: true if the receiver has marked text; otherwise false.
     @objc public func hasMarkedText() -> Bool {
-        return layoutManager.markedTextManager.hasMarkedText
+        layoutManager.markedTextManager.hasMarkedText
     }
 
     /// Returns an array of attribute names recognized by the receiver.
@@ -367,7 +367,7 @@ extension TextView: NSTextInputClient {
     @objc public func fractionOfDistanceThroughGlyph(for point: NSPoint) -> CGFloat {
         guard let offset = layoutManager.textOffsetAtPoint(point),
               let characterRect = layoutManager.rectForOffset(offset) else { return 0 }
-        return (point.x - characterRect.minX)/characterRect.width
+        return (point.x - characterRect.minX) / characterRect.width
     }
 
     /// Returns the baseline position of a given character relative to the origin of rectangle returned by

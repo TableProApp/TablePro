@@ -9,7 +9,6 @@ import AppKit
 import CodeEditTextView
 
 extension TextView {
-
     /// Setup context menus
     func setupMenus() {
         guard let menu = menu else { return }
@@ -41,7 +40,6 @@ extension TextView {
     }
 
     func codeMenu(_ menu: NSMenu) -> NSMenu {
-
         menu.insertItem(withTitle: "Refactor",
                         action: nil,
                         keyEquivalent: "",

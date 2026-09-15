@@ -52,7 +52,7 @@ public class GutterView: NSView {
     }
 
     @Invalidating(.display)
-    var edgeInsets: EdgeInsets = EdgeInsets(leading: GutterView.windowEdgeLeadingInset, trailing: 12)
+    var edgeInsets = EdgeInsets(leading: GutterView.windowEdgeLeadingInset, trailing: 12)
 
     /// The margin a gutter keeps to its left when it runs down the side of a window.
     static let windowEdgeLeadingInset: CGFloat = 20
@@ -96,7 +96,7 @@ public class GutterView: NSView {
     var selectedLineTextColor: NSColor? = .labelColor
 
     @Invalidating(.display)
-    var selectedLineColor: NSColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
+    var selectedLineColor = NSColor.selectedTextBackgroundColor.withSystemEffect(.disabled)
 
     /// Toggle the visibility of the line fold decoration.
     @Invalidating(.display)
@@ -472,7 +472,7 @@ public class GutterView: NSView {
             let lineNumberWidth = CTLineGetTypographicBounds(ctLine, &ascent, nil, nil)
             let fontHeightDifference = ((fragment?.height ?? 0) - fontLineHeight) / 4
 
-            let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0)/2 + fontHeightDifference
+            let yPos = linePosition.yPos + ascent + (fragment?.heightDifference ?? 0) / 2 + fontHeightDifference
             // Leading padding + (width - linewidth)
             let xPos = lineNumberLeading + (numberAreaWidth - lineNumberWidth)
 

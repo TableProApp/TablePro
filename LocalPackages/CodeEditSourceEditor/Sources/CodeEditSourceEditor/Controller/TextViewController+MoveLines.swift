@@ -7,9 +7,9 @@
 
 import Foundation
 
-extension TextViewController {
+public extension TextViewController {
     /// Moves the selected lines up by one line.
-    public func moveLinesUp() {
+    func moveLinesUp() {
         guard !cursorPositions.isEmpty else { return }
         guard let selection = textView.selectionManager.textSelections.first,
               let lineIndexes = getOverlappingLines(for: selection.range) else { return }
@@ -58,7 +58,7 @@ extension TextViewController {
     }
 
     /// Moves the selected lines down by one line.
-    public func moveLinesDown() {
+    func moveLinesDown() {
         guard !cursorPositions.isEmpty else { return }
         guard let selection = textView.selectionManager.textSelections.first,
               let lineIndexes = getOverlappingLines(for: selection.range) else { return }

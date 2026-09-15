@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// A placeholder stands in for code the reader asked to hide and now wants back, so one click brings it back rather
 /// than selecting it. Attachments that stand in for content of their own keep the selecting behaviour.

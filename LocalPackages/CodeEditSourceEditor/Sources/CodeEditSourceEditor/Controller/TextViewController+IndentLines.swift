@@ -113,7 +113,7 @@ extension TextViewController {
         selectionIndex: Int,
         lineCount: Int
     ) -> Int {
-        return 1 + ((textSelectionCount - selectionIndex) - 1) * lineCount
+        1 + ((textSelectionCount - selectionIndex) - 1) * lineCount
     }
 
     /// This method is used to handle tabs appropriately when multiple lines are selected,

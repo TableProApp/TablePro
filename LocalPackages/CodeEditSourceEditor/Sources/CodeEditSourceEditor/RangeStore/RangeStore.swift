@@ -19,10 +19,10 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
     typealias Run = RangeStoreRun<Element>
     typealias RopeType = Rope<StoredRun>
     typealias Index = RopeType.Index
-    var _guts = RopeType()
+    var rope = RopeType()
 
     var length: Int {
-        _guts.count(in: OffsetMetric())
+        rope.count(in: OffsetMetric())
     }
 
     /// A small performance improvement for multiple identical queries, as often happens when used
@@ -30,7 +30,7 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
     private var cache: (range: Range<Int>, runs: [Run])?
 
     init(documentLength: Int) {
-        self._guts = RopeType([StoredRun(length: documentLength, value: nil)])
+        self.rope = RopeType([StoredRun(length: documentLength, value: nil)])
     }
 
     // MARK: - Core
@@ -39,7 +39,7 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
     /// - Parameter range: The range to query.
     /// - Returns: A continuous array of runs representing the queried range.
     func runs(in range: Range<Int>) -> [Run] {
-        let length = _guts.count(in: OffsetMetric())
+        let length = rope.count(in: OffsetMetric())
         assert(range.lowerBound >= 0, "Negative lowerBound")
         assert(range.upperBound <= length, "upperBound outside valid range")
         if let cache, cache.range == range {
@@ -48,13 +48,13 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
 
         var runs = [Run]()
         var index = findIndex(at: range.lowerBound).index
-        var offset: Int = range.lowerBound - _guts.offset(of: index, in: OffsetMetric())
+        var offset: Int = range.lowerBound - rope.offset(of: index, in: OffsetMetric())
         var remainingLength = range.upperBound - range.lowerBound
 
-        while index < _guts.endIndex,
-              _guts.offset(of: index, in: OffsetMetric()) < range.upperBound,
+        while index < rope.endIndex,
+              rope.offset(of: index, in: OffsetMetric()) < range.upperBound,
               remainingLength > 0 {
-            let run = _guts[index]
+            let run = rope[index]
             let runLength = min(run.length - offset, remainingLength)
             runs.append(Run(length: runLength, value: run.value))
 
@@ -62,7 +62,7 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
             if remainingLength <= 0 {
                 break // Avoid even checking the storage for the next index
             }
-            index = _guts.index(after: index)
+            index = rope.index(after: index)
             offset = 0
         }
 
@@ -75,7 +75,7 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
     ///   - range: The range to write to.
     mutating func set(value: Element, for range: Range<Int>) {
         assert(range.lowerBound >= 0, "Negative lowerBound")
-        assert(range.upperBound <= _guts.count(in: OffsetMetric()), "upperBound outside valid range")
+        assert(range.upperBound <= rope.count(in: OffsetMetric()), "upperBound outside valid range")
         set(runs: [Run(length: range.length, value: value)], for: range)
     }
 
@@ -94,7 +94,7 @@ struct RangeStore<Element: RangeStoreElement>: Sendable {
         // This is quite slow in debug builds but is a *really* important assertion for internal state.
         assert(!runs.contains(where: { $0.length < 0 }), "Runs cannot have negative length.")
 
-        _guts.replaceSubrange(
+        rope.replaceSubrange(
             range,
             in: OffsetMetric(),
             with: runs.map { StoredRun(length: $0.length, value: $0.value) }
@@ -122,7 +122,7 @@ extension RangeStore {
         }
 
         storageUpdated(
-            replacedCharactersIn: storageRange.clamped(to: 0..<_guts.count(in: OffsetMetric())),
+            replacedCharactersIn: storageRange.clamped(to: 0..<rope.count(in: OffsetMetric())),
             withCount: newLength
         )
     }
@@ -130,15 +130,15 @@ extension RangeStore {
     /// Handles keeping the internal storage in sync with the document.
     mutating func storageUpdated(replacedCharactersIn range: Range<Int>, withCount newLength: Int) {
         assert(range.lowerBound >= 0, "Negative lowerBound")
-        assert(range.upperBound <= _guts.count(in: OffsetMetric()), "upperBound outside valid range")
+        assert(range.upperBound <= rope.count(in: OffsetMetric()), "upperBound outside valid range")
 
         if newLength != 0 {
-            _guts.replaceSubrange(range, in: OffsetMetric(), with: [.empty(length: newLength)])
+            rope.replaceSubrange(range, in: OffsetMetric(), with: [.empty(length: newLength)])
         } else {
-            _guts.removeSubrange(range, in: OffsetMetric())
+            rope.removeSubrange(range, in: OffsetMetric())
         }
 
-        if _guts.count > 0 {
+        if !rope.isEmpty {
             // Coalesce nearby items if necessary.
             coalesceNearby(range: Range(lowerBound: range.lowerBound, length: newLength))
         }

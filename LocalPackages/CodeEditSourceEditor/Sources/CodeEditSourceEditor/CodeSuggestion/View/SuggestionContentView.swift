@@ -54,7 +54,7 @@ struct SuggestionContentView: View {
                     }
                 }
             }
-            .padding(.vertical, SuggestionController.WINDOW_PADDING)
+            .padding(.vertical, SuggestionController.windowPadding)
             .frame(height: listMaxHeight)
             .onChange(of: model.selectedIndex) { newIndex in
                 withAnimation(.easeInOut(duration: 0.1)) {
@@ -81,7 +81,7 @@ struct SuggestionContentView: View {
                 .fill(index == model.selectedIndex
                       ? Color(nsColor: .selectedContentBackgroundColor)
                       : Color.clear)
-                .padding(.horizontal, SuggestionController.WINDOW_PADDING)
+                .padding(.horizontal, SuggestionController.windowPadding)
         )
         .contentShape(Rectangle())
         .onTapGesture(count: 1) {
@@ -110,12 +110,12 @@ struct SuggestionContentView: View {
             64
         )
         let textWidth = CGFloat(maxLabelLength) * font.charWidth
-        return max(iconWidth + textWidth + CodeSuggestionLabelView.HORIZONTAL_PADDING * 2, 280)
+        return max(iconWidth + textWidth + CodeSuggestionLabelView.horizontalPadding * 2, 280)
     }
 
     private var listMaxHeight: CGFloat {
-        let visibleRows = min(CGFloat(model.items.count), SuggestionController.MAX_VISIBLE_ROWS)
-        return Self.rowHeight * visibleRows + SuggestionController.WINDOW_PADDING * 2
+        let visibleRows = min(CGFloat(model.items.count), SuggestionController.maxVisibleRows)
+        return Self.rowHeight * visibleRows + SuggestionController.windowPadding * 2
     }
 
     private var noCompletionsView: some View {

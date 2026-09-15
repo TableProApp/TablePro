@@ -5,9 +5,9 @@
 //  Created by Austin Condiff on 3/12/25.
 //
 
-import SwiftUI
 import AppKit
 import CodeEditTextView
+import SwiftUI
 
 /// A SwiftUI view that provides a find and replace interface for the text editor.
 ///
@@ -95,7 +95,7 @@ private struct FindModePickerWidthPreferenceKey: PreferenceKey {
 /// A mock target for previews that implements the FindPanelTarget protocol
 class MockFindPanelTarget: FindPanelTarget {
     var textView: TextView!
-    var findPanelTargetView: NSView = NSView()
+    var findPanelTargetView = NSView()
     var cursorPositions: [CursorPosition] = []
 
     func setCursorPositions(_ positions: [CursorPosition], scrollToVisible: Bool) {}

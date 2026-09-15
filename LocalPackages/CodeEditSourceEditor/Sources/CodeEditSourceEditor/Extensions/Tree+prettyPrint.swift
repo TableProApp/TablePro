@@ -36,7 +36,7 @@ extension Tree {
 
             if cursor.goToFirstChild() {
                 while true {
-                    if cursor.currentNode != nil && cursor.currentNode!.isNamed {
+                    if cursor.currentNode?.isNamed == true {
                         print("")
                     }
 
@@ -53,16 +53,13 @@ extension Tree {
             }
 
             if visible {
-                print(")", terminator: depth == 1 ? "\n": "")
+                print(")", terminator: depth == 1 ? "\n" : "")
             }
         }
 
-        if cursor.currentNode?.childCount == 0 {
-            if !cursor.currentNode!.isNamed {
-                print("{\(cursor.currentNode!.nodeType ?? "NONE")}")
-            } else {
-                print("\"\(cursor.currentNode!.nodeType ?? "NONE")\"")
-            }
+        if let node = cursor.currentNode, node.childCount == 0 {
+            let nodeType = node.nodeType ?? "NONE"
+            print(node.isNamed ? "\"\(nodeType)\"" : "{\(nodeType)}")
         } else {
             p(cursor, depth: 1)
         }
@@ -97,7 +94,7 @@ extension MutableTree {
 
             if cursor.goToFirstChild() {
                 while true {
-                    if cursor.currentNode != nil && cursor.currentNode!.isNamed {
+                    if cursor.currentNode?.isNamed == true {
                         print("")
                     }
 
@@ -114,16 +111,13 @@ extension MutableTree {
             }
 
             if visible {
-                print(")", terminator: depth == 1 ? "\n": "")
+                print(")", terminator: depth == 1 ? "\n" : "")
             }
         }
 
-        if cursor.currentNode?.childCount == 0 {
-            if !cursor.currentNode!.isNamed {
-                print("{\(cursor.currentNode!.nodeType ?? "NONE")}")
-            } else {
-                print("\"\(cursor.currentNode!.nodeType ?? "NONE")\"")
-            }
+        if let node = cursor.currentNode, node.childCount == 0 {
+            let nodeType = node.nodeType ?? "NONE"
+            print(node.isNamed ? "\"\(nodeType)\"" : "{\(nodeType)}")
         } else {
             p(cursor, depth: 1)
         }

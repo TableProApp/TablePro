@@ -26,9 +26,9 @@ public final class SuggestionController: NSWindowController {
     // MARK: - Private Properties
 
     /// Maximum number of visible rows (8.5)
-    static let MAX_VISIBLE_ROWS: CGFloat = 8.5
+    static let maxVisibleRows: CGFloat = 8.5
     /// Padding at top and bottom of the window
-    static let WINDOW_PADDING: CGFloat = 5
+    static let windowPadding: CGFloat = 5
 
     /// Tracks when the window is placed above the cursor
     var isWindowAboveCursor = false

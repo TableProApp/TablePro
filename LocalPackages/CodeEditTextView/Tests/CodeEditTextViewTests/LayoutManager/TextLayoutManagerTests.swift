@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 extension TextLineStorage {
     /// Validate that the internal tree is intact and correct.
@@ -10,18 +10,18 @@ extension TextLineStorage {
     /// - All lines can be found by iterating `y` positions.
     func validateInternalState() {
         func validateLines(_ lines: [TextLineStorage<Data>.TextLinePosition]) {
-            var _lastLine: TextLineStorage<Data>.TextLinePosition?
+            var previousLine: TextLineStorage<Data>.TextLinePosition?
             for line in lines {
-                guard let lastLine = _lastLine else {
+                guard let lastLine = previousLine else {
                     #expect(line.index == 0)
-                    _lastLine = line
+                    previousLine = line
                     return
                 }
 
                 #expect(line.index == lastLine.index + 1)
                 #expect(line.yPos >= lastLine.yPos + lastLine.height)
                 #expect(line.range.location == lastLine.range.max + 1)
-                _lastLine = line
+                previousLine = line
             }
         }
 
@@ -42,7 +42,7 @@ struct TextLayoutManagerTests {
 
     init() throws {
         textView = TextView(string: "A\nB\nC\nD")
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.updateFrameIfNeeded()
         textStorage = textView.textStorage
         layoutManager = try #require(textView.layoutManager)
@@ -56,7 +56,7 @@ struct TextLayoutManagerTests {
             ("A\r\nB\nC\rD", NSRange(location: 0, length: 0), 7) // Insert mixed line breaks
         ]
     )
-    func insertText(_ testItem: (String, NSRange, Int)) throws { // swiftlint:disable:this large_tuple
+    func insertText(_ testItem: (String, NSRange, Int)) throws {
         let (insertText, insertRange, lineCount) = testItem
 
         textStorage.replaceCharacters(in: insertRange, with: insertText)
@@ -92,7 +92,7 @@ struct TextLayoutManagerTests {
             ("A\r\nB\nC\r", NSRange(location: 0, length: 6), 4) // Mixed line breaks
         ]
     )
-    func replaceText(_ testItem: (String, NSRange, Int)) throws { // swiftlint:disable:this large_tuple
+    func replaceText(_ testItem: (String, NSRange, Int)) throws {
         let (replaceText, replaceRange, lineCount) = testItem
 
         textStorage.replaceCharacters(in: replaceRange, with: replaceText)
@@ -106,7 +106,7 @@ struct TextLayoutManagerTests {
     /// call to ``TextLayoutManager/preparePositionForDisplay``.
     @Test
     func getRectsDoesNotRemoveLayoutInfo() {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         let lineFragmentIDs = Set(
             layoutManager.lineStorage
                 .linesInRange(NSRange(location: 0, length: 7))
@@ -140,10 +140,10 @@ struct TextLayoutManagerTests {
     func yPositionIteratorDoesNotSkipEmptyLines() {
         // Layout manager keeps 1-length lines at the 2nd and 4th lines.
         textStorage.mutableString.setString("A\n\nB\n\nC")
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         var lineIndexes: [Int] = []
-        for line in layoutManager.linesStartingAt(0.0, until: 1000.0) {
+        for line in layoutManager.linesStartingAt(0.0, until: 1_000.0) {
             lineIndexes.append(line.index)
         }
 
@@ -163,7 +163,7 @@ struct TextLayoutManagerTests {
     func rangeIteratorDoesNotSkipEmptyLines() {
         // Layout manager keeps 1-length lines at the 2nd and 4th lines.
         textStorage.mutableString.setString("A\n\nB\n\nC")
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         var lineIndexes: [Int] = []
         for line in layoutManager.linesInRange(textView.documentRange) {
@@ -183,7 +183,7 @@ struct TextLayoutManagerTests {
 
     @Test
     func afterLayoutDoesntNeedLayout() {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         #expect(layoutManager.needsLayout == false)
     }
 
@@ -192,7 +192,7 @@ struct TextLayoutManagerTests {
     /// See `editsWithNewlinesForceLayoutGoingDownScreen`
     @Test
     func invalidatingRangeLaysOutLines() {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         let lineIds = Set(layoutManager.linesInRange(NSRange(start: 2, end: 4)).map { $0.data.id })
         layoutManager.invalidateLayoutForRange(NSRange(start: 2, end: 4))
@@ -219,7 +219,7 @@ struct TextLayoutManagerTests {
     /// equal the expected invalidated lines.
     @Test
     func editsWithNewlinesForceLayoutGoingDownScreen() {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         textStorage.replaceCharacters(in: NSRange(start: 4, end: 4), with: "Z\n")
 
         let expectedLineIds = Array(
@@ -234,7 +234,7 @@ struct TextLayoutManagerTests {
 
     @Test
     func rectForOffsetReturnsValueAfterEndOfDoc() throws {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         for idx in 0..<10 {
             // This should return something even after the end of the document.
@@ -255,7 +255,7 @@ struct TextLayoutManagerTests {
             textView: NSView(),
             delegate: nil
         )
-        manager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        manager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         // Shrink the text without notifying the standalone manager, leaving its line storage stale and longer.
         storage.mutableString.setString("S")
@@ -274,11 +274,11 @@ struct TextLayoutManagerTests {
 
     @Test
     func textOffsetForPointReturnsValuesEverywhere() throws {
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         // textOffsetAtPoint is valid *everywhere*. It should always return something.
-        for xPos in 0..<1000 {
-            for yPos in 0..<1000 {
+        for xPos in 0..<1_000 {
+            for yPos in 0..<1_000 {
                 #expect(layoutManager.textOffsetAtPoint(CGPoint(x: xPos, y: yPos)) != nil)
             }
         }
@@ -288,10 +288,10 @@ struct TextLayoutManagerTests {
     func editingEndOfDocumentInvalidatesLastLine() throws {
         // Setup a slightly longer final line
         textStorage.replaceCharacters(in: NSRange(location: 7, length: 0), with: "EFGH")
-        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         textStorage.replaceCharacters(in: NSRange(location: 10, length: 1), with: "")
-        let invalidatedLineIds = layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        let invalidatedLineIds = layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
 
         let expectedLineIds = Array(
             layoutManager.lineStorage.linesInRange(NSRange(location: 6, length: 0))
@@ -302,7 +302,7 @@ struct TextLayoutManagerTests {
 
     private func makeLaidOutTextView(string: String) -> TextView {
         let view = TextView(string: string)
-        view.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        view.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         view.updateFrameIfNeeded()
         return view
     }

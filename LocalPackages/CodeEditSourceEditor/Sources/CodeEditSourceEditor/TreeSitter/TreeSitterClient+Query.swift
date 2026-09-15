@@ -12,14 +12,14 @@ import TableProGrammars
 // Functions for querying and navigating the tree-sitter node tree. These functions should throw if not able to be
 // performed asynchronously as (currently) any editing tasks that would use these must be performed synchronously.
 
-extension TreeSitterClient {
-    public struct NodeResult {
+public extension TreeSitterClient {
+    struct NodeResult {
         let id: GrammarID
         let language: Language
         public let node: Node
     }
 
-    public struct QueryResult {
+    struct QueryResult {
         let id: GrammarID
         let cursor: ResolvingQueryMatchSequence<QueryCursor>
     }
@@ -28,7 +28,7 @@ extension TreeSitterClient {
     /// - Parameter location: The location to get a node for.
     /// - Returns: All pairs of `Language, Node` where Node is the nearest node in the tree at the given location.
     /// - Throws: A ``TreeSitterClient.Error`` error.
-    public func nodesAt(location: Int) throws -> [NodeResult] {
+    func nodesAt(location: Int) throws -> [NodeResult] {
         let range = NSRange(location: location, length: 1)
         return try nodesAt(range: range)
     }
@@ -37,7 +37,7 @@ extension TreeSitterClient {
     /// - Parameter location: The location to get a node for.
     /// - Returns: All pairs of `Language, Node` where Node is the nearest node in the tree at the given location.
     /// - Throws: A ``TreeSitterClient.Error`` error.
-    public func nodesAt(location: Int) async throws -> [NodeResult] {
+    func nodesAt(location: Int) async throws -> [NodeResult] {
         let range = NSRange(location: location, length: 1)
         return try await nodesAt(range: range)
     }
@@ -46,7 +46,7 @@ extension TreeSitterClient {
     /// - Parameter range: The range to get a node for.
     /// - Returns: All pairs of `Language, Node` where Node is the nearest node in the tree in the given range.
     /// - Throws: A ``TreeSitterClient.Error`` error.
-    public func nodesAt(range: NSRange) throws -> [NodeResult] {
+    func nodesAt(range: NSRange) throws -> [NodeResult] {
         try executor.execSync({
             var nodes: [NodeResult] = []
             for layer in self.state?.layers ?? [] {
@@ -64,7 +64,7 @@ extension TreeSitterClient {
     /// - Parameter range: The range to get a node for.
     /// - Returns: All pairs of `Language, Node` where Node is the nearest node in the tree in the given range.
     /// - Throws: A ``TreeSitterClient.Error`` error.
-    public func nodesAt(range: NSRange) async throws -> [NodeResult] {
+    func nodesAt(range: NSRange) async throws -> [NodeResult] {
         try await executor.exec {
             var nodes: [NodeResult] = []
             for layer in self.state?.layers ?? [] {
@@ -82,7 +82,7 @@ extension TreeSitterClient {
     ///   - query: The query to perform.
     ///   - matchingLanguages: A set of languages to limit the query to. Leave empty to not filter out any layers.
     /// - Returns: Any matching nodes from the query.
-    public func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) throws -> [QueryResult] {
+    func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) throws -> [QueryResult] {
         try executor.execSync({
             guard let readCallback = self.readCallback else { return [] }
             var result: [QueryResult] = []
@@ -103,7 +103,7 @@ extension TreeSitterClient {
     ///   - query: The query to perform.
     ///   - matchingLanguages: A set of languages to limit the query to. Leave empty to not filter out any layers.
     /// - Returns: Any matching nodes from the query.
-    public func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) async throws -> [QueryResult] {
+    func query(_ query: Query, matchingLanguages: Set<GrammarID> = []) async throws -> [QueryResult] {
         try await executor.exec {
             guard let readCallback = self.readCallback else { return [] }
             var result: [QueryResult] = []

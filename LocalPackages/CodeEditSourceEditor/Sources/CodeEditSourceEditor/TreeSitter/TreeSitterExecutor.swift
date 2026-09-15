@@ -130,14 +130,13 @@ final package class TreeSitterExecutor {
     }
 
     func exec<T>(_ priority: Priority = .access, operation: @escaping () -> T) async throws -> T {
-        return try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { continuation in
             execAsync(priority: priority) {
                 continuation.resume(returning: operation())
                 return true
             } onCancel: {
                 continuation.resume(throwing: CancellationError())
             }
-
         }
     }
 

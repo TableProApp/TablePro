@@ -1,6 +1,6 @@
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 /// Regression tests for cmd+arrow (visualLine destination) when the cursor sits at, or one
 /// position before, the end of a line that has no trailing newline.
@@ -10,9 +10,9 @@ import AppKit
 struct VisualLineEndOfDocumentTests {
     private func makeLaidOutTextView(_ text: String) -> TextView {
         let textView = TextView(string: text)
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textView.updateFrameIfNeeded()
-        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        textView.layoutManager.layoutLines(in: NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         return textView
     }
 

@@ -7,13 +7,13 @@
 
 import AppKit
 
-extension TextView {
-    override public func viewWillMove(toWindow newWindow: NSWindow?) {
+public extension TextView {
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
         layoutManager.layoutLines()
     }
 
-    override public func viewWillMove(toSuperview newSuperview: NSView?) {
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
         super.viewWillMove(toSuperview: newSuperview)
         guard let clipView = newSuperview as? NSClipView,
               let scrollView = enclosingScrollView ?? clipView.enclosingScrollView else {
@@ -23,7 +23,7 @@ extension TextView {
         setUpScrollListeners(scrollView: scrollView)
     }
 
-    override public func viewDidEndLiveResize() {
+    override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
         updateFrameIfNeeded()
     }

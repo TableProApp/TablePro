@@ -26,7 +26,7 @@ class VisibleRangeProvider {
 
     /// The set of visible indexes in the text view
     lazy var visibleSet: IndexSet = {
-        return IndexSet(integersIn: textView?.visibleTextRange ?? NSRange())
+        IndexSet(integersIn: textView?.visibleTextRange ?? NSRange())
     }()
 
     init(textView: TextView) {

@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 5/20/23.
 //
 
-import Foundation
 import CodeEditTextView
+import Foundation
 import SwiftTreeSitter
 
 extension TextView {
@@ -18,7 +18,7 @@ extension TextView {
     ///
     /// - Returns: A new block for reading contents for tree-sitter.
     func createReadBlock() -> Parser.ReadBlock {
-        return { [weak self] byteOffset, _ in
+        { [weak self] byteOffset, _ in
             let workItem: () -> Data? = {
                 let limit = self?.documentRange.length ?? 0
                 let location = byteOffset / 2
@@ -41,7 +41,7 @@ extension TextView {
     ///
     /// - Returns: A new block for reading contents for tree-sitter.
     func createReadCallback() -> SwiftTreeSitter.Predicate.TextProvider {
-        return { [weak self] range, _ in
+        { [weak self] range, _ in
             let workItem: () -> String? = {
                 self?.textStorage.substring(from: range)
             }

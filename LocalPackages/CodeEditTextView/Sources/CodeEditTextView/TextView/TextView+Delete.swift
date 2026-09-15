@@ -8,39 +8,39 @@
 import AppKit
 
 extension TextView {
-    open override func deleteBackward(_ sender: Any?) {
+    override open func deleteBackward(_ sender: Any?) {
         delete(direction: .backward, destination: .character)
     }
 
-    open override func deleteBackwardByDecomposingPreviousCharacter(_ sender: Any?) {
+    override open func deleteBackwardByDecomposingPreviousCharacter(_ sender: Any?) {
         delete(direction: .backward, destination: .character, decomposeCharacters: true)
     }
 
-    open override func deleteForward(_ sender: Any?) {
+    override open func deleteForward(_ sender: Any?) {
         delete(direction: .forward, destination: .character)
     }
 
-    open override func deleteWordBackward(_ sender: Any?) {
+    override open func deleteWordBackward(_ sender: Any?) {
         delete(direction: .backward, destination: .word)
     }
 
-    open override func deleteWordForward(_ sender: Any?) {
+    override open func deleteWordForward(_ sender: Any?) {
         delete(direction: .forward, destination: .word)
     }
 
-    open override func deleteToBeginningOfLine(_ sender: Any?) {
+    override open func deleteToBeginningOfLine(_ sender: Any?) {
         delete(direction: .backward, destination: .line)
     }
 
-    open override func deleteToEndOfLine(_ sender: Any?) {
+    override open func deleteToEndOfLine(_ sender: Any?) {
         delete(direction: .forward, destination: .line)
     }
 
-    open override func deleteToBeginningOfParagraph(_ sender: Any?) {
+    override open func deleteToBeginningOfParagraph(_ sender: Any?) {
         delete(direction: .backward, destination: .line)
     }
 
-    open override func deleteToEndOfParagraph(_ sender: Any?) {
+    override open func deleteToEndOfParagraph(_ sender: Any?) {
         delete(direction: .forward, destination: .line)
     }
 

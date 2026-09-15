@@ -4,9 +4,9 @@
 //
 
 import AppKit
+@testable import CodeEditSourceEditor
 import CodeEditTextView
 import Testing
-@testable import CodeEditSourceEditor
 
 /// The gutter's chevron and a collapsed fold's placeholder are two controls onto the same fold, so both report which
 /// fold the pointer is on into one place. Splitting that state was what let the chevron stay dim while the reader was
@@ -20,8 +20,8 @@ struct LineFoldHoverTests {
     init() throws {
         controller = Mock.textViewController(theme: Mock.theme())
         controller.textView.string = "A\nB\nC\nD\nE\nF\n"
-        controller.textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        controller.textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        controller.textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
         ribbon = LineFoldRibbonView(controller: controller)
         ribbon.model?.foldCache = LineFoldStorage(
             documentLength: controller.textView.textStorage.length,

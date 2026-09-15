@@ -18,28 +18,28 @@ extension RangeStore {
     /// - Parameter range: The range of the item to coalesce around.
     mutating func coalesceNearby(range: Range<Int>) {
         var index = findIndex(at: range.lastIndex).index
-        if index < _guts.endIndex && _guts.index(after: index) != _guts.endIndex {
+        if index < rope.endIndex && rope.index(after: index) != rope.endIndex {
             coalesceRunAfter(index: &index)
         }
 
         index = findIndex(at: range.lowerBound).index
-        if index > _guts.startIndex && index < _guts.endIndex && _guts.count > 1 {
-            index = _guts.index(before: index)
+        if index > rope.startIndex && index < rope.endIndex && rope.count > 1 {
+            index = rope.index(before: index)
             coalesceRunAfter(index: &index)
         }
     }
 
     /// Check if the run and the run after it are equal, and if so remove the next one and concatenate the two.
     private mutating func coalesceRunAfter(index: inout Index) {
-        let thisRun = _guts[index]
-        let nextRun = _guts[_guts.index(after: index)]
+        let thisRun = rope[index]
+        let nextRun = rope[rope.index(after: index)]
 
         if thisRun.compareValue(nextRun) {
-            _guts.update(at: &index, by: { $0.length += nextRun.length })
+            rope.update(at: &index, by: { $0.length += nextRun.length })
 
             var nextIndex = index
-            _guts.formIndex(after: &nextIndex)
-            _guts.remove(at: nextIndex)
+            rope.formIndex(after: &nextIndex)
+            rope.remove(at: nextIndex)
         }
     }
 }

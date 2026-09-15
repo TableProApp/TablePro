@@ -42,18 +42,18 @@ extension ToggleStyle where Self == IconToggleStyle {
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default),
         size: CGFloat? = 24
     ) -> IconToggleStyle {
-        return IconToggleStyle(font: font, size: size)
+        IconToggleStyle(font: font, size: size)
     }
     static func icon(
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default),
         size: CGSize? = CGSize(width: 24, height: 24)
     ) -> IconToggleStyle {
-        return IconToggleStyle(font: font, size: size)
+        IconToggleStyle(font: font, size: size)
     }
     static func icon(
         font: Font? = Font.system(size: 14.5, weight: .regular, design: .default)
     ) -> IconToggleStyle {
-        return IconToggleStyle(font: font)
+        IconToggleStyle(font: font)
     }
     static var icon: IconToggleStyle { .init() }
 }

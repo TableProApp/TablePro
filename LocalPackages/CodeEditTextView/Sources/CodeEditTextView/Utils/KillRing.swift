@@ -7,17 +7,13 @@
 
 import Foundation
 
-// swiftlint:disable line_length
-
 /// A global kill ring similar to emacs. With support for killing and yanking multiple cursors.
 ///
 /// Documentation sources:
 /// - [Emacs kill ring](https://www.gnu.org/software/emacs/manual/html_node/emacs/Yanking.html)
 /// - [Cocoa Docs](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/TextDefaultsBindings/TextDefaultsBindings.html)
 class KillRing {
-    static let shared: KillRing = KillRing()
-
-    // swiftlint:enable line_length
+    static let shared = KillRing()
 
     private static let bufferSizeKey = "NSTextKillRingSize"
 
@@ -27,6 +23,7 @@ class KillRing {
     init(_ size: Int? = nil) {
         buffer = Array(
             repeating: [""],
+            // swiftlint:disable:next storage_environment_defaults
             count: size ?? max(1, UserDefaults.standard.integer(forKey: Self.bufferSizeKey))
         )
     }
@@ -39,7 +36,7 @@ class KillRing {
 
     /// Yanks the current item in the ring.
     func yank() -> [String] {
-        return buffer[index]
+        buffer[index]
     }
 
     /// Yanks an item from the ring, and selects the next one in the ring.

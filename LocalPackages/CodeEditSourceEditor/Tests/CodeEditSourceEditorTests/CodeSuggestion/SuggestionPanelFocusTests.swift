@@ -48,7 +48,7 @@ final class SuggestionPanelFocusTests: XCTestCase {
         controller.showWindow(attachedTo: parentWindow)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
 
-        XCTAssertTrue(parentWindow.firstResponder === textView)
+        XCTAssertIdentical(parentWindow.firstResponder, textView)
     }
 
     @MainActor
@@ -64,10 +64,10 @@ final class SuggestionPanelFocusTests: XCTestCase {
         }
 
         controller.showWindow(attachedTo: firstParent)
-        XCTAssertTrue(window.parent === firstParent)
+        XCTAssertIdentical(window.parent, firstParent)
 
         controller.showWindow(attachedTo: secondParent)
-        XCTAssertTrue(window.parent === secondParent)
+        XCTAssertIdentical(window.parent, secondParent)
         XCTAssertFalse(firstParent.childWindows?.contains(window) ?? false)
     }
 
@@ -79,7 +79,7 @@ final class SuggestionPanelFocusTests: XCTestCase {
         defer { parentWindow.close() }
 
         controller.showWindow(attachedTo: parentWindow)
-        XCTAssertTrue(window.parent === parentWindow)
+        XCTAssertIdentical(window.parent, parentWindow)
 
         controller.close()
 

@@ -5,9 +5,9 @@
 //  Created by Khan Winter on 5/5/25.
 //
 
-import Testing
 import AppKit
 @testable import CodeEditTextView
+import Testing
 
 @Suite
 @MainActor
@@ -18,7 +18,7 @@ struct TextLayoutManagerAttachmentsTests {
 
     init() throws {
         textView = TextView(string: "12\n45\n78\n01\n")
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
         textStorage = textView.textStorage
         layoutManager = try #require(textView.layoutManager)
     }
@@ -91,7 +91,7 @@ struct TextLayoutManagerAttachmentsTests {
     func iterateWithAttachments() {
         layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 1, end: 2))
 
-        let lines = layoutManager.linesStartingAt(0, until: 1000)
+        let lines = layoutManager.linesStartingAt(0, until: 1_000)
 
         // Line "5" is from the trailing newline. That shows up as an empty line in the view.
         #expect(lines.map { $0.index } == [0, 1, 2, 3, 4])
@@ -103,7 +103,7 @@ struct TextLayoutManagerAttachmentsTests {
         layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 2, end: 7))
         layoutManager.attachments.add(DemoTextAttachment(), for: NSRange(start: 7, end: 11))
 
-        let lines = layoutManager.linesStartingAt(0, until: 1000)
+        let lines = layoutManager.linesStartingAt(0, until: 1_000)
 
         // Line "5" is from the trailing newline. That shows up as an empty line in the view.
         #expect(lines.map { $0.index } == [0, 4])

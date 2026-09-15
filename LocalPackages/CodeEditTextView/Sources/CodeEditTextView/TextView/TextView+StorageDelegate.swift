@@ -7,12 +7,12 @@
 
 import AppKit
 
-extension TextView {
-    public func addStorageDelegate(_ delegate: NSTextStorageDelegate) {
+public extension TextView {
+    func addStorageDelegate(_ delegate: NSTextStorageDelegate) {
         storageDelegate.addDelegate(delegate)
     }
 
-    public func removeStorageDelegate(_ delegate: NSTextStorageDelegate) {
+    func removeStorageDelegate(_ delegate: NSTextStorageDelegate) {
         storageDelegate.removeDelegate(delegate)
     }
 }

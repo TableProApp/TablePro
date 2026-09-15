@@ -7,17 +7,17 @@
 
 import AppKit
 
-extension TextView {
+public extension TextView {
     /// Sets the text view's text to a new value.
     /// - Parameter text: The new contents of the text view.
-    public func setText(_ text: String) {
+    func setText(_ text: String) {
         let newStorage = NSTextStorage(string: text)
         self.setTextStorage(newStorage)
     }
 
     /// Set a new text storage object for the view.
     /// - Parameter textStorage: The new text storage to use.
-    public func setTextStorage(_ textStorage: NSTextStorage) {
+    func setTextStorage(_ textStorage: NSTextStorage) {
         self.textStorage = textStorage
 
         if let storageDelegate = textStorage.delegate as? MultiStorageDelegate {
@@ -43,7 +43,7 @@ extension TextView {
             )
         )
 
-        _undoManager?.clearStack()
+        editorUndoManager?.clearStack()
 
         textStorage.delegate = storageDelegate
         needsDisplay = true

@@ -8,7 +8,7 @@
 import AppKit
 
 extension TextView {
-    open override func becomeFirstResponder() -> Bool {
+    override open func becomeFirstResponder() -> Bool {
         isFirstResponder = true
         selectionManager.cursorTimer.resetTimer()
         selectionManager.updateSelectionViews(force: true)
@@ -16,14 +16,14 @@ extension TextView {
         return super.becomeFirstResponder()
     }
 
-    open override func resignFirstResponder() -> Bool {
+    override open func resignFirstResponder() -> Bool {
         isFirstResponder = false
         selectionManager.removeCursors()
         needsDisplay = true
         return super.resignFirstResponder()
     }
 
-    open override var canBecomeKeyView: Bool {
+    override open var canBecomeKeyView: Bool {
         super.canBecomeKeyView && acceptsFirstResponder && !isHiddenOrHasHiddenAncestor
     }
 
@@ -37,19 +37,19 @@ extension TextView {
         _ = resignFirstResponder()
     }
 
-    open override var needsPanelToBecomeKey: Bool {
+    override open var needsPanelToBecomeKey: Bool {
         isSelectable || isEditable
     }
 
-    open override var acceptsFirstResponder: Bool {
+    override open var acceptsFirstResponder: Bool {
         isSelectable
     }
 
-    open override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        return true
+    override open func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
     }
 
-    open override func resetCursorRects() {
+    override open func resetCursorRects() {
         super.resetCursorRects()
         if isSelectable {
             addCursorRect(

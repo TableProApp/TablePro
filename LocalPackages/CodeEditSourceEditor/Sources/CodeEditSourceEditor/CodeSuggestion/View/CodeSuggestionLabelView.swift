@@ -9,7 +9,7 @@ import AppKit
 import SwiftUI
 
 struct CodeSuggestionLabelView: View {
-    static let HORIZONTAL_PADDING: CGFloat = 13
+    static let horizontalPadding: CGFloat = 13
 
     let suggestion: CodeSuggestionEntry
     let labelColor: NSColor
@@ -95,7 +95,7 @@ struct CodeSuggestionLabelView: View {
             }
         }
         .padding(.vertical, 3)
-        .padding(.horizontal, Self.HORIZONTAL_PADDING)
+        .padding(.horizontal, Self.horizontalPadding)
         .buttonStyle(PlainButtonStyle())
     }
 }

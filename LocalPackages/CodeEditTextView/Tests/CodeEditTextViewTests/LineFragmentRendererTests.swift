@@ -270,7 +270,7 @@ struct LineFragmentRendererTests {
         let fragment = try makeFragment(text, attachments: [attachment])
         #expect(fragment.contents.count == 3)
 
-        let attachmentX = fragment._xPos(for: attachmentLocation)
+        let attachmentX = fragment.xPosition(for: attachmentLocation)
         let strips = [
             CGRect(x: (attachmentX / 2).rounded(), y: 0, width: 60, height: 34),
             CGRect(x: (attachmentX - 20).rounded(), y: 0, width: 60, height: 34),

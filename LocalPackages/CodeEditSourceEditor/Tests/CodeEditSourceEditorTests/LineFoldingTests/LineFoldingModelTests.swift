@@ -5,10 +5,10 @@
 //  Created by Khan Winter on 5/8/25.
 //
 
-import Testing
 import AppKit
-import CodeEditTextView
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import Testing
 
 @MainActor
 struct LineFoldingModelTests {
@@ -45,8 +45,8 @@ struct LineFoldingModelTests {
         controller = Mock.textViewController(theme: Mock.theme())
         textView = controller.textView
         textView.string = "A\nB\nC\nD\nE\nF\n"
-        textView.frame = NSRect(x: 0, y: 0, width: 1000, height: 1000)
-        textView.updatedViewport(NSRect(x: 0, y: 0, width: 1000, height: 1000))
+        textView.frame = NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
+        textView.updatedViewport(NSRect(x: 0, y: 0, width: 1_000, height: 1_000))
     }
 
     /// A little unintuitive but we only expect two folds with this. Our provider goes 0-1-2-2-1-0, but we don't

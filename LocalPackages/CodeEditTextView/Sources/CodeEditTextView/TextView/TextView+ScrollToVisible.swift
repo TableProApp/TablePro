@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 6/15/24.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 extension TextView {
     fileprivate typealias Direction = TextSelectionManager.Direction
@@ -86,12 +86,11 @@ extension TextView {
     }
 
     /// Get the selection that should be scrolled to visible for the current text selection.
-    /// - Returns: The the selection to scroll to.
+    /// - Returns: The lowest selection on screen, which is the one with the greatest upper bound.
     private func getSelection() -> TextSelection? {
         selectionManager
             .textSelections
-            .sorted(by: { $0.range.max > $1.range.max }) // Get the lowest one.
-            .first
+            .max(by: { $0.range.max < $1.range.max })
     }
 
     /// Returns the offset that isn't the pivot of the selection.

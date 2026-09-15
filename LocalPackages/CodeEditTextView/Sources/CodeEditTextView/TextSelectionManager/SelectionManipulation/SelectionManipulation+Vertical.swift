@@ -67,7 +67,7 @@ package extension TextSelectionManager {
               let newOffset = layoutManager?.textOffsetAtPoint(
                 CGPoint(
                     x: suggestedXPos ?? point.x,
-                    y: point.y - (layoutManager?.estimateLineHeight() ?? 2.0)/2 * (up ? 1 : -3)
+                    y: point.y - (layoutManager?.estimateLineHeight() ?? 2.0) / 2 * (up ? 1 : -3)
                 )
               ) else {
             return NSRange(location: offset, length: 0)

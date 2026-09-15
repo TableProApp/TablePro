@@ -1,5 +1,5 @@
-import XCTest
 @testable import CodeEditSourceEditor
+import XCTest
 
 final class StyledRangeContainerTests: XCTestCase {
     typealias Run = RangeStoreRun<StyledRangeContainer.StyleElement>
@@ -10,15 +10,15 @@ final class StyledRangeContainerTests: XCTestCase {
         let store = StyledRangeContainer(documentLength: 100, providers: providers)
 
         // Have to do string conversion due to missing Comparable conformance pre-macOS 14
-        XCTAssertEqual(store._storage.keys.sorted(), providers)
+        XCTAssertEqual(store.providerStores.keys.sorted(), providers)
         XCTAssert(
-            store._storage.values.allSatisfy({ $0.store.length == 100 }),
+            store.providerStores.values.allSatisfy({ $0.store.length == 100 }),
             "One or more providers have incorrect length"
         )
     }
 
     @MainActor
-    func test_setHighlights() {
+    func test_setHighlights() throws {
         let providers = [0, 1]
         let store = StyledRangeContainer(documentLength: 100, providers: providers)
 
@@ -28,11 +28,13 @@ final class StyledRangeContainerTests: XCTestCase {
             rangeToHighlight: NSRange(location: 0, length: 100)
         )
 
-        XCTAssertNotNil(store._storage[providers[0]])
-        XCTAssertEqual(store._storage[providers[0]]!.store.count, 3)
-        XCTAssertNil(store._storage[providers[0]]!.store.runs(in: 0..<100)[0].value?.capture)
-        XCTAssertEqual(store._storage[providers[0]]!.store.runs(in: 0..<100)[1].value?.capture, .comment)
-        XCTAssertNil(store._storage[providers[0]]!.store.runs(in: 0..<100)[2].value?.capture)
+        let storage = try XCTUnwrap(store.providerStores[providers[0]])
+        XCTAssertEqual(storage.store.runCount, 3)
+
+        let runs = storage.store.runs(in: 0..<100)
+        XCTAssertNil(runs[0].value?.capture)
+        XCTAssertEqual(runs[1].value?.capture, .comment)
+        XCTAssertNil(runs[2].value?.capture)
 
         XCTAssertEqual(
             store.runsIn(range: NSRange(location: 0, length: 100)),

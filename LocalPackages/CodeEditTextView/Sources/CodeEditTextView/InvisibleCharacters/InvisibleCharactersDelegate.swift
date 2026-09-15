@@ -5,8 +5,8 @@
 //  Created by Khan Winter on 6/9/25.
 //
 
-import Foundation
 import AppKit
+import Foundation
 
 public enum InvisibleCharacterStyle: Hashable {
     case replace(replacementCharacter: String, color: NSColor, font: NSFont)

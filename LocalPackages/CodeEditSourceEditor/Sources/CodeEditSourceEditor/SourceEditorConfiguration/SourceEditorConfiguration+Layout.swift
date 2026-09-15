@@ -7,8 +7,8 @@
 
 import AppKit
 
-extension SourceEditorConfiguration {
-    public struct Layout: Equatable {
+public extension SourceEditorConfiguration {
+    struct Layout: Equatable {
         /// The distance to overscroll the editor by, as a multiple of the visible editor height.
         public var editorOverscroll: CGFloat = 0
 
