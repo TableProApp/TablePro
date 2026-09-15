@@ -20,6 +20,7 @@ use crate::services::secret_save_report::SecretSaveReport;
 pub struct ConnectDialog {
     registry: Arc<DriverRegistry>,
     storage: crate::storage::SharedStorage,
+    settings: std::rc::Rc<tablepro_storage::AppSettings>,
     tasks: tablepro_session::runtime::Tasks,
     drivers: Vec<DriverEntry>,
     driver_combo: adw::ComboRow,
@@ -37,6 +38,13 @@ pub struct ConnectDialog {
     submit: gtk::Button,
     toast_overlay: adw::ToastOverlay,
     form: AuthFormState,
+    /// Set once the user types a port. A driver switch only overwrites
+    /// the port while this is false, so a deliberate 6543 survives a
+    /// look at another driver.
+    port_edited: std::rc::Rc<std::cell::Cell<bool>>,
+    /// The handler that sets `port_edited`, blocked while the code
+    /// writes the port so applying a driver is not read as an edit.
+    port_handler: glib::SignalHandlerId,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +101,7 @@ impl AuthFormState {
 pub struct ConnectDialogInit {
     pub registry: Arc<DriverRegistry>,
     pub storage: crate::storage::SharedStorage,
+    pub settings: std::rc::Rc<tablepro_storage::AppSettings>,
     pub tasks: tablepro_session::runtime::Tasks,
 }
 
@@ -206,22 +215,23 @@ impl Component for ConnectDialog {
 
         let host = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Host"))
-            .text("localhost")
             .activates_default(true)
             .build();
         // Port is a u16 1-65535. AdwSpinRow enforces the range natively;
         // no parse + fallback dance, no inline-error CSS to maintain.
         let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
         port.set_title(&crate::i18n::gettext("Port"));
-        port.set_value(5432.0);
+        let port_edited = std::rc::Rc::new(std::cell::Cell::new(false));
+        let port_edited_for_handler = port_edited.clone();
+        let port_handler = port.connect_value_notify(move |_| {
+            port_edited_for_handler.set(true);
+        });
         let database = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Database"))
-            .text("postgres")
             .activates_default(true)
             .build();
         let username = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Username"))
-            .text("postgres")
             .activates_default(true)
             .build();
         let password = adw::PasswordEntryRow::builder()
@@ -318,6 +328,7 @@ impl Component for ConnectDialog {
         let mut model = ConnectDialog {
             registry: init.registry,
             storage: init.storage,
+            settings: init.settings,
             tasks: init.tasks,
             drivers: drivers.clone(),
             driver_combo,
@@ -335,18 +346,17 @@ impl Component for ConnectDialog {
             submit,
             toast_overlay,
             form: AuthFormState::default(),
+            port_edited,
+            port_handler,
         };
         let widgets = view_output!();
 
-        if let Some(first) = drivers.first() {
-            if let Some(driver) = model.registry.get(&first.id) {
-                model.apply_driver_form_visibility(driver.as_ref());
-            }
-            root.set_title(&crate::i18n::gettext_f(
-                "Connect to {name}",
-                &[("name", &first.display_name)],
-            ));
-        }
+        // Open on the driver the user connected to last, so the common
+        // case is one click rather than a combo hunt.
+        let remembered = model.settings.connect_dialog_driver();
+        let selected = driver_index(&drivers, &remembered);
+        model.driver_combo.set_selected(selected as u32);
+        model.apply_driver(selected, &root);
         model.refresh_validity();
 
         // Enter submits. Each row carries activates-default, which is
@@ -362,17 +372,7 @@ impl Component for ConnectDialog {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match msg {
             ConnectDialogInput::DriverChanged(idx) => {
-                let Some(entry) = self.drivers.get(idx as usize).cloned() else {
-                    return;
-                };
-                if let Some(driver) = self.registry.get(&entry.id) {
-                    self.apply_driver_form_visibility(driver.as_ref());
-                    self.port.set_value(driver.default_port() as f64);
-                }
-                root.set_title(&crate::i18n::gettext_f(
-                    "Connect to {name}",
-                    &[("name", &entry.display_name)],
-                ));
+                self.apply_driver(idx as usize, root);
                 self.refresh_validity();
             }
 
@@ -529,6 +529,10 @@ impl Component for ConnectDialog {
                     table_count = outcome.tables.len(),
                     "connected"
                 );
+                // The dialog opens on this driver next time.
+                if let Err(error) = self.settings.set_connect_dialog_driver(&outcome.saved.driver_id) {
+                    tracing::warn!(%error, "could not remember the connect dialog driver");
+                }
                 // A keyring refusal must not be silent: the connection
                 // opened, but the password will be asked for next time.
                 for warning in &outcome.secret_warnings {
@@ -591,6 +595,29 @@ impl ConnectDialog {
             return self.ssh.collect().is_ok();
         }
         true
+    }
+
+    /// Show the driver's form and put its default port in, unless the
+    /// user has typed one. Their host, database and username stay: a
+    /// look at another driver must not wipe what they filled in.
+    fn apply_driver(&mut self, index: usize, root: &adw::Dialog) {
+        let Some(entry) = self.drivers.get(index).cloned() else {
+            return;
+        };
+        if let Some(driver) = self.registry.get(&entry.id) {
+            self.apply_driver_form_visibility(driver.as_ref());
+            if !self.port_edited.get() {
+                // Writing the port would otherwise look like the user
+                // typing it, and pin the port to this driver's default.
+                self.port.block_signal(&self.port_handler);
+                self.port.set_value(driver.default_port() as f64);
+                self.port.unblock_signal(&self.port_handler);
+            }
+        }
+        root.set_title(&crate::i18n::gettext_f(
+            "Connect to {name}",
+            &[("name", &entry.display_name)],
+        ));
     }
 
     fn apply_driver_form_visibility(&mut self, driver: &dyn tablepro_core::DatabaseDriver) {
@@ -670,6 +697,17 @@ impl ConnectDialog {
             }
         }
     }
+}
+
+/// Where the remembered driver sits in the sorted list, falling back to
+/// PostgreSQL and then to whatever is first, so an uninstalled driver
+/// id in the settings never opens an empty dialog.
+fn driver_index(drivers: &[DriverEntry], remembered: &str) -> usize {
+    drivers
+        .iter()
+        .position(|entry| entry.id == remembered)
+        .or_else(|| drivers.iter().position(|entry| entry.id == "postgres"))
+        .unwrap_or(0)
 }
 
 fn toggle_error(row: &adw::EntryRow, invalid: bool) {
@@ -1034,6 +1072,12 @@ mod tests {
     }
 
     fn test_dialog() -> relm4::component::Controller<ConnectDialog> {
+        dialog_with(&crate::test_support::MemorySettings::new())
+    }
+
+    /// Every driver the app ships, so the combo has the same shape a
+    /// user sees and a remembered id has somewhere to land.
+    fn dialog_with(settings: &crate::test_support::MemorySettings) -> relm4::component::Controller<ConnectDialog> {
         let runtime = crate::runtime::AppRuntime::build().expect("a runtime");
         let root = std::env::temp_dir().join(format!("tablepro-connect-{}", std::process::id()));
         let paths = tablepro_storage::StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
@@ -1043,15 +1087,120 @@ mod tests {
             &runtime.tasks(),
         ));
         let mut registry = DriverRegistry::new();
+        registry.register(std::sync::Arc::new(drivers_clickhouse::ClickhouseDriver));
         registry.register(std::sync::Arc::new(drivers_postgres::PgDriver));
+        registry.register(std::sync::Arc::new(drivers_sqlite::SqliteDriver));
 
         ConnectDialog::builder()
             .launch(ConnectDialogInit {
                 registry: Arc::new(registry),
                 storage,
+                settings: settings.get().clone(),
                 tasks: runtime.tasks(),
             })
             .detach()
+    }
+
+    /// The combo row index of a driver id, as the sorted list has it.
+    fn row_for(controller: &relm4::component::Controller<ConnectDialog>, driver_id: &str) -> u32 {
+        let model = controller.model();
+        let index = model
+            .drivers
+            .iter()
+            .position(|entry| entry.id == driver_id)
+            .unwrap_or_else(|| panic!("{driver_id} is not in the combo"));
+        index as u32
+    }
+
+    #[gtk4::test]
+    fn dialog_opens_with_remembered_driver_and_its_port() {
+        let settings = crate::test_support::MemorySettings::new();
+        settings
+            .get()
+            .set_connect_dialog_driver("clickhouse")
+            .expect("remember the driver");
+
+        let controller = dialog_with(&settings);
+        let model = controller.model();
+
+        assert_eq!(model.driver_combo.selected(), row_for(&controller, "clickhouse"));
+        assert_eq!(model.port.value() as u16, 8123);
+        assert_eq!(model.host.text(), "", "the host was prefilled instead of placeholdered");
+        assert_eq!(model.database.text(), "");
+        assert_eq!(model.username.text(), "");
+    }
+
+    #[gtk4::test]
+    fn an_uninstalled_remembered_driver_falls_back_to_postgres() {
+        let settings = crate::test_support::MemorySettings::new();
+        settings
+            .get()
+            .set_connect_dialog_driver("cassandra")
+            .expect("remember the driver");
+
+        let controller = dialog_with(&settings);
+
+        assert_eq!(
+            controller.model().driver_combo.selected(),
+            row_for(&controller, "postgres")
+        );
+    }
+
+    #[gtk4::test]
+    fn driver_switch_keeps_user_edited_port() {
+        let controller = dialog_with(&crate::test_support::MemorySettings::new());
+        let clickhouse = row_for(&controller, "clickhouse");
+        controller.model().port.set_value(6543.0);
+
+        controller
+            .sender()
+            .send(ConnectDialogInput::DriverChanged(clickhouse))
+            .expect("the dialog is running");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(
+            controller.model().port.value() as u16,
+            6543,
+            "a driver switch overwrote a port the user typed"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_driver_switch_moves_an_untouched_port() {
+        let controller = dialog_with(&crate::test_support::MemorySettings::new());
+        assert_eq!(controller.model().port.value() as u16, 5432);
+        let clickhouse = row_for(&controller, "clickhouse");
+
+        controller
+            .sender()
+            .send(ConnectDialogInput::DriverChanged(clickhouse))
+            .expect("the dialog is running");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(controller.model().port.value() as u16, 8123);
+    }
+
+    #[gtk4::test]
+    fn driver_switch_keeps_typed_host_and_user() {
+        let controller = dialog_with(&crate::test_support::MemorySettings::new());
+        {
+            let model = controller.model();
+            model.host.set_text("db.corp.example");
+            model.database.set_text("sales");
+            model.username.set_text("reporting");
+        }
+        let clickhouse = row_for(&controller, "clickhouse");
+
+        controller
+            .sender()
+            .send(ConnectDialogInput::DriverChanged(clickhouse))
+            .expect("the dialog is running");
+        crate::test_support::drain_main_context();
+
+        let model = controller.model();
+        assert_eq!(model.host.text(), "db.corp.example");
+        assert_eq!(model.database.text(), "sales");
+        assert_eq!(model.username.text(), "reporting");
     }
 
     #[gtk4::test]
