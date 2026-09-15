@@ -27,7 +27,10 @@ extension TextViewController {
     }
 
     override public func loadView() {
-        super.loadView()
+        /// Not `super.loadView()`. With a nil `nibName`, macOS 13 looks for a nib named after the
+        /// class and raises when there is none; macOS 14 quietly makes an empty view instead.
+        /// This controller has no nib on either, so it makes the view itself.
+        view = NSView()
 
         scrollView = SourceEditorScrollView()
         scrollView.documentView = textView

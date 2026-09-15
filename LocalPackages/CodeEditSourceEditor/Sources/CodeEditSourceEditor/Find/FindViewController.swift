@@ -47,7 +47,8 @@ final class FindViewController: NSViewController {
     }
 
     override func loadView() {
-        super.loadView()
+        /// See `TextViewController.loadView()`: `super` looks for a nib on macOS 13 and raises.
+        view = NSView()
 
         // Set up the `childView` as a subview of our view. Constrained to all edges, except the top is constrained to
         // the find panel's bottom
