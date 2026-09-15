@@ -148,6 +148,10 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        /// A selection change, a refresh or an undo rebuilds the fields under whatever was being
+        /// typed, so the run it was building ends here rather than folding the next keystroke into
+        /// a step that belongs to another row.
+        coordinator.endInspectorEditRun()
         switch gridSelectionOwner {
         case .schemaGrid:
             updateSchemaSidebarEditState()
@@ -227,11 +231,12 @@ extension MainContentView {
 
         let capturedCoordinator = coordinator
         let capturedEditState = trailingPaneState.inspector.editState
-        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue, continuity in
             capturedCoordinator.stageInspectorFieldEdit(
                 columnIndex: columnIndex,
                 value: newValue,
-                rowIDs: capturedEditState.rowIDs
+                rowIDs: capturedEditState.rowIDs,
+                continuity: continuity
             )
         }
     }
@@ -298,7 +303,7 @@ extension MainContentView {
         }
 
         let capturedCoordinator = coordinator
-        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(
                 displayRow: displayRow,
                 fieldIndex: fieldIndex,

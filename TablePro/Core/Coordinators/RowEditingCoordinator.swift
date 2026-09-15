@@ -172,7 +172,21 @@ final class RowEditingCoordinator {
     /// The rows are named by `RowID` rather than by the display positions the selection carries,
     /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
     /// selection disagrees on the field, where the inspector holds no value for it at all.
-    func stageInspectorFieldEdit(columnIndex: Int, value: PluginCellValue, rowIDs: [RowID]) {
+    /// Ends the typed run an inspector field was building, so the next thing to register an undo
+    /// step lands after it rather than inside it.
+    func endInspectorEditRun() {
+        parent.changeManager.endCoalescedUndoRun()
+    }
+
+    func stageInspectorFieldEdit(
+        columnIndex: Int,
+        value: PluginCellValue,
+        rowIDs: [RowID],
+        continuity: FieldEditContinuity
+    ) {
+        if continuity == .discrete {
+            endInspectorEditRun()
+        }
         guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
@@ -189,14 +203,25 @@ final class RowEditingCoordinator {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let values = Array(tableRows.rows[storageRow].values)
             guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }
-            parent.changeManager.recordCellChange(
-                rowID: rowID,
-                columnIndex: columnIndex,
-                columnName: columnName,
-                oldValue: values[columnIndex],
-                newValue: value,
-                originalRow: values
-            )
+            if continuity == .typing {
+                parent.changeManager.recordTypedCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values
+                )
+            } else {
+                parent.changeManager.recordCellChange(
+                    rowID: rowID,
+                    columnIndex: columnIndex,
+                    columnName: columnName,
+                    oldValue: values[columnIndex],
+                    newValue: value,
+                    originalRow: values
+                )
+            }
             edits.append((row: storageRow, column: columnIndex, value: value))
             editedRowIDs.insert(rowID)
         }

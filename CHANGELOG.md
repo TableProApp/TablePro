@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Stutter when scrolling a very long line in the SQL editor.
 - Row inspector edits missing from the grid cell and gone from the inspector on reselect. (#2851)
+- One undo step per character when typing in a row inspector field.
 - Empty Procedures and Functions lists on every SQL Server connection.
 - SQL Server rows that could not be saved on a table with a filtered index or an index on a computed column.
 - SQL Server CLR and extended procedures and functions missing from the Procedures and Functions lists.

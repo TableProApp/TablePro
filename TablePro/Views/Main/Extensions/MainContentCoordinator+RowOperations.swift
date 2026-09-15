@@ -42,12 +42,22 @@ extension MainContentCoordinator {
         rowEditingCoordinator.handleUndoResult(result)
     }
 
-    func stageInspectorFieldEdit(columnIndex: Int, value: PluginCellValue, rowIDs: [RowID]) {
+    func stageInspectorFieldEdit(
+        columnIndex: Int,
+        value: PluginCellValue,
+        rowIDs: [RowID],
+        continuity: FieldEditContinuity
+    ) {
         rowEditingCoordinator.stageInspectorFieldEdit(
             columnIndex: columnIndex,
             value: value,
-            rowIDs: rowIDs
+            rowIDs: rowIDs,
+            continuity: continuity
         )
+    }
+
+    func endInspectorEditRun() {
+        rowEditingCoordinator.endInspectorEditRun()
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
