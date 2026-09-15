@@ -53,12 +53,16 @@ test(
 gtk_env = cargo_env
 gtk_env.set('GSK_RENDERER', 'cairo')
 gtk_env.set('GTK_A11Y', 'test')
+# gnome.compile_schemas exports GSETTINGS_SCHEMA_DIR to devenv only, so
+# the suite points at the build tree itself.
+gtk_env.set('GSETTINGS_SCHEMA_DIR', meson.project_build_root() / 'data')
 
 test(
   'app',
   cargo,
   args: ['test'] + cargo_options + ['-p', 'tablepro'],
   env: gtk_env,
+  depends: compiled_schemas,
   suite: 'gtk',
   is_parallel: false,
   timeout: 3600,

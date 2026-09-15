@@ -42,6 +42,13 @@ configure_file(
 )
 
 install_data(
+  'app.tablepro.TablePro.gschema.xml',
+  install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
+)
+
+compiled_schemas = gnome.compile_schemas(build_by_default: true)
+
+install_data(
   'icons' / 'hicolor' / 'scalable' / 'apps' / application_id + '.svg',
   install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
   rename: application_id + '.svg',
@@ -71,6 +78,16 @@ if desktop_file_validate.found()
     'validate-desktop',
     desktop_file_validate,
     args: [desktop_file],
+    suite: 'data',
+  )
+endif
+
+glib_compile_schemas = find_program('glib-compile-schemas', required: false)
+if glib_compile_schemas.found()
+  test(
+    'validate-gschema',
+    glib_compile_schemas,
+    args: ['--strict', '--dry-run', meson.current_source_dir()],
     suite: 'data',
   )
 endif
