@@ -18,6 +18,7 @@ impl App {
             .launch(ConnectDialogInit {
                 storage: self.storage.clone(),
                 registry: self.registry.clone(),
+                tasks: self.tasks.clone(),
             })
             .forward(sender.input_sender(), |out| match out {
                 ConnectDialogOutput::Connected { tables, driver_id } => AppMsg::Connected { tables, driver_id },
@@ -142,21 +143,17 @@ impl App {
     }
 
     pub(super) fn on_reload_connections(&self, sender: ComponentSender<Self>) {
-        let sender_clone = sender.clone();
         let store = self.storage.connections().clone();
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move {
-                    match tokio::task::spawn_blocking(move || store.load_blocking()).await {
-                        Ok(Ok(connections)) => sender_clone.input(AppMsg::ConnectionsLoaded(connections.to_vec())),
-                        Ok(Err(error)) => {
-                            tracing::warn!(%error, "the saved connections could not be read");
-                            sender_clone.input(AppMsg::ConnectionListUnavailable);
-                        }
-                        Err(error) => tracing::warn!(%error, "the connections read task failed"),
-                    }
-                })
-                .drop_on_shutdown()
+        let reading = self.tasks.spawn_blocking_task(move || store.load_blocking());
+        glib::spawn_future_local(async move {
+            match reading.await {
+                Ok(Ok(connections)) => sender.input(AppMsg::ConnectionsLoaded(connections.to_vec())),
+                Ok(Err(error)) => {
+                    tracing::warn!(%error, "the saved connections could not be read");
+                    sender.input(AppMsg::ConnectionListUnavailable);
+                }
+                Err(failure) => tracing::warn!(%failure, "the connections read task failed"),
+            }
         });
     }
 
@@ -217,6 +214,7 @@ impl App {
         let secrets_for_response = self.storage.secrets().clone();
         let column_widths = self.storage.column_widths().clone();
         let filter_settings = self.storage.filter_settings().clone();
+        let tasks_for_response = self.tasks.clone();
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "delete" {
@@ -229,6 +227,7 @@ impl App {
             execute_delete_connection(
                 connections_for_response.clone(),
                 secrets_for_response.clone(),
+                tasks_for_response.clone(),
                 id,
                 sender_for_response.clone(),
             );
@@ -343,6 +342,7 @@ impl App {
 fn execute_delete_connection(
     connections: tablepro_storage::ConnectionStore,
     secrets: std::sync::Arc<dyn tablepro_core::credentials::SecretVault>,
+    tasks: tablepro_session::runtime::Tasks,
     id: Uuid,
     sender: ComponentSender<App>,
 ) {
@@ -359,7 +359,7 @@ fn execute_delete_connection(
                     sender_clone.input(AppMsg::SecretDeleteFailed(id));
                     return;
                 }
-                let removed = tokio::task::spawn_blocking(move || connections.remove_blocking(id)).await;
+                let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
                 if let Ok(Err(error)) = removed {
                     tracing::warn!(%error, "could not remove the saved connection");
                 }

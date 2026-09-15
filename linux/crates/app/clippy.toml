@@ -20,6 +20,17 @@ disallowed-methods = [
     { path = "tokio::runtime::Runtime::enter", reason = "take the handle from Tasks" },
     { path = "tokio::runtime::Handle::enter", reason = "take the handle from Tasks" },
 
+    # Background work goes through Tasks so there is one place that
+    # decides where it runs. These reach for whichever runtime happens
+    # to be ambient, which on the GTK thread is none at all.
+    { path = "tokio::spawn", reason = "use Tasks::spawn_task" },
+    { path = "tokio::task::spawn_blocking", reason = "use Tasks::spawn_blocking_task" },
+    { path = "tokio::runtime::Handle::spawn", reason = "use Tasks::spawn_task" },
+    { path = "tokio::runtime::Handle::spawn_blocking", reason = "use Tasks::spawn_blocking_task" },
+    { path = "relm4::spawn", reason = "use Tasks::spawn_task" },
+    { path = "relm4::spawn_blocking", reason = "use Tasks::spawn_blocking_task" },
+    { path = "relm4::spawn_local", reason = "use glib::spawn_future_local" },
+
     # Blocking the GTK main loop freezes every window, and quitting from
     # under it skips the shutdown that flushes pending writes.
     { path = "gtk4::glib::MainContext::block_on", reason = "await in glib::spawn_future_local instead of blocking the main loop" },
