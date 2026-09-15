@@ -1233,6 +1233,11 @@ final class MainContentCommandActions {
         coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
         coordinator.toolbarState.hasQueryText = false
         coordinator.scheduleDraftSave()
+        /// The editor's own text binding recomputes this on every keystroke, and emptying the tab
+        /// from a command does not go through that binding. Without it a scratch tab keeps the
+        /// dirty dot it no longer deserves, and a file-backed tab that this command just emptied
+        /// is not marked modified until some other window event happens to recompute it.
+        coordinator.refreshUnsavedIndicator()
     }
 
     var canClearQuery: Bool {

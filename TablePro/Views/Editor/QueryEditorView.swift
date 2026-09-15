@@ -36,6 +36,7 @@ struct QueryEditorView: View {
 
     let scope: QueryScopeBarModel
     let commands: QueryCommandAvailability
+    var showsHistoryTip: Bool = false
     var onRun: () -> Void
     var onRunAllStatements: () -> Void
     var onRunWithoutLimit: () -> Void
@@ -56,6 +57,7 @@ struct QueryEditorView: View {
                 commands: commands,
                 isExecuting: isExecuting,
                 vimMode: AppSettingsManager.shared.editor.vimModeEnabled ? vimMode : nil,
+                showsHistoryTip: showsHistoryTip,
                 onRun: onRun,
                 onRunAllStatements: onRunAllStatements,
                 onRunWithoutLimit: onRunWithoutLimit,

@@ -34,6 +34,8 @@ struct MenuValidationContext: Equatable {
     var canRestorePreviousValues = false
     var isQueryExecuting = false
     var hasQueryText = false
+    var canClearQuery = false
+    var canClearResults = false
     var hasPendingChanges = false
     var hasDataPendingChanges = false
     var hasRowSelection = false
@@ -193,6 +195,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
         case #selector(cancelQuery(_:)):
             return context.isQueryExecuting
+        case #selector(clearQuery(_:)):
+            return context.canClearQuery
+        case #selector(clearResults(_:)):
+            return context.canClearResults
         case #selector(previewSQL(_:)):
             return context.isConnected && context.hasDataPendingChanges
         case #selector(saveAsFavorite(_:)):
@@ -353,6 +359,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             canRestorePreviousValues: actions.canRestorePreviousValues,
             isQueryExecuting: actions.isQueryExecuting,
             hasQueryText: actions.hasQueryText,
+            canClearQuery: actions.canClearQuery,
+            canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,

@@ -50,6 +50,9 @@ struct QueryResultInputs: Equatable {
     var activeResultRowsAffected = 0
     var activeResultExecutionTime: TimeInterval?
     var activeResultStatusMessage: String?
+    /// A failed result carries its own message, which outlives the tab's. Pin a failure, run
+    /// something that works, and `executionErrorMessage` is cleared while this one is not.
+    var activeResultErrorMessage: String?
     var loadedColumnCount = 0
     var loadedRowCount = 0
     var executionErrorMessage: String?
@@ -84,9 +87,18 @@ struct QueryResultPresentation: Equatable {
         content = Self.resolveContent(inputs)
         showsResultSetSelector = Self.resolvesResultSetSelector(inputs)
         showsFilterChrome = Self.resolvesFilterChrome(inputs)
-        showsFindBar = inputs.isFindBarVisible && inputs.tabType == .table
+        showsFindBar = inputs.isFindBarVisible
+            && inputs.tabType == .table
+            && inputs.viewMode.showsFindBar
         showsStatusBar = true
-        showsErrorBanner = inputs.executionErrorMessage != nil
+        showsErrorBanner = Self.resolvedError(inputs) != nil
+    }
+
+    /// The error the pane is actually showing. The active result's own message wins, because it
+    /// describes the result on screen; the tab's is the fallback for a failure that produced no
+    /// result set at all.
+    static func resolvedError(_ inputs: QueryResultInputs) -> String? {
+        inputs.activeResultErrorMessage ?? inputs.executionErrorMessage
     }
 
     private static func resolveContent(_ inputs: QueryResultInputs) -> QueryResultContent {
@@ -140,7 +152,7 @@ struct QueryResultPresentation: Equatable {
     private static func resolveSettledResult(_ inputs: QueryResultInputs) -> QueryResultContent? {
         guard inputs.hasExecuted, !inputs.isExecuting else { return nil }
 
-        if inputs.hasActiveResultSet, !inputs.activeResultHasColumns, inputs.executionErrorMessage == nil {
+        if inputs.hasActiveResultSet, !inputs.activeResultHasColumns, resolvedError(inputs) == nil {
             return .statementSucceeded(
                 rowsAffected: inputs.activeResultRowsAffected,
                 executionTime: inputs.activeResultExecutionTime,
@@ -149,7 +161,7 @@ struct QueryResultPresentation: Equatable {
         }
 
         guard inputs.loadedColumnCount == 0 else { return resolveEmptyRows(inputs) }
-        guard inputs.executionErrorMessage == nil else { return nil }
+        guard resolvedError(inputs) == nil else { return nil }
         guard inputs.resultSetCount > 0 else { return .idle }
 
         return .statementSucceeded(

@@ -132,6 +132,46 @@ struct QueryResultPresentationTests {
         #expect(presentation.showsResultSetSelector)
     }
 
+    /// Pin a failure, run something that works, and the tab's own message is cleared while the
+    /// pinned result's is not. Switching back used to resolve the failure as a success, because the
+    /// error result reports no columns.
+    @Test("A pinned failure still reads as a failure after a later run succeeds")
+    func pinnedFailureStaysAFailure() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = false
+        inputs.activeResultErrorMessage = "syntax error"
+        inputs.executionErrorMessage = nil
+
+        let presentation = QueryResultPresentation(inputs: inputs)
+
+        #expect(presentation.showsErrorBanner)
+        if case .statementSucceeded = presentation.content {
+            Issue.record("A pinned failure must never resolve to the success view")
+        }
+    }
+
+    /// The find bar searches the data grid's coordinator. Switching to a mode that unmounts the
+    /// grid left it on screen over nothing to search.
+    @Test("The find bar follows the mode, not just the tab type")
+    func findBarFollowsMode() {
+        var inputs = QueryResultInputs()
+        inputs.tabType = .table
+        inputs.isFindBarVisible = true
+
+        inputs.viewMode = .data
+        #expect(QueryResultPresentation(inputs: inputs).showsFindBar)
+
+        for mode in [ResultsViewMode.chart, .map, .structure] {
+            inputs.viewMode = mode
+            #expect(
+                QueryResultPresentation(inputs: inputs).showsFindBar == mode.showsFindBar,
+                "find bar must follow ResultsViewMode.showsFindBar for \(mode)"
+            )
+        }
+    }
+
     @Test("Structure mode needs a table to show the structure of")
     func structureNeedsATable() {
         var inputs = QueryResultInputs()

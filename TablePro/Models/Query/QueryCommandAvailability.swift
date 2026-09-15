@@ -20,6 +20,10 @@ struct QueryCommandAvailability {
     let canSaveAsFavorite: Bool
     let canClearQuery: Bool
     let canClearResults: Bool
+    /// Whether the Run menu has anything live in it. Clear Query leaves the results standing and
+    /// takes `canRun` away with it, so gating the menu on Run alone hid Clear Results at the one
+    /// moment it was the command the reader wanted.
+    let canOpenRunMenu: Bool
     let explainVariants: [ExplainVariant]
 
     /// Every hint the bar shows, resolved here so a disabled control can say why rather than just
@@ -47,6 +51,7 @@ struct QueryCommandAvailability {
         canSaveAsFavorite = hasQueryText
         canClearQuery = hasQueryText
         canClearResults = hasResults
+        canOpenRunMenu = canRun || hasQueryText || hasResults
 
         runHint = Self.hint(
             base: shortcutHint(String(localized: "Run"), .executeQuery),

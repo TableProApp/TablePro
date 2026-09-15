@@ -46,10 +46,24 @@ struct ResultSetMenuModel: Equatable {
 
     /// The same count in figures, for the tiers where the bar has no room for the sentence. The
     /// chooser never leaves the bar entirely, because Pin and Close have no other one-click route.
+    ///
+    /// A single result is named rather than counted, and a result is named after its table or its
+    /// leading comment, so the name is as long as the identifier. The chooser is `fixedSize`, so an
+    /// unbounded name here sets the bar's own floor and pushes the grid out of a narrow pane.
     var compactTitle: String {
-        guard total > 1 else { return entries.first?.label ?? "" }
+        guard total > 1 else { return Self.truncated(entries.first?.label ?? "") }
         return "\(activeOrdinal)/\(total)"
     }
+
+    /// Long enough to tell two results apart, short enough that no name decides the bar's width.
+    /// The full name stays on the menu entry and on the control's accessibility label.
+    private static func truncated(_ label: String) -> String {
+        let value = label as NSString
+        guard value.length > compactTitleCharacterLimit else { return label }
+        return value.substring(to: compactTitleCharacterLimit) + "…"
+    }
+
+    private static let compactTitleCharacterLimit = 16
 
     var activeEntry: ResultSetMenuEntry? {
         entries.first { $0.isActive }

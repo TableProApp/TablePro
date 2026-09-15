@@ -459,6 +459,7 @@ struct MainEditorContentView: View {
                         },
                         scope: scopeBarModel(for: tab),
                         commands: commandAvailability(for: tab),
+                        showsHistoryTip: showsHistoryTip,
                         onRun: { coordinator.runQuery(viewport: .firstRow) },
                         onRunAllStatements: { coordinator.runAllStatements() },
                         onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
@@ -825,6 +826,7 @@ struct MainEditorContentView: View {
         inputs.activeResultRowsAffected = activeResultSet?.rowsAffected ?? 0
         inputs.activeResultExecutionTime = activeResultSet?.executionTime
         inputs.activeResultStatusMessage = activeResultSet?.statusMessage
+        inputs.activeResultErrorMessage = activeResultSet?.errorMessage
         inputs.loadedColumnCount = rows.columns.count
         inputs.loadedRowCount = rows.rows.count
         inputs.executionErrorMessage = tab.execution.errorMessage

@@ -333,6 +333,10 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         super.splitViewDidResizeSubviews(notification)
         recomputeWindowMinSize()
         toolbarOwner?.syncSidebarSelection()
+        /// A divider drag can collapse the trailing pane without going through `hideTrailingPane`,
+        /// and history's activation is keyed on the flag rather than on the pane, so it has to be
+        /// reconciled here as well or the panel keeps querying behind a collapsed divider.
+        syncHistoryPanelVisibility()
     }
 
     override func viewWillAppear() {
@@ -935,6 +939,11 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
             isAIEnabled: AppSettingsManager.shared.ai.enabled
         )
         inspectorPaneHost.show(selected.panes.trailingPane(for: surface))
+        /// The single reconciliation point. Every route that changes which surface the pane shows,
+        /// or which workspace it belongs to, ends here: a reveal, a hide, a workspace switch and an
+        /// availability change all call this, so the flag cannot describe a different connection's
+        /// pane than the one on screen.
+        syncHistoryPanelVisibility()
     }
 
     // MARK: - Session Bindings
@@ -1039,7 +1048,9 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// the inspector unconditionally swapped the assistant out from under a half-typed question and
     /// persisted the inspector as that connection's surface, on every row the user clicked.
     func revealInspectorForSelection() {
-        guard !isAssistantVisible else { return }
+        /// History is deliberately opened, the same way the assistant is, so a row click must not
+        /// take it away and persist the inspector as this connection's surface behind it.
+        guard !isAssistantVisible, !isHistoryVisible else { return }
         showInspector()
     }
 
@@ -1056,8 +1067,8 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// on screen, and it is what the Find Past Queries tip reads to know it has been answered.
     /// Leaving it behind when history moved into the trailing pane would have left the panel
     /// mounted and inert, which is the shape of a pane that renders nothing forever.
-    private func syncHistoryPanelVisibility() {
-        guard let connectionId = workspaces.selected?.connectionId else { return }
+    internal func syncHistoryPanelVisibility() {
+        guard isViewLoaded, let connectionId = workspaces.selected?.connectionId else { return }
         let showing = isTrailingPaneOpen && resolvedTrailingSurface == .history
         let state = HistoryPanelState.forConnection(connectionId)
         guard state.isVisible != showing else { return }

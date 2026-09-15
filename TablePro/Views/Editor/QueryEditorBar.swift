@@ -28,6 +28,9 @@ struct QueryEditorBar: View {
     let commands: QueryCommandAvailability
     let isExecuting: Bool
     let vimMode: VimMode?
+    /// Whether the first-run tip pointing at query history is still owed. It anchors to the Run
+    /// menu, which is the control that produces the history it is telling the reader about.
+    let showsHistoryTip: Bool
 
     let onRun: () -> Void
     let onRunAllStatements: () -> Void
@@ -121,6 +124,11 @@ struct QueryEditorBar: View {
     /// permanently dimmed button costs width the editor wants. TablePlus does the same: its Cancel
     /// appears in the query editor for a long query rather than standing there dimmed. The two are
     /// never both actionable, so nothing is reachable in one state and not the other.
+    ///
+    /// The two halves are separately enabled, which is the whole reason this is a `ControlGroup`
+    /// and not a `Menu(primaryAction:)`. Clear Query leaves the results standing and makes Run
+    /// unavailable, and disabling one control for both would have taken Clear Results down with it
+    /// at exactly the moment the reader wanted it.
     @ViewBuilder
     private var runControl: some View {
         if isExecuting {
@@ -131,26 +139,34 @@ struct QueryEditorBar: View {
                 .help(commands.stopHint)
                 .accessibilityIdentifier("query-stop")
         } else {
-            Menu {
-                Button(String(localized: "Run All Statements"), action: onRunAllStatements)
-                Button(String(localized: "Run Without Limit"), action: onRunWithoutLimit)
-                Divider()
-                Button(String(localized: "Clear Query"), action: onClearQuery)
-                    .disabled(!commands.canClearQuery)
-                Button(String(localized: "Clear Results"), action: onClearResults)
-                    .disabled(!commands.canClearResults)
-            } label: {
-                Label(String(localized: "Run"), systemImage: "play.fill")
-            } primaryAction: {
-                onRun()
+            ControlGroup {
+                Button(String(localized: "Run"), systemImage: "play.fill", action: onRun)
+                    .labelStyle(.titleAndIcon)
+                    .disabled(!commands.canRun)
+                    .help(commands.runHint)
+                    .accessibilityIdentifier("query-run")
+
+                Menu(String(localized: "Run Options"), systemImage: "chevron.down") {
+                    Button(String(localized: "Run All Statements"), action: onRunAllStatements)
+                        .disabled(!commands.canRun)
+                    Button(String(localized: "Run Without Limit"), action: onRunWithoutLimit)
+                        .disabled(!commands.canRun)
+                    Divider()
+                    Button(String(localized: "Clear Query"), action: onClearQuery)
+                        .disabled(!commands.canClearQuery)
+                    Button(String(localized: "Clear Results"), action: onClearResults)
+                        .disabled(!commands.canClearResults)
+                }
+                .labelStyle(.iconOnly)
+                .disabled(!commands.canOpenRunMenu)
+                .accessibilityIdentifier("query-run-menu")
+                .modifier(FeatureTipPopoverAnchor(
+                    tip: FindPastQueriesTip(shortcut: FeatureTipShortcut.display(for: .toggleHistory)),
+                    isEnabled: showsHistoryTip
+                ))
             }
-            .menuStyle(.button)
-            .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .fixedSize()
-            .disabled(!commands.canRun)
-            .help(commands.runHint)
-            .accessibilityIdentifier("query-run")
         }
     }
 }

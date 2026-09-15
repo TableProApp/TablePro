@@ -82,6 +82,23 @@ struct QueryCommandAvailabilityTests {
         #expect(Self.make(hasQueryText: false).formatHint.contains("nothing to format"))
     }
 
+    /// Clear Query leaves the results standing and takes `canRun` with it. Gating the whole Run
+    /// menu on `canRun` then hid Clear Results at exactly the moment it was the live command.
+    @Test("The Run menu stays reachable while a clear command is still valid")
+    func runMenuOutlivesRun() {
+        let clearedQueryWithResults = Self.make(hasQueryText: false, hasResults: true)
+        #expect(clearedQueryWithResults.canRun == false)
+        #expect(clearedQueryWithResults.canClearResults)
+        #expect(clearedQueryWithResults.canOpenRunMenu)
+
+        let offlineWithText = Self.make(isConnected: false, hasQueryText: true)
+        #expect(offlineWithText.canRun == false)
+        #expect(offlineWithText.canOpenRunMenu)
+
+        let nothingAtAll = Self.make(hasQueryText: false, hasResults: false)
+        #expect(nothingAtAll.canOpenRunMenu == false)
+    }
+
     @Test("Clear Results follows the results, not the query text")
     func clearResultsFollowsResults() {
         #expect(Self.make(hasResults: true).canClearResults)
