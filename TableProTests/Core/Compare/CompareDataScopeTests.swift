@@ -456,7 +456,9 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
     }
 
     /// A row limit makes the window the first n keys, and a NULL key has no place in that order, so
-    /// the limited read leaves those rows out rather than spending the window on them.
+    /// the limited read leaves those rows out rather than spending the window on them. The clause
+    /// asks for one row more than the limit: the provider never hands that row out, and it is what
+    /// separates a side that ends exactly at the limit from one the limit cut short.
     func testARowLimitExcludesNullKeysAndAddsTheLimitClause() {
         let sql = KeyOrderedQuery.build(
             table: "users", schema: nil, columns: ["id", "name"], keyColumns: ["id"],
@@ -466,7 +468,7 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
         XCTAssertEqual(
             sql,
             #"SELECT "id", "name" FROM "users" WHERE (status = 'active') AND "id" IS NOT NULL"#
-                + #" ORDER BY "id" LIMIT 100"#
+                + #" ORDER BY "id" LIMIT 101"#
         )
     }
 
@@ -479,7 +481,7 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
         XCTAssertEqual(
             sql,
             #"SELECT "tenant", "id", "total" FROM "orders" WHERE "tenant" IS NOT NULL AND "id" IS NOT NULL"#
-                + #" ORDER BY "tenant", "id" LIMIT 50"#
+                + #" ORDER BY "tenant", "id" LIMIT 51"#
         )
     }
 
@@ -504,8 +506,8 @@ final class KeyOrderedQueryScopeTests: XCTestCase {
             dialect: ScopeDialect.make(paginationStyle: .limit, autoLimitStyle: .top)
         )
 
-        XCTAssertTrue(offsetFetch.hasSuffix(#"ORDER BY "id" OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY"#), offsetFetch)
-        XCTAssertTrue(top.hasPrefix(#"SELECT TOP 10 "id" FROM "#), top)
+        XCTAssertTrue(offsetFetch.hasSuffix(#"ORDER BY "id" OFFSET 0 ROWS FETCH NEXT 11 ROWS ONLY"#), offsetFetch)
+        XCTAssertTrue(top.hasPrefix(#"SELECT TOP 11 "id" FROM "#), top)
         XCTAssertTrue(top.hasSuffix(#"ORDER BY "id""#), top)
     }
 
