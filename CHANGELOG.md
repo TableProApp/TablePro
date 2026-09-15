@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
 - Schema picker lists system schemas last, in place of its Show System Schemas toggle. (#2832)
-- Resizable welcome window that remembers its size and position.
+- Welcome window at a fixed size, remembering where it sits on screen.
 - Welcome window list moved with the arrow keys instead of `Ctrl+J`, `Ctrl+K`, `Ctrl+H` and `Ctrl+L`.
 - Connection switcher lists Favorites, Recent and groups at every depth.
 - Connection rows without colored dots, on the Mac and on iOS.
