@@ -996,14 +996,36 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "text[]").rawType == "text[]")
         }
 
-        @Test("Element editing is offered for scalar elements only")
+        @Test("Element editing is offered for scalar and JSON elements")
         func gatesElementEditing() {
             #expect(classifier.classify(rawTypeName: "ENUM[]").supportsElementEditing)
             #expect(classifier.classify(rawTypeName: "text[]").supportsElementEditing)
             #expect(classifier.classify(rawTypeName: "integer[]").supportsElementEditing)
-            #expect(!classifier.classify(rawTypeName: "jsonb[]").supportsElementEditing)
+            #expect(classifier.classify(rawTypeName: "jsonb[]").supportsElementEditing)
             #expect(!classifier.classify(rawTypeName: "bytea[]").supportsElementEditing)
             #expect(!classifier.classify(rawTypeName: "text").supportsElementEditing)
+        }
+
+        @Test("The element type picks which editor its elements get")
+        func namesElementEditor() {
+            #expect(classifier.classify(rawTypeName: "jsonb[]").arrayElementEditor == .json)
+            #expect(classifier.classify(rawTypeName: "json[]").arrayElementEditor == .json)
+            #expect(classifier.classify(rawTypeName: "text[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "integer[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "ENUM[]").arrayElementEditor == .scalar)
+            #expect(classifier.classify(rawTypeName: "bytea[]").arrayElementEditor == nil)
+            #expect(classifier.classify(rawTypeName: "geometry[]").arrayElementEditor == nil)
+            #expect(classifier.classify(rawTypeName: "jsonb").arrayElementEditor == nil)
+        }
+
+        /// The badge vocabulary is semantic rather than the SQL spelling, so `jsonb[]` badges as
+        /// `json[]` exactly as scalar `jsonb` badges as `json`. #2897 read that as a lost `b`.
+        @Test("A jsonb array keeps its raw type name behind the semantic badge")
+        func keepsRawTypeBehindBadge() {
+            let type = classifier.classify(rawTypeName: "jsonb[]")
+            #expect(type.rawType == "jsonb[]")
+            #expect(type.badgeLabel == "json[]")
+            #expect(classifier.classify(rawTypeName: "jsonb").badgeLabel == "json")
         }
 
         @Test("Array badges and display names name the element")

@@ -125,7 +125,7 @@ internal struct RowInspectorView: View {
         case .phpSerialized:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
-             .enumPicker, .setPicker, .typePicker, .valuePicker:
+             .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker:
             TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,

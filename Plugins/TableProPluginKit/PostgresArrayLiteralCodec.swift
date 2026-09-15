@@ -5,175 +5,196 @@ public enum PostgresArrayElement: Hashable, Sendable {
     case null
 }
 
+/// Reads and writes the literal PostgreSQL's `array_in` and `array_out` use.
+///
+/// It scans Unicode scalars rather than `Character`s because that is what the server does. A Swift
+/// grapheme can carry a structural scalar and a combining mark together, and `Character`
+/// comparison then misses it: `,` followed by U+0301 is one `Character` that is not `","`, so a
+/// grapheme scan would keep an element the server splits in two, and a space followed by U+0301 is
+/// one `Character` that is not whitespace, so it would go out unquoted for the server to trim.
 public enum PostgresArrayLiteralCodec {
     public static let defaultDelimiter: Character = ","
 
-    public static func parse(_ text: String, delimiter: Character = defaultDelimiter) -> [PostgresArrayElement]? {
-        let characters = Array(text)
-        var index = 0
-        skipWhitespace(characters, &index)
-        guard index < characters.count, characters[index] == "{" else { return nil }
-        index += 1
-        skipWhitespace(characters, &index)
+    /// The scalars PostgreSQL's array parser treats as whitespace, its `scanner_isspace`.
+    ///
+    /// `Character.isWhitespace` is the whole Unicode set instead, which is wrong in both
+    /// directions. Measured on PostgreSQL 17.11: `array_out` writes U+00A0 and U+3000 into a
+    /// literal unquoted and `array_in` reads them back as part of the value, so trimming them here
+    /// deleted a character from an element the user never edited.
+    private static let separators: Set<Unicode.Scalar> = [" ", "\t", "\n", "\r", "\u{0B}", "\u{0C}"]
 
-        if index < characters.count, characters[index] == "}" {
+    public static func parse(_ text: String, delimiter: Character = defaultDelimiter) -> [PostgresArrayElement]? {
+        guard let delimiter = delimiter.unicodeScalars.first else { return nil }
+        let scalars = Array(text.unicodeScalars)
+        var index = 0
+        skipWhitespace(scalars, &index)
+        guard index < scalars.count, scalars[index] == "{" else { return nil }
+        index += 1
+        skipWhitespace(scalars, &index)
+
+        if index < scalars.count, scalars[index] == "}" {
             index += 1
-            return isExhausted(characters, from: index) ? [] : nil
+            return isExhausted(scalars, from: index) ? [] : nil
         }
 
         var elements: [PostgresArrayElement] = []
         while true {
-            skipWhitespace(characters, &index)
-            guard index < characters.count, characters[index] != "{" else { return nil }
-            guard let element = parseElement(characters, &index, delimiter: delimiter) else { return nil }
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count, scalars[index] != "{" else { return nil }
+            guard let element = parseElement(scalars, &index, delimiter: delimiter) else { return nil }
             elements.append(element)
-            skipWhitespace(characters, &index)
-            guard index < characters.count else { return nil }
-            if characters[index] == delimiter {
+            skipWhitespace(scalars, &index)
+            guard index < scalars.count else { return nil }
+            if scalars[index] == delimiter {
                 index += 1
                 continue
             }
-            guard characters[index] == "}" else { return nil }
+            guard scalars[index] == "}" else { return nil }
             index += 1
             break
         }
-        return isExhausted(characters, from: index) ? elements : nil
+        return isExhausted(scalars, from: index) ? elements : nil
     }
 
     public static func serialize(
         _ elements: [PostgresArrayElement],
         delimiter: Character = defaultDelimiter
     ) -> String {
+        let scalar = delimiter.unicodeScalars.first ?? ","
         let body = elements
-            .map { serializeElement($0, delimiter: delimiter) }
-            .joined(separator: String(delimiter))
+            .map { serializeElement($0, delimiter: scalar) }
+            .joined(separator: String(Unicode.Scalar(scalar)))
         return "{\(body)}"
     }
 
-    private static func isExhausted(_ characters: [Character], from index: Int) -> Bool {
-        var cursor = index
-        skipWhitespace(characters, &cursor)
-        return cursor == characters.count
+    private static func text(_ scalars: some Sequence<Unicode.Scalar>) -> String {
+        String(String.UnicodeScalarView(scalars))
     }
 
-    private static func skipWhitespace(_ characters: [Character], _ index: inout Int) {
-        while index < characters.count, characters[index].isWhitespace {
+    private static func isExhausted(_ scalars: [Unicode.Scalar], from index: Int) -> Bool {
+        var cursor = index
+        skipWhitespace(scalars, &cursor)
+        return cursor == scalars.count
+    }
+
+    private static func skipWhitespace(_ scalars: [Unicode.Scalar], _ index: inout Int) {
+        while index < scalars.count, separators.contains(scalars[index]) {
             index += 1
         }
     }
 
     private static func parseElement(
-        _ characters: [Character],
+        _ scalars: [Unicode.Scalar],
         _ index: inout Int,
-        delimiter: Character
+        delimiter: Unicode.Scalar
     ) -> PostgresArrayElement? {
-        if characters[index] == "\"" {
+        if scalars[index] == "\"" {
             index += 1
-            return parseQuotedElement(characters, &index)
+            return parseQuotedElement(scalars, &index)
         }
-        return parseUnquotedElement(characters, &index, delimiter: delimiter)
+        return parseUnquotedElement(scalars, &index, delimiter: delimiter)
     }
 
     private static func parseQuotedElement(
-        _ characters: [Character],
+        _ scalars: [Unicode.Scalar],
         _ index: inout Int
     ) -> PostgresArrayElement? {
-        var value: [Character] = []
-        while index < characters.count {
-            let character = characters[index]
-            if character == "\\" {
-                guard index + 1 < characters.count else { return nil }
-                value.append(characters[index + 1])
+        var value: [Unicode.Scalar] = []
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if scalar == "\\" {
+                guard index + 1 < scalars.count else { return nil }
+                value.append(scalars[index + 1])
                 index += 2
                 continue
             }
-            if character == "\"" {
+            if scalar == "\"" {
                 index += 1
-                return .value(String(value))
+                return .value(text(value))
             }
-            value.append(character)
+            value.append(scalar)
             index += 1
         }
         return nil
     }
 
     private static func parseUnquotedElement(
-        _ characters: [Character],
+        _ scalars: [Unicode.Scalar],
         _ index: inout Int,
-        delimiter: Character
+        delimiter: Unicode.Scalar
     ) -> PostgresArrayElement? {
-        var value: [Character] = []
+        var value: [Unicode.Scalar] = []
         var significantCount = 0
         var containsEscape = false
         var startedContent = false
 
-        while index < characters.count {
-            let character = characters[index]
-            if character == "\\" {
-                guard index + 1 < characters.count else { return nil }
-                value.append(characters[index + 1])
+        while index < scalars.count {
+            let scalar = scalars[index]
+            if scalar == "\\" {
+                guard index + 1 < scalars.count else { return nil }
+                value.append(scalars[index + 1])
                 containsEscape = true
                 startedContent = true
                 index += 2
                 significantCount = value.count
                 continue
             }
-            if character == delimiter || character == "}" {
+            if scalar == delimiter || scalar == "}" {
                 break
             }
-            guard character != "{", character != "\"" else { return nil }
-            if !startedContent, character.isWhitespace {
+            guard scalar != "{", scalar != "\"" else { return nil }
+            if !startedContent, separators.contains(scalar) {
                 index += 1
                 continue
             }
             startedContent = true
-            value.append(character)
+            value.append(scalar)
             index += 1
-            if !character.isWhitespace {
+            if !separators.contains(scalar) {
                 significantCount = value.count
             }
         }
 
         guard startedContent else { return nil }
-        let text = String(value.prefix(significantCount))
-        if !containsEscape, isUnquotedNullKeyword(text) {
+        let parsed = text(value.prefix(significantCount))
+        if !containsEscape, isUnquotedNullKeyword(parsed) {
             return .null
         }
-        return .value(text)
+        return .value(parsed)
     }
 
-    private static func isUnquotedNullKeyword(_ text: String) -> Bool {
-        text.count == 4 && text.lowercased() == "null"
+    private static func isUnquotedNullKeyword(_ value: String) -> Bool {
+        value.lowercased() == "null"
     }
 
-    private static func serializeElement(_ element: PostgresArrayElement, delimiter: Character) -> String {
+    private static func serializeElement(_ element: PostgresArrayElement, delimiter: Unicode.Scalar) -> String {
         switch element {
         case .null:
             return "NULL"
         case .value(let value):
             guard needsQuoting(value, delimiter: delimiter) else { return value }
-            var quoted: [Character] = ["\""]
-            for character in value {
-                if character == "\\" || character == "\"" {
+            var quoted: [Unicode.Scalar] = ["\""]
+            for scalar in value.unicodeScalars {
+                if scalar == "\\" || scalar == "\"" {
                     quoted.append("\\")
                 }
-                quoted.append(character)
+                quoted.append(scalar)
             }
             quoted.append("\"")
-            return String(quoted)
+            return text(quoted)
         }
     }
 
-    private static func needsQuoting(_ value: String, delimiter: Character) -> Bool {
+    private static func needsQuoting(_ value: String, delimiter: Unicode.Scalar) -> Bool {
         if value.isEmpty { return true }
         if isUnquotedNullKeyword(value) { return true }
-        return value.contains { character in
-            character == delimiter
-                || character == "\""
-                || character == "\\"
-                || character == "{"
-                || character == "}"
-                || character.isWhitespace
+        return value.unicodeScalars.contains { scalar in
+            scalar == delimiter
+                || scalar == "\""
+                || scalar == "\\"
+                || scalar == "{"
+                || scalar == "}"
+                || separators.contains(scalar)
         }
     }
 }

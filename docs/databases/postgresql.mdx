@@ -60,14 +60,19 @@ A partitioned table is listed once, under its own icon. Expand it for its partit
 
 `jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 
-An array column opens one of two editors, decided by its element type:
+An array column opens one of three editors, decided by its element type:
 
 | Element type | Editor |
 |---|---|
 | `text[]`, `integer[]`, `numeric[]`, `uuid[]`, `boolean[]`, `timestamptz[]`, enum arrays such as `mood[]` | A list, one row per element |
-| `jsonb[]`, `bytea[]`, composite arrays, and any multi-dimensional array | The plain text editor over the `{…}` literal |
+| `jsonb[]` and `json[]` | The same list, with the selected element in the [JSON viewer](/features/json-viewer) |
+| `bytea[]`, composite arrays, and any multi-dimensional array | The plain text editor over the `{…}` literal |
 
 In the list editor, reorder rows with the arrows, add and remove elements, and set a single element to NULL; an empty array and a NULL column stay distinct. Enum elements pick from the labels the type declares, and a label the type no longer lists stays selectable and is flagged. **Edit as Text** switches to the raw literal at any time.
+
+A `jsonb[]` element gets the Text and Tree modes a `jsonb` cell gets, so the column reads the same browsing a table as it does through `to_jsonb(col)` in a query. Two things that query cannot show you: a SQL NULL element stays apart from a JSON `null` element, and reading an element does not rewrite it, so a `json[]` cell you open and save keeps the exact text it stored.
+
+A value the list cannot represent opens the text editor instead: a multi-dimensional value such as `{{1,2},{3,4}}`, or a literal carrying explicit bounds such as `[0:2]={a,b,c}`. Edit the `{…}` literal directly.
 
 ## User-defined types
 

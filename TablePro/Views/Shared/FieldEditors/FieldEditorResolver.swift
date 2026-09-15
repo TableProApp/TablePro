@@ -3,6 +3,7 @@
 //  TablePro
 
 import Foundation
+import TableProPluginKit
 
 @MainActor
 internal enum FieldEditorResolver {
@@ -50,6 +51,9 @@ internal enum FieldEditorResolver {
         }
 
         if structuredAllowed {
+            if let elementEditor = arrayElementEditor(for: type, originalValue: originalValue) {
+                return .arrayElements(element: elementEditor, values: type.enumValues ?? [])
+            }
             if type.isJsonType || (originalValue ?? "").looksLikeJson {
                 return .json
             }
@@ -78,6 +82,27 @@ internal enum FieldEditorResolver {
             return .multiLine
         }
         return .singleLine
+    }
+
+    /// The element editor an array column's value opens on, or nil where the list cannot represent
+    /// it and the plain text editor stays.
+    ///
+    /// The value is parsed, not the type alone: `jsonb[]` and `jsonb[][]` are one type in
+    /// PostgreSQL's catalog, and a dimension-prefixed literal such as `[0:2]={a,b,c}` is legal in
+    /// any array column, so the declared type cannot rule either out on a given row. This is the
+    /// same gate the grid applies before opening the popover.
+    ///
+    /// It is also what scopes the editor to the engines whose arrays are written this way. The
+    /// classifier's `[]` rule takes no engine, and a document store's `object[]` classifies the
+    /// same, so a field with no literal to read keeps the plain editor rather than being offered a
+    /// list that commits PostgreSQL `{…}` syntax. That leaves a stored NULL and a multi-row
+    /// selection on the plain editor, which is where they already were.
+    private static func arrayElementEditor(for type: ColumnType, originalValue: String?) -> ArrayElementEditor? {
+        guard let elementEditor = type.arrayElementEditor,
+              let originalValue,
+              PostgresArrayLiteralCodec.parse(originalValue) != nil
+        else { return nil }
+        return elementEditor
     }
 
     /// `isLongText` only matches six exact type names, so a large value in `VARCHAR(MAX)`,
