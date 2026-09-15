@@ -33,9 +33,22 @@ final class IOSSyncCoordinator {
     @ObservationIgnored var onTagsChanged: (([ConnectionTag]) -> Void)?
     @ObservationIgnored var getCurrentState: (() -> LibraryState?)?
 
+    /// Where the record cache lives, resolved by the app because the package cannot see it.
+    ///
+    /// The path is the one the package used to pick for itself, so a cache written by an earlier build is
+    /// still found rather than silently abandoned and re-fetched.
+    private static var recordCacheDirectory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base.appendingPathComponent("TablePro/SyncRecordCache", isDirectory: true)
+    }
+
     init(
         metadata: SyncMetadataStorage = SyncMetadataStorage(),
-        recordCache: SyncRecordCache = SyncRecordCache(),
+        recordCache: SyncRecordCache = SyncRecordCache(
+            directory: IOSSyncCoordinator.recordCacheDirectory,
+            defaults: .standard
+        ),
         makeTransport: @escaping () -> any IOSSyncTransport = { CloudKitSyncEngine() }
     ) {
         self.metadata = metadata
