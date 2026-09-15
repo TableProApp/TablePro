@@ -89,6 +89,52 @@ pub fn create_private_file_if_missing(path: &Path) -> Result<(), StorageError> {
     }
 }
 
+/// Rename a file out of the way, returning the name it now has.
+///
+/// The caller shows that name, so the user can find the file again. The
+/// suffix counter handles two resets in the same second.
+pub fn move_aside_blocking(path: &Path, now: std::time::SystemTime) -> Result<std::path::PathBuf, StorageError> {
+    let seconds = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_owned());
+    let parent = path.parent().unwrap_or(Path::new("."));
+
+    for attempt in 0..MAX_MOVE_ASIDE_ATTEMPTS {
+        let candidate = if attempt == 0 {
+            parent.join(format!("{name}.corrupt-{seconds}"))
+        } else {
+            parent.join(format!("{name}.corrupt-{seconds}-{attempt}"))
+        };
+        match std::fs::symlink_metadata(&candidate) {
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                std::fs::rename(path, &candidate).map_err(|source| StorageError::Io {
+                    path: path.to_owned(),
+                    source,
+                })?;
+                return Ok(candidate);
+            }
+            Ok(_) => continue,
+            Err(source) => {
+                return Err(StorageError::Io {
+                    path: candidate,
+                    source,
+                });
+            }
+        }
+    }
+    Err(StorageError::Io {
+        path: path.to_owned(),
+        source: std::io::Error::new(ErrorKind::AlreadyExists, "no free name to move the file aside"),
+    })
+}
+
+const MAX_MOVE_ASIDE_ATTEMPTS: u32 = 1_000;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +218,27 @@ mod tests {
         write_private_blocking(&file, b"short").expect("rewrite");
 
         assert_eq!(std::fs::read(&file).expect("read"), b"short");
+    }
+
+    #[test]
+    fn move_aside_picks_suffix_on_collision() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("connections.json");
+        let now = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+
+        std::fs::write(&file, b"first").expect("seed");
+        let first = move_aside_blocking(&file, now).expect("first move");
+        std::fs::write(&file, b"second").expect("reseed");
+        let second = move_aside_blocking(&file, now).expect("second move");
+
+        assert_eq!(first.file_name().expect("name"), "connections.json.corrupt-1700000000");
+        assert_eq!(
+            second.file_name().expect("name"),
+            "connections.json.corrupt-1700000000-1"
+        );
+        assert_eq!(std::fs::read(&first).expect("read"), b"first");
+        assert_eq!(std::fs::read(&second).expect("read"), b"second");
+        assert!(!file.exists(), "the original was left behind");
     }
 
     #[test]

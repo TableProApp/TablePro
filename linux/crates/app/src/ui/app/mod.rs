@@ -72,6 +72,7 @@ pub struct App {
     /// before the connection actually completed.
     connect_progress_toast: Option<adw::Toast>,
     reconnect_banner: adw::Banner,
+    connection_list_banner: adw::Banner,
     connections_factory: FactoryVecDeque<ConnectionRow>,
     connections_popover: gtk::Popover,
     health_state: Option<ConnectionHealth>,
@@ -306,6 +307,8 @@ pub enum AppMsg {
     RowOpStarted,
     ReloadConnections,
     ConnectionsLoaded(Vec<SavedConnection>),
+    ConnectionListUnavailable,
+    ResetConnectionList,
     OpenSaved(SavedConnection),
     DeleteConnection(Uuid),
     /// "+ New query" button or Ctrl+T → append a new editor tab.
@@ -696,6 +699,12 @@ impl SimpleComponent for App {
                                 set_revealed: false,
                                 set_use_markup: false,
                                 set_button_label: Some(crate::i18n::gettext("Retry").as_str()),
+                            },
+
+                            #[name = "connection_list_banner"]
+                            add_top_bar = &adw::Banner {
+                                set_revealed: false,
+                                set_use_markup: false,
                             },
                             // Content is set imperatively at the end of
                             // init() — show_welcome_page swaps in the
@@ -1155,6 +1164,7 @@ impl SimpleComponent for App {
             toast_overlay: widgets.toast_overlay.clone(),
             connect_progress_toast: None,
             reconnect_banner: widgets.reconnect_banner.clone(),
+            connection_list_banner: widgets.connection_list_banner.clone(),
             connections_factory,
             connections_popover: widgets.connections_popover.clone(),
             health_state: None,
@@ -1200,6 +1210,11 @@ impl SimpleComponent for App {
         let banner_sender = sender.clone();
         widgets.reconnect_banner.connect_button_clicked(move |_| {
             banner_sender.input(AppMsg::RefreshPage);
+        });
+
+        let list_banner_sender = sender.clone();
+        widgets.connection_list_banner.connect_button_clicked(move |_| {
+            list_banner_sender.input(AppMsg::ResetConnectionList);
         });
 
         let poll_sender = sender.clone();
@@ -1363,6 +1378,8 @@ impl SimpleComponent for App {
             AppMsg::TablesReloaded(tables) => self.on_tables_reloaded(tables),
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
+            AppMsg::ConnectionListUnavailable => self.show_connection_list_banner(),
+            AppMsg::ResetConnectionList => self.on_reset_connection_list(sender),
             AppMsg::ConnectionsLoaded(connections) => {
                 let conns = connections;
                 self.on_connections_loaded(&conns, sender);

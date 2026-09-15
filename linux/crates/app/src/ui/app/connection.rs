@@ -58,8 +58,12 @@ impl App {
             let sender_for_touch = sender.clone();
             let connections = self.storage.connections().clone();
             relm4::spawn(async move {
-                if let Err(error) = connections.touch_last_opened(connection_id).await {
-                    tracing::warn!(%error, "could not stamp the last-opened time");
+                let touched =
+                    tokio::task::spawn_blocking(move || connections.touch_last_opened_blocking(connection_id)).await;
+                match touched {
+                    Ok(Err(error)) => tracing::warn!(%error, "could not stamp the last-opened time"),
+                    Err(error) => tracing::warn!(%error, "the last-opened task failed"),
+                    Ok(Ok(())) => {}
                 }
                 sender_for_touch.input(AppMsg::ReloadConnections);
             });
@@ -140,8 +144,13 @@ impl App {
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    if let Ok(connections) = store.load().await {
-                        sender_clone.input(AppMsg::ConnectionsLoaded(connections));
+                    match tokio::task::spawn_blocking(move || store.load_blocking()).await {
+                        Ok(Ok(connections)) => sender_clone.input(AppMsg::ConnectionsLoaded(connections.to_vec())),
+                        Ok(Err(error)) => {
+                            tracing::warn!(%error, "the saved connections could not be read");
+                            sender_clone.input(AppMsg::ConnectionListUnavailable);
+                        }
+                        Err(error) => tracing::warn!(%error, "the connections read task failed"),
                     }
                 })
                 .drop_on_shutdown()
@@ -337,9 +346,71 @@ fn execute_delete_connection(
                 let _ = secrets.delete_password(id).await;
                 let _ = secrets.delete_ssh_password(id).await;
                 let _ = secrets.delete_ssh_passphrase(id).await;
-                let _ = connections.delete(id).await;
+                let removed = tokio::task::spawn_blocking(move || connections.remove_blocking(id)).await;
+                if let Ok(Err(error)) = removed {
+                    tracing::warn!(%error, "could not remove the saved connection");
+                }
                 sender_clone.input(AppMsg::ReloadConnections);
             })
             .drop_on_shutdown()
     });
+}
+
+impl App {
+    /// The list could not be read, so the user is told rather than shown
+    /// an empty welcome view that looks like their connections vanished.
+    pub(super) fn show_connection_list_banner(&self) {
+        let Some(content) =
+            crate::ui::connection_list_banner::banner_content(&self.storage.connections().snapshot().state)
+        else {
+            self.connection_list_banner.set_revealed(false);
+            return;
+        };
+        self.connection_list_banner.set_title(&content.title);
+        self.connection_list_banner
+            .set_button_label(Some(&content.button_label));
+        self.connection_list_banner.set_revealed(true);
+    }
+
+    pub(super) fn on_reset_connection_list(&self, sender: ComponentSender<Self>) {
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::i18n::gettext("Reset Saved Connections?")),
+            Some(&crate::i18n::gettext(
+                "The unreadable file will be renamed so it can be recovered. Stored passwords stay in the keyring.",
+            )),
+        );
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("reset", &crate::i18n::gettext("Reset"));
+        dialog.set_response_appearance("reset", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+
+        let store = self.storage.connections().clone();
+        let banner = self.connection_list_banner.clone();
+        let toasts = self.toast_overlay.clone();
+        let sender_for_reset = sender;
+        dialog.connect_response(None, move |dialog, response| {
+            dialog.close();
+            if response != "reset" {
+                return;
+            }
+            match store.reset_unreadable_blocking(std::time::SystemTime::now()) {
+                Ok(moved) => {
+                    banner.set_revealed(false);
+                    toasts.add_toast(adw::Toast::new(&crate::ui::connection_list_banner::reset_toast_text(
+                        &moved,
+                    )));
+                    sender_for_reset.input(AppMsg::ReloadConnections);
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "could not reset the saved connections");
+                    toasts.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
+                        "Could not reset the saved connections: {error}",
+                        &[("error", &error.to_string())],
+                    )));
+                }
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
 }

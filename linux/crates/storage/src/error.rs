@@ -52,4 +52,7 @@ pub enum StorageError {
 
     #[error("could not migrate the query history: {0}")]
     HistoryMigration(#[source] sqlx::migrate::MigrateError),
+
+    #[error("{0}")]
+    DocumentUnavailable(#[source] crate::document_problem::DocumentProblem),
 }
