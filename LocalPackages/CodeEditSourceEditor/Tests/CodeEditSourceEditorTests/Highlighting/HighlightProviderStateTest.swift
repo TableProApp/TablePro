@@ -1,7 +1,7 @@
-import XCTest
-import CodeEditTextView
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import TableProGrammars
+import XCTest
 
 /// Because the provider state is mostly just passing messages between providers and the highlight state, what we need
 /// to test is that invalidated ranges are sent to the delegate

@@ -7,7 +7,7 @@
 
 import AppKit
 import SwiftTreeSitter
-import CodeEditLanguages
+import TableProGrammars
 
 extension TreeSitterClient {
     static func quickHighlight(
@@ -16,7 +16,7 @@ extension TreeSitterClient {
         font: NSFont,
         language: CodeLanguage
     ) -> NSAttributedString? {
-        guard let parserLanguage = language.language, let query = TreeSitterModel.shared.query(for: language.id) else {
+        guard let parserLanguage = language.language, let query = HighlightQueries.shared.query(for: language.id) else {
             return nil
         }
 

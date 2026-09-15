@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProGrammars
 import TableProPluginKit
 
 struct SQLReviewSheet: View {

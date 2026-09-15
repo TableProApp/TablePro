@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProGrammars
 
 /// Shows the block behind a collapsed fold while the pointer rests on its placeholder.
 ///

@@ -6,9 +6,9 @@
 //
 
 import AppKit
-import SwiftUI
 import CodeEditTextView
-import CodeEditLanguages
+import SwiftUI
+import TableProGrammars
 
 /// A SwiftUI View that provides source editing functionality.
 public struct SourceEditor: NSViewControllerRepresentable {

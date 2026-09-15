@@ -46,6 +46,6 @@
 # Vendored C headers (database driver bridges, tree-sitter grammars)
 Plugins/*/C*/include/** linguist-vendored
 TablePro/Core/SSH/CLibSSH2/** linguist-vendored
-LocalPackages/CodeEditLanguages/Sources/TreeSitterGrammars/** linguist-vendored
+Packages/TableProGrammars/Sources/TreeSitterGrammars/** linguist-vendored
 
 .github/workflows/*.lock.yml linguist-generated=true merge=ours

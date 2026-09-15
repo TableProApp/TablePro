@@ -16,8 +16,8 @@ let package = Package(
     dependencies: [
         // A fast, efficient, text view for code (local override).
         .package(path: "../CodeEditTextView"),
-        // tree-sitter languages (local override)
-        .package(path: "../CodeEditLanguages"),
+        // The grammars TablePro ships.
+        .package(path: "../../Packages/TableProGrammars"),
         // Rules for indentation, pair completion, whitespace
         .package(
             url: "https://github.com/ChimeHQ/TextFormation",
@@ -31,7 +31,7 @@ let package = Package(
             name: "CodeEditSourceEditor",
             dependencies: [
                 "CodeEditTextView",
-                "CodeEditLanguages",
+                "TableProGrammars",
                 "TextFormation"
             ]
         ),
@@ -41,7 +41,7 @@ let package = Package(
             name: "CodeEditSourceEditorTests",
             dependencies: [
                 "CodeEditSourceEditor",
-                "CodeEditLanguages",
+                "TableProGrammars",
                 .product(name: "CustomDump", package: "swift-custom-dump")
             ]
         ),

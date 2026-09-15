@@ -1,11 +1,12 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
+
 import PackageDescription
 
 let package = Package(
-    name: "CodeEditLanguages",
+    name: "TableProGrammars",
     platforms: [.macOS(.v13)],
     products: [
-        .library(name: "CodeEditLanguages", targets: ["CodeEditLanguages"])
+        .library(name: "TableProGrammars", targets: ["TableProGrammars"])
     ],
     dependencies: [
         .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter.git", from: "0.9.0")
@@ -13,20 +14,20 @@ let package = Package(
     targets: [
         .target(
             name: "TreeSitterGrammars",
-            path: "Sources/TreeSitterGrammars",
             publicHeadersPath: "include",
-            cSettings: [
-                .headerSearchPath("vendored-headers")
-            ]
+            cSettings: [.headerSearchPath("vendored-headers")]
         ),
         .target(
-            name: "CodeEditLanguages",
+            name: "TableProGrammars",
             dependencies: [
                 "TreeSitterGrammars",
                 .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter")
             ],
-            resources: [.copy("Resources")],
-            linkerSettings: []
+            resources: [.copy("Resources")]
+        ),
+        .testTarget(
+            name: "TableProGrammarsTests",
+            dependencies: ["TableProGrammars"]
         )
     ]
 )

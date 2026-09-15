@@ -1,8 +1,8 @@
-import Foundation
 import AppKit
-import CodeEditTextView
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import Foundation
+import TableProGrammars
 
 class MockHighlightProvider: HighlightProviding {
     var onSetUp: (CodeLanguage) -> Void
@@ -59,7 +59,7 @@ enum Mock {
     static func textViewController(theme: EditorTheme) -> TextViewController {
         TextViewController(
             string: "",
-            language: .html,
+            language: .sql,
             configuration: config(),
             cursorPositions: [],
             highlightProviders: [TreeSitterClient()]

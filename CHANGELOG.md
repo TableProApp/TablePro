@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File > Import > Import from AWS…** for RDS instances and Aurora clusters, imported as connections. (#2852)
 - Per-table row filter, with an optional separate target filter, and row limit in data Compare & Sync. (#2537)
 - Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
+- Acknowledgements entries for the four tree-sitter grammars the SQL editor ships.
 
 ### Changed
 

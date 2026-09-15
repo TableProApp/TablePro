@@ -5,12 +5,12 @@
 //  Created by Khan Winter on 9/12/22.
 //
 
-import Foundation
 import AppKit
 import CodeEditTextView
-import SwiftTreeSitter
-import CodeEditLanguages
+import Foundation
 import OSLog
+import SwiftTreeSitter
+import TableProGrammars
 
 /// Thresholds for degrading language services on large documents.
 public enum EditorHighlighting {

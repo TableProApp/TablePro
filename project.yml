@@ -39,8 +39,8 @@ fileGroups:
 packages:
   CodeEditSourceEditor:
     path: LocalPackages/CodeEditSourceEditor
-  CodeEditLanguages:
-    path: LocalPackages/CodeEditLanguages
+  TableProGrammars:
+    path: Packages/TableProGrammars
   # Reached transitively by CodeEditSourceEditor, but the app links its product
   # directly, so it has to be declared here too.
   CodeEditTextView:
@@ -228,7 +228,7 @@ targets:
         embed: true
         copy: { destination: plugins }
       - package: CodeEditSourceEditor
-      - package: CodeEditLanguages
+      - package: TableProGrammars
       - package: CodeEditTextView
       - package: Sparkle
       - package: Yams

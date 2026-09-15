@@ -5,9 +5,9 @@
 //  Read-only DDL view with tree-sitter syntax highlighting via CodeEditSourceEditor
 //
 
-import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProGrammars
 import TableProPluginKit
 
 /// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor

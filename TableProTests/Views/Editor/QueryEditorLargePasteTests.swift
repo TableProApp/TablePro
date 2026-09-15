@@ -12,10 +12,10 @@
 //  run that target, so a test there would never gate a regression.
 //
 
-import CodeEditLanguages
 @preconcurrency @testable import CodeEditSourceEditor
 import CodeEditTextView
 import Foundation
+import TableProGrammars
 import Testing
 
 private final class CompletionRecorder: @unchecked Sendable {

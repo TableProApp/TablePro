@@ -41,8 +41,8 @@ extension TextViewController {
     private func populateCommentCache(for range: NSRange, using commentCache: inout CommentCache) {
         // Determine the appropriate comment characters based on the language settings.
         if language.lineCommentString.isEmpty {
-            commentCache.startCommentChars = language.rangeCommentStrings.0
-            commentCache.endCommentChars = language.rangeCommentStrings.1
+            commentCache.startCommentChars = language.blockCommentStrings.0
+            commentCache.endCommentChars = language.blockCommentStrings.1
         } else {
             commentCache.startCommentChars = language.lineCommentString
         }

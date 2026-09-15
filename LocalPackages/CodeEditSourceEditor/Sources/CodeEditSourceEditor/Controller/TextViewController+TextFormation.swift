@@ -26,15 +26,11 @@ extension TextViewController {
     }
 
     /// Returns a `TextualIndenter` based on available language configuration.
+    ///
+    /// Every grammar the app ships indents on braces, so they all take the basic patterns. Python and Ruby, the two
+    /// languages `TextualIndenter` has its own patterns for, have no grammar here.
     private func getTextIndenter() -> TextualIndenter {
-        switch language.id {
-        case .python:
-            return TextualIndenter(patterns: TextualIndenter.pythonPatterns)
-        case .ruby:
-            return TextualIndenter(patterns: TextualIndenter.rubyPatterns)
-        default:
-            return TextualIndenter(patterns: TextualIndenter.basicPatterns)
-        }
+        TextualIndenter(patterns: TextualIndenter.basicPatterns)
     }
 
     /// Configures pair filters and adds them to the `textFilters` array.

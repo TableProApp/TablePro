@@ -128,6 +128,11 @@ jobs:
       - name: Run TableProCore package tests
         run: swift test --package-path Packages/TableProCore
 
+      # The grammars and their highlight queries. Pinned to the tracked Package.resolved so a
+      # SwiftTreeSitter bump that forgets the lockfile fails here rather than floating.
+      - name: Run TableProGrammars package tests
+        run: swift test --package-path Packages/TableProGrammars --force-resolved-versions
+
       # The only thing that runs TableProOracleCore's suites. AllPlugins proves the module
       # compiles and nothing more, and the package is not a TableProTests dependency, so the cases
       # cannot move there: importing it drags oracle-nio into the app test bundle. Gated on its own

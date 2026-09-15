@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftTreeSitter
-import CodeEditLanguages
+import TableProGrammars
 
 /// TreeSitterState contains the tree of language layers that make up the tree-sitter document.
 public final class TreeSitterState {
@@ -58,9 +58,9 @@ public final class TreeSitterState {
                 id: codeLanguage.id,
                 tsLanguage: codeLanguage.language,
                 parser: Parser(),
-                supportsInjections: codeLanguage.additionalHighlights?.contains("injections") ?? false,
+                supportsInjections: codeLanguage.additionalQueries.contains("injections"),
                 tree: nil,
-                languageQuery: TreeSitterModel.shared.query(for: codeLanguage.id),
+                languageQuery: HighlightQueries.shared.query(for: codeLanguage.id),
                 ranges: []
             )
         ]
@@ -117,7 +117,7 @@ public final class TreeSitterState {
     ///   - layerId: A language ID to add as a layer.
     ///   - readBlock: Completion called for efficient string lookup.
     public func addLanguageLayer(
-        layerId: TreeSitterLanguage,
+        layerId: GrammarID,
         readBlock: @escaping Parser.ReadBlock
     ) -> LanguageLayer? {
         guard let language = CodeLanguage.allLanguages.first(where: { $0.id == layerId }),
@@ -130,9 +130,9 @@ public final class TreeSitterState {
             id: layerId,
             tsLanguage: language.language,
             parser: Parser(),
-            supportsInjections: language.additionalHighlights?.contains("injections") ?? false,
+            supportsInjections: language.additionalQueries.contains("injections"),
             tree: nil,
-            languageQuery: TreeSitterModel.shared.query(for: layerId),
+            languageQuery: HighlightQueries.shared.query(for: layerId),
             ranges: []
         )
 
@@ -226,7 +226,7 @@ public final class TreeSitterState {
         var updatedRanges = IndexSet()
 
         for (languageName, ranges) in languageRanges {
-            guard let treeSitterLanguage = TreeSitterLanguage(rawValue: languageName) else {
+            guard let treeSitterLanguage = GrammarID(rawValue: languageName) else {
                 continue
             }
 

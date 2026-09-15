@@ -6,8 +6,8 @@
 //
 
 import Foundation
-import CodeEditLanguages
 import SwiftTreeSitter
+import TableProGrammars
 import TreeSitter
 
 extension Parser {
@@ -32,7 +32,7 @@ public class LanguageLayer: Hashable {
     ///   - languageQuery: The language query used for fetching the associated `queries.scm` file
     ///   - ranges: All ranges this layer acts on. Must be kept in order and w/o overlap.
     init(
-        id: TreeSitterLanguage,
+        id: GrammarID,
         tsLanguage: Language?,
         parser: Parser,
         supportsInjections: Bool,
@@ -51,7 +51,7 @@ public class LanguageLayer: Hashable {
         self.parser.timeout = TreeSitterClient.Constants.parserTimeout
     }
 
-    let id: TreeSitterLanguage
+    let id: GrammarID
     let tsLanguage: Language?
     let parser: Parser
     let supportsInjections: Bool

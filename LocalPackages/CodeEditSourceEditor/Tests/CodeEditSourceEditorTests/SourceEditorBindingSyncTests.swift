@@ -166,7 +166,7 @@ final class SourceEditorBindingSyncTests: XCTestCase {
         let provider = HighlighterTests.MockHighlightProvider()
         let providerController = TextViewController(
             string: "select * from users",
-            language: .html,
+            language: .sql,
             configuration: Mock.config(),
             cursorPositions: [],
             highlightProviders: [provider]

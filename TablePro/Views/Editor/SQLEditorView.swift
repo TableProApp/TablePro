@@ -6,11 +6,11 @@
 //
 
 import AppKit
-import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
 import Combine
 import SwiftUI
+import TableProGrammars
 import TableProPluginKit
 
 // MARK: - SQLEditorView

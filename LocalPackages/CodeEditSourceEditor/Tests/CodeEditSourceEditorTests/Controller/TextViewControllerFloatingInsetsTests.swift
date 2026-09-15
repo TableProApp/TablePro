@@ -175,8 +175,9 @@ struct TextViewControllerFloatingInsetsTests {
     @Test("Changing the language forgets the widths measured under the old one")
     func changingTheLanguageForgetsWidths() {
         load(longLine)
+        #expect(controller.language.id == .sql, "the fixture's language has to differ from the one set below")
 
-        controller.language = .sql
+        controller.language = .json
 
         #expect(controller.textView.layoutManager.lineStorage.maxWidth == 0)
     }

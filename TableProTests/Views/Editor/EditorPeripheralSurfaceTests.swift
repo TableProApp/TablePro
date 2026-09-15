@@ -4,10 +4,10 @@
 //
 
 import AppKit
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
 import CodeEditTextView
 @testable import TablePro
+import TableProGrammars
 import Testing
 
 @MainActor
@@ -91,7 +91,7 @@ struct EditorPeripheralSurfaceTests {
     @Test("The editor installs the same text filters whichever language a driver names")
     func filtersDoNotVaryByLanguage() {
         let sql = Harness().controller.textFilters.map { String(describing: type(of: $0)) }
-        for language in [CodeLanguage.javascript, .jsx, .json, .bash, .html, .typescript] {
+        for language in CodeLanguage.allLanguages where language.id != .sql {
             let other = Harness(language: language).controller.textFilters.map { String(describing: type(of: $0)) }
             #expect(sql == other, "\(language.id) installs \(other) where SQL installs \(sql)")
         }

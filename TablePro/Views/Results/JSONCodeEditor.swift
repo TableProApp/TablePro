@@ -7,9 +7,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProGrammars
 
 internal struct JSONCodeEditor: View {
     @Binding var text: String

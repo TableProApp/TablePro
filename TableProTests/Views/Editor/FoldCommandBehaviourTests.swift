@@ -4,13 +4,13 @@
 //
 
 import AppKit
-import CodeEditLanguages
 import CodeEditSourceEditor
 import CodeEditTextView
 import Foundation
+@testable import TablePro
+import TableProGrammars
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("Fold commands")
 @MainActor

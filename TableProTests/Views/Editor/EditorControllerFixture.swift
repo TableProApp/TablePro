@@ -7,9 +7,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
 import CodeEditTextView
+import TableProGrammars
 
 @MainActor
 internal enum EditorControllerFixture {

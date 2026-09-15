@@ -1,7 +1,7 @@
-import XCTest
-import CodeEditTextView
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
+import CodeEditTextView
+import TableProGrammars
+import XCTest
 
 final class HighlighterTests: XCTestCase {
     class MockHighlightProvider: HighlightProviding {

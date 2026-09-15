@@ -21,26 +21,6 @@
     diacritics (Karoly Lorentey, with o-acute and o-double-acute) in the original file; reproduce it from
     texts/bigint.LICENSE.txt rather than from this YAML, which is ASCII-folded. Transitive via oracle-nio.
     Zero `$s6BigInt` symbols in the app dylib.
-- id: codeeditlanguages
-  name: CodeEditLanguages
-  version: vendored, heavily trimmed (no upstream tag recorded in the tree)
-  spdx: UNVERIFIED
-  copyrights: []
-  homepageURL: https://github.com/CodeEditApp/CodeEditLanguages
-  licenseTextURL: ''
-  source: manual
-  patched: false
-  notes: 'NO LICENCE FILE. There is no LICENSE, LICENSE.md, LICENCE, COPYING or NOTICE anywhere under
-    LocalPackages/CodeEditLanguages (checked recursively, excluding build/ and .build/). The only root
-    files are Package.swift and Sources/. No SPDX identifier is inferred. Upstream is equally unlicensed:
-    see the codeeditlanguages-upstream record below. Authorship is evident from the Swift file headers
-    ("Created by Lukas Pistrol", "Created by Khan Winter"), i.e. the code is derived from CodeEditApp/CodeEditLanguages,
-    but no grant of licence accompanies it. THIS IS A BLOCKING COMPLIANCE ITEM: without a licence, default
-    copyright applies and redistribution inside TablePro.app is not permitted. Confirmed shipping: 768
-    `$s17CodeEditLanguages` symbols plus the four grammar entry points `_tree_sitter_bash`, `_tree_sitter_javascript`,
-    `_tree_sitter_json`, `_tree_sitter_sql` in the app dylib. This package ALSO vendors four tree-sitter
-    grammars as C sources under Sources/TreeSitterGrammars/ with no licence headers of their own; see
-    the vendoredTreeSitterGrammars section at the bottom of this file.'
 - id: codeeditsourceeditor
   name: CodeEditSourceEditor
   version: vendored (no upstream tag recorded in the tree)
@@ -53,7 +33,7 @@
   source: manual
   patched: false
   notes: 'LICENSE.md present at the package root. First 3 lines: "MIT License" / "" / "Copyright (c) 2022
-    CodeEdit". Vendored fork with local modifications (its Package.swift points CodeEditTextView and CodeEditLanguages
+    CodeEdit". Vendored fork with local modifications (its Package.swift points CodeEditTextView and TableProGrammars
     at local paths). MIT requires the copyright notice and permission notice be reproduced. Confirmed
     linked: 83+ `$s21CodeEditSourceEditor` symbols in the app dylib.'
 - id: codeedittextview
@@ -638,6 +618,64 @@
   notes: 'Pinned as an SPM package (it carries a Package.swift) even though the shipped artefact is the
     C runtime library. Tag is `v0.25.10`; the Package.resolved records the bare version "0.25.10". Confirmed
     shipping: 106 `_ts_parser_*` C symbols in the app dylib.'
+- id: tree-sitter-bash
+  name: tree-sitter-bash
+  version: vendored generated parser (see Packages/TableProGrammars/Sources/TreeSitterGrammars/ORIGIN.md)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2017 Max Brunsfeld
+  homepageURL: https://github.com/tree-sitter/tree-sitter-bash
+  licenseTextURL: https://github.com/tree-sitter/tree-sitter-bash/blob/master/LICENSE
+  textFile: texts/tree-sitter-bash.txt
+  source: manual
+  patched: false
+  notes: 'Generated parser and scanner plus the highlight query, copied into TableProGrammars. The upstream
+    LICENSE travels with the sources at Sources/TreeSitterGrammars/bash/LICENSE. Confirmed shipping: the
+    `_tree_sitter_bash` entry point in the app dylib.'
+- id: tree-sitter-javascript
+  name: tree-sitter-javascript
+  version: vendored generated parser (see Packages/TableProGrammars/Sources/TreeSitterGrammars/ORIGIN.md)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2014 Max Brunsfeld
+  homepageURL: https://github.com/tree-sitter/tree-sitter-javascript
+  licenseTextURL: https://github.com/tree-sitter/tree-sitter-javascript/blob/master/LICENSE
+  textFile: texts/tree-sitter-javascript.txt
+  source: manual
+  patched: false
+  notes: 'Generated parser and scanner plus the highlight, JSX, injection, locals and tag queries. Backs
+    both the javascript and jsx languages. The upstream LICENSE travels with the sources at
+    Sources/TreeSitterGrammars/javascript/LICENSE. Confirmed shipping: the `_tree_sitter_javascript`
+    entry point in the app dylib.'
+- id: tree-sitter-json
+  name: tree-sitter-json
+  version: vendored generated parser (see Packages/TableProGrammars/Sources/TreeSitterGrammars/ORIGIN.md)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2014 Max Brunsfeld
+  homepageURL: https://github.com/tree-sitter/tree-sitter-json
+  licenseTextURL: https://github.com/tree-sitter/tree-sitter-json/blob/master/LICENSE
+  textFile: texts/tree-sitter-json.txt
+  source: manual
+  patched: false
+  notes: 'Generated parser plus the highlight query. The upstream LICENSE travels with the sources at
+    Sources/TreeSitterGrammars/json/LICENSE. Confirmed shipping: the `_tree_sitter_json` entry point in
+    the app dylib.'
+- id: tree-sitter-sql
+  name: tree-sitter-sql
+  version: vendored generated parser (see Packages/TableProGrammars/Sources/TreeSitterGrammars/ORIGIN.md)
+  spdx: MIT
+  copyrights:
+  - Copyright (c) 2021 Derek Stride
+  homepageURL: https://github.com/DerekStride/tree-sitter-sql
+  licenseTextURL: https://github.com/DerekStride/tree-sitter-sql/blob/main/LICENSE
+  textFile: texts/tree-sitter-sql.txt
+  source: manual
+  patched: false
+  notes: 'Generated parser and scanner plus the highlight and indent queries. This is the grammar behind
+    every colour in the SQL editor. The upstream LICENSE travels with the sources at
+    Sources/TreeSitterGrammars/sql/LICENSE. Confirmed shipping: the `_tree_sitter_sql` entry point in the
+    app dylib.'
 - id: yams
   name: Yams
   version: 5.4.0

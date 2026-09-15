@@ -5,10 +5,10 @@
 //  Created by Khan Winter on 1/18/23.
 //
 
-import Foundation
-import CodeEditTextView
-import CodeEditLanguages
 import AppKit
+import CodeEditTextView
+import Foundation
+import TableProGrammars
 
 /// A single-case error that should be thrown when an operation should be retried.
 public enum HighlightProvidingError: Error {

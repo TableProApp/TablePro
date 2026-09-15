@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftTreeSitter
-import CodeEditLanguages
+import TableProGrammars
 
 extension TreeSitterClient {
     /// Applies the given edit to the current state and calls the editState's completion handler.

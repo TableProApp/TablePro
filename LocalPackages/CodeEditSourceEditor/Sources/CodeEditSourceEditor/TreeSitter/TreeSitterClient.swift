@@ -5,11 +5,11 @@
 //  Created by Khan Winter on 9/12/22.
 //
 
-import Foundation
 import CodeEditTextView
-import CodeEditLanguages
-import SwiftTreeSitter
+import Foundation
 import OSLog
+import SwiftTreeSitter
+import TableProGrammars
 
 /// # TreeSitterClient
 ///

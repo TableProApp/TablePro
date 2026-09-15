@@ -8,11 +8,11 @@
 //
 
 import AppKit
-import CodeEditLanguages
 @testable import CodeEditSourceEditor
 import Foundation
 import SwiftTreeSitter
 @testable import TablePro
+import TableProGrammars
 import Testing
 
 @Suite("Editor syntax highlighting")
@@ -47,7 +47,7 @@ struct SyntaxHighlightingTests {
     @Test("Every bundled grammar's highlight query compiles", arguments: bundledLanguageNames)
     func bundledQueryCompiles(name: String) throws {
         let language = try #require(Self.language(named: name))
-        let query = TreeSitterModel.shared.query(for: language.id)
+        let query = HighlightQueries.shared.query(for: language.id)
         #expect(query != nil, "\(name) has no usable highlight query, so that editor shows no highlighting at all")
     }
 
@@ -268,7 +268,7 @@ struct SyntaxHighlightingTests {
     private static func highlightQueryURLs(for language: CodeLanguage) throws -> [URL] {
         let primary = try #require(language.queryURL)
         let directory = primary.deletingLastPathComponent()
-        let additional = (language.additionalHighlights ?? [])
+        let additional = (language.additionalQueries)
             .filter { $0.hasPrefix("highlights") }
             .map { directory.appendingPathComponent("\($0).scm") }
         return additional + [primary]

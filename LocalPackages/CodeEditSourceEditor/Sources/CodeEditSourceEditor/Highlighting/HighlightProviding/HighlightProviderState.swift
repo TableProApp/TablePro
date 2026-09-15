@@ -5,10 +5,10 @@
 //  Created by Khan Winter on 10/13/24.
 //
 
-import Foundation
-import CodeEditLanguages
 import CodeEditTextView
+import Foundation
 import OSLog
+import TableProGrammars
 
 @MainActor
 protocol HighlightProviderStateDelegate: AnyObject {

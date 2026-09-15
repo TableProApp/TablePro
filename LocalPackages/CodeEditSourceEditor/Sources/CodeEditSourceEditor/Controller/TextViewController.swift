@@ -7,9 +7,9 @@
 
 import AppKit
 import CodeEditTextView
-import CodeEditLanguages
-import SwiftUI
 import Combine
+import SwiftUI
+import TableProGrammars
 import TextFormation
 
 /// # TextViewController

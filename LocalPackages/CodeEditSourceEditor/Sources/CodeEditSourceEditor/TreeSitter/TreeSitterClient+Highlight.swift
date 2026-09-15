@@ -7,7 +7,7 @@
 
 import Foundation
 import SwiftTreeSitter
-import CodeEditLanguages
+import TableProGrammars
 
 extension TreeSitterClient {
     func queryHighlightsForRange(range: NSRange) -> [HighlightRange] {
@@ -65,16 +65,7 @@ extension TreeSitterClient {
         queryCursor.setRange(range)
         queryCursor.matchLimit =  Constants.matchLimit
 
-        var highlights: [HighlightRange] = []
-
-        // See https://github.com/CodeEditApp/CodeEditSourceEditor/pull/228
-        if layer.id == .jsdoc {
-            highlights.append(HighlightRange(range: range, capture: .comment))
-        }
-
-        highlights += highlightsFromCursor(cursor: queryCursor, includedRange: range)
-
-        return highlights
+        return highlightsFromCursor(cursor: queryCursor, includedRange: range)
     }
 
     /// Resolves a query cursor to the highlight ranges it contains.

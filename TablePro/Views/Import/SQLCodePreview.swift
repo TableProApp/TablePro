@@ -5,9 +5,9 @@
 //  Read-only SQL code preview with tree-sitter syntax highlighting
 //
 
-import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProGrammars
 
 /// Read-only SQL code preview with syntax highlighting powered by CodeEditSourceEditor
 struct SQLCodePreview: View {
