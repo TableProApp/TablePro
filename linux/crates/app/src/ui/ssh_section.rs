@@ -53,11 +53,17 @@ impl SshSection {
             .build();
         group.add(&expander);
 
-        let host = adw::EntryRow::builder().title(crate::i18n::gettext("Host")).build();
+        let host = adw::EntryRow::builder()
+            .title(crate::i18n::gettext("Host"))
+            .activates_default(true)
+            .build();
         let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
         port.set_title(&crate::i18n::gettext("Port"));
         port.set_value(22.0);
-        let user = adw::EntryRow::builder().title(crate::i18n::gettext("Username")).build();
+        let user = adw::EntryRow::builder()
+            .title(crate::i18n::gettext("Username"))
+            .activates_default(true)
+            .build();
 
         let auth_pwd = crate::i18n::gettext("Password");
         let auth_key = crate::i18n::gettext("Private key");
@@ -70,14 +76,17 @@ impl SshSection {
 
         let password = adw::PasswordEntryRow::builder()
             .title(crate::i18n::gettext("Password"))
+            .activates_default(true)
             .build();
         let key_path = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Private key path"))
             .text(default_ssh_key_path())
+            .activates_default(true)
             .build();
         attach_key_browse_button(&key_path);
         let passphrase = adw::PasswordEntryRow::builder()
             .title(crate::i18n::gettext("Passphrase"))
+            .activates_default(true)
             .build();
 
         expander.add_row(&host);
@@ -174,6 +183,21 @@ fn default_ssh_key_path() -> String {
         .find(|path| path.exists())
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+impl SshSection {
+    /// Every text row in the section, with whether Enter submits from
+    /// it. The port is a spin row, which has no text to submit.
+    pub(crate) fn rows_activating_default(&self) -> [(&'static str, bool); 5] {
+        [
+            ("host", self.host.activates_default()),
+            ("user", self.user.activates_default()),
+            ("password", self.password.activates_default()),
+            ("key_path", self.key_path.activates_default()),
+            ("passphrase", self.passphrase.activates_default()),
+        ]
+    }
 }
 
 fn attach_key_browse_button(key_path: &adw::EntryRow) {

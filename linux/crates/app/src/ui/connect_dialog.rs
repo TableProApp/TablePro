@@ -207,6 +207,7 @@ impl Component for ConnectDialog {
         let host = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Host"))
             .text("localhost")
+            .activates_default(true)
             .build();
         // Port is a u16 1-65535. AdwSpinRow enforces the range natively;
         // no parse + fallback dance, no inline-error CSS to maintain.
@@ -216,13 +217,16 @@ impl Component for ConnectDialog {
         let database = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Database"))
             .text("postgres")
+            .activates_default(true)
             .build();
         let username = adw::EntryRow::builder()
             .title(crate::i18n::gettext("Username"))
             .text("postgres")
+            .activates_default(true)
             .build();
         let password = adw::PasswordEntryRow::builder()
             .title(crate::i18n::gettext("Password"))
+            .activates_default(true)
             .build();
         let use_tls = adw::SwitchRow::builder()
             .title(crate::i18n::gettext("Use TLS"))
@@ -345,11 +349,11 @@ impl Component for ConnectDialog {
         }
         model.refresh_validity();
 
-        // Make Connect the dialog's default widget so pressing Enter
-        // from any AdwEntryRow submits the form. Per HIG, every
-        // dialog with a primary action should respond to Enter — the
-        // suggested-action class alone only handles styling, not the
-        // keybind.
+        // Enter submits. Each row carries activates-default, which is
+        // what makes AdwEntryRow call gtk_widget_activate_default; the
+        // default widget alone does nothing without it. Connect stays
+        // insensitive while the form is invalid, so Enter on a bad form
+        // does nothing.
         root.set_default_widget(Some(&model.submit));
 
         ComponentParts { model, widgets }
@@ -1027,5 +1031,77 @@ mod tests {
             None
         ));
         assert!(!matches_existing(&sales, "mssql", &finance, false, None));
+    }
+
+    fn test_dialog() -> relm4::component::Controller<ConnectDialog> {
+        let runtime = crate::runtime::AppRuntime::build().expect("a runtime");
+        let root = std::env::temp_dir().join(format!("tablepro-connect-{}", std::process::id()));
+        let paths = tablepro_storage::StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
+        let storage = std::rc::Rc::new(crate::storage::AppStorage::new(
+            paths,
+            std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+            &runtime.tasks(),
+        ));
+        let mut registry = DriverRegistry::new();
+        registry.register(std::sync::Arc::new(drivers_postgres::PgDriver));
+
+        ConnectDialog::builder()
+            .launch(ConnectDialogInit {
+                registry: Arc::new(registry),
+                storage,
+                tasks: runtime.tasks(),
+            })
+            .detach()
+    }
+
+    #[gtk4::test]
+    fn enter_in_any_text_row_reaches_connect() {
+        // Enter needs both halves: activates-default on the row, which
+        // is what makes AdwEntryRow call gtk_widget_activate_default,
+        // and Connect as the dialog's default widget for it to reach.
+        // `structure_tab_dialogs` proves the pair really fires a click.
+        let controller = test_dialog();
+        let model = controller.model();
+
+        assert!(model.host.activates_default(), "host");
+        assert!(model.database.activates_default(), "database");
+        assert!(model.username.activates_default(), "username");
+        assert!(model.password.activates_default(), "password");
+        assert_eq!(
+            controller.widget().default_widget(),
+            Some(model.submit.clone().upcast::<gtk::Widget>()),
+            "Connect is not the dialog's default widget"
+        );
+    }
+
+    #[gtk4::test]
+    fn connect_stays_insensitive_until_the_form_is_valid() {
+        // Enter on an invalid form does nothing because AdwDialog skips
+        // an insensitive default widget.
+        let controller = test_dialog();
+        let model = controller.model();
+        model.host.set_text("");
+        model.database.set_text("postgres");
+        model.username.set_text("postgres");
+        model.refresh_validity();
+        assert!(!model.submit.is_sensitive(), "Connect was sensitive without a host");
+
+        model.host.set_text("localhost");
+        model.refresh_validity();
+
+        assert!(
+            model.submit.is_sensitive(),
+            "Connect stayed insensitive on a valid form"
+        );
+    }
+
+    #[gtk4::test]
+    fn every_ssh_text_row_submits_on_enter() {
+        let controller = test_dialog();
+        let ssh = &controller.model().ssh;
+
+        for (name, activates) in ssh.rows_activating_default() {
+            assert!(activates, "{name} does not submit on Enter");
+        }
     }
 }

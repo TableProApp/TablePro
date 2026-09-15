@@ -38,9 +38,9 @@ type ColumnChecks = Rc<RefCell<Vec<(String, gtk::CheckButton)>>>;
 /// `(dialog, content, submit_btn)` lets the caller append form
 /// widgets to `content` and observe `submit_btn` for the Add action.
 ///
-/// `submit_btn` is set as the dialog's default widget so Enter-key
-/// activation in any AdwEntryRow inside `content` submits the form
-/// (matches GNOME Settings's Add-account-style dialogs).
+/// `submit_btn` is the dialog's default widget. A row that should
+/// submit on Enter sets `activates-default` on itself, matching GNOME
+/// Settings' Add-account dialogs.
 fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box, gtk::Button) {
     let dialog = adw::Dialog::builder()
         .title(title)
@@ -77,8 +77,9 @@ fn build_form_dialog(title: &str, submit_label: &str) -> (adw::Dialog, gtk::Box,
     toolbar_view.add_top_bar(&header);
     toolbar_view.set_content(Some(&scroller));
     dialog.set_child(Some(&toolbar_view));
-    // Enter inside any AdwEntryRow descendant fires the default widget.
-    // Without this the Add button only responds to mouse / Tab+Space.
+    // Enter submits. Each form row also carries activates-default,
+    // which is what makes AdwEntryRow call gtk_widget_activate_default;
+    // the default widget alone does nothing without it.
     dialog.set_default_widget(Some(&submit_btn));
 
     let dialog_for_cancel = dialog.clone();
@@ -133,7 +134,10 @@ pub(super) fn present_index_dialog(
     // title slot doubles as the placeholder when empty (floats up
     // when filled), so no separate "Name" label is needed.
     let detail_group = adw::PreferencesGroup::builder().build();
-    let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+    let name_row = adw::EntryRow::builder()
+        .title(crate::i18n::gettext("Name"))
+        .activates_default(true)
+        .build();
     detail_group.add(&name_row);
     let unique_row = adw::SwitchRow::builder()
         .title(crate::i18n::gettext("Unique"))
@@ -197,7 +201,10 @@ pub(super) fn present_fk_dialog(
     // Name in its own AdwPreferencesGroup at the top — matches the
     // shape of the column-edit drawer + every other GNOME form.
     let name_group = adw::PreferencesGroup::builder().build();
-    let name_row = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+    let name_row = adw::EntryRow::builder()
+        .title(crate::i18n::gettext("Name"))
+        .activates_default(true)
+        .build();
     name_group.add(&name_row);
     body.append(&name_group);
 
@@ -211,9 +218,15 @@ pub(super) fn present_fk_dialog(
     let ref_group = adw::PreferencesGroup::builder()
         .title(crate::i18n::gettext("References"))
         .build();
-    let ref_table_row = adw::EntryRow::builder().title(crate::i18n::gettext("Table")).build();
+    let ref_table_row = adw::EntryRow::builder()
+        .title(crate::i18n::gettext("Table"))
+        .activates_default(true)
+        .build();
     ref_group.add(&ref_table_row);
-    let ref_cols_row = adw::EntryRow::builder().title(crate::i18n::gettext("Columns")).build();
+    let ref_cols_row = adw::EntryRow::builder()
+        .title(crate::i18n::gettext("Columns"))
+        .activates_default(true)
+        .build();
     ref_group.add(&ref_cols_row);
     let on_delete_row = adw::ComboRow::builder()
         .title(crate::i18n::gettext("On delete"))
@@ -300,4 +313,92 @@ pub(super) fn present_fk_dialog(
     });
 
     dialog.present(Some(parent));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use super::*;
+
+    /// GtkButton's activate runs a short press animation and emits
+    /// `clicked` when it ends, so the click lands after a spin of the
+    /// main loop rather than inside `emit_activate`.
+    const ACTIVATE_WAIT: Duration = Duration::from_secs(5);
+
+    /// The GtkText inside an AdwEntryRow. Enter reaches the row through
+    /// this delegate, so that is where the test presses it.
+    fn press_enter(row: &adw::EntryRow) {
+        let text = gtk::prelude::EditableExt::delegate(row)
+            .and_then(|delegate| delegate.downcast::<gtk::Text>().ok())
+            .expect("an AdwEntryRow delegates to a GtkText");
+        text.emit_activate();
+    }
+
+    /// An Add Index-shaped dialog on a mapped window, with a counter on
+    /// its submit button. The window has to be mapped: GtkButton
+    /// refuses to activate an unrealized button, so an unmapped
+    /// fixture would pass both tests for the wrong reason.
+    fn form_on_a_window(activates_default: bool) -> (adw::Window, adw::EntryRow, Rc<AtomicUsize>) {
+        let window = adw::Window::new();
+        let (dialog, body, submit) =
+            build_form_dialog(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("Add"));
+
+        let group = adw::PreferencesGroup::builder().build();
+        let name_row = adw::EntryRow::builder()
+            .title(crate::i18n::gettext("Name"))
+            .activates_default(activates_default)
+            .build();
+        group.add(&name_row);
+        body.append(&group);
+
+        let clicks = Rc::new(AtomicUsize::new(0));
+        let clicks_for_submit = clicks.clone();
+        submit.connect_clicked(move |_| {
+            clicks_for_submit.fetch_add(1, Ordering::Relaxed);
+        });
+
+        window.present();
+        dialog.present(Some(&window));
+        crate::test_support::wait_until(ACTIVATE_WAIT, || name_row.is_mapped()).expect("the form never appeared");
+        (window, name_row, clicks)
+    }
+
+    #[gtk4::test]
+    fn enter_in_a_form_row_activates_the_dialog_default() {
+        let (_window, name_row, clicks) = form_on_a_window(true);
+        name_row.set_text("by_created_at");
+
+        press_enter(&name_row);
+
+        crate::test_support::wait_until(ACTIVATE_WAIT, || clicks.load(Ordering::Relaxed) == 1)
+            .expect("Enter did not reach the Add button");
+    }
+
+    #[gtk4::test]
+    fn a_row_without_activates_default_does_not_submit() {
+        // The dialog's default widget alone is not enough, which is why
+        // every form row sets activates-default.
+        let (_window, name_row, clicks) = form_on_a_window(false);
+        name_row.set_text("by_created_at");
+
+        press_enter(&name_row);
+
+        assert!(
+            crate::test_support::wait_until(Duration::from_secs(1), || clicks.load(Ordering::Relaxed) > 0).is_err(),
+            "a row without activates-default submitted the form"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_form_dialog_has_a_default_widget() {
+        let (dialog, _body, _submit) =
+            build_form_dialog(&crate::i18n::gettext("Add Foreign Key"), &crate::i18n::gettext("Add"));
+
+        assert!(
+            dialog.default_widget().is_some(),
+            "the form dialog has no default widget for Enter to reach"
+        );
+    }
 }
