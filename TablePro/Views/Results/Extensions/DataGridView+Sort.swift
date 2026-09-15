@@ -133,12 +133,18 @@ extension TableViewCoordinator {
             menu.addItem(fillItem)
         }
 
-        let filterItem = NSMenuItem(title: String(localized: "Filter with column"), action: #selector(filterWithColumn(_:)), keyEquivalent: "")
-        filterItem.representedObject = baseName
-        filterItem.target = self
-        menu.addItem(filterItem)
+        if supportsColumnCommands {
+            let filterItem = NSMenuItem(
+                title: String(localized: "Filter with column"),
+                action: #selector(filterWithColumn(_:)),
+                keyEquivalent: ""
+            )
+            filterItem.representedObject = baseName
+            filterItem.target = self
+            menu.addItem(filterItem)
+        }
 
-        if let dataColumnIndex = dataColumnIndex(from: column.identifier) {
+        if supportsColumnCommands, let dataColumnIndex = dataColumnIndex(from: column.identifier) {
             let filterValuesItem = NSMenuItem(
                 title: String(localized: "Filter Values…"),
                 action: #selector(filterColumnValues(_:)),
@@ -192,12 +198,17 @@ extension TableViewCoordinator {
 
         menu.addItem(NSMenuItem.separator())
 
-        let hideItem = NSMenuItem(title: String(localized: "Hide Column"), action: #selector(hideColumn(_:)), keyEquivalent: "")
-        hideItem.representedObject = baseName
-        hideItem.target = self
-        menu.addItem(hideItem)
+        if supportsColumnCommands {
+            let hideItem = NSMenuItem(
+                title: String(localized: "Hide Column"), action: #selector(hideColumn(_:)), keyEquivalent: ""
+            )
+            hideItem.representedObject = baseName
+            hideItem.target = self
+            menu.addItem(hideItem)
+        }
 
-        if delegate != nil,
+        if supportsColumnCommands,
+           delegate != nil,
            columnPool.hasUserHiddenColumns {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),

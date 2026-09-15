@@ -16,8 +16,14 @@ extension MSSQLPluginDriver {
             let isProcedure = MSSQLObjectQueries.routineKind(forObjectType: objectType) == "PROCEDURE"
             var attributes: [PluginObjectAttribute] = []
             attributes.append(PluginObjectAttribute(label: "Object Type", value: objectType.trimmingCharacters(in: .whitespaces)))
-            if row[safe: 4]?.asText == "1" {
+            let hasSQLSource = MSSQLObjectQueries.routineHasSQLSource(forObjectType: objectType)
+            if row[safe: 3]?.asText == "1" {
                 attributes.append(PluginObjectAttribute(label: "Encrypted", value: "YES"))
+            } else if hasSQLSource, row[safe: 4]?.asText == "1" {
+                attributes.append(PluginObjectAttribute(
+                    label: String(localized: "Source"),
+                    value: String(localized: "Not readable with your permissions")
+                ))
             }
             let parameters = row[safe: 5]?.asText ?? ""
             return PluginRoutineInfo(
@@ -25,7 +31,7 @@ extension MSSQLPluginDriver {
                 kind: isProcedure ? .procedure : .function,
                 schema: row[safe: 1]?.asText ?? resolvedSchema,
                 returnType: isProcedure ? nil : row[safe: 6]?.asText,
-                language: "T-SQL",
+                language: MSSQLObjectQueries.routineLanguage(forObjectType: objectType),
                 argumentSignature: "(\(parameters))",
                 identity: nil,
                 attributes: attributes
@@ -40,10 +46,12 @@ extension MSSQLPluginDriver {
         guard let row = result.rows.first else {
             throw PluginObjectSourceError.notFound(routine.name)
         }
-        /// sys.sql_modules.definition is NULL for WITH ENCRYPTION, and for a caller without
-        /// VIEW DEFINITION. Neither means the routine is gone.
         guard let definition = row[safe: 0]?.asText, !definition.isEmpty else {
-            throw PluginObjectSourceError.insufficientPrivilege(routine.name)
+            let isEncrypted = row[safe: 1]?.asText == "1"
+            let hasSQLSource = MSSQLObjectQueries.routineHasSQLSource(forObjectType: row[safe: 2]?.asText ?? "")
+            throw isEncrypted || !hasSQLSource
+                ? PluginObjectSourceError.unsupported(routine.name)
+                : PluginObjectSourceError.insufficientPrivilege(routine.name)
         }
         return definition
     }

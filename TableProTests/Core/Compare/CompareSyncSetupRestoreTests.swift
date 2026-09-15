@@ -261,10 +261,8 @@ final class CompareSyncSetupRestoreTests: XCTestCase {
             table: String(id.split(separator: ".").last ?? ""),
             schema: "public",
             targetSchema: "public",
-            columns: ["id"],
-            columnDescriptors: [KeyColumnDescriptor(name: "id", dataType: "INTEGER", collation: nil)],
-            generatedColumns: [],
-            keyColumns: ["id"],
+            columns: [CompareColumn(name: "id", sourceType: "INTEGER", targetType: "INTEGER")],
+            scope: DataTableScope(keyColumns: ["id"]),
             isEnabled: false,
             excludedRowKeys: []
         )
