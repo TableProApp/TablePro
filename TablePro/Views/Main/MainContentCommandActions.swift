@@ -1308,11 +1308,10 @@ final class MainContentCommandActions {
 
     // MARK: - UI Operations (Group A — Called Directly)
 
-    /// History is a trailing-pane surface, so the command that shows it is the same shape as the
-    /// two beside it. `HistoryPanelState.isVisible` is written by the pane rather than here, which
-    /// is what keeps the flag describing what the window shows instead of racing it.
     func toggleHistoryPanel() {
-        coordinator?.trailingPaneProxy?.toggleHistory()
+        guard let connectionId = coordinator?.connectionId else { return }
+        let state = HistoryPanelState.forConnection(connectionId)
+        state.isVisible.toggle()
     }
 
     func toggleRightSidebar() {

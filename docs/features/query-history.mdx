@@ -3,22 +3,22 @@ title: Query History
 description: Every executed query is saved to a local SQLite database with full-text search
 ---
 
-By default the pane shows only the SQL you wrote yourself. The SELECTs behind table browsing, the UPDATEs behind grid edits, the DDL behind a structure change and everything an MCP client ran are all recorded too, waiting behind the **Source** menu.
+By default the drawer shows only the SQL you wrote yourself. The SELECTs behind table browsing, the UPDATEs behind grid edits, the DDL behind a structure change and everything an MCP client ran are all recorded too, waiting behind the **Source** menu.
 
-Open it with `Cmd+Y` or **View > Show Query History**. There is also a **History** toolbar button, added through **View > Customize Toolbar…**.
+Open the drawer with `Cmd+Y` or **View > Show Query History**. There is also a **History** toolbar button, added through **View > Customize Toolbar…**.
 
-<Frame caption="Query history in the trailing pane, entry list above the details">
-  <img className="block dark:hidden" src="/images/query-history.png" alt="Query history pane" />
-  <img className="hidden dark:block" src="/images/query-history-dark.png" alt="Query history pane" />
+<Frame caption="Query history drawer: entry list on the left, details on the right">
+  <img className="block dark:hidden" src="/images/query-history.png" alt="Query history drawer" />
+  <img className="hidden dark:block" src="/images/query-history-dark.png" alt="Query history drawer" />
 </Frame>
 
-## The pane
+## The drawer
 
-History shares the window's trailing pane with the inspector and the assistant, so opening it shows it in place of whichever of those was there. Its entry list sits above its details and a divider between them resizes both. Width, filters and whether it was open are remembered per connection.
+The drawer opens under the editor and its divider resizes it. Height, filters and whether it was open are remembered per connection.
 
 Entries group by day, newest first, under **Today**, **Yesterday**, or the date. A row carries the outcome, the query text, the database, the time it ran and how long it took. Under a millisecond reads `<1 ms`; a step whose duration was never measured reads `–` rather than `0 ms`.
 
-Select a row and the lower half shows the full query, highlighted for the database it ran against, with its connection, database and schema, timestamp, duration, row count, source, and the error when it failed. Where the driver separated execution from transfer, the duration is listed as its parts instead: see [How long it took](/features/query-results#how-long-it-took). The keyboard stays in the list, so arrow keys keep moving.
+Select a row and the right pane shows the full query, highlighted for the database it ran against, with its connection, database and schema, timestamp, duration, row count, source, and the error when it failed. Where the driver separated execution from transfer, the duration is listed as its parts instead: see [How long it took](/features/query-results#how-long-it-took). The keyboard stays in the list, so arrow keys keep moving.
 
 Recent queries also appear in [Open Quickly](/features/open-quickly). For the summary rather than the list, see [Query Insights](/features/query-insights).
 
@@ -34,7 +34,7 @@ Recent queries also appear in [Open Quickly](/features/open-quickly). For the su
 
 Search matches partial words, so `cust` finds `customers`. Several words must all match but need not be adjacent: `select customers` finds `SELECT id, name FROM customers`.
 
-**All Connections** searches everything you have, and rows then name their connection, so two databases both called `app` stay apart. **Reset Filters** puts the pane back to its defaults.
+**All Connections** searches everything you have, and rows then name their connection, so two databases both called `app` stay apart. **Reset Filters** puts the drawer back to its defaults.
 
 ### Sources
 
@@ -74,11 +74,11 @@ An entry belonging to another connection loads into a new tab in that connection
 
 ## Pausing
 
-The pause button stops recording on this Mac, from every source: row edits, structure changes, imports and AI clients included. The pane says so until you resume. Pausing is local to the Mac you press it on and survives relaunch.
+The pause button stops recording on this Mac, from every source: row edits, structure changes, imports and AI clients included. The drawer says so until you resume. Pausing is local to the Mac you press it on and survives relaunch.
 
 ## Clearing history
 
-The trash button deletes exactly the entries the pane is listing. Anything the source, date, outcome or search filters are hiding stays, which at the default **My Queries** source spares table browsing, row edits, imports and AI queries. The confirmation names what it is about to delete. There is no undo.
+The trash button deletes exactly the entries the drawer is listing. Anything the source, date, outcome or search filters are hiding stays, which at the default **My Queries** source spares table browsing, row edits, imports and AI queries. The confirmation names what it is about to delete. There is no undo.
 
 **Settings > Data > Query History > Clear History…** clears everything, for every connection.
 

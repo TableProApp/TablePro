@@ -55,7 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection rows without colored dots, on the Mac and on iOS.
 - SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
-- Query history opens in the trailing pane beside the inspector and the assistant, with its entry list above its detail.
 - Query editor command bar with one control size, the container picker leading and the commands trailing.
 
 ### Removed
@@ -64,7 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Ctrl+Cmd+J` from the editor's reserved shortcuts, so it can be bound in Settings > Keyboard.
 - Result tab strip above the query results, and the "Query" heading above the editor.
 - Trash button that cleared the query and the results under one name.
-- Query history drawer under the editor and results.
 
 ### Fixed
 

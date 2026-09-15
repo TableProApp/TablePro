@@ -17,10 +17,8 @@ import Foundation
 internal protocol TrailingPaneProxy: AnyObject {
     var isInspectorVisible: Bool { get }
     var isAssistantVisible: Bool { get }
-    var isHistoryVisible: Bool { get }
     func showInspector()
     func showAssistant()
-    func showHistory()
     func hideTrailingPane()
 
     /// Reveals the inspector for a selection the user made somewhere else, and only if that does
@@ -38,9 +36,5 @@ internal extension TrailingPaneProxy {
 
     func toggleAssistant() {
         if isAssistantVisible { hideTrailingPane() } else { showAssistant() }
-    }
-
-    func toggleHistory() {
-        if isHistoryVisible { hideTrailingPane() } else { showHistory() }
     }
 }
