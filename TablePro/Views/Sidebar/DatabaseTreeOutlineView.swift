@@ -37,6 +37,26 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         SidebarRowSizeResolver.resolve(preference: rowSizePreference, system: systemRowSize)
     }
 
+    var coordinatorInputs: DatabaseTreeInputs {
+        DatabaseTreeInputs(
+            connectionId: connectionId,
+            databaseType: databaseType,
+            mainCoordinator: coordinator,
+            windowState: windowState,
+            sidebarState: sidebarState,
+            viewModel: viewModel,
+            pendingTruncates: pendingTruncates,
+            pendingDeletes: pendingDeletes,
+            searchText: searchText,
+            isConnected: isConnected,
+            activeDatabase: activeDatabase,
+            activeSchema: activeSchema,
+            showRecentTables: showRecentTables,
+            showSystemContainers: showSystemContainers,
+            rowSize: resolvedRowSize
+        )
+    }
+
     func makeCoordinator() -> DatabaseTreeOutlineCoordinator {
         DatabaseTreeOutlineCoordinator()
     }
@@ -70,13 +90,13 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
         outlineView.menu = menu
 
         context.coordinator.attach(outlineView: outlineView)
-        context.coordinator.update(from: self)
+        context.coordinator.update(coordinatorInputs)
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         SidebarOutlineScaffold.applyRowSize(rowSizePreference, to: nsView)
-        context.coordinator.update(from: self)
+        context.coordinator.update(coordinatorInputs)
     }
 }
 

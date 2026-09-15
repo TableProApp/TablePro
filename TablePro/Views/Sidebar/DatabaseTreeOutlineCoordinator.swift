@@ -173,36 +173,36 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         favoritesObservers.withLockUnchecked { $0.forEach(NotificationCenter.default.removeObserver) }
     }
 
-    func update(from view: DatabaseTreeOutlineView) {
-        let connectionChanged = connectionId != view.connectionId
-        connectionId = view.connectionId
+    func update(_ inputs: DatabaseTreeInputs) {
+        let connectionChanged = connectionId != inputs.connectionId
+        connectionId = inputs.connectionId
         if connectionChanged { reloadFavorites() }
-        databaseType = view.databaseType
-        mainCoordinator = view.coordinator
-        windowState = view.windowState
-        sidebarState = view.sidebarState
-        viewModel = view.viewModel
+        databaseType = inputs.databaseType
+        mainCoordinator = inputs.mainCoordinator
+        windowState = inputs.windowState
+        sidebarState = inputs.sidebarState
+        viewModel = inputs.viewModel
 
-        let activeChanged = activeDatabase != view.activeDatabase || activeSchema != view.activeSchema
+        let activeChanged = activeDatabase != inputs.activeDatabase || activeSchema != inputs.activeSchema
         let changed = connectionChanged
-            || searchText != view.searchText
-            || isConnected != view.isConnected
+            || searchText != inputs.searchText
+            || isConnected != inputs.isConnected
             || activeChanged
-            || pendingTruncates != view.pendingTruncates
-            || pendingDeletes != view.pendingDeletes
-            || showRecentTables != view.showRecentTables
-            || showSystemContainers != view.showSystemContainers
-            || rowSize != view.resolvedRowSize
+            || pendingTruncates != inputs.pendingTruncates
+            || pendingDeletes != inputs.pendingDeletes
+            || showRecentTables != inputs.showRecentTables
+            || showSystemContainers != inputs.showSystemContainers
+            || rowSize != inputs.rowSize
 
-        searchText = view.searchText
-        isConnected = view.isConnected
-        activeDatabase = view.activeDatabase
-        activeSchema = view.activeSchema
-        pendingTruncates = view.pendingTruncates
-        pendingDeletes = view.pendingDeletes
-        showRecentTables = view.showRecentTables
-        showSystemContainers = view.showSystemContainers
-        rowSize = view.resolvedRowSize
+        searchText = inputs.searchText
+        isConnected = inputs.isConnected
+        activeDatabase = inputs.activeDatabase
+        activeSchema = inputs.activeSchema
+        pendingTruncates = inputs.pendingTruncates
+        pendingDeletes = inputs.pendingDeletes
+        showRecentTables = inputs.showRecentTables
+        showSystemContainers = inputs.showSystemContainers
+        rowSize = inputs.rowSize
 
         if !hasRenderedOnce || activeChanged {
             persistActiveExpansion()
@@ -546,7 +546,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     }
 
     /// Every visible row is handed the same context and the same action set, and both are pure
-    /// functions of the inputs `update(from:)` already tracks, so they are built once per refresh
+    /// functions of the inputs `update(_:)` already tracks, so they are built once per refresh
     /// instead of once per row. Rebuilding them in `viewFor` allocated a fresh set of closures for
     /// every row the outline drew, on every reload and every scroll.
     private var rowContext: DatabaseTreeRowContext {
