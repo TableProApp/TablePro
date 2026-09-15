@@ -209,6 +209,7 @@ extension MainContentView {
         }
         trailingPaneState.inspector.editState.configure(
             selectedRowIndices: selectedIndices,
+            rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             columns: tableRows.columns,
             columnTypes: columnTypes,
@@ -227,38 +228,11 @@ extension MainContentView {
         let capturedCoordinator = coordinator
         let capturedEditState = trailingPaneState.inspector.editState
         trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue in
-            guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
-            let tableRows = capturedCoordinator.tabSessionRegistry.tableRows(for: tab.id)
-            let columnName =
-                columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
-
-            let displayIDs = capturedCoordinator.activeGridDisplayIDs
-            for rowIndex in capturedEditState.selectedRowIndices {
-                guard let resolvedRow = DisplayRowMapping.row(
-                    forDisplay: rowIndex,
-                    displayIDs: displayIDs,
-                    in: tableRows
-                ) else { continue }
-                let originalRow = Array(resolvedRow.values)
-
-                let oldValue: PluginCellValue
-                if columnIndex < capturedEditState.fields.count {
-                    oldValue = PluginCellValue.fromOptional(capturedEditState.fields[columnIndex].originalValue)
-                } else if columnIndex < originalRow.count {
-                    oldValue = originalRow[columnIndex]
-                } else {
-                    oldValue = .null
-                }
-
-                capturedCoordinator.changeManager.recordCellChange(
-                    rowID: resolvedRow.id,
-                    columnIndex: columnIndex,
-                    columnName: columnName,
-                    oldValue: oldValue,
-                    newValue: newValue,
-                    originalRow: originalRow
-                )
-            }
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: capturedEditState.rowIDs
+            )
         }
     }
 

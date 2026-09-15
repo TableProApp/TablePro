@@ -309,6 +309,13 @@ struct MainContentView: View {
             .onChange(of: inspectorTrigger) {
                 scheduleInspectorUpdate()
             }
+            /// The JSON rendering draws the snapshot the context carries, and an edit made in the
+            /// fields rendering changes the row under it without moving anything `InspectorTrigger`
+            /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
+            /// together, so the stale snapshot is only ever reached by switching to it.
+            .onChange(of: trailingPaneState.inspector.viewMode) {
+                updateInspectorContext()
+            }
             .onAppear {
                 let start = Date()
                 Self.lifecycleLogger.info(

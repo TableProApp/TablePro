@@ -36,6 +36,7 @@ internal enum WelcomeMenuCommand: Equatable {
     case importConnections
     case importFromURL
     case importFromApp
+    case importFromAWS
     case openProjectFolder
 }
 
@@ -118,6 +119,7 @@ internal enum WelcomeMenuSpec {
                         .command(Titles.importConnections, .importConnections),
                         .command(Titles.importFromURL, .importFromURL),
                         .command(Titles.importFromApp, .importFromApp),
+                        .command(Titles.importFromAWS, .importFromAWS),
                     ]),
                     WelcomeMenuSection([.command(Titles.openProjectFolder, .openProjectFolder)]),
                 ]),
@@ -346,6 +348,7 @@ internal extension WelcomeMenuSpec {
         static var importConnections: String { String(localized: "Import Connections…") }
         static var importFromURL: String { String(localized: "Import from URL…") }
         static var importFromApp: String { String(localized: "Import from Other App…") }
+        static var importFromAWS: String { String(localized: "Import from AWS…") }
         static var openProjectFolder: String { String(localized: "Open Project Folder…") }
         static var disconnect: String { String(localized: "Disconnect") }
         static var edit: String { String(localized: "Edit…") }

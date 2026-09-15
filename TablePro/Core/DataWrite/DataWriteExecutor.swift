@@ -207,7 +207,7 @@ enum DataWriteExecutor {
         guard let expected = step.expectedRowCount else { return }
         let table = step.tableName ?? ""
 
-        if rowsAffected > expected {
+        if KeyedWriteVerification.exceedsExpectation(rowsAffected: rowsAffected, expected: expected) {
             logger.error(
                 "Statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
             )

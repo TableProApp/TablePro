@@ -463,6 +463,8 @@ extension WelcomeViewModel {
             urlImportPresented = true
         case .importFromApp:
             importConnectionsFromApp()
+        case .importFromAWS:
+            importConnectionsFromAWS()
         case .openProjectFolder:
             openProjectFolder()
         }

@@ -13,14 +13,32 @@ enum DataGridCellKind: Equatable {
     case json
     case blob
     case date
+    case checkbox
 
     var showsChevron: Bool {
         switch self {
         case .dropdown, .boolean, .json, .blob, .date:
             return true
-        case .text, .foreignKey:
+        case .text, .foreignKey, .checkbox:
             return false
         }
+    }
+}
+
+enum DataGridCheckboxMark: Equatable {
+    case checked
+    case unchecked
+
+    private static let side: CGFloat = 16
+
+    static func frame(in cellRect: NSRect) -> NSRect {
+        guard cellRect.width >= side, cellRect.height >= side else { return .zero }
+        return NSRect(
+            x: (cellRect.midX - side / 2).rounded(),
+            y: (cellRect.midY - side / 2).rounded(),
+            width: side,
+            height: side
+        )
     }
 }
 
@@ -110,13 +128,16 @@ struct DataGridColumnPresentation: Equatable {
         isDropdown: Bool,
         isTypePicker: Bool,
         isEnumOrSet: Bool,
-        isEditable: Bool
+        isEditable: Bool,
+        isCheckbox: Bool = false
     ) -> DataGridColumnPresentation {
         let configuredPicker = isDropdown || isTypePicker
         let picksFromList = configuredPicker || isEnumOrSet || columnType?.isEnumOrSetType == true
         let kind: DataGridCellKind
 
-        if isForeignKey && !configuredPicker {
+        if isCheckbox {
+            kind = .checkbox
+        } else if isForeignKey && !configuredPicker {
             kind = .foreignKey
         } else if isEditable && picksFromList {
             kind = .dropdown

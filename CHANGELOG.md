@@ -13,12 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
 - What's New window, from Help > What's New.
 - Update install mode and check frequency in the anonymous usage heartbeat.
+- SQL Server alias, table and CLR types in the sidebar's **Types** section, each with a rebuilt `CREATE TYPE` statement.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
 - Favorites and Recent sections, sorting, drag and drop into groups, inline rename and tag search tokens in the welcome window.
 - **File > New Group…**, **File > Rename** and **View > Sort Connections By** for the welcome window.
 - Favorites, Recent, nested groups, sorting and tag search tokens in the iOS connection list.
+- **File > Import > Import from AWS…** for RDS instances and Aurora clusters, imported as connections. (#2852)
+- Per-table row filter, with an optional separate target filter, and row limit in data Compare & Sync. (#2537)
+- Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
 
 ### Changed
 
@@ -33,11 +37,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Welcome window list moved with the arrow keys instead of `Ctrl+J`, `Ctrl+K`, `Ctrl+H` and `Ctrl+L`.
 - Connection switcher lists Favorites, Recent and groups at every depth.
 - Connection rows without colored dots, on the Mac and on iOS.
+- SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
+- Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
 
 ### Fixed
 
 - Stutter when scrolling a very long line in the SQL editor.
+- Row inspector edits missing from the grid cell and gone from the inspector on reselect. (#2851)
+- Empty Procedures and Functions lists on every SQL Server connection.
+- SQL Server rows that could not be saved on a table with a filtered index or an index on a computed column.
+- SQL Server CLR and extended procedures and functions missing from the Procedures and Functions lists.
+- SQL Server routines labelled encrypted when the account simply cannot read their source.
+- SQL Server version detection on a patched server, which left `CREATE OR ALTER` unused since 2016.
 - SQL editor jumping back while scrolling sideways near the start of a long line. (#2841)
+- Data sync scripts missing every UPDATE and DELETE. (#2537)
+- Data sync statements written to the source schema instead of the target.
+- Numeric-looking text such as `007` written unquoted by data sync, and key matches that hit extra rows.
+- Data sync pairing arbitrary rows on a key that is not unique.
+- Data sync inserts failing on SQL Server identity and PostgreSQL `GENERATED ALWAYS` columns.
+- Text columns compared as timestamps, and keys that differ only in case never synced.
+- Data sync scripts including tables never compared, or rows that changed after comparing.
+- Structure sync scripts written from a schema that changed after it was compared.
+- Apply unavailable for a second sync in the same Compare & Sync window.
+- Choosing a source, target, mode or option during Apply cancelling the running sync.
+- Apply offered for a target switched to Read-Only after it was picked.
+- Compare & Sync reporting nothing written after a sync had written to the target.
+- Rolled-back data sync on MyISAM tables reported as leaving the target unchanged.
+- Cancelling a repeated data comparison clearing the previous results.
+- Table whose data comparison failed stuck included with no way to exclude it.
 - SSH settings dropped from a Mac connection after it synced from the iPhone app, turning off its tunnel or remote database file.
 - Remote database file path and access mode dropped when a connection was exported, shared as a link, or imported.
 - Remote database file connection hanging for minutes when its SSH connection dropped silently, with Cancel doing nothing.
@@ -94,12 +121,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fit to Window on an ER diagram fitting empty space left behind by a dragged table.
 - Query plan mode, selected step, zoom and scroll lost on a mode or editor tab switch, or zoom carried over to another plan.
 - Zoom Out on a diagram at 5% jumping to 1%.
+- An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
+- AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
+- AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
 
 ### Security
 
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 - Remote `VACUUM INTO` snapshot created world-readable beside a database with stricter permissions.
+- AWS SSO access token cached world-readable in `~/.aws/sso/cache`.
 
 ## [0.74.0] - 2026-09-13
 
