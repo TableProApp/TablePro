@@ -21,6 +21,11 @@ private struct TabLoadKey: Hashable {
 }
 
 struct MainEditorContentView: View {
+    /// A query tab nests its own editor/results split, whose two minimums are required constraints.
+    /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
+    /// satisfy a height the content it contains cannot reach.
+    static let tabContentMinimumHeight = VerticalCollapsibleSplitView<EmptyView, EmptyView>.combinedMinimumThickness
+
     // MARK: - Dependencies
 
     var tabManager: QueryTabManager
@@ -89,13 +94,25 @@ struct MainEditorContentView: View {
     var body: some View {
         @Bindable var historyState = HistoryPanelState.forConnection(connectionId)
 
-        return Group {
-            if let tab = tabManager.selectedTab {
-                tabContent(for: tab)
-            } else {
-                emptyStateView
+        return VerticalCollapsibleSplitView(
+            isBottomCollapsed: Binding(
+                get: { !historyState.isVisible },
+                set: { historyState.isVisible = !$0 }
+            ),
+            autosaveName: SplitViewAutosaveName.historyDrawer(connectionId: connectionId),
+            topMinimumThickness: Self.tabContentMinimumHeight,
+            bottomMinimumThickness: 180,
+            topContent: {
+                if let tab = tabManager.selectedTab {
+                    tabContent(for: tab)
+                } else {
+                    emptyStateView
+                }
+            },
+            bottomContent: {
+                HistoryPanelView(coordinator: coordinator)
             }
-        }
+        )
         .background(.background)
         .onChange(of: historyState.isVisible, initial: true) { _, isVisible in
             if isVisible {

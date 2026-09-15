@@ -43,15 +43,6 @@ import os
            let raw = defaults.string(forKey: Self.surfaceKey(connectionId)),
            let stored = TrailingPaneSurface(rawValue: raw) {
             self.surface = stored
-        } else if let connectionId, HistoryPanelPreferencesStorage.load(for: connectionId).isVisible {
-            /// This connection last had the query history drawer open, and the drawer is now a
-            /// surface of this pane. Adopting it here is what carries that reader across the move
-            /// instead of silently closing their history on the first launch after upgrading.
-            ///
-            /// Deterministic without a migration flag: it is reachable only while no surface has
-            /// ever been stored for the connection, and storing one is what this initializer's
-            /// `didSet` does the first time anything changes it.
-            self.surface = .history
         } else {
             self.surface = .inspector
         }

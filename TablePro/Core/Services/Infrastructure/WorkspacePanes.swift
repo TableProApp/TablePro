@@ -53,10 +53,6 @@ internal final class WorkspacePanes {
     /// only way it gets the `sizingOptions` firewall below, which is applied here and nowhere else.
     internal let assistant: NSHostingController<AnyView>
 
-    /// Query history, on the same terms as the assistant: its own controller so the list's scroll
-    /// position, the selected entry and a half-typed search survive the reader looking at a row.
-    internal let history: NSHostingController<AnyView>
-
     internal let sidebar: NSHostingController<AnyView>
     /// The editor tab strip. It is a pane like the other three, built and kept alive per
     /// connection, even though the window shows it in the titlebar accessory rather than in a
@@ -76,7 +72,6 @@ internal final class WorkspacePanes {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
         assistant = NSHostingController(rootView: AnyView(Color.clear))
-        history = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
         tabStrip = EditorTabStripPaneController()
         for pane in panes {
@@ -85,7 +80,7 @@ internal final class WorkspacePanes {
     }
 
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, assistant, history, sidebar]
+        [detail, inspector, assistant, sidebar]
     }
 
     /// The controller a trailing surface is drawn by. One split item hosts whichever of these the
@@ -94,7 +89,6 @@ internal final class WorkspacePanes {
         switch surface {
         case .inspector: inspector
         case .assistant: assistant
-        case .history: history
         }
     }
 

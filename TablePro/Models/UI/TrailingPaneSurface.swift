@@ -20,18 +20,11 @@ import Foundation
 internal enum TrailingPaneSurface: String, CaseIterable, Hashable {
     case inspector
     case assistant
-    /// Query history, which used to be a third band stacked under the editor and the results.
-    ///
-    /// It is a peer of the other two by the same argument they are peers of each other: it is a
-    /// task surface no selection owns. Its panel stacks its list over its detail rather than
-    /// beside it, so it reads at the shared 270pt floor without moving it.
-    case history
 
     internal var localizedTitle: String {
         switch self {
         case .inspector: String(localized: "Inspector")
         case .assistant: String(localized: "Assistant")
-        case .history: String(localized: "Query History")
         }
     }
 
