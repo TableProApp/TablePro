@@ -60,6 +60,10 @@ extension MainContentCoordinator {
         rowEditingCoordinator.endInspectorEditRun()
     }
 
+    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
+        rowEditingCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+    }
+
     func copySelectedRowsToClipboard(indices: Set<Int>) {
         rowEditingCoordinator.copySelectedRowsToClipboard(indices: indices)
     }

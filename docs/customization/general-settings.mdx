@@ -51,17 +51,19 @@ External links you chose to always allow, each with **Forget**, plus **Forget Al
 
 ## Software update
 
-The update window shows the release highlights: the handful of lines a release opens with. Where a release has none, it shows the whole changelog for that version, new features first. Either way the full changelog is one click away.
+Both switches are on out of the box, and together they are the whole of the decision: the first one stops the daily check, the second stops the install.
 
-**What's New** opens a window with the highlights of the version you are running, and a button to the full changelog. It is also available from **Help > What's New**.
+**Automatically check for updates** runs the check in the background once a day. Turn it off and nothing reaches the network unless you press the button.
 
-**Download and install updates automatically** is on. A new version downloads in the background and installs the next time TablePro quits, with no dialog. Turn it off to be asked before anything installs.
+**Download and install updates automatically** fetches the new version in the background and swaps it in the next time TablePro quits, with no dialog. Turn it off to be asked first. With the check switched off the switch is dimmed and installs never run.
 
-**Automatically check for updates** is on and checks in the background. **Check for updates** sets how often: **Daily** or **Weekly**. Weekly means a security fix can arrive up to a week later.
+**Last checked** sits beside **Check for Updates…**, which checks now and is also **TablePro > Check for Updates…** in the menu bar. A check you press ignores the schedule and any staged rollout, so it always offers the newest build.
 
-**Check for Updates…** checks now, here or as **TablePro > Check for Updates…** in the menu bar. It ignores both the schedule and any staged rollout, so it always offers the newest build. Updates come through [Sparkle](https://sparkle-project.org/) and are signature-checked before they install.
+When a background check finds something, nothing jumps in front of you. The menu item and the button both change to **Update Available…** and wait until you come back. Updates arrive through [Sparkle](https://sparkle-project.org/) and are signature-checked before they install.
 
-An administrator can pin all three across a fleet. See [Managed updates](/security/managed-updates).
+**What's New** opens the highlights of the version you are running, with a button to the full changelog. It is also **Help > What's New**.
+
+An administrator can pin both switches and the interval across a fleet. See [Managed updates](/security/managed-updates).
 
 ## Privacy
 

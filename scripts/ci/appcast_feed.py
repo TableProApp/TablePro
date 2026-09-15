@@ -4,9 +4,12 @@ Two scripts change appcast.xml: merge-appcast.py adds a release's items, pull-re
 them again when a build has to be withdrawn. They have to agree on where an item starts and ends,
 so that lives here rather than in both.
 
-Everything works on the file's text. A full ElementTree round trip of the feed would rewrite
-namespace prefixes and re-encode 640 KB of CDATA, so items that are not being touched are moved
-byte for byte and only parsed to be understood.
+Everything works on the file's text, because a full ElementTree round trip destroys every CDATA
+section. Measured on the published 695 KB feed: the round trip takes 7 ms, keeps the sparkle prefix
+exactly and is semantically identical, but entity-escapes all 155 release-note blocks and grows the
+file 9%, which every install then downloads and every future diff then buries. (The older claim here
+that a round trip rewrites namespace prefixes was wrong; `register_namespace` preserves them.) So
+items that are not being touched are moved byte for byte and only parsed to be understood.
 """
 
 import pathlib
@@ -70,43 +73,77 @@ def item_enclosures(item):
     return enclosures
 
 
+SKIPPABLE = (("<![CDATA[", "]]>", "CDATA section"), ("<!--", "-->", "comment"))
+ITEM_OPEN = "<item"
+ITEM_CLOSE = "</item>"
+TAG_DELIMITERS = frozenset(">/ \t\r\n")
+
+
+def skip_region(text, index):
+    """The offset just past a CDATA section or comment starting at `index`, else None."""
+    for opener, closer, label in SKIPPABLE:
+        if text.startswith(opener, index):
+            end = text.find(closer, index + len(opener))
+            if end == -1:
+                raise FeedError(f"unterminated {label} in the feed")
+            return end + len(closer)
+    return None
+
+
+def opens_item(text, index):
+    """True only for a real `<item>` tag. `<itemCount>` starts with the same five characters."""
+    if not text.startswith(ITEM_OPEN, index):
+        return False
+    after = index + len(ITEM_OPEN)
+    return after >= len(text) or text[after] in TAG_DELIMITERS
+
+
 def item_spans(text):
     """Whole-line (start, end) offsets of every <item> in document order.
 
-    Release-note CDATA can hold either literal tag, so the scan tracks nesting from the opening
-    tag it is currently inside rather than matching tags pairwise across the whole document. An
-    item never nests inside another item, so the first `</item>` after an opening tag closes it,
-    except where a CDATA section intervenes; CDATA is therefore skipped whole.
+    Release-note CDATA can hold either literal tag, and so can an XML comment, so both are skipped
+    whole rather than matching tags pairwise across the document. An item never nests inside another
+    item, so the first `</item>` outside a skipped region closes it. Every marker begins with `<`,
+    so the scan hops between those rather than walking characters.
     """
     spans = []
     index = 0
     length = len(text)
     while index < length:
-        open_at = text.find("<item", index)
-        if open_at == -1:
+        index = text.find("<", index)
+        if index == -1:
             break
-        cursor = open_at
+        skip = skip_region(text, index)
+        if skip is not None:
+            index = skip
+            continue
+        if not opens_item(text, index):
+            index += 1
+            continue
+
+        open_at = index
+        cursor = open_at + len(ITEM_OPEN)
         close_at = -1
         while cursor < length:
-            cdata_at = text.find("<![CDATA[", cursor)
-            candidate = text.find("</item>", cursor)
-            if candidate == -1:
+            cursor = text.find("<", cursor)
+            if cursor == -1:
                 break
-            if cdata_at != -1 and cdata_at < candidate:
-                cdata_end = text.find("]]>", cdata_at)
-                if cdata_end == -1:
-                    raise FeedError("unterminated CDATA section in the feed")
-                cursor = cdata_end + 3
+            skip = skip_region(text, cursor)
+            if skip is not None:
+                cursor = skip
                 continue
-            close_at = candidate
-            break
+            if text.startswith(ITEM_CLOSE, cursor):
+                close_at = cursor
+                break
+            cursor += 1
         if close_at == -1:
             raise FeedError("an <item> is never closed in the feed")
+
         line_start = text.rfind("\n", 0, open_at) + 1
         line_end = text.find("\n", close_at)
         line_end = length if line_end == -1 else line_end + 1
         spans.append((line_start, line_end))
-        index = close_at + len("</item>")
+        index = close_at + len(ITEM_CLOSE)
     return spans
 
 
@@ -133,11 +170,19 @@ def splice_point(text, path):
 
 
 def insert_items(base_text, path, items_text):
+    """Inserts whole lines at a line boundary.
+
+    The old check here compared the merged text minus the inserted slice against the base, which
+    concatenation makes true by construction: it could never fail. The invariant worth asserting is
+    the one `splice_point` promises and `sole_item_text` relies on, which is that both the cut and
+    the inserted block land on line boundaries.
+    """
     at = splice_point(base_text, path)
-    merged = base_text[:at] + items_text + base_text[at:]
-    if merged[:at] + merged[at + len(items_text):] != base_text:
-        raise FeedError("the splice altered bytes outside the inserted items")
-    return merged
+    if at != 0 and base_text[at - 1] != "\n":
+        raise FeedError(f"{path}: the splice point is mid-line, so the inserted item would be merged into another")
+    if items_text and not items_text.endswith("\n"):
+        raise FeedError(f"{path}: the inserted items do not end on a line boundary")
+    return base_text[:at] + items_text + base_text[at:]
 
 
 def remove_version(base_text, path, version):

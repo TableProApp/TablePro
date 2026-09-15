@@ -7,8 +7,11 @@ install polls, so it is tested here rather than rehearsed on the day.
 Run: python3 scripts/ci/test_pull_release.py
 """
 
+import contextlib
 import importlib.util
+import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -94,6 +97,65 @@ class PullReleaseTests(unittest.TestCase):
         self.assertGreaterEqual(removed, 1)
         self.assertNotIn(newest, self.versions(result))
         self.assertEqual(len(self.versions(result)), len(self.versions(text)) - removed)
+
+
+@contextlib.contextmanager
+def repository_on(branch):
+    """A throwaway git repo checked out on `branch`, or detached when branch is None."""
+    with tempfile.TemporaryDirectory() as directory:
+        def run(*args):
+            subprocess.run(["git", *args], cwd=directory, check=True, capture_output=True)
+
+        run("init", "--quiet", "--initial-branch", "main")
+        run("config", "user.email", "test@example.com")
+        run("config", "user.name", "Test")
+        pathlib.Path(directory, "appcast.xml").write_text(BASE, encoding="utf-8")
+        run("add", "appcast.xml")
+        run("commit", "--quiet", "-m", "seed")
+        if branch is None:
+            run("checkout", "--quiet", "--detach", "HEAD")
+        elif branch != "main":
+            run("checkout", "--quiet", "-b", branch)
+        previous = os.getcwd()
+        os.chdir(directory)
+        try:
+            yield directory
+        finally:
+            os.chdir(previous)
+
+
+class PublishTargetTests(unittest.TestCase):
+    """SUFeedURL serves main. A withdrawal pushed anywhere else leaves every install downloading the
+    bad build while the script prints that it is no longer offered, which `git push origin HEAD` from
+    one of this repo's worktrees did."""
+
+    def test_accepts_main(self):
+        with repository_on("main"):
+            self.assertEqual(pull_release.require_publishable_checkout(), "main")
+
+    def test_refuses_a_feature_branch(self):
+        with repository_on("fix/some-feature"):
+            with self.assertRaises(pull_release.FeedError) as caught:
+                pull_release.require_publishable_checkout()
+            self.assertIn("fix/some-feature", str(caught.exception))
+            self.assertIn("main", str(caught.exception))
+
+    def test_refuses_a_detached_head(self):
+        with repository_on(None):
+            with self.assertRaises(pull_release.FeedError) as caught:
+                pull_release.require_publishable_checkout()
+            self.assertIn("detached", str(caught.exception))
+
+    def test_a_wrong_branch_writes_nothing(self):
+        with repository_on("fix/some-feature") as directory:
+            feed_path = pathlib.Path(directory, "appcast.xml")
+            before = feed_path.read_text(encoding="utf-8")
+            self.assertEqual(pull_release.main(["0.75.0"]), 1)
+            self.assertEqual(feed_path.read_text(encoding="utf-8"), before)
+
+    def test_a_dry_run_is_allowed_anywhere(self):
+        with repository_on("fix/some-feature"):
+            self.assertEqual(pull_release.main(["0.75.0", "--dry-run"]), 0)
 
 
 if __name__ == "__main__":

@@ -184,10 +184,30 @@ final class RowEditingCoordinator {
         rowIDs: [RowID],
         continuity: FieldEditContinuity
     ) {
+        stageInspectorEdits(
+            valuesByRow: Dictionary(rowIDs.map { ($0, value) }, uniquingKeysWith: { first, _ in first }),
+            columnIndex: columnIndex,
+            continuity: continuity
+        )
+    }
+
+    /// Puts a field back to the values the inspector was configured with.
+    ///
+    /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
+    /// row's own value back rather than for one value across all of them.
+    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
+        stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex, continuity: .typing)
+    }
+
+    private func stageInspectorEdits(
+        valuesByRow: [RowID: PluginCellValue],
+        columnIndex: Int,
+        continuity: FieldEditContinuity
+    ) {
         if continuity == .discrete {
             endInspectorEditRun()
         }
-        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex, !valuesByRow.isEmpty else { return }
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.columns.indices.contains(columnIndex) else { return }
@@ -199,7 +219,7 @@ final class RowEditingCoordinator {
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var editedRowIDs: Set<RowID> = []
-        for rowID in rowIDs {
+        for (rowID, value) in valuesByRow {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let values = Array(tableRows.rows[storageRow].values)
             guard values.indices.contains(columnIndex), values[columnIndex] != value else { continue }

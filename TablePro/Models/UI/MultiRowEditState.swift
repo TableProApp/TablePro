@@ -82,6 +82,10 @@ final class MultiRowEditState {
     /// undo step; choosing NULL, DEFAULT, a function or a picker value is its own step.
     var onFieldChanged: ((Int, PluginCellValue, FieldEditContinuity) -> Void)?
 
+    /// A field the selected rows disagree on, cleared back to nothing. It has no single value to
+    /// send, so it asks for each row's own configured value instead.
+    var onFieldReverted: ((Int, [RowID: PluginCellValue]) -> Void)?
+
     private(set) var selectedRowIndices: Set<Int> = []
 
     /// The rows an edit is staged against, captured when the selection was configured.
@@ -254,9 +258,29 @@ final class MultiRowEditState {
         fields[index].pendingValue = pending
         fields[index].isPendingNull = false
         fields[index].isPendingDefault = false
-        if pending != nil || hadPendingEdit {
-            onFieldChanged?(index, PluginCellValue.fromOptional(pending ?? original), .typing)
+        if pending != nil {
+            onFieldChanged?(index, PluginCellValue.fromOptional(pending), .typing)
+        } else if hadPendingEdit {
+            /// `originalValue` is nil for two different situations, and only one of them is a
+            /// value: a stored NULL, and a selection whose rows do not agree. Sending it as one
+            /// value wrote NULL into every selected row when the user cleared a field they all
+            /// disagreed on, which the field then reported as unedited.
+            if fields[index].hasMultipleValues {
+                onFieldReverted?(index, configuredValues(atColumn: index))
+            } else {
+                onFieldChanged?(index, PluginCellValue.fromOptional(original), .typing)
+            }
         }
+    }
+
+    /// What each row held when the selection was configured, which is what a field with no value of
+    /// its own reverts to.
+    private func configuredValues(atColumn index: Int) -> [RowID: PluginCellValue] {
+        var values: [RowID: PluginCellValue] = [:]
+        for (rowID, row) in zip(rowIDs, allRows) where row.indices.contains(index) {
+            values[rowID] = PluginCellValue.fromOptional(row[index])
+        }
+        return values
     }
 
     private static func resolvePendingValue(_ value: String?, original: String?, isJson: Bool) -> String? {
@@ -334,6 +358,7 @@ final class MultiRowEditState {
     func releaseData() {
         fields = []
         onFieldChanged = nil
+        onFieldReverted = nil
         selectedRowIndices = []
         rowIDs = []
         allRows = []
