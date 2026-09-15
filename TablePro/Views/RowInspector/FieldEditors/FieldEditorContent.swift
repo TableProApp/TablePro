@@ -106,7 +106,7 @@ internal struct PendingStatePill: View {
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+            .background(ThemeEngine.shared.palette.color(.panelControlBackground), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
     }
 }

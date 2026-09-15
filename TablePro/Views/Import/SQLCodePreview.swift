@@ -19,7 +19,7 @@ struct SQLCodePreview: View {
 
     var body: some View {
         if text.isEmpty {
-            Color(nsColor: .textBackgroundColor)
+            ThemeEngine.shared.palette.color(.editorBackground)
         } else {
             SourceEditor(
                 $text,

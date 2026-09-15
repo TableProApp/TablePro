@@ -42,6 +42,14 @@
       },
       "text": "#D8DEE9"
     },
+    "panel": {
+      "background": "#2E3440",
+      "controlBackground": "#3B4252",
+      "secondaryText": "#9DA5B4",
+      "separator": "#434C5E",
+      "tertiaryText": "#616E88",
+      "text": "#D8DEE9"
+    },
     "status": {
       "error": "#BF616A",
       "success": "#A3BE8C",

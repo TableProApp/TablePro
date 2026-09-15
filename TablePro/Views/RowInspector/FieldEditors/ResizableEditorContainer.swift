@@ -39,7 +39,7 @@ internal struct ResizableEditorContainer<Content: View>: View {
 
     private var resizeHandle: some View {
         Capsule()
-            .fill(Color(nsColor: .tertiaryLabelColor))
+            .fill(ThemeEngine.shared.palette.color(.panelTertiaryText))
             .frame(width: 26, height: 4)
             .opacity(isHandleHovered ? 1 : 0.5)
             .frame(maxWidth: .infinity, minHeight: 11)

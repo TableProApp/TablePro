@@ -29,7 +29,7 @@ internal struct SingleLineEditorView: View {
             .frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
-            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+            .background(ThemeEngine.shared.palette.color(.panelControlBackground), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
     }
 }

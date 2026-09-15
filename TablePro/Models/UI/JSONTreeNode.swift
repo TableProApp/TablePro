@@ -27,13 +27,14 @@ internal enum JSONValueType {
         }
     }
 
+    @MainActor
     var color: NSColor {
         switch self {
-        case .object, .array: return .systemBlue
-        case .string: return .systemRed
-        case .number: return .systemPurple
-        case .boolean, .null: return .systemOrange
-        case .truncated: return .secondaryLabelColor
+        case .object, .array: return ThemeEngine.shared.palette[.syntaxKeyword]
+        case .string: return ThemeEngine.shared.palette[.syntaxString]
+        case .number: return ThemeEngine.shared.palette[.syntaxNumber]
+        case .boolean, .null: return ThemeEngine.shared.palette[.syntaxNull]
+        case .truncated: return ThemeEngine.shared.palette[.panelSecondaryText]
         }
     }
 }

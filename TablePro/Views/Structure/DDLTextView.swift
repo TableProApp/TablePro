@@ -32,7 +32,7 @@ struct DDLTextView: View {
 
     var body: some View {
         if ddl.isEmpty {
-            Color(nsColor: .textBackgroundColor)
+            ThemeEngine.shared.palette.color(.editorBackground)
         } else {
             SourceEditor(
                 $text,

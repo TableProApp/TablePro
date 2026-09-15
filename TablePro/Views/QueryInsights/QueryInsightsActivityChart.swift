@@ -53,7 +53,7 @@ struct QueryInsightsActivityChart: View {
             }
             .chartForegroundStyleScale([
                 Outcome.succeeded: Color.accentColor,
-                Outcome.failed: Color.orange,
+                Outcome.failed: ThemeEngine.shared.palette.color(.statusWarning),
             ])
             .chartLegend(position: .top, alignment: .trailing, spacing: 8)
             .chartYAxis {

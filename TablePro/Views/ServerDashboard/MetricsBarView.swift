@@ -17,7 +17,7 @@ struct MetricsBarView: View {
                         Image(systemName: "exclamationmark.triangle")
                     }
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
                 }
             }
             .padding(.horizontal, 12)

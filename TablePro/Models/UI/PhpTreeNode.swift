@@ -35,13 +35,14 @@ internal enum PhpNodeType {
         }
     }
 
+    @MainActor
     var color: NSColor {
         switch self {
-        case .array, .object: return .systemBlue
-        case .string: return .systemRed
-        case .int, .float: return .systemPurple
-        case .bool, .null: return .systemOrange
-        case .serializable: return .systemTeal
+        case .array, .object: return ThemeEngine.shared.palette[.syntaxKeyword]
+        case .string: return ThemeEngine.shared.palette[.syntaxString]
+        case .int, .float: return ThemeEngine.shared.palette[.syntaxNumber]
+        case .bool, .null: return ThemeEngine.shared.palette[.syntaxNull]
+        case .serializable: return ThemeEngine.shared.palette[.syntaxType]
         case .reference: return .systemGray
         case .unsupported, .truncated: return .secondaryLabelColor
         }
