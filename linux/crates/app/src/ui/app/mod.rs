@@ -309,6 +309,7 @@ pub enum AppMsg {
     ConnectionsLoaded(Vec<SavedConnection>),
     ConnectionListUnavailable,
     ResetConnectionList,
+    SecretDeleteFailed(Uuid),
     OpenSaved(SavedConnection),
     DeleteConnection(Uuid),
     /// "+ New query" button or Ctrl+T → append a new editor tab.
@@ -1379,6 +1380,7 @@ impl SimpleComponent for App {
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionListUnavailable => self.show_connection_list_banner(),
+            AppMsg::SecretDeleteFailed(id) => self.on_secret_delete_failed(id, sender),
             AppMsg::ResetConnectionList => self.on_reset_connection_list(sender),
             AppMsg::ConnectionsLoaded(connections) => {
                 let conns = connections;

@@ -65,8 +65,11 @@ Backed by the [`oo7`](https://crates.io/crates/oo7) crate, which speaks the Secr
 
 Notes:
 
-- Schema name: `app.tablepro.TablePro.Password`. Attributes: `connection-id`. Label: human-readable connection name (kept in sync on rename).
-- If libsecret is not available (rare; truly minimal Linux installs), `load_password` returns `Ok(None)` and the UI prompts at connect time. The app does not crash and does not write passwords to plain files as a fallback.
+- Schema name: `app.tablepro.TablePro.Password`, from the application id. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
+- Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse.
+- The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
+- Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
+- With no Secret Service at all the store reports `ServiceUnavailable` and the UI prompts at connect time. The app never writes passwords to a plain file as a fallback.
 - Never log a password, ever. Wrap them in `secrecy::SecretString` from the `secrecy` crate before they leave the storage layer.
 
 ## Where files go

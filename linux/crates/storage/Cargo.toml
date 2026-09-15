@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 tablepro-core = { path = "../core" }
+async-trait.workspace = true
 oo7.workspace = true
 secrecy.workspace = true
 serde.workspace = true
@@ -27,7 +28,7 @@ tracing.workspace = true
 [dev-dependencies]
 tablepro-core = { path = "../core" }
 tempfile.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
 [lints]
 workspace = true

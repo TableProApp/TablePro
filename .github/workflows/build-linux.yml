@@ -100,7 +100,7 @@ jobs:
       - name: Secret Service tests
         run: |
           dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
-            && meson devenv -C _build cargo test --locked -p tablepro-storage -- --ignored"
+            && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
       - name: Dist
         run: meson dist -C _build --no-tests --formats xztar
 

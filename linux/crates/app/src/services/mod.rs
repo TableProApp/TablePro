@@ -8,6 +8,8 @@ pub mod connection_monitor;
 pub mod connection_service;
 pub mod database_service;
 pub mod filter_settings;
+pub mod secret_labels;
+pub mod secret_save_report;
 pub mod single_instance;
 pub mod structure_tracker;
 pub mod workspace_state;

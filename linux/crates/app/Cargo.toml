@@ -63,6 +63,7 @@ libc = "0.2"
 sqlformat = "0.5"
 
 [dev-dependencies]
+tablepro-test-support = { path = "../test-support" }
 tracing.workspace = true
 gettext-rs = { version = "0.8", features = ["gettext-system"] }
 tempfile.workspace = true

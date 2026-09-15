@@ -20,6 +20,7 @@ impl App {
             })
             .forward(sender.input_sender(), |out| match out {
                 ConnectDialogOutput::Connected { tables, driver_id } => AppMsg::Connected { tables, driver_id },
+                ConnectDialogOutput::Warning(message) => AppMsg::ShowToast(message),
                 ConnectDialogOutput::Closed => AppMsg::DialogClosed,
             });
         dialog.widget().present(Some(&self.window));
@@ -333,7 +334,7 @@ impl App {
 /// the prefs-disabled branch share one implementation.
 fn execute_delete_connection(
     connections: tablepro_storage::ConnectionStore,
-    secrets: tablepro_storage::SecretStore,
+    secrets: std::sync::Arc<dyn tablepro_core::credentials::SecretVault>,
     id: Uuid,
     sender: ComponentSender<App>,
 ) {
@@ -343,9 +344,13 @@ fn execute_delete_connection(
             .register(async move {
                 // Secrets first: an entry with no secrets is recoverable,
                 // a secret with no entry is orphaned in the keyring.
-                let _ = secrets.delete_password(id).await;
-                let _ = secrets.delete_ssh_password(id).await;
-                let _ = secrets.delete_ssh_passphrase(id).await;
+                if let Err(error) = secrets.delete_connection(id).await {
+                    // Keep the entry: an entry with no secrets can be
+                    // fixed, a secret with no entry is orphaned.
+                    tracing::warn!(%error, "could not delete the connection secrets; keeping the entry");
+                    sender_clone.input(AppMsg::SecretDeleteFailed(id));
+                    return;
+                }
                 let removed = tokio::task::spawn_blocking(move || connections.remove_blocking(id)).await;
                 if let Ok(Err(error)) = removed {
                     tracing::warn!(%error, "could not remove the saved connection");
@@ -370,6 +375,20 @@ impl App {
         self.connection_list_banner
             .set_button_label(Some(&content.button_label));
         self.connection_list_banner.set_revealed(true);
+    }
+
+    /// The keyring refused, so the entry stays and the user is offered
+    /// another go rather than being left with orphaned secrets.
+    pub(super) fn on_secret_delete_failed(&self, id: Uuid, sender: ComponentSender<Self>) {
+        let toast = adw::Toast::new(&crate::i18n::gettext(
+            "The stored passwords could not be deleted, so the connection was kept.",
+        ));
+        toast.set_button_label(Some(&crate::i18n::gettext("Retry")));
+        let retry_sender = sender;
+        toast.connect_button_clicked(move |_| {
+            retry_sender.input(AppMsg::DeleteConnection(id));
+        });
+        self.toast_overlay.add_toast(toast);
     }
 
     pub(super) fn on_reset_connection_list(&self, sender: ComponentSender<Self>) {

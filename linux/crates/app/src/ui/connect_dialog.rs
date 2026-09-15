@@ -3,15 +3,19 @@ use std::sync::Arc;
 use relm4::adw::prelude::*;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use uuid::Uuid;
 
 use tablepro_core::{AuthMode, ConnectOptions, DriverRegistry, TableInfo};
-use tablepro_storage::{ConnectionStore, SavedConnection, SavedSshConfig, SecretStore};
+use tablepro_storage::{ConnectionStore, SavedConnection, SavedSshConfig};
 
 use super::ssh_section::{SshInputs, SshSecretToStore, SshSection};
+use tablepro_core::credentials::{SecretKind, SecretVault};
+
 use crate::services::connection_service;
 use crate::services::database_service::{self, ReconnectParams};
+use crate::services::secret_labels;
+use crate::services::secret_save_report::SecretSaveReport;
 
 pub struct ConnectDialog {
     registry: Arc<DriverRegistry>,
@@ -104,8 +108,23 @@ pub enum ConnectDialogInput {
 
 #[derive(Debug)]
 pub enum ConnectDialogOutput {
-    Connected { tables: Vec<TableInfo>, driver_id: String },
+    Connected {
+        tables: Vec<TableInfo>,
+        driver_id: String,
+    },
+    /// Something the user should see that did not stop the connect,
+    /// such as a password the keyring refused to keep.
+    Warning(String),
     Closed,
+}
+
+/// What a successful connect produced, including anything the keyring
+/// refused to keep so the dialog can say so.
+#[derive(Debug)]
+pub struct ConnectOutcome {
+    pub saved: SavedConnection,
+    pub tables: Vec<TableInfo>,
+    pub secret_warnings: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -114,7 +133,7 @@ pub enum ConnectDialogOutput {
     reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
 )]
 pub enum ConnectDialogCmd {
-    Result(Result<(SavedConnection, Vec<TableInfo>), String>),
+    Result(Result<ConnectOutcome, String>),
     TestResult(Result<usize, String>),
 }
 
@@ -496,11 +515,20 @@ impl Component for ConnectDialog {
     fn update_cmd(&mut self, msg: Self::CommandOutput, sender: ComponentSender<Self>, root: &Self::Root) {
         self.set_busy(BusyKind::None);
         match msg {
-            ConnectDialogCmd::Result(Ok((saved, tables))) => {
-                tracing::info!(driver = %saved.driver_id, table_count = tables.len(), "connected");
+            ConnectDialogCmd::Result(Ok(outcome)) => {
+                tracing::info!(
+                    driver = %outcome.saved.driver_id,
+                    table_count = outcome.tables.len(),
+                    "connected"
+                );
+                // A keyring refusal must not be silent: the connection
+                // opened, but the password will be asked for next time.
+                for warning in &outcome.secret_warnings {
+                    let _ = sender.output(ConnectDialogOutput::Warning(warning.clone()));
+                }
                 let _ = sender.output(ConnectDialogOutput::Connected {
-                    tables,
-                    driver_id: saved.driver_id,
+                    tables: outcome.tables,
+                    driver_id: outcome.saved.driver_id,
                 });
                 root.close();
             }
@@ -649,7 +677,7 @@ fn toggle_error(row: &adw::EntryRow, invalid: bool) {
 #[derive(Clone)]
 struct SaveTargets {
     connections: ConnectionStore,
-    secrets: SecretStore,
+    secrets: std::sync::Arc<dyn SecretVault>,
 }
 
 async fn run_connect(
@@ -660,7 +688,7 @@ async fn run_connect(
     opts: ConnectOptions,
     ssh: Option<SshInputs>,
     read_only: bool,
-) -> Result<(SavedConnection, Vec<TableInfo>), String> {
+) -> Result<ConnectOutcome, String> {
     let stored_password: SecretString = opts.password.clone();
     let ssh_for_establish = ssh.as_ref().map(|s| s.cfg.clone());
     let opts_clone = opts.clone();
@@ -681,8 +709,17 @@ async fn run_connect(
         Some(id) => id,
         None => Uuid::new_v4(),
     };
+    let is_new = find_existing_id(
+        &targets.connections,
+        &driver_id,
+        &opts_clone,
+        driver.is_file_based(),
+        ssh.as_ref(),
+    )
+    .await
+    .is_none();
 
-    let saved = SavedConnection {
+    let mut saved = SavedConnection {
         id,
         name: label.clone(),
         driver_id: driver_id.clone(),
@@ -700,32 +737,66 @@ async fn run_connect(
         last_opened_at: None,
     };
 
-    save_one(&targets.connections, &saved)
-        .await
-        .map_err(|error| format!("save: {error}"))?;
+    // Secrets go in first, so the single list write can record whether
+    // the passphrase actually landed. Storing after the write would
+    // leave has_passphrase claiming a secret that is not there.
+    let mut report = SecretSaveReport::default();
     if saved.auth_mode == AuthMode::Password {
-        let _ = targets
-            .secrets
-            .store_password(saved.id, stored_password.expose_secret(), &label)
-            .await;
+        let label = secret_labels::secret_label(SecretKind::DatabasePassword, &saved);
+        report.record(
+            SecretKind::DatabasePassword,
+            targets
+                .secrets
+                .store(saved.id, SecretKind::DatabasePassword, &stored_password, &label)
+                .await,
+        );
     }
-    if let Some(s) = &ssh {
-        match &s.secret_to_store {
-            SshSecretToStore::Password(p) => {
-                let _ = targets
-                    .secrets
-                    .store_ssh_password(saved.id, p.expose_secret(), &label)
-                    .await;
+    if let Some(section) = &ssh {
+        match &section.secret_to_store {
+            SshSecretToStore::Password(secret) => {
+                let label = secret_labels::secret_label(SecretKind::SshPassword, &saved);
+                report.record(
+                    SecretKind::SshPassword,
+                    targets
+                        .secrets
+                        .store(saved.id, SecretKind::SshPassword, secret, &label)
+                        .await,
+                );
             }
-            SshSecretToStore::Passphrase(p) => {
-                let _ = targets
-                    .secrets
-                    .store_ssh_passphrase(saved.id, p.expose_secret(), &label)
-                    .await;
+            SshSecretToStore::Passphrase(secret) => {
+                let label = secret_labels::secret_label(SecretKind::SshPassphrase, &saved);
+                let stored = report.record(
+                    SecretKind::SshPassphrase,
+                    targets
+                        .secrets
+                        .store(saved.id, SecretKind::SshPassphrase, secret, &label)
+                        .await,
+                );
+                if let Some(config) = saved.ssh.as_mut()
+                    && let tablepro_storage::SavedSshAuth::PrivateKey { has_passphrase, .. } = &mut config.auth
+                {
+                    *has_passphrase = stored;
+                }
             }
             SshSecretToStore::None => {}
         }
     }
+
+    if let Err(error) = save_one(&targets.connections, &saved).await {
+        // The list write is what makes the connection real. Without it
+        // the secrets just stored belong to nothing, so they go again.
+        if is_new {
+            let _ = targets.secrets.delete_connection(saved.id).await;
+        }
+        return Err(crate::i18n::gettext_f(
+            "The connection could not be saved: {error}",
+            &[("error", &error.to_string())],
+        ));
+    }
+    for message in report.messages() {
+        tracing::warn!(message, "a secret was not stored");
+    }
+    let secret_warnings = report.messages();
 
     let params = ReconnectParams {
         driver: driver.clone(),
@@ -739,7 +810,11 @@ async fn run_connect(
         driver_id: saved.driver_id.clone(),
     };
     database_service::instance().add(saved.id, metadata, conn, tunnel, read_only, params);
-    Ok((saved, tables))
+    Ok(ConnectOutcome {
+        saved,
+        tables,
+        secret_warnings,
+    })
 }
 
 /// The store serialises the read, apply and write itself, so the save

@@ -5038,6 +5038,7 @@ dependencies = [
  "tablepro-driver-sqlite",
  "tablepro-ssh",
  "tablepro-storage",
+ "tablepro-test-support",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -5209,6 +5210,7 @@ dependencies = [
 name = "tablepro-storage"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "gio",
  "glib",
@@ -5248,8 +5250,10 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "futures",
+ "secrecy",
  "tablepro-core",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

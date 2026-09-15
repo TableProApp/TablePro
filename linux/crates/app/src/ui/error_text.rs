@@ -111,3 +111,70 @@ mod tests {
         assert!(message.contains("SPN"));
     }
 }
+
+/// What to tell the user about a keyring failure. Each variant maps to
+/// a different next step, so they are not collapsed into one sentence.
+pub fn secret_message(error: &tablepro_core::credentials::SecretError) -> String {
+    use tablepro_core::credentials::SecretError;
+
+    match error {
+        SecretError::ServiceUnavailable { .. } => crate::i18n::gettext(
+            "No keyring is running, so saved passwords cannot be read. Start a keyring, or enter the password by hand.",
+        ),
+        SecretError::PortalUnavailable { .. } => crate::i18n::gettext(
+            "The secret portal is unavailable, so saved passwords cannot be read inside the sandbox.",
+        ),
+        SecretError::Locked => crate::i18n::gettext("The keyring is locked. Unlock it and try again."),
+        SecretError::UnlockDismissed => {
+            crate::i18n::gettext("The keyring stayed locked because the unlock prompt was dismissed.")
+        }
+        SecretError::InvalidEncoding => {
+            crate::i18n::gettext("The stored password is not readable text. Enter it again to replace it.")
+        }
+        SecretError::Backend { detail } => {
+            crate::i18n::gettext_f("The keyring reported: {detail}", &[("detail", detail)])
+        }
+    }
+}
+
+#[cfg(test)]
+mod secret_message_tests {
+    use tablepro_core::credentials::SecretError;
+
+    use super::*;
+
+    #[test]
+    fn every_secret_error_has_its_own_message() {
+        let errors = [
+            SecretError::ServiceUnavailable { detail: "x".to_owned() },
+            SecretError::PortalUnavailable { detail: "x".to_owned() },
+            SecretError::Locked,
+            SecretError::UnlockDismissed,
+            SecretError::InvalidEncoding,
+            SecretError::Backend {
+                detail: "boom".to_owned(),
+            },
+        ];
+
+        let messages: std::collections::HashSet<String> = errors.iter().map(secret_message).collect();
+
+        assert_eq!(messages.len(), errors.len(), "two errors share a message");
+        for message in &messages {
+            assert!(!message.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_backend_error_keeps_its_detail() {
+        let message = secret_message(&SecretError::Backend {
+            detail: "org.freedesktop.Secret failed".to_owned(),
+        });
+
+        assert!(message.contains("org.freedesktop.Secret failed"), "{message}");
+    }
+
+    #[test]
+    fn a_retryable_error_says_to_try_again() {
+        assert!(secret_message(&SecretError::Locked).contains("try again"));
+    }
+}
