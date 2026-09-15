@@ -4,14 +4,15 @@ use secrecy::SecretString;
 use std::path::PathBuf;
 use tablepro_core::{AuthMode, ConnectOptions, Connection, DriverRegistry, ReadOnlyConnection, TableInfo};
 
+use tablepro_core::credentials::{SecretKind, SecretVault};
 use tablepro_ssh::russh_tunnel::{SshAuth, SshConfig, SshError, SshTunnel};
-use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig, SecretStore};
+use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};
 
 use super::database_service::{self, ConnectionMetadata, ReconnectParams};
 
 pub async fn open_saved(
     registry: Arc<DriverRegistry>,
-    secrets: SecretStore,
+    secrets: Arc<dyn SecretVault>,
     saved: SavedConnection,
 ) -> Result<Vec<TableInfo>, String> {
     let driver = registry
@@ -22,11 +23,15 @@ pub async fn open_saved(
     let password = match saved.auth_mode {
         AuthMode::Kerberos => SecretString::new(String::new().into()),
         AuthMode::Password => secrets
-            .load_password(saved.id)
+            .load(saved.id, SecretKind::DatabasePassword)
             .await
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| SecretString::new(String::new().into())),
+            .map_err(|error| crate::ui::error_text::secret_message(&error))?
+            .found()
+            .ok_or_else(|| {
+                // An empty password here used to reach the driver and
+                // come back as a confusing authentication failure.
+                crate::i18n::gettext_f("No password is stored for “{name}”.", &[("name", &saved.name)])
+            })?,
     };
     let id = saved.id;
 
@@ -156,23 +161,29 @@ pub(crate) fn interim_ssh_target(saved: &SavedSshConfig) -> Result<InterimSshTar
     })
 }
 
-async fn resolve_saved_ssh(secrets: &SecretStore, id: uuid::Uuid, saved: &SavedSshConfig) -> Result<SshConfig, String> {
+async fn resolve_saved_ssh(
+    secrets: &Arc<dyn SecretVault>,
+    id: uuid::Uuid,
+    saved: &SavedSshConfig,
+) -> Result<SshConfig, String> {
     let target = interim_ssh_target(saved).map_err(|error| crate::ui::error_text::ssh_message(&error))?;
     let auth = match target.auth {
         InterimSshAuth::Password => {
             let password = secrets
-                .load_ssh_password(id)
+                .load(id, SecretKind::SshPassword)
                 .await
-                .map_err(|e| format!("load ssh password: {e}"))?
-                .ok_or_else(|| "ssh password not in keyring".to_string())?;
+                .map_err(|error| crate::ui::error_text::secret_message(&error))?
+                .found()
+                .ok_or_else(|| crate::i18n::gettext("No SSH password is stored for this connection."))?;
             SshAuth::Password { password }
         }
         InterimSshAuth::PrivateKey { path, has_passphrase } => {
             let passphrase = if has_passphrase {
                 secrets
-                    .load_ssh_passphrase(id)
+                    .load(id, SecretKind::SshPassphrase)
                     .await
-                    .map_err(|e| format!("load ssh passphrase: {e}"))?
+                    .map_err(|error| crate::ui::error_text::secret_message(&error))?
+                    .found()
             } else {
                 None
             };

@@ -5,6 +5,11 @@ mod prompt_field;
 mod prompt_purpose;
 mod prompt_reason;
 mod prompt_reply;
+mod secret_error;
+mod secret_kind;
+mod secret_lookup;
+mod secret_save;
+mod secret_vault;
 
 pub use credential_interaction::CredentialInteraction;
 pub use credential_prompt::CredentialPrompt;
@@ -13,6 +18,11 @@ pub use prompt_field::PromptField;
 pub use prompt_purpose::PromptPurpose;
 pub use prompt_reason::PromptReason;
 pub use prompt_reply::PromptReply;
+pub use secret_error::SecretError;
+pub use secret_kind::SecretKind;
+pub use secret_lookup::SecretLookup;
+pub use secret_save::SecretSave;
+pub use secret_vault::SecretVault;
 
 #[cfg(test)]
 mod tests {

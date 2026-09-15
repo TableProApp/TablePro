@@ -12,6 +12,8 @@ path = "src/lib.rs"
 [dependencies]
 tablepro-core = { path = "../core" }
 async-trait.workspace = true
+secrecy.workspace = true
+uuid.workspace = true
 futures.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
 

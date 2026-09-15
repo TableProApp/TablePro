@@ -22,7 +22,8 @@ The choice must work on both GNOME and KDE without per-DE branching, must have a
 
 Passwords are stored via the **Secret Service D-Bus API**, accessed through the **[`oo7`](https://crates.io/crates/oo7)** Rust crate.
 
-- Schema name: `app.tablepro.TablePro.Password`.
+- Schema name: `app.tablepro.TablePro.Password`, taken from the application
+id, so a development build never reads an installed build's secrets.
 - Attributes: `connection-id` (the UUID).
 - Label: the human-readable connection name, kept in sync on rename.
 - Wrapper: `storage::secrets`, exposing `store_password`, `load_password`, `delete_password`.
@@ -64,3 +65,38 @@ Gained:
 **No persistence; prompt every time.** Acceptable as the failsafe behaviour but unacceptable as the primary UX. Power users connect to dozens of databases per day.
 
 **Per-connection encrypted blob with a master password the user enters once per session.** Considered, rejected as YAGNI for the spike's user base. Revisit if a user explicitly requests it; the storage layer's variant model can absorb it.
+
+## How oo7 reaches the keyring (2026-09-15)
+
+Outside Flatpak, oo7 talks to the host Secret Service over D-Bus.
+
+Inside Flatpak, `Keyring::new` first calls the Secret portal's `retrieve`
+(oo7 0.6.0, `keyring.rs:30-37`, with `?`). A missing or failing portal
+therefore returns `File(Portal(_))` straight away, which the store maps to
+`SecretError::PortalUnavailable`. The D-Bus path is only reached when
+`retrieve` succeeds and the file load reports `PortalNotFound`. The
+manifest carries no `org.freedesktop.secrets` talk-name.
+
+## Rules this store follows
+
+- **Unlock before reading.** `Keyring::is_locked` then `unlock`, and the
+  same for the item, because a locked keyring otherwise returns nothing
+  and the app cannot tell that from "no password saved".
+- **Typed failures.** `SecretError` separates a dismissed prompt, a locked
+  keyring, a missing service, a missing portal and a bad encoding, because
+  the user's next step differs in each case. `is_retryable` marks the two
+  that clear once the keyring is unlocked.
+- **`NotStored` is not an error.** A connection may legitimately have no
+  saved password; the app prompts instead of failing.
+- **One item per (connection, kind).** Deleting a connection is a single
+  `Keyring::delete` on the connection attributes, so no kind can be left
+  orphaned when a later delete fails.
+- **Secrets before the list write.** The list records whether a passphrase
+  was actually stored, so it has to be written after the attempt. If the
+  list write then fails for a new connection, the secrets just stored are
+  deleted; for an existing one they are kept, because they still belong to
+  it.
+- **Labels name the kind and the target**, so Seahorse and GNOME Settings
+  identify the item without opening TablePro.
+- **No migration.** There is no `oo7::migrate` call: the application id
+  changed and the old items are abandoned deliberately.
