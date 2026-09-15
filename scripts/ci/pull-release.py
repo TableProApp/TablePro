@@ -16,6 +16,10 @@ entry goes, so no updater offers it again.
 The items are removed with the same primitives merge-appcast.py uses to insert them, so the two
 cannot disagree about where an item begins and ends.
 
+The push target is checked rather than assumed. SUFeedURL names main, so a withdrawal pushed to
+any other branch leaves every install downloading the bad build while this script reports success.
+`git push origin HEAD` from one of this repo's worktrees did exactly that.
+
 Run: python3 scripts/ci/pull-release.py 0.75.0 [--dry-run] [--feed appcast.xml] [--no-push]
 """
 
@@ -36,8 +40,34 @@ from appcast_feed import (  # noqa: E402
 )
 
 
+PUBLISHED_BRANCH = "main"
+
+
 def git(*arguments, check=True):
     return subprocess.run(["git", *arguments], check=check, capture_output=True, text=True)
+
+
+def checked_out_branch():
+    """The current branch name, or None on a detached HEAD."""
+    result = git("symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+    return result.stdout.strip() or None
+
+
+def require_publishable_checkout():
+    """The feed every install polls is `main`, so nothing else may be pushed as a withdrawal."""
+    branch = checked_out_branch()
+    if branch is None:
+        raise FeedError(
+            "HEAD is detached, so there is no branch to push. Check out "
+            f"{PUBLISHED_BRANCH} and run this again"
+        )
+    if branch != PUBLISHED_BRANCH:
+        raise FeedError(
+            f"on branch {branch!r}, but SUFeedURL serves {PUBLISHED_BRANCH}. Pushing here would "
+            f"report the build withdrawn while every install kept downloading it. Check out "
+            f"{PUBLISHED_BRANCH} and run this again"
+        )
+    return branch
 
 
 def withdraw(feed_path, version):
@@ -70,6 +100,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     try:
+        if not args.dry_run and not args.no_push:
+            require_publishable_checkout()
         result, removed = withdraw(args.feed, args.version)
     except FeedError as error:
         print(f"error: {error}", file=sys.stderr)
@@ -96,8 +128,9 @@ def main(argv=None):
         print("committed, not pushed")
         return 0
 
-    push = git("push", "origin", "HEAD", check=False)
+    push = git("push", "origin", f"HEAD:{PUBLISHED_BRANCH}", check=False)
     if push.returncode != 0:
+        print(push.stdout, file=sys.stderr)
         print(push.stderr, file=sys.stderr)
         print("error: the commit is local; push it before telling anyone the build is pulled", file=sys.stderr)
         return 1

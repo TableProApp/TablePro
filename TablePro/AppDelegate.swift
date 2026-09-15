@@ -129,6 +129,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        SoftwareUpdater.shared.start()
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()

@@ -102,7 +102,6 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
                 minHeight: Self.paneSize.height,
                 maxHeight: .infinity
             )
-            .environment(UpdaterBridge.shared)
             .environment(\.appServices, .live)
         let hosting = NSHostingController(rootView: content)
         /// A tab child publishes no size to the window, which owns its minimum through
@@ -134,14 +133,8 @@ private struct SettingsPaneContent: View {
             GeneralSettingsView(
                 settings: $settingsManager.general,
                 tabSettings: $settingsManager.tabs,
-                updaterBridge: UpdaterBridge.shared,
-                onResetAll: {
-                    settingsManager.resetToDefaults()
-                    // The update preferences belong to Sparkle, not to the settings structs
-                    // resetToDefaults() reassigns, so they have to be cleared separately for the
-                    // alert's promise about every section to hold.
-                    UpdaterBridge.shared.resetUpdatePreferences()
-                }
+                updater: SoftwareUpdater.shared,
+                onResetAll: { settingsManager.resetToDefaults() }
             )
         case .appearance:
             AppearanceSettingsView(settings: $settingsManager.appearance)

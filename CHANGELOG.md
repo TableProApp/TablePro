@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Download and install updates automatically** and **Check for updates** with Daily and Weekly, in Settings > General.
+- **Download and install updates automatically** in Settings > General.
+- **Last checked** beside **Check for Updates…** in Settings > General.
 - A line on the welcome window naming the version TablePro updated from, with a link to what changed.
-- What's New window, from Help > What's New.
+- What's New window, from Help > What's New and from Settings > General.
 - Update install mode and check frequency in the anonymous usage heartbeat.
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updates download in the background and install when you quit, instead of asking each time.
 - New versions roll out over 36 hours instead of reaching everyone at once.
+- A scheduled update renames **Check for Updates…** to **Update Available…** instead of interrupting.
 - The update window shows the release highlights, with the full changelog one click away.
 - Data grid top row held across a refresh, matched by primary key.
 - Data grid scroll reset to the first row on sort, filter and page change.
@@ -29,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Update preferences overwritten by the app at every launch instead of following the setting.
+- No automatic update checks on a fresh install, and a permission prompt on the second launch.
+- No automatic update checks at all with the usage heartbeat off and **Reopen Last Session** chosen.
 - Architecture error shown when a plugin actually needs a newer version of TablePro.
 - Sidebar, completion and other windows not updating after a table, view, routine, trigger, type, schema or database changes. (#2819)
 - Saving a staged Drop or Truncate running the selected query tab's statement again.
@@ -58,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Sparkle 2.10.0, carrying installer fixes for a symlink attack and a privilege escalation under root.
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 
