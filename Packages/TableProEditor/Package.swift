@@ -13,8 +13,7 @@ let package = Package(
         .package(path: "../TableProGrammars"),
         .package(url: "https://github.com/ChimeHQ/TextStory", from: "0.9.0"),
         .package(url: "https://github.com/ChimeHQ/TextFormation", from: "0.8.2"),
-        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.0.0")),
-        .package(url: "https://github.com/pointfreeco/swift-custom-dump", from: "1.0.0")
+        .package(url: "https://github.com/apple/swift-collections.git", .upToNextMajor(from: "1.0.0"))
     ],
     targets: [
         .target(
@@ -49,8 +48,7 @@ let package = Package(
             name: "TableProEditorKitTests",
             dependencies: [
                 "TableProEditorKit",
-                "TableProGrammars",
-                .product(name: "CustomDump", package: "swift-custom-dump")
+                "TableProGrammars"
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
