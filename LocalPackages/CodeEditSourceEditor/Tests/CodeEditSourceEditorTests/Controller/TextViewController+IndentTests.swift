@@ -8,7 +8,6 @@
 import XCTest
 @testable import CodeEditSourceEditor
 @testable import CodeEditTextView
-import CustomDump
 
 final class TextViewControllerIndentTests: XCTestCase {
     var controller: TextViewController!
@@ -26,7 +25,7 @@ final class TextViewControllerIndentTests: XCTestCase {
         controller.textView.selectionManager.textSelections = [.init(range: NSRange(location: 0, length: 0))]
         controller.handleIndent(inwards: true)
 
-        expectNoDifference(controller.text, "This is a test string")
+        XCTAssertEqual(controller.text, "This is a test string")
 
         // Normally, 4 spaces are used for indentation; however, now we only insert 2 leading spaces.
         // The outcome should be the same, though.
@@ -35,7 +34,7 @@ final class TextViewControllerIndentTests: XCTestCase {
         controller.textView.selectionManager.textSelections = [.init(range: NSRange(location: 0, length: 0))]
         controller.handleIndent(inwards: true)
 
-        expectNoDifference(controller.text, "This is a test string")
+        XCTAssertEqual(controller.text, "This is a test string")
     }
 
     func testHandleIndentWithSpacesOutwards() {
@@ -46,7 +45,7 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: false)
 
-        expectNoDifference(controller.text, "    This is a test string")
+        XCTAssertEqual(controller.text, "    This is a test string")
     }
 
     func testHandleIndentWithTabsInwards() {
@@ -58,7 +57,7 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: true)
 
-        expectNoDifference(controller.text, "This is a test string")
+        XCTAssertEqual(controller.text, "This is a test string")
     }
 
     func testHandleIndentWithTabsOutwards() {
@@ -72,7 +71,7 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         // Normally, we expect nothing to happen because only one line is selected.
         // However, this logic is not handled inside `handleIndent`.
-        expectNoDifference(controller.text, "\tThis is a test string")
+        XCTAssertEqual(controller.text, "\tThis is a test string")
     }
 
     func testHandleIndentMultiLine() {
@@ -95,7 +94,7 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent()
         let expectedString = "\tThis is a test string\n\tWith multiple lines\n\tAnd some indentation"
-        expectNoDifference(controller.text, expectedString)
+        XCTAssertEqual(controller.text, expectedString)
     }
 
     func testHandleInwardIndentMultiLine() {
@@ -118,7 +117,7 @@ final class TextViewControllerIndentTests: XCTestCase {
 
         controller.handleIndent(inwards: true)
         let expectedString = "This is a test string\nWith multiple lines\nAnd some indentation"
-        expectNoDifference(controller.text, expectedString)
+        XCTAssertEqual(controller.text, expectedString)
     }
 
     func testMultipleLinesHighlighted() {
