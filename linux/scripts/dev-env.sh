@@ -19,6 +19,11 @@ if [[ -d "$_dev_env_deps" ]]; then
   export LD_LIBRARY_PATH="$_dev_env_lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   export LIBRARY_PATH="$_dev_env_lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
   export CPATH="$_dev_env_deps/usr/include${CPATH:+:$CPATH}"
+  # libsqlite3-sys reads these before pkg-config. It has to: the
+  # extracted sqlite3.pc still says includedir=/usr/include, which is
+  # where the header is not.
+  export SQLITE3_INCLUDE_DIR="$_dev_env_deps/usr/include"
+  export SQLITE3_LIB_DIR="$_dev_env_lib"
   unset _dev_env_multiarch _dev_env_lib
 fi
 unset _dev_env_root _dev_env_deps

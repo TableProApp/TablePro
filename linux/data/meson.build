@@ -46,7 +46,13 @@ install_data(
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 
-compiled_schemas = gnome.compile_schemas(build_by_default: true)
+# depend_files is what ties the compiled schema to its source. Without
+# it the schema is built once and never again, so a key added to the
+# XML is missing at run time and the app aborts on first read.
+compiled_schemas = gnome.compile_schemas(
+  build_by_default: true,
+  depend_files: files('app.tablepro.TablePro.gschema.xml'),
+)
 
 install_data(
   'icons' / 'hicolor' / 'scalable' / 'apps' / application_id + '.svg',
