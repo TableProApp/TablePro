@@ -10,7 +10,7 @@ import Testing
 struct FieldLevelMergeTests {
     private let zoneID = CKRecordZone.ID(zoneName: "TestZone", ownerName: CKCurrentUserDefaultName)
 
-    private func makeConnection(name: String = "Production", port: Int = 5432) -> DatabaseConnection {
+    private func makeConnection(name: String = "Production", port: Int = 5_432) -> DatabaseConnection {
         DatabaseConnection(
             id: UUID(),
             name: name,
@@ -46,7 +46,7 @@ struct FieldLevelMergeTests {
     @Test("An equal value is recognised so the field is left untouched")
     func equalValuesAreRecognised() {
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, "Production" as CKRecordValue))
-        #expect(CKRecord.isEqualRecordValue(Int64(5432) as CKRecordValue, Int64(5432) as CKRecordValue))
+        #expect(CKRecord.isEqualRecordValue(Int64(5_432) as CKRecordValue, Int64(5_432) as CKRecordValue))
         #expect(CKRecord.isEqualRecordValue(nil, nil))
         #expect(CKRecord.isEqualRecordValue(
             ["a", "b"] as CKRecordValue,
@@ -61,7 +61,7 @@ struct FieldLevelMergeTests {
     @Test("A differing value is recognised so the field is rewritten")
     func differingValuesAreRecognised() {
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, "Staging" as CKRecordValue) == false)
-        #expect(CKRecord.isEqualRecordValue(Int64(5432) as CKRecordValue, Int64(6543) as CKRecordValue) == false)
+        #expect(CKRecord.isEqualRecordValue(Int64(5_432) as CKRecordValue, Int64(6_543) as CKRecordValue) == false)
         #expect(CKRecord.isEqualRecordValue(nil, "Production" as CKRecordValue) == false)
         #expect(CKRecord.isEqualRecordValue("Production" as CKRecordValue, nil) == false)
         #expect(CKRecord.isEqualRecordValue(

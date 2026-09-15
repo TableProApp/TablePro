@@ -26,7 +26,7 @@ struct DiffieHellman {
         return peer.modPow(privateExponent, modulus: prime).bytesBE(minCount: modulusByteCount)
     }
 
-    func masterKeyNormalizeTemp(peerPublicKeyBytes: [UInt8]) -> [UInt8] {
+    func normalizedSharedSecret(peerPublicKeyBytes: [UInt8]) -> [UInt8] {
         let peer = BigUInt(bytesBE: peerPublicKeyBytes)
         var magnitude = peer.modPow(privateExponent, modulus: prime).bytesBE()
         if magnitude.count < modulusByteCount {

@@ -148,9 +148,9 @@ public final class TeradataConnection {
 
     private func runKeyExchange(_ params: Td2Token.ServerParams) throws {
         let dh = DiffieHellman(primeBytes: params.prime, generatorBytes: params.generator)
-        let master = dh.masterKeyNormalizeTemp(peerPublicKeyBytes: params.serverPublicKey)
+        let sharedSecret = dh.normalizedSharedSecret(peerPublicKeyBytes: params.serverPublicKey)
         let keyLength = Td2Token.qopKeyLengthBytes(params.qopDer) ?? 32
-        aesKey = Array(master.prefix(keyLength))
+        aesKey = Array(sharedSecret.prefix(keyLength))
         let responseToken = Td2Token.buildResponseToken(clientPublicKey: dh.publicKeyBytes())
         let sso = TeradataMessages.ssoRequestParcel(method: 0, trip: 2, token: responseToken)
         let message = LanMessage(

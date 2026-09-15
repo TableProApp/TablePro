@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProR2SQLCore
+import Testing
 
 @Suite("R2 SQL envelope decoding")
 struct R2SQLEnvelopeDecodingTests {
@@ -24,7 +24,7 @@ struct R2SQLEnvelopeDecodingTests {
             R2SQLField(name: "category", typeName: "utf8", isNullable: true),
             R2SQLField(name: "cnt", typeName: "int64", isNullable: false)
         ])
-        #expect(result.rows.first?["cnt"] == .number(12345))
+        #expect(result.rows.first?["cnt"] == .number(12_345))
     }
 
     @Test("A nested list of structs decodes its outer type and keeps the value tree")

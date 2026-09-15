@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProConnectionLibrary
+import Testing
 
 @Suite("Library outline builder")
 struct LibraryOutlineBuilderTests {

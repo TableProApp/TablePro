@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleListenerRefusalTests: XCTestCase {
     func testKnownCodesMapToHumanReasonWithORACode() {

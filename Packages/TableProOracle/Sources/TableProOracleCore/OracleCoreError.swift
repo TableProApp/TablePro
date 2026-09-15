@@ -66,11 +66,20 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     private static func certificateUnavailableFormat(for field: OracleCertificateField) -> String {
         switch field {
         case .certificateAuthority:
-            return String(localized: "This connection's CA certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here or lower the SSL mode to Required.")
+            return String(localized: """
+                This connection's CA certificate is not readable on this device (%@). Certificate files do not \
+                sync between devices, so add the certificate here or lower the SSL mode to Required.
+                """)
         case .clientCertificate:
-            return String(localized: "This connection's client certificate is not readable on this device (%@). Certificate files do not sync between devices, so add the certificate here before connecting.")
+            return String(localized: """
+                This connection's client certificate is not readable on this device (%@). Certificate files do \
+                not sync between devices, so add the certificate here before connecting.
+                """)
         case .clientKey:
-            return String(localized: "This connection's client key is not readable on this device (%@). Key files do not sync between devices, so add the key here before connecting.")
+            return String(localized: """
+                This connection's client key is not readable on this device (%@). Key files do not sync between \
+                devices, so add the key here before connecting.
+                """)
         }
     }
 }

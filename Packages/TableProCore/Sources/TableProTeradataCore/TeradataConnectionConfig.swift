@@ -69,7 +69,7 @@ public struct TeradataConnectionConfig: Sendable {
 
     public init(
         host: String,
-        port: UInt16 = 1025,
+        port: UInt16 = 1_025,
         username: String,
         password: String,
         database: String? = nil,

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProSyncTransport
+import Testing
 
 /// macOS and iOS map a synced record with two separate `SyncRecordMapper` implementations, because
 /// the two platforms cannot share one `DatabaseConnection`: the macOS `DatabaseType` resolves

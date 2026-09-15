@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProMSSQLCore
+import Testing
 
 private final class FlagBox: @unchecked Sendable {
     private let lock = NSLock()

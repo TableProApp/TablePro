@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoLiteralTests: XCTestCase {
     func testNull() {

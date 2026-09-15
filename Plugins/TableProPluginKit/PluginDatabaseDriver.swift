@@ -766,8 +766,28 @@ public extension PluginDatabaseDriver {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
         buildFilteredQuery(table: table, schema: schema, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
-    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
-        buildFilteredQuery(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: columnKinds)
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
+        buildFilteredQuery(
+            table: table,
+            schema: schema,
+            filters: queryFilters.asTuples,
+            logicMode: logicMode,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset,
+            columnKinds: columnKinds
+        )
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {

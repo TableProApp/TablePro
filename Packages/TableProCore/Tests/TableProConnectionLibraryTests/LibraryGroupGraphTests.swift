@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProConnectionLibrary
+import Testing
 
 @Suite("Library group graph")
 struct LibraryGroupGraphTests {

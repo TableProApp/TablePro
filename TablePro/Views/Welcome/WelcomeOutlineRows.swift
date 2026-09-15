@@ -41,7 +41,7 @@ internal struct ConnectionTile: View {
     private var glyph: some View {
         let image = type.iconImage
             .renderingMode(.template)
-            .aspectRatio(contentMode: .fit)
+            .scaledToFit()
             .font(.system(size: size * 0.5, weight: .medium))
             .frame(width: size * 0.58, height: size * 0.58)
         if identityColor != nil {

@@ -23,7 +23,7 @@ public enum GeoJSONGeometryReader {
             return .failure(.notGeometry)
         }
         guard let geometry = geometry(from: object, depth: 1) else { return .failure(.notGeometry) }
-        return .success(SpatialValue(srid: 4326, geometry: geometry))
+        return .success(SpatialValue(srid: 4_326, geometry: geometry))
     }
 
     public static func looksLikeGeoJSON(_ text: String) -> Bool {

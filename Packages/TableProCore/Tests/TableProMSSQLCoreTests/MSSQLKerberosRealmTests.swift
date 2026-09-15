@@ -1,5 +1,5 @@
-import Testing
 @testable import TableProMSSQLCore
+import Testing
 
 @Suite("MSSQL Kerberos realm")
 struct MSSQLKerberosRealmTests {

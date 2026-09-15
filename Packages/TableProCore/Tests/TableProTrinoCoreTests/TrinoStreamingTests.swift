@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoStreamingTests: XCTestCase {
     private let bigintColumn = #"{"name":"n","type":"bigint","typeSignature":{"rawType":"bigint"}}"#

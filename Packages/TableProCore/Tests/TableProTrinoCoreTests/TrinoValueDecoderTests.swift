@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoValueDecoderTests: XCTestCase {
     func testScalarIntBecomesText() {

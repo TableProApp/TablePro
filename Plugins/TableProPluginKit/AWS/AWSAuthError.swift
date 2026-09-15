@@ -44,6 +44,7 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
             )
         case .rdsEndpointUnresolved(let host):
             return String(
+                // swiftlint:disable:next line_length
                 format: String(localized: "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion."),
                 host
             )

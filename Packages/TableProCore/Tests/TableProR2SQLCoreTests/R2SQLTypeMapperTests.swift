@@ -1,5 +1,5 @@
-import Testing
 @testable import TableProR2SQLCore
+import Testing
 
 @Suite("R2 SQL type names")
 struct R2SQLTypeMapperTests {

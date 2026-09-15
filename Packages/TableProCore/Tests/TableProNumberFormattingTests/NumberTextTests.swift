@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProNumberFormatting
+import XCTest
 
 private struct SplitMix64: RandomNumberGenerator {
     private var state: UInt64
@@ -19,7 +19,7 @@ private struct SplitMix64: RandomNumberGenerator {
 
 final class NumberTextTests: XCTestCase {
     func testGoldenDoubleStrings() {
-        XCTAssertEqual(NumberText.text(for: 1847.27), "1847.27")
+        XCTAssertEqual(NumberText.text(for: 1_847.27), "1847.27")
         XCTAssertEqual(NumberText.text(for: 0.1), "0.1")
         XCTAssertEqual(NumberText.text(for: 1.0), "1")
         XCTAssertEqual(NumberText.text(for: 100.0), "100")
@@ -99,7 +99,7 @@ final class NumberTextTests: XCTestCase {
     }
 
     func testFloatIsNotWidenedToDouble() {
-        let value: Float = 1847.27
+        let value: Float = 1_847.27
         XCTAssertEqual(Double(value).description, "1847.27001953125")
         XCTAssertEqual(NumberText.text(for: value), "1847.27")
         XCTAssertEqual(NumberText.text(for: NSNumber(value: value)), "1847.27")
@@ -157,7 +157,7 @@ final class NumberTextTests: XCTestCase {
 
     func testNestedJsonHandlesArraysNullsAndBooleans() {
         let value: [String: Any] = [
-            "items": [1847.27, 1.0, "x", NSNull()],
+            "items": [1_847.27, 1.0, "x", NSNull()],
             "flag": true,
             "count": 5
         ]

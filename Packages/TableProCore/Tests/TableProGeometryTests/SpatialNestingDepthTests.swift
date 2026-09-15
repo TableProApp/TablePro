@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProGeometry
+import XCTest
 
 /// Every wire format lets a geometry collection nest without limit, and each level is one more frame
 /// on the reader's stack, so a few hundred bytes of nothing but collection headers would exhaust it

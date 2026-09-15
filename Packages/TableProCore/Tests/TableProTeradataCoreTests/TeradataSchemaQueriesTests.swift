@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTeradataCore
+import XCTest
 
 final class TeradataSchemaQueriesTests: XCTestCase {
     func testQuoteIdentifierDoublesInternalQuotes() {
@@ -47,8 +47,8 @@ final class TeradataSchemaQueriesTests: XCTestCase {
             database: "Retail", table: "Orders", columns: ["Id", "Total"],
             sortColumns: [("Id", true)], limit: 100, offset: 200)
         XCTAssertEqual(sql,
-            "SELECT \"Id\", \"Total\" FROM \"Retail\".\"Orders\" "
-            + "QUALIFY ROW_NUMBER() OVER (ORDER BY \"Id\" ASC) BETWEEN 201 AND 300")
+                       "SELECT \"Id\", \"Total\" FROM \"Retail\".\"Orders\" "
+                           + "QUALIFY ROW_NUMBER() OVER (ORDER BY \"Id\" ASC) BETWEEN 201 AND 300")
     }
 
     func testBrowseOffsetPageFallsBackToOrderByOne() {

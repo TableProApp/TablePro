@@ -7,9 +7,11 @@
 
 import Foundation
 
+// swiftlint:disable inclusive_language
 /// SQLite, LibSQL and Cloudflare D1 are three bundles reading one catalog. Three copies of this
 /// query would be three chances for the per-table list and the schema-wide list to drift apart.
 public enum SQLiteMasterQueries {
+// swiftlint:enable inclusive_language
     public static func escapeLiteral(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''")
     }

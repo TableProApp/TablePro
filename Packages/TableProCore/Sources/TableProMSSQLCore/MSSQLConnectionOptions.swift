@@ -24,7 +24,7 @@ public struct MSSQLConnectionOptions: Sendable, Equatable {
     /// `authMethod == .entra`.
     public var fedAuthToken: String?
 
-    public static let defaultPort = 1433
+    public static let defaultPort = 1_433
     public static let defaultSchema = "dbo"
     public static let defaultApplicationName = "TablePro"
     public static let defaultEncryptionFlag = "off"

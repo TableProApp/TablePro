@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTeradataCore
+import XCTest
 
 final class WebSocketFrameTests: XCTestCase {
     func testAcceptKeyMatchesRFC6455Vector() {

@@ -39,7 +39,7 @@ public enum MSSQLDatetimeFormatter {
         _ = scanner.scanCharacters(from: .whitespaces)
         guard let day = scanner.scanInt(), (1...31).contains(day) else { return nil }
         _ = scanner.scanCharacters(from: .whitespaces)
-        guard let year = scanner.scanInt(), (1...9999).contains(year) else { return nil }
+        guard let year = scanner.scanInt(), (1...9_999).contains(year) else { return nil }
         _ = scanner.scanCharacters(from: .whitespaces)
         guard var hour = scanner.scanInt() else { return nil }
 

@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProPluginKit
+import XCTest
 
 final class AsyncTimeoutTests: XCTestCase {
     func testReturnsValueWhenOperationFinishesBeforeTimeout() async throws {

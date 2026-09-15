@@ -26,7 +26,11 @@ final class SyncCoordinator {
     @ObservationIgnored private let engine = CloudKitSyncEngine()
     @ObservationIgnored private let changeTracker: SyncChangeTracker
     @ObservationIgnored private let metadataStorage: SyncMetadataStorage
-    @ObservationIgnored private let recordCache = SyncRecordCache()
+    @ObservationIgnored private let recordCache = SyncRecordCache(
+        directory: AppStorageEnvironment.shared.supportDirectory
+            .appendingPathComponent("SyncRecordCache", isDirectory: true),
+        defaults: AppStorageEnvironment.shared.defaults
+    )
     @ObservationIgnored private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     @ObservationIgnored private var changeCancellable: AnyCancellable?
     @ObservationIgnored private var licenseCancellable: AnyCancellable?

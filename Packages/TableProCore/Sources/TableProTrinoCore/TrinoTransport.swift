@@ -25,6 +25,10 @@ public struct TrinoHeaderFields: Sendable, Equatable {
         storage[name.lowercased()]
     }
 
+    public func contains(_ name: String) -> Bool {
+        storage[name.lowercased()] != nil
+    }
+
     public func all(_ name: String) -> [String] {
         guard let value = storage[name.lowercased()] else { return [] }
         return value

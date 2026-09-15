@@ -117,7 +117,7 @@ public enum SyncRecordMapper {
         }
 
         let host = fields[.host] as? String ?? "127.0.0.1"
-        let port = (fields[.port] as? Int64).map { Int($0) } ?? 3306
+        let port = (fields[.port] as? Int64).map { Int($0) } ?? 3_306
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
         let color = Self.color(from: fields)

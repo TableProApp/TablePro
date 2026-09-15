@@ -115,7 +115,9 @@ final class TeradataTLSTransport: TeradataTransport {
         try sendRaw(Array(request.utf8))
 
         let header = try readRawUntilHeaderEnd()
-        let response = String(decoding: header, as: UTF8.self)
+        guard let response = String(bytes: header, encoding: .utf8) else {
+            throw TeradataWireError.connectionFailed("WebSocket upgrade response is not valid UTF-8")
+        }
         guard response.contains(" 101 ") else {
             throw TeradataWireError.connectionFailed("WebSocket upgrade rejected: \(response.split(separator: "\r\n").first ?? "")")
         }

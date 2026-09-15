@@ -123,15 +123,15 @@ public enum WKBGeometryReader {
             var hasM = rawType & Flags.m != 0
             let hasSRID = rawType & Flags.srid != 0
 
-            if type >= 3000 {
-                type -= 3000
+            if type >= 3_000 {
+                type -= 3_000
                 hasZ = true
                 hasM = true
-            } else if type >= 2000 {
-                type -= 2000
+            } else if type >= 2_000 {
+                type -= 2_000
                 hasM = true
-            } else if type >= 1000 {
-                type -= 1000
+            } else if type >= 1_000 {
+                type -= 1_000
                 hasZ = true
             }
 

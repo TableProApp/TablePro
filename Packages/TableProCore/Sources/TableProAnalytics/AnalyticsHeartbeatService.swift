@@ -17,7 +17,6 @@ public final class AnalyticsHeartbeatService {
 
     private let provider: AnalyticsEnvironmentProvider
 
-    // swiftlint:disable:next force_unwrapping
     private let analyticsUrl: URL
 
     private let heartbeatInterval: TimeInterval
@@ -49,7 +48,7 @@ public final class AnalyticsHeartbeatService {
 
     public init(
         provider: AnalyticsEnvironmentProvider,
-        analyticsUrl: URL = URL(string: "https://api.tablepro.app/v1/analytics")!, // swiftlint:disable:this force_unwrapping
+        analyticsUrl: URL = URL(string: "https://api.tablepro.app/v1/analytics")!,
         heartbeatInterval: TimeInterval = 24 * 60 * 60,
         initialDelay: TimeInterval = 10,
         cooldownInterval: TimeInterval = 20 * 60 * 60,

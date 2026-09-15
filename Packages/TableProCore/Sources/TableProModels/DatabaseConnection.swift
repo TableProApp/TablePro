@@ -40,7 +40,7 @@ public struct DatabaseConnection: Identifiable, Hashable, Sendable {
         name: String = "",
         type: DatabaseType = .mysql,
         host: String = "127.0.0.1",
-        port: Int = 3306,
+        port: Int = 3_306,
         username: String = "",
         database: String = "",
         color: ConnectionColor = .none,

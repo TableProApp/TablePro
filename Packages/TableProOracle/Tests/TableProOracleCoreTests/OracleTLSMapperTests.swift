@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleTLSMapperTests: XCTestCase {
     private let missingPath = "/nonexistent/tablepro-oracle-tests/ca.pem"

@@ -1,17 +1,17 @@
-import XCTest
 @testable import TableProImport
+import XCTest
 
 final class ConnectionImportDecoderTests: XCTestCase {
     func testEnvelopeRoundTripPreservesConnectionFields() throws {
         let connection = ExportableConnection(
             name: "Prod DB",
             host: "db.example.com",
-            port: 5432,
+            port: 5_432,
             database: "app",
             username: "admin",
             type: "PostgreSQL",
             sshConfig: ExportableSSHConfig(
-                enabled: true, host: "bastion", port: 2222, username: "deploy",
+                enabled: true, host: "bastion", port: 2_222, username: "deploy",
                 authMethod: "privateKey", privateKeyPath: "~/.ssh/id_ed25519",
                 agentSocketPath: "", jumpHosts: nil,
                 totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
@@ -39,10 +39,10 @@ final class ConnectionImportDecoderTests: XCTestCase {
         let result = try XCTUnwrap(decoded.connections.first)
         XCTAssertEqual(result.name, "Prod DB")
         XCTAssertEqual(result.host, "db.example.com")
-        XCTAssertEqual(result.port, 5432)
+        XCTAssertEqual(result.port, 5_432)
         XCTAssertEqual(result.type, "PostgreSQL")
         XCTAssertEqual(result.sshConfig?.host, "bastion")
-        XCTAssertEqual(result.sshConfig?.port, 2222)
+        XCTAssertEqual(result.sshConfig?.port, 2_222)
         XCTAssertEqual(result.sslConfig?.mode, "require")
         XCTAssertEqual(result.tagName, "production")
         XCTAssertEqual(result.additionalFields?["schema"], "public")
@@ -88,7 +88,7 @@ final class ConnectionImportDecoderTests: XCTestCase {
 func makeConnection(
     name: String = "Local",
     host: String = "127.0.0.1",
-    port: Int = 3306,
+    port: Int = 3_306,
     database: String = "test",
     username: String = "root",
     type: String = "MySQL",

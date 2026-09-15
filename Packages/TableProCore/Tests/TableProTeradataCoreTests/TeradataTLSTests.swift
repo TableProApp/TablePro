@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTeradataCore
+import XCTest
 
 final class TeradataTLSTests: XCTestCase {
     func testDisabledOptionsDoNotEnableTLS() {
@@ -7,11 +7,11 @@ final class TeradataTLSTests: XCTestCase {
         XCTAssertFalse(TeradataTLSOptions.disabled.verifiesCertificate)
     }
 
-    func testClientAttributesEmbedSSLMode() {
+    func testClientAttributesEmbedSSLMode() throws {
         let parcel = TeradataMessages.clientAttributesParcel(
             username: "u", session: 1, charset: 0xBF, serverIP: "10.0.0.1",
             logMech: "TD2", transactionMode: "ANSI", sslMode: "REQUIRE", database: "db")
-        let body = String(decoding: parcel.body, as: UTF8.self)
+        let body = try XCTUnwrap(String(bytes: parcel.body, encoding: .isoLatin1))
         XCTAssertTrue(body.contains("SSLM=REQUIRE"), "attributes must carry the negotiated SSL mode")
         XCTAssertTrue(body.contains("LM=TD2"))
         XCTAssertTrue(body.contains("TM=ANSI"))

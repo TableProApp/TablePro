@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProNumberFormatting
+import XCTest
 
 private struct Seeded: RandomNumberGenerator {
     private var state: UInt64
@@ -27,9 +27,9 @@ final class JSONWriterEquivalenceTests: XCTestCase {
         case 3: return Int64.random(in: -1_000_000 ... 1_000_000, using: &g)
         case 4:
             var d = Double(bitPattern: UInt64.random(in: 0 ... UInt64.max, using: &g))
-            if !d.isFinite { d = 1847.27 }
+            if !d.isFinite { d = 1_847.27 }
             return d
-        default: return Double(Int.random(in: -1000 ... 1000, using: &g))
+        default: return Double(Int.random(in: -1_000 ... 1_000, using: &g))
         }
     }
 
@@ -53,14 +53,14 @@ final class JSONWriterEquivalenceTests: XCTestCase {
     func testWriterMatchesJSONEncoderByteForByte() throws {
         var g = Seeded(seed: 0x5EED_1501_0000_0001)
         var compared = 0
-        for _ in 0 ..< 4000 {
+        for _ in 0 ..< 4_000 {
             let value = randomValue(&g, depth: 0)
             guard let mine = NumberText.json(from: value) else { continue }
             guard let reference = referenceJSON(value) else { continue }
             compared += 1
             XCTAssertEqual(mine, reference, "diverged for \(value)")
         }
-        XCTAssertGreaterThan(compared, 1000)
+        XCTAssertGreaterThan(compared, 1_000)
     }
 
     private func referenceJSON(_ value: Any) -> String? {
@@ -121,6 +121,6 @@ private enum ReferenceNode: Encodable {
         let intValue: Int? = nil
         init(_ s: String) { stringValue = s }
         init?(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { return nil }
+        init?(intValue: Int) { nil }
     }
 }

@@ -54,7 +54,7 @@ public enum SpatialValueReader {
     /// point in the wrong hemisphere.
     static func readElasticsearchGeoPoint(_ text: String) -> SpatialValue? {
         if let point = objectForm(text) ?? arrayForm(text) ?? stringForm(text) ?? geohashForm(text) {
-            return SpatialValue(srid: 4326, geometry: .point(point))
+            return SpatialValue(srid: 4_326, geometry: .point(point))
         }
         return nil
     }
@@ -181,9 +181,9 @@ public enum SpatialValueReader {
             while index < bytes.count, bytes[index] != 0x2C, bytes[index] != 0x29, bytes[index] != 0x5D {
                 index += 1
             }
-            let token = String(decoding: bytes[start ..< index], as: UTF8.self)
-                .trimmingCharacters(in: .whitespaces)
-            guard let value = Double(token) else { return nil }
+            guard let token = String(bytes: bytes[start ..< index], encoding: .utf8)?
+                .trimmingCharacters(in: .whitespaces),
+                let value = Double(token) else { return nil }
             return .number(value)
         }
 

@@ -60,7 +60,10 @@ struct MSSQLServerBannerTests {
     /// Measured from a live SQL Server 2022 CU26. The 50-character prefix this replaced cut the
     /// build off mid-KB-number, so every version gate read the server as unknown.
     static let sqlServer2022 = """
-        Microsoft SQL Server 2022 (RTM-CU26-GDR) (KB5122768) - 16.0.4275.2 (X64) \n\tAug 20 2026 00:33:45 \n\tCopyright (C) 2022 Microsoft Corporation\n\tDeveloper Edition (64-bit) on Linux (Ubuntu 22.04.5 LTS) <X64>
+        Microsoft SQL Server 2022 (RTM-CU26-GDR) (KB5122768) - 16.0.4275.2 (X64) \n\t\
+        Aug 20 2026 00:33:45 \n\t\
+        Copyright (C) 2022 Microsoft Corporation\n\t\
+        Developer Edition (64-bit) on Linux (Ubuntu 22.04.5 LTS) <X64>
         """
 
     @Test("A patched server's major version survives the banner")
