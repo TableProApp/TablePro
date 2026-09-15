@@ -414,20 +414,25 @@ final class ConnectionFormViewModel {
         }
     }
 
+    static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
+        let others = existing.dropFirst().filter { $0 != tagId }
+        guard let tagId else { return Array(others) }
+        return [tagId] + others
+    }
+
     func buildConnection() -> DatabaseConnection {
-        var conn = DatabaseConnection(
-            id: existingConnection?.id ?? UUID(),
-            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
-            type: type,
-            host: host,
-            port: Int(port) ?? 3306,
-            username: username,
-            database: database,
-            sshEnabled: sshEnabled,
-            sslEnabled: effectiveSSLEnabled,
-            groupId: groupId,
-            tagIds: tagId.map { [$0] } ?? []
-        )
+        var conn = existingConnection ?? DatabaseConnection()
+        conn.name = name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name
+        conn.type = type
+        conn.host = host
+        conn.port = Int(port) ?? 3_306
+        conn.username = username
+        conn.database = database
+        conn.sshEnabled = sshEnabled
+        conn.sslEnabled = effectiveSSLEnabled
+        conn.groupId = groupId
+        conn.tagIds = Self.tagIds(selecting: tagId, over: existingConnection?.tagIds ?? [])
+        conn.sshConfiguration = nil
         conn.additionalFields = existingConnection?.additionalFields ?? [:]
         conn.sslConfiguration = existingConnection?.sslConfiguration
 
@@ -446,6 +451,7 @@ final class ConnectionFormViewModel {
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.role] = oracleRole.rawValue
         }
         conn.safeModeLevel = safeModeLevel
+        conn.isReadOnly = safeModeLevel.blocksWrites
         if sshEnabled {
             conn.sshConfiguration = SSHConfiguration(
                 host: sshHost,

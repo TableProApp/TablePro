@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProGeometry
+import XCTest
 
 /// The sniffer is what makes a `.spatial` column work without the app knowing which engine it came
 /// from. A PostGIS column reports `geometry` whether the value arrived as EWKT or, when the
@@ -44,7 +44,7 @@ final class SpatialValueReaderTests: XCTestCase {
         ) else {
             return XCTFail("expected a geometry")
         }
-        XCTAssertEqual(value.srid, 4326)
+        XCTAssertEqual(value.srid, 4_326)
     }
 
     func testGeoJSONPolygonWithHole() {

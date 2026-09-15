@@ -21,6 +21,16 @@ struct DataGridConfiguration: Equatable {
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
 
+    /// Columns drawn as a checkbox whose state the delegate owns, for a grid that reviews rows rather
+    /// than edits them. Keyed by index, because the column is the grid's own and has no name a table
+    /// column could share.
+    var checkboxColumns: Set<Int> = []
+
+    /// Whether the grid offers the commands that belong to a result: value filters, column hiding,
+    /// export and the JSON view. A grid whose rows are a comparison answers none of them, and a
+    /// command that does nothing is worse than one that is not there.
+    var supportsColumnCommands: Bool = true
+
     /// Headings whose cells this grid must not let the user change, even though the rest of the grid
     /// is editable. The Structure tab sets it per object kind: PostgreSQL takes a view's
     /// `RENAME COLUMN` and `SET DEFAULT` and refuses its `SET NOT NULL` and `SET DATA TYPE`, so Name

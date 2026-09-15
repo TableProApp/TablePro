@@ -1,7 +1,7 @@
 import Foundation
 import TableProModels
 
-extension DatabaseType {
+nonisolated extension DatabaseType {
     var defaultPort: String {
         switch self {
         case .mysql, .mariadb: return "3306"

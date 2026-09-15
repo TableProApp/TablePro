@@ -15,15 +15,20 @@ Expand a schema and **Types** sits beside **Functions** and **Triggers**, one ro
 | Engine | Types listed | Enum labels editable |
 |---|---|---|
 | PostgreSQL, PGlite | Enums, composites, domains, ranges | Yes |
+| SQL Server | Alias types, table types, CLR types | No |
 | Every other engine | None | No |
 
-A table's own row type, the array type created beside every type, the multirange created beside every range, and any type an extension installed are left out. A type in another schema is listed under that schema.
+A table's own row type, the array type created beside every type, the multirange created beside every range, and any type an extension installed are left out. A type in another schema is listed under that schema. On SQL Server the built-in types are left out too, so the section holds only what the database declares.
 
 ## Reading a definition
 
 The definition is rebuilt from the catalog rather than read back as typed: comments inside the original statement are gone, names are quoted, and a domain's constraints appear in name order. The tab carries the same toolbar as a routine's source, **Copy**, **Export…**, **Open in Editor** and **Reload**, and beside the statement sit the properties the catalog reports: a domain's base type, a range's subtype, the owner, and the comment.
 
 Hover a row in the sidebar for the same facts without opening it: an enum's labels, a composite's fields, a domain's base type.
+
+On SQL Server nothing is stored to read back at all, because a type has no `sys.sql_modules` row. A table type's statement is rebuilt from its columns and indexes, keeping identity, defaults, computed columns, inline indexes and any collation that differs from the database's; an alias type's is rebuilt from its base type and nullability. A CLR type names the assembly it came from, since its body is compiled .NET rather than T-SQL.
+
+A SQL Server table type is a table-valued parameter and cannot declare a column, so it is left out of the column type picker. Alias types appear there.
 
 ## Editing an enum's labels
 

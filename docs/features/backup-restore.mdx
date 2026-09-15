@@ -127,7 +127,7 @@ Nothing lands on your Mac. The result is on the server or in the bucket, and the
 Your password never reaches the tool's argument list, which every process on the machine can read through `ps`. PostgreSQL gets `PGPASSWORD` and MySQL gets `MYSQL_PWD`, both in the environment. MongoDB's tools read neither, so TablePro writes a `0600` config file and deletes it when the process exits. DuckDB is asked for nothing: it is already connected.
 
 <Warning>
-SqlPackage is the exception. It accepts a password only inside its connection string, which means the command line, where other processes on the Mac can read it while the dump runs. TablePro asks before starting one. Windows or Entra authentication avoids it entirely: leave the username empty and the tool uses integrated security.
+SqlPackage is the exception. It accepts a password only inside its connection string, which means the command line, where other processes on the Mac can read it while the tool runs. A dump and a restore both ask before starting. Windows or Entra authentication avoids it entirely: leave the username empty and the tool uses integrated security.
 </Warning>
 
 ## Failures

@@ -3,11 +3,11 @@ title: Managing Connections
 description: Create, organize, and switch database connections
 ---
 
-Press `Cmd+N` anywhere in the app to open the connection form. **New Connection…** on the welcome window does the same, and the **Import** menu under it takes one from a URL, [another client](/features/connection-sharing), an exported file, or a [project folder](/features/project-folder-import). Saved connections fill the right side of that window under a search field, focused by `Cmd+F`. Until you save one, that side offers **Open Sample Database** instead, plus **Import from Other App…** when a client TablePro imports from is installed.
+Press `Cmd+N` anywhere in the app to open the connection form. **New Connection…** on the welcome window does the same, and the **Import** menu under it takes one from a URL, [another client](/features/connection-sharing), an exported file, or a [project folder](/features/project-folder-import). Saved connections fill the right side of that window. The search field in its toolbar, focused by `Cmd+F`, matches name, host, database, username, type, tag and group. The window keeps one size and remembers where you left it on screen. Until you save a connection, that side offers **Open Sample Database** instead, plus **Import from Other App…** when a client TablePro imports from is installed.
 
 <Frame caption="Welcome window">
-  <img className="block dark:hidden" src="/images/welcome-screen.png" alt="Welcome window with New Connection and Import on the left and an empty connection list offering the sample database" />
-  <img className="hidden dark:block" src="/images/welcome-screen-dark.png" alt="Welcome window with New Connection and Import on the left and an empty connection list offering the sample database" />
+  <img className="block dark:hidden" src="/images/welcome-screen.png" alt="Welcome window with New Connection, Open File and Import on the left, and a search field over an empty connection list offering the sample database" />
+  <img className="hidden dark:block" src="/images/welcome-screen-dark.png" alt="Welcome window with New Connection, Open File and Import on the left, and a search field over an empty connection list offering the sample database" />
 </Frame>
 
 ## Create a connection
@@ -70,15 +70,24 @@ Red for production, green for development. Set Safe Mode to **Read-Only** on pro
 
 | | How it works |
 |---|---|
-| **Groups** | Folders in the connection list, nested up to three levels. Right-click empty space for **New Group…**, or a group for **Rename**, **New Subgroup**, **Change Color**, **Move Group to…**, and **Delete Group**. Deleting a group deletes its subgroups too and leaves the connections inside ungrouped rather than deleted |
-| **Tags** | Several per connection, each with a name and color. Once any connection is tagged, a row of pills appears above the list; click to filter, and with two or more selected a **Match Any** / **Match All** menu switches between OR and AND. **Clear** resets it |
-| **Favorites** | Hover a row and click the star, or right-click and choose **Add to Favorites**. Favorites gather in a section at the top, sorted alphabetically, while the connection keeps its place in its group |
+| **Groups** | Folders in the connection list, nested up to three levels. Choose **File > New Group…**, or right-click empty space for **New Group…**. Right-click a group for **Rename**, **New Subgroup…**, **Color**, **Move Group To**, and **Delete Group…**. Deleting a group deletes its subgroups too and leaves the connections inside ungrouped rather than deleted |
+| **Tags** | Several per connection, each with a name and color. Type a tag's name in the search field and pick it to filter by it, or choose tags from **Filter by Tag** in the **View Options** menu. With two or more chosen, **Match** switches between any and all of them, and **Clear Filters** removes them |
+| **Favorites** | Right-click a connection and choose **Add to Favorites**, or drag it onto the **Favorites** header. Favorites gather in a section at the top while the connection keeps its place in its group |
+| **Recent** | The five connections you opened last, favorites left out. Right-click one for **Remove from Recent**, or the section header for **Clear Recent** |
 
-A connection's group, tags, and favorite star sync through iCloud unless it is marked local only. See [iCloud Sync](/features/icloud-sync).
+A connection's group, tags, and favorite sync through iCloud, to the iPhone and iPad app as well, unless it is marked local only. See [iCloud Sync](/features/icloud-sync).
+
+### Arrange the list
+
+Drag connections and groups into a group, or onto the **Connections** header to take them out of every group. Choose the order under **View > Sort Connections By** or **Sort By** in the **View Options** menu: **Manual**, **Name**, **Database Type**, or **Last Connected**. Dragging to a spot between rows needs **Manual**; in the other orders a drop files the connection into the group and the sort places it. **Edit > Undo** puts a move back.
+
+To rename a connection or group, select it and choose **File > Rename**. Press `Return` to keep the new name or `Escape` to restore the old one.
+
+The sort order and the Recent section stay on this Mac.
 
 ## Switch connections and databases
 
-Press `Ctrl+Cmd+C` for **Switch Connection**. Whatever is already open sits at the top, and the rest are listed under the group they belong to, a nested group carrying its full path. Arrow keys move, `Return` switches the window to that connection, and `Cmd`-click opens a saved one in a window of its own. Typing searches every group at once and collapses the matches into a single list.
+Press `Ctrl+Cmd+C` for **Switch Connection**. Whatever is already open sits at the top, then your favorites and the connections you opened last, and the rest are listed under the group they belong to, a nested group carrying its full path. Arrow keys move, `Return` switches the window to that connection, and `Cmd`-click opens a saved one in a window of its own. Typing searches every group at once and collapses the matches into a single list.
 
 A footer under that list names the transport the window's connection runs on. On an SSH tunnel or a SOCKS proxy it also carries the bytes that have crossed since the transport opened, received and sent.
 
@@ -99,7 +108,7 @@ Leaving **Database** empty on MySQL, MariaDB, MongoDB, SQL Server, and ClickHous
 
 ## Edit, delete, and where it all lives
 
-Right-click a connection to edit or delete it, or swipe left on the row for the same two buttons. Swiping never deletes on its own. Edits apply on the next connect, and deleting removes the saved settings, nothing on the server.
+Right-click a connection to edit or delete it, or select it and press `Delete`. Deleting asks first and removes the saved settings, nothing on the server. Pressing `Delete` on a row under **Favorites** or **Recent** only takes it out of that section. Edits apply on the next connect.
 
 Connections are stored in `~/Library/Application Support/TablePro/connections.json` with their passwords in the macOS Keychain, so copying that file to another Mac restores the connections without the passwords.
 

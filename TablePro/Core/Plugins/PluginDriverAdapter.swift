@@ -519,11 +519,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
+    /// The resolved schema is stamped on any type that came back without one, the same backfill
+    /// `fetchRoutines` does above. A driver that leaves it nil produces types whose qualified name
+    /// is bare, which the sidebar then files under no schema at all.
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         do {
             return try await pluginDriver.fetchUserDefinedTypes(schema: resolvedSchema)
-                .map(UserDefinedTypeInfo.init)
+                .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
                 .sorted { $0.name < $1.name }
         } catch {
             Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")

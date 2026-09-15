@@ -54,6 +54,7 @@ struct MainContentView: View {
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
+    @State var inspectorContextRefreshTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -308,6 +309,19 @@ struct MainContentView: View {
             }
             .onChange(of: inspectorTrigger) { _ in
                 scheduleInspectorUpdate()
+            }
+            /// The JSON rendering draws the snapshot the context carries, and an edit made in the
+            /// fields rendering changes the row under it without moving anything `InspectorTrigger`
+            /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
+            /// together, so the stale snapshot is only ever reached by switching to it.
+            .onChange(of: trailingPaneState.inspector.viewMode) { _ in
+                updateInspectorContext()
+            }
+            /// A value window detached from a field goes on writing while the JSON rendering is the
+            /// one on screen, and it moves nothing the trigger above watches. Debounced, because it
+            /// commits per keystroke and rebuilding the JSON tree cancels the reader's fetches.
+            .onChange(of: coordinator.inspectorRowContentRevision) { _ in
+                scheduleInspectorContextRefresh()
             }
             .onAppear {
                 let start = Date()

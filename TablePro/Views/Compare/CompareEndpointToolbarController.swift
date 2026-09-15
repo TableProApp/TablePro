@@ -69,6 +69,21 @@ internal final class CompareEndpointToolbarController: NSObject {
         side == .source ? session.source : session.target
     }
 
+    // MARK: - Validation
+
+    /// The pickers target this controller rather than the window controller, so AppKit asks it and
+    /// not the window's validation. Without an answer both stayed enabled during Apply, and picking
+    /// a database cancelled the run part way.
+    @objc internal func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        let reason = session.canChangeSetup ? nil : String(localized: "A run is already in progress.")
+        if let reason {
+            item.toolTip = reason
+        } else if let side = identifiers.first(where: { $0.value == item.itemIdentifier })?.key {
+            apply(side, to: item)
+        }
+        return reason == nil
+    }
+
     // MARK: - Presentation
 
     @objc private func chooseSource(_ sender: Any?) {
@@ -131,7 +146,7 @@ internal final class CompareEndpointToolbarController: NSObject {
     /// Re-picking the endpoint that is already chosen must not reach `onChange`, which resets the
     /// comparison: the report, both snapshots, every data plan and the user's per-object choices.
     private func pick(_ endpoint: DatabaseEndpoint, for side: DatabaseEndpointSide) {
-        guard self.endpoint(for: side)?.id != endpoint.id else { return }
+        guard session.canChangeSetup, self.endpoint(for: side)?.id != endpoint.id else { return }
         switch side {
         case .source: session.source = endpoint
         case .target: session.target = endpoint

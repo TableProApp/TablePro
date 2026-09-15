@@ -61,7 +61,12 @@ final class PluginManager: ObservableObject {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 30
+    ///
+    /// 31 adds `aliasType`, `tableType` and `clrType` to `PluginUserDefinedTypeKind` and
+    /// `adoptingSchema` to `PluginUserDefinedTypeInfo`. The enum is not `@frozen` and every app-side
+    /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
+    /// the minimum stays where it is and no bulk re-release is needed.
+    nonisolated static let currentPluginKitVersion = 31
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

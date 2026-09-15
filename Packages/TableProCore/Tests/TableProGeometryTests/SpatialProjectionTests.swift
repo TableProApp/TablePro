@@ -1,11 +1,11 @@
-import XCTest
 @testable import TableProGeometry
+import XCTest
 
 final class SpatialProjectionTests: XCTestCase {
     private let sanFrancisco = SpatialPoint(x: -122.4194, y: 37.7749)
 
     func testGeographicSRIDsDrawDirectly() {
-        for srid: Int32 in [4326, 4269, 4979] {
+        for srid: Int32 in [4_326, 4_269, 4_979] {
             XCTAssertEqual(
                 SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
                 .geographic,
@@ -15,7 +15,7 @@ final class SpatialProjectionTests: XCTestCase {
     }
 
     func testWebMercatorAliases() {
-        for srid: Int32 in [3857, 900_913, 102_100, 102_113, 3785] {
+        for srid: Int32 in [3_857, 900_913, 102_100, 102_113, 3_785] {
             XCTAssertEqual(
                 SpatialProjection.projectability(srid: srid, geometry: .point(sanFrancisco)),
                 .webMercator,

@@ -29,6 +29,7 @@ internal enum WelcomeRequest {
     case exportConnections
     case importConnections
     case importFromApp
+    case importFromAWS
     case importFromURL
     case openProjectFolder
     case showWelcomeSheet

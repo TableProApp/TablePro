@@ -2,16 +2,16 @@
 //  SQLEditorCoordinator.swift
 //  TablePro
 //
-//  TextViewCoordinator for the CodeEditSourceEditor-based SQL editor.
+//  TextViewCoordinator for the TableProEditorKit-based SQL editor.
 //  Handles find panel workarounds and horizontal scrolling fix.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import Combine
 import os
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @MainActor
@@ -735,11 +735,23 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         controller?.showFindPanel()
     }
 
+    func showFindAndReplacePanel() {
+        controller?.showFindAndReplacePanel()
+    }
+
     func findNext() {
         controller?.findNext()
     }
 
     func findPrevious() {
         controller?.findPrevious()
+    }
+
+    var hasSelectionForFind: Bool {
+        controller?.hasSelectionForFind ?? false
+    }
+
+    func useSelectionForFind() {
+        controller?.useSelectionForFind()
     }
 }

@@ -374,7 +374,7 @@ public enum WKTGeometryReader {
             let start = index
             while index < bytes.count, isLetter(bytes[index]) { index += 1 }
             guard index > start else { return nil }
-            return String(decoding: bytes[start ..< index], as: UTF8.self).uppercased()
+            return String(bytes: bytes[start ..< index], encoding: .utf8)?.uppercased()
         }
 
         private mutating func matchKeyword(_ keyword: String) -> Bool {
@@ -386,8 +386,9 @@ public enum WKTGeometryReader {
                 index = saved
                 return false
             }
-            let word = String(decoding: bytes[start ..< index], as: UTF8.self).uppercased()
-            guard word == keyword else {
+            guard let word = String(bytes: bytes[start ..< index], encoding: .utf8)?.uppercased(),
+                  word == keyword
+            else {
                 index = saved
                 return false
             }

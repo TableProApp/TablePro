@@ -7,8 +7,8 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 
 /// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
@@ -63,6 +63,7 @@ struct MainEditorContentView: View {
 
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
+    @State private var queryPlanViewStates = QueryPlanViewStateStore()
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
@@ -169,6 +170,7 @@ struct MainEditorContentView: View {
             let openTabIds = Set(tabManager.tabIds)
             coordinator.cleanupTabCaches(openTabIds: openTabIds)
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
+            queryPlanViewStates.retainTabs(openTabIds)
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
@@ -723,7 +725,7 @@ struct MainEditorContentView: View {
             case .chart:
                 resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
-                    queryPlanResultView(for: explain)
+                    queryPlanResultView(for: explain, in: tab)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let resultSet = tab.display.activeResultSet {
                     ResultChartView(
@@ -777,7 +779,7 @@ struct MainEditorContentView: View {
             case .data:
                 resultTabBarSection(tab: tab)
                 if let explain = tab.display.activeExplainResult {
-                    queryPlanResultView(for: explain)
+                    queryPlanResultView(for: explain, in: tab)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     let resolvedRows = resolvedTableRows(for: tab)
@@ -865,13 +867,22 @@ struct MainEditorContentView: View {
         }
     }
 
-    private func queryPlanResultView(for resultSet: ResultSet) -> QueryPlanResultView {
+    /// Identified by its result set, so one plan's selection, zoom and scroll never carry onto the
+    /// next plan shown in the same place.
+    private func queryPlanResultView(for resultSet: ResultSet, in tab: QueryTab) -> some View {
         QueryPlanResultView(
             rawText: resultSet.explainRawText ?? "",
             executionTime: resultSet.executionTime,
             plan: resultSet.queryPlan,
-            planContext: resultSet.explainPlanContext
+            planContext: resultSet.explainPlanContext,
+            tabState: queryPlanViewStates.tabState(forTab: tab.id),
+            planState: queryPlanViewStates.planState(
+                forResultSet: resultSet.id,
+                inTab: tab.id,
+                liveResultSetIds: Set(tab.display.resultSets.map(\.id))
+            )
         )
+        .id(resultSet.id)
     }
 
     @ViewBuilder

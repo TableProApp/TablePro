@@ -16,7 +16,7 @@ import SwiftUI
 final class DiagramViewportController: ObservableObject {
     @Published private(set) var magnification: CGFloat = 1.0
 
-    private weak var scrollView: NSScrollView?
+    private weak var scrollView: DiagramScrollView?
     private var magnificationObservation: NSKeyValueObservation?
     private var savedDocumentOrigin: CGPoint?
 
@@ -28,10 +28,12 @@ final class DiagramViewportController: ObservableObject {
     var canZoomOut: Bool { DiagramZoom.canStepDown(from: magnification) }
 
     func zoomIn() {
+        guard canZoomIn else { return }
         apply(DiagramZoom.stepUp(from: magnification))
     }
 
     func zoomOut() {
+        guard canZoomOut else { return }
         apply(DiagramZoom.stepDown(from: magnification))
     }
 
@@ -53,26 +55,40 @@ final class DiagramViewportController: ObservableObject {
     }
 
     /// Clamped through the clip view's own rule, so a fast pan or a node dragged against the edge
-    /// cannot push the document out of view and have AppKit snap it back on the next tile.
-    func scrollBy(_ delta: CGSize) {
-        guard let scrollView else { return }
+    /// cannot push the document out of view and have AppKit snap it back on the next tile. Returns
+    /// the distance actually scrolled, which is less than asked for, or nothing, at an edge.
+    @discardableResult
+    func scrollBy(_ delta: CGSize) -> CGSize {
+        guard let scrollView else { return .zero }
         let clipView = scrollView.contentView
+        let start = clipView.bounds.origin
         let proposed = CGRect(
-            origin: CGPoint(
-                x: clipView.bounds.origin.x + delta.width,
-                y: clipView.bounds.origin.y + delta.height
-            ),
+            origin: CGPoint(x: start.x + delta.width, y: start.y + delta.height),
             size: clipView.bounds.size
         )
         clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
         scrollView.reflectScrolledClipView(clipView)
+        let end = clipView.bounds.origin
+        return CGSize(width: end.x - start.x, height: end.y - start.y)
+    }
+
+    /// Auto-pan grows the canvas a step at a time and cannot wait for SwiftUI to hand the document its
+    /// new size, or every step stalls until the next update. The size written is the one SwiftUI is
+    /// about to write, so its update then finds nothing to change.
+    func resizeDocument(to size: CGSize) {
+        guard let documentView = scrollView?.documentView, documentView.frame.size != size else { return }
+        documentView.setFrameSize(size)
     }
 
     /// Pushes the retained zoom onto the new scroll view rather than reading the scroll view's
     /// own 1.0, because a controller outlives the view it is attached to: an editor-tab switch
     /// tears the diagram down and rebuilds it, and reading would drop the user back to 100%.
-    func attach(to scrollView: NSScrollView) {
+    func attach(to scrollView: DiagramScrollView) {
+        if let attached = self.scrollView, attached !== scrollView {
+            detach(from: attached)
+        }
         self.scrollView = scrollView
+        scrollView.zoomController = self
         scrollView.magnification = DiagramZoom.clamped(magnification)
         magnification = scrollView.magnification
         magnificationObservation = scrollView.observe(\.magnification, options: [.new]) { [weak self] _, change in
@@ -81,26 +97,34 @@ final class DiagramViewportController: ObservableObject {
                 self?.magnification = value
             }
         }
+        restoreScrollPositionIfLaidOut()
     }
 
-    /// The scroll offset can only be restored once the rebuilt scroll view has a document to
-    /// constrain it against, so it waits for the caller's layout pass instead of riding `attach`.
-    func restoreScrollPosition() {
+    /// An offset applied while the clip view has no size is rescaled by AppKit when the frame arrives,
+    /// measured at 1.5x as the saved origin divided by the zoom. So it waits for a size: at once when
+    /// the scroll view already has one, otherwise on the scroll view's first tile that gives it one.
+    func restoreScrollPositionIfLaidOut() {
         guard let scrollView, let origin = savedDocumentOrigin else { return }
-        savedDocumentOrigin = nil
         let clipView = scrollView.contentView
+        guard !clipView.bounds.isEmpty else { return }
+        savedDocumentOrigin = nil
         let proposed = CGRect(origin: origin, size: clipView.bounds.size)
         clipView.scroll(to: clipView.constrainBoundsRect(proposed).origin)
         scrollView.reflectScrolledClipView(clipView)
     }
 
-    func detach() {
-        if let scrollView {
+    /// SwiftUI makes a replacement canvas before it dismantles the one it replaces, so the controller
+    /// can already belong to the new scroll view when the old one is torn down. A scroll view that
+    /// never had a size has no offset worth keeping over the one still waiting to be restored.
+    func detach(from scrollView: DiagramScrollView) {
+        guard self.scrollView === scrollView else { return }
+        if !scrollView.contentView.bounds.isEmpty {
             savedDocumentOrigin = scrollView.contentView.bounds.origin
         }
         magnificationObservation?.invalidate()
         magnificationObservation = nil
-        scrollView = nil
+        scrollView.zoomController = nil
+        self.scrollView = nil
     }
 
     private func apply(_ value: CGFloat) {
@@ -120,15 +144,20 @@ final class DiagramViewportController: ObservableObject {
     }
 }
 
-struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
+/// The document is an AppKit view, never SwiftUI. SwiftUI inside a magnified scroll view resolves
+/// clicks, hover and drags in unscaled space, measured on macOS 27: at 50% a click on document point
+/// (950, 650) reached SwiftUI as (475, 325). `NSView.convert(_:from:)` accounts for the clip view's
+/// scale, so a document view that owns its own pointer events hits what is under the pointer.
+struct MagnifiableCanvasView<Document: NSView>: NSViewRepresentable {
     let viewport: DiagramViewportController
     let contentSize: CGSize
     var accessibilityIdentifier: String?
-    @ViewBuilder let content: () -> Content
+    let makeDocument: () -> Document
+    let updateDocument: (Document) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    func makeNSView(context: Context) -> DiagramScrollView {
         let scrollView = DiagramScrollView()
         scrollView.allowsMagnification = true
         scrollView.minMagnification = DiagramZoom.minimum
@@ -141,37 +170,42 @@ struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
             scrollView.setAccessibilityIdentifier(accessibilityIdentifier)
         }
 
-        let hostingView = NSHostingView(rootView: content())
-        hostingView.translatesAutoresizingMaskIntoConstraints = true
-        hostingView.frame = CGRect(origin: .zero, size: resolvedContentSize)
-        scrollView.documentView = hostingView
+        let document = makeDocument()
+        document.frame = CGRect(origin: .zero, size: resolvedContentSize)
+        updateDocument(document)
+        scrollView.documentView = document
 
-        context.coordinator.hostingView = hostingView
+        context.coordinator.document = document
         context.coordinator.viewport = viewport
         viewport.attach(to: scrollView)
         return scrollView
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let hostingView = context.coordinator.hostingView else { return }
-        hostingView.rootView = content()
+    func updateNSView(_ scrollView: DiagramScrollView, context: Context) {
+        guard let document = context.coordinator.document else { return }
+        if context.coordinator.viewport !== viewport {
+            context.coordinator.viewport?.detach(from: scrollView)
+            context.coordinator.viewport = viewport
+            viewport.attach(to: scrollView)
+        }
+        updateDocument(document)
 
         let size = resolvedContentSize
-        guard hostingView.frame.size != size else { return }
-        hostingView.frame = CGRect(origin: .zero, size: size)
+        guard document.frame.size != size else { return }
+        document.frame = CGRect(origin: .zero, size: size)
     }
 
-    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+    static func dismantleNSView(_ scrollView: DiagramScrollView, coordinator: Coordinator) {
         MainActor.assumeIsolated {
-            coordinator.viewport?.detach()
+            coordinator.viewport?.detach(from: scrollView)
             coordinator.viewport = nil
-            coordinator.hostingView = nil
+            coordinator.document = nil
         }
     }
 
     /// Returning the proposal keeps the document's size out of SwiftUI's layout, so a wide
     /// diagram never becomes a minimum width that pins the window's split dividers.
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: DiagramScrollView, context: Context) -> CGSize? {
         let resolved = proposal.replacingUnspecifiedDimensions(by: CGSize(width: 400, height: 300))
         guard resolved.width.isFinite, resolved.height.isFinite else { return nil }
         return resolved
@@ -186,7 +220,7 @@ struct MagnifiableCanvasView<Content: View>: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
-        var hostingView: NSHostingView<Content>?
+        var document: Document?
         var viewport: DiagramViewportController?
     }
 }

@@ -2,15 +2,15 @@
 //  DDLTextView.swift
 //  TablePro
 //
-//  Read-only DDL view with tree-sitter syntax highlighting via CodeEditSourceEditor
+//  Read-only DDL view with tree-sitter syntax highlighting via TableProEditorKit
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
-/// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor
+/// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
     let ddl: String
     @Binding var fontSize: Double

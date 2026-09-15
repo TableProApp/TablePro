@@ -269,7 +269,80 @@ struct MSSQLObjectQueryTests {
 
     @Test("Fixed catalog type codes stay plain literals")
     func catalogTypeCodesStayPlain() {
-        #expect(MSSQLObjectQueries.routineList(schema: "dbo").contains("o.type IN ('P', 'FN', 'IF', 'TF')"))
+        #expect(MSSQLObjectQueries.routineList(schema: "dbo")
+            .contains("o.type IN ('P', 'PC', 'X', 'FN', 'IF', 'TF', 'FS', 'FT', 'AF')"))
+    }
+
+    /// A database with CLR routines listed fewer than it held, with nothing saying so.
+    @Test("CLR and extended routines are listed alongside the T-SQL ones")
+    func clrRoutinesAreListed() {
+        for code in ["PC", "FS", "FT", "AF", "X"] {
+            #expect(MSSQLObjectQueries.routineObjectTypes.contains(code))
+        }
+    }
+
+    @Test("Every procedure code reads as a procedure and every function code as a function")
+    func objectTypeMappingCoversClr() {
+        for code in ["P ", "PC", "X "] {
+            #expect(MSSQLObjectQueries.routineKind(forObjectType: code) == "PROCEDURE")
+        }
+        for code in ["FN", "IF", "TF", "FS", "FT", "AF"] {
+            #expect(MSSQLObjectQueries.routineKind(forObjectType: code) == "FUNCTION")
+        }
+    }
+
+    /// Measured on SQL Server 2022: a caller with only SELECT and EXECUTE still sees the
+    /// sys.sql_modules row with a NULL definition, exactly as WITH ENCRYPTION does. Only
+    /// OBJECTPROPERTY tells the two apart, and it answers for that caller too.
+    @Test("Encryption is read from OBJECTPROPERTY, not from a missing definition")
+    func encryptionIsNotInferredFromNullDefinition() {
+        let list = MSSQLObjectQueries.routineList(schema: "dbo")
+        #expect(list.contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted') AS is_encrypted"))
+        #expect(list.contains("AS definition_withheld"))
+        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+            .contains("OBJECTPROPERTY(o.object_id, 'IsEncrypted')"))
+    }
+
+    /// Selecting every body to draw a list of names pulled a whole schema's source over the wire
+    /// and dropped it; the reader's own open re-queries the one they asked for.
+    @Test("The listing carries no routine bodies")
+    func listingOmitsBodies() {
+        let list = MSSQLObjectQueries.routineList(schema: "dbo")
+        #expect(!list.contains("m.definition,"))
+        #expect(MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p").contains("m.definition"))
+    }
+
+    /// A CLR routine has no sys.sql_modules row at all, so the inner join this replaced returned
+    /// zero rows and the caller reported a routine sitting in the list as no longer existing.
+    /// Measured against SQL Server 2022 with an object that has no module row: inner join 0 rows,
+    /// left join 1 row.
+    @Test("The definition query survives a routine with no SQL module row")
+    func definitionQueryUsesLeftJoin() {
+        let sql = MSSQLObjectQueries.routineDefinition(schema: "dbo", name: "p")
+        #expect(sql.contains("FROM sys.objects o"))
+        #expect(sql.contains("LEFT JOIN sys.sql_modules m"))
+        #expect(!sql.contains("FROM sys.sql_modules"))
+        #expect(sql.contains("o.type"))
+    }
+
+    @Test("Only T-SQL routines are expected to have a SQL source")
+    func sqlSourceIsPerObjectType() {
+        for code in ["P ", "FN", "IF", "TF"] {
+            #expect(MSSQLObjectQueries.routineHasSQLSource(forObjectType: code))
+        }
+        for code in ["PC", "FS", "FT", "AF", "X "] {
+            #expect(!MSSQLObjectQueries.routineHasSQLSource(forObjectType: code))
+        }
+    }
+
+    /// Reporting a CLR routine's language as T-SQL is a claim about a body that is not there.
+    @Test("Language names the runtime the routine actually runs on")
+    func languageFollowsObjectType() {
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "P ") == "T-SQL")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "TF") == "T-SQL")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "PC") == "CLR")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "AF") == "CLR")
+        #expect(MSSQLObjectQueries.routineLanguage(forObjectType: "X ") == "Extended")
     }
 }
 

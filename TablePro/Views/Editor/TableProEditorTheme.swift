@@ -2,13 +2,13 @@
 //  TableProEditorTheme.swift
 //  TablePro
 //
-//  Adapts ThemeEngine colors to CodeEditSourceEditor's EditorTheme.
+//  Adapts ThemeEngine colors to TableProEditorKit's EditorTheme.
 //
 
 import AppKit
-import CodeEditSourceEditor
+import TableProEditorKit
 
-/// Maps ThemeEngine's active theme to CodeEditSourceEditor's EditorTheme
+/// Maps ThemeEngine's active theme to TableProEditorKit's EditorTheme
 struct TableProEditorTheme {
     @MainActor
     static func make() -> EditorTheme {

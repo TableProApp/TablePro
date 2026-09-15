@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProR2SQLCore
+import Testing
 
 @Suite("R2 SQL row mapping")
 struct R2SQLRowMapperTests {
@@ -21,14 +21,15 @@ struct R2SQLRowMapperTests {
     func exactNumbers() throws {
         let value = try JSONDecoder().decode(R2SQLJSONValue.self, from: Data("12345678901234567.89".utf8))
         #expect(R2SQLTypeMapper.cell(value, kind: .decimal) == .text("12345678901234567.89"))
-        #expect(R2SQLTypeMapper.cell(.number(Decimal(string: "18446744073709551615")!), kind: .integer)
-            == .text("18446744073709551615"))
+        let unsignedMaximum = try #require(Decimal(string: "18446744073709551615"))
+        #expect(R2SQLTypeMapper.cell(.number(unsignedMaximum), kind: .integer) == .text("18446744073709551615"))
     }
 
     @Test("A floating-point column keeps its fractional form")
-    func floatingPoint() {
+    func floatingPoint() throws {
         #expect(R2SQLTypeMapper.cell(.number(1), kind: .floatingPoint) == .text("1.0"))
-        #expect(R2SQLTypeMapper.cell(.number(Decimal(string: "0.1")!), kind: .floatingPoint) == .text("0.1"))
+        let tenth = try #require(Decimal(string: "0.1"))
+        #expect(R2SQLTypeMapper.cell(.number(tenth), kind: .floatingPoint) == .text("0.1"))
     }
 
     @Test("A bytes column decodes base64, and text that is not base64 stays text")

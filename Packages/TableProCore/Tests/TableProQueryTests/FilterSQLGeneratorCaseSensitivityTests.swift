@@ -1,12 +1,11 @@
 import Foundation
 import TableProModels
 import TableProPluginKit
-import Testing
 @testable import TableProQuery
+import Testing
 
 @Suite("Mobile Filter Case Sensitivity")
 struct MobileFilterSQLGeneratorCaseSensitivityTests {
-
     private static let postgresql = SQLDialectDescriptor(
         identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
         likeEscapeStyle: .explicit, caseSensitivityStyle: .ilikeOperator

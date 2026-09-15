@@ -122,19 +122,12 @@ struct DiagramPaintCoverageTests {
         }
     }
 
-    /// The production shape, not the bare AppKit leaf: `MagnifiableCanvasView` puts an
-    /// `NSHostingView` in as the document view, and the diagram sits inside it as a representable
-    /// carrying the frame and the gesture modifiers. Testing the leaf alone would stay green if the
-    /// representable were reverted to a `Canvas`, which is the whole defect.
+    /// The production shape: `MagnifiableCanvasView` puts the scene view in as the document view
+    /// itself, with no SwiftUI between it and the scroll view.
     private func makeDiagramDocument(_ scene: ERDiagramScene) -> NSView {
-        let hosting = NSHostingView(
-            rootView: ERDiagramSceneCanvas(scene: scene)
-                .frame(width: scene.size.width, height: scene.size.height)
-                .contentShape(Rectangle())
-        )
-        hosting.translatesAutoresizingMaskIntoConstraints = true
-        hosting.frame = CGRect(origin: .zero, size: scene.size)
-        return hosting
+        let view = ERDiagramSceneView(frame: CGRect(origin: .zero, size: scene.size))
+        view.scene = scene
+        return view
     }
 
     /// Every magnification here is low enough to put the far node inside the viewport and high
@@ -224,10 +217,12 @@ struct DiagramPaintCoverageTests {
             rootView: QueryPlanArrowsView(arrows: [arrow], size: Self.canvasSize)
                 .background(Color.white)
         )
-        hosting.translatesAutoresizingMaskIntoConstraints = true
+        hosting.sizingOptions = []
         hosting.frame = CGRect(origin: .zero, size: Self.canvasSize)
+        let document = QueryPlanDiagramCanvasView(frame: CGRect(origin: .zero, size: Self.canvasSize))
+        document.addSubview(hosting)
 
-        let probe = makeProbe(documentView: hosting, magnification: magnification)
+        let probe = makeProbe(documentView: document, magnification: magnification)
         let grounds: [NSColor] = [.systemBlue, .white]
 
         #expect(isPainted(CGPoint(x: 2_200, y: 1_330), in: probe, magnification: magnification, grounds: grounds))

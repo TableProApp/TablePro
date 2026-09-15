@@ -2,15 +2,15 @@
 //  QueryCompletionAdapter.swift
 //  TablePro
 //
-//  Bridges a per-language QueryCompletionService to CodeEditSourceEditor's
+//  Bridges a per-language QueryCompletionService to TableProEditorKit's
 //  CodeSuggestionDelegate.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 final class QueryCompletionAdapter: CodeSuggestionDelegate {

@@ -86,8 +86,12 @@ extension DatabaseManager {
         }
 
         var passwordOverride: String? = incomingPasswordOverride
-        if passwordOverride == nil, connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
-            if let cached = activeSessions[connection.id]?.cachedPassword {
+        let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
+        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
+        if passwordOverride == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) {
+            /// Keyed by the credential profile when there is one, so a profile set to ask every
+            /// time asks once rather than once per connection using it.
+            if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
                 let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
@@ -168,6 +172,13 @@ extension DatabaseManager {
                 markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
+                    /// Only a password that actually authenticated is shared with the other
+                    /// connections on this profile. Caching the prompt's answer before the connect
+                    /// meant one mistyped password locked every one of them out until a relaunch,
+                    /// because the prompt never came back.
+                    if promptsForPassword {
+                        promptedPasswords[promptCacheKey] = passwordOverride
+                    }
                 }
                 setSession(session, for: connection.id)
             }

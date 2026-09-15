@@ -29,6 +29,7 @@ struct ConnectionFormEditsTests {
             groupId: nil,
             sshProfileId: nil,
             sshTunnelMode: .disabled,
+            credentialMode: .inline,
             cloudflareTunnelMode: .disabled,
             cloudSQLProxyMode: .disabled,
             socksProxyMode: .disabled,

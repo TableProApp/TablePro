@@ -53,6 +53,7 @@ public enum SyncRecordMapper {
         fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
+        fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
 
         fields[.color] = connection.color.rawValue as CKRecordValue
         if let groupId = connection.groupId {
@@ -116,7 +117,7 @@ public enum SyncRecordMapper {
         }
 
         let host = fields[.host] as? String ?? "127.0.0.1"
-        let port = (fields[.port] as? Int64).map { Int($0) } ?? 3306
+        let port = (fields[.port] as? Int64).map { Int($0) } ?? 3_306
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
         let color = Self.color(from: fields)
@@ -130,6 +131,7 @@ public enum SyncRecordMapper {
             tagIds = []
         }
         let sortOrder = (fields[.sortOrder] as? Int64).map { Int($0) } ?? 0
+        let isFavorite = (fields[.isFavorite] as? Int64 ?? 0) != 0
         let isReadOnly = (fields[.isReadOnly] as? Int64 ?? 0) != 0
         let safeModeLevel = safeModeLevel(fromWire: fields[.safeModeLevel] as? String, isReadOnly: isReadOnly)
         let queryTimeout = (fields[.queryTimeoutSeconds] as? Int64).map { Int($0) }
@@ -181,7 +183,8 @@ public enum SyncRecordMapper {
             sslConfiguration: sslConfig,
             groupId: groupId,
             tagIds: tagIds,
-            sortOrder: sortOrder
+            sortOrder: sortOrder,
+            isFavorite: isFavorite
         )
     }
 
@@ -211,6 +214,7 @@ public enum SyncRecordMapper {
         fields[.safeModeLevel] = connection.safeModeLevel.rawValue as CKRecordValue
         fields[.sshEnabled] = Int64(connection.sshEnabled ? 1 : 0) as CKRecordValue
         fields[.sslEnabled] = Int64(connection.sslEnabled ? 1 : 0) as CKRecordValue
+        fields[.isFavorite] = Int64(connection.isFavorite ? 1 : 0) as CKRecordValue
         fields[.color] = connection.color.rawValue as CKRecordValue
         fields[.groupId] = connection.groupId?.uuidString as CKRecordValue?
 

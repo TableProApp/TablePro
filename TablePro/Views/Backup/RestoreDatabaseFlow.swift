@@ -188,6 +188,11 @@ struct RestoreDatabaseFlow: View {
             isPresented = false
             return
         }
+        guard await NativeDumpPasswordExposure.confirm(
+            connection: connection,
+            formatId: formatId,
+            window: hostWindow
+        ) else { return }
         phase = .running(database: database)
         do {
             try await service.start(

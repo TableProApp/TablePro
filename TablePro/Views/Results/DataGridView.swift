@@ -15,16 +15,32 @@ struct CellPosition: Hashable {
     let column: Int
 }
 
+enum DataGridChangeVocabulary: Equatable {
+    case pendingEdit
+    case comparison
+}
+
 struct RowVisualState: Equatable {
     let isDeleted: Bool
     let isInserted: Bool
     let modifiedColumns: Set<Int>
+    let struckColumns: Set<Int>
+    let vocabulary: DataGridChangeVocabulary
     let highlight: RowHighlight
 
-    init(isDeleted: Bool, isInserted: Bool, modifiedColumns: Set<Int>, highlight: RowHighlight = .none) {
+    init(
+        isDeleted: Bool,
+        isInserted: Bool,
+        modifiedColumns: Set<Int>,
+        struckColumns: Set<Int> = [],
+        vocabulary: DataGridChangeVocabulary = .pendingEdit,
+        highlight: RowHighlight = .none
+    ) {
         self.isDeleted = isDeleted
         self.isInserted = isInserted
         self.modifiedColumns = modifiedColumns
+        self.struckColumns = struckColumns
+        self.vocabulary = vocabulary
         self.highlight = highlight
     }
 
@@ -32,11 +48,17 @@ struct RowVisualState: Equatable {
         modifiedColumns.contains(columnIndex)
     }
 
+    func isStruck(columnIndex: Int) -> Bool {
+        struckColumns.contains(columnIndex)
+    }
+
     func highlighted(_ highlight: RowHighlight) -> RowVisualState {
         RowVisualState(
             isDeleted: isDeleted,
             isInserted: isInserted,
             modifiedColumns: modifiedColumns,
+            struckColumns: struckColumns,
+            vocabulary: vocabulary,
             highlight: highlight
         )
     }
@@ -521,6 +543,7 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
             firstClickSortDirection: coordinator.firstClickSortDirection,
+            supportsValueFilter: configuration.supportsColumnCommands,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,
@@ -644,6 +667,9 @@ struct DataGridView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
+        /// The detached editor commits through this coordinator, and a mount is built fresh per tab
+        /// switch and per results-mode toggle, so a window left open past one writes nothing.
+        coordinator.dismissPoppedOutCellEditor()
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
         coordinator.flushPendingColumnLayoutPersistence()

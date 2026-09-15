@@ -90,6 +90,20 @@ The sidebar nests tables under their schema, hides the built-in role schemas (`d
 
 INSERTs from the data grid leave IDENTITY columns out, so the server assigns them, and `TEXTSIZE` is raised at connect, so `nvarchar(max)` and `text` values arrive whole rather than cut to FreeTDS's 2048-byte default.
 
+## Session options
+
+Every connection opens with the SET profile SQL Server requires for filtered indexes, indexes on computed columns, indexed views and XML data type methods:
+
+| Option | Value |
+|---|---|
+| `ANSI_NULLS`, `ANSI_PADDING`, `ANSI_WARNINGS` | ON |
+| `ARITHABORT`, `CONCAT_NULL_YIELDS_NULL`, `QUOTED_IDENTIFIER` | ON |
+| `NUMERIC_ROUNDABORT` | OFF |
+
+FreeTDS leaves all of them at Sybase's defaults, and a session that misses any one of them refuses every write to a table carrying a filtered index or an index on a computed column, with an error naming the SET options rather than the table.
+
+Two things change in the SQL editor as a result. `col = NULL` matches nothing, so compare with `col IS NULL`. And `'total: ' + @value` is NULL when `@value` is, so wrap it in `ISNULL(@value, '')` to keep the rest of the string.
+
 ## SSL/TLS
 
 New connections start on **Preferred**.

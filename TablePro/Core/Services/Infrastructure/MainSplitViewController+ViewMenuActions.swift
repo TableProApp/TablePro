@@ -98,12 +98,16 @@ extension MainSplitViewController {
     @objc func closeResultTab(_ sender: Any?) {
         commandActions?.closeResultTab()
     }
+}
 
-    @objc func increaseEditorTextSize(_ sender: Any?) {
+/// The window's answer when nothing nearer the focus zooms: a focused diagram's scroll view claims
+/// these first, so this is what Zoom In means everywhere else.
+extension MainSplitViewController: ZoomCommandResponding {
+    @objc func zoomIn(_ sender: Any?) {
         ThemeEngine.shared.adjustEditorFontSize(by: 1)
     }
 
-    @objc func decreaseEditorTextSize(_ sender: Any?) {
+    @objc func zoomOut(_ sender: Any?) {
         ThemeEngine.shared.adjustEditorFontSize(by: -1)
     }
 }

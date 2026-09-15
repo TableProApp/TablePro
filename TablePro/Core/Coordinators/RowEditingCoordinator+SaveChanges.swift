@@ -20,6 +20,7 @@ extension RowEditingCoordinator {
         pendingDeletes: inout Set<DatabaseTreeTableRef>,
         tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
+        endInspectorEditRun()
         let hasEditedCells = parent.changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 

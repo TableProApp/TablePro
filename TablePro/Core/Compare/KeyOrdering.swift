@@ -65,6 +65,22 @@ internal struct KeyOrdering {
         return lhs.count < rhs.count ? .orderedAscending : .orderedDescending
     }
 
+    internal func order(at index: Int) -> ColumnOrder {
+        index < orders.count ? orders[index] : .caseSensitiveText
+    }
+
+    internal static func isIdentical(_ lhs: PluginCellValue, _ rhs: PluginCellValue, order: ColumnOrder) -> Bool {
+        switch order {
+        case .numeric:
+            guard let left = decimalValue(lhs), let right = decimalValue(rhs) else {
+                return byteValue(lhs) == byteValue(rhs)
+            }
+            return left == right
+        case .caseSensitiveText, .caseInsensitiveText:
+            return byteValue(lhs) == byteValue(rhs)
+        }
+    }
+
     internal static func hasNullComponent(_ key: [PluginCellValue]) -> Bool {
         key.contains { if case .null = $0 { return true } else { return false } }
     }

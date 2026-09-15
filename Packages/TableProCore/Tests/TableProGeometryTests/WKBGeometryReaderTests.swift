@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProGeometry
+import XCTest
 
 /// Every hex fixture here came off a live server during the investigation of #2532. The PostGIS
 /// ones are the wire bytes libpq hands over before the `ST_AsEWKT` rewrite runs; the MySQL and
@@ -31,7 +31,7 @@ final class WKBGeometryReaderTests: XCTestCase {
         guard case .success(let parsed) = WKBGeometryReader.read(mysqlInternal: bytes) else {
             return XCTFail("expected a geometry")
         }
-        XCTAssertEqual(parsed.srid, 4326)
+        XCTAssertEqual(parsed.srid, 4_326)
         guard case .point(let point) = parsed.geometry else { return XCTFail("expected a point") }
         XCTAssertEqual(point.x, -122.4194, accuracy: 1e-9, "x must be LONGITUDE")
         XCTAssertEqual(point.y, 37.7749, accuracy: 1e-9, "y must be LATITUDE")
@@ -49,7 +49,7 @@ final class WKBGeometryReaderTests: XCTestCase {
 
     func testPostGISEWKBSRIDFlag() {
         let parsed = value(hex: "0101000020E610000050FC1873D79A5EC0D0D556EC2FE34240")
-        XCTAssertEqual(parsed?.srid, 4326)
+        XCTAssertEqual(parsed?.srid, 4_326)
         guard case .point(let point)? = parsed?.geometry else { return XCTFail("expected a point") }
         XCTAssertEqual(point.x, -122.4194, accuracy: 1e-9)
     }

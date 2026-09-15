@@ -18,6 +18,14 @@ generator at all; see appcast_feed for how they are moved.
 This replaces an awk state machine that scanned for `<item>` and `</item>` line by line, on three
 untested assumptions, one of which was that no release note ever contains the literal `</item>`.
 
+Nothing pruned the feed, so it grew by two items per release forever: 155 items and 695 KB by
+0.74.0, of which 84% was embedded release-note CDATA and 92% was items no install can ever be
+offered. Every install downloads the whole file on every scheduled check, daily by default.
+`--keep-releases` bounds it. Dropping an old item is safe because Sparkle picks the highest version
+present (`SUAppcastDriver.bestItemFromAppcastItems`) and never looks for the host's own version in
+the feed; what it cannot survive is losing the newest item, which is what the caller's rewind guard
+still checks.
+
 Run: python3 scripts/ci/merge-appcast.py --base appcast.xml --version 0.75.0 \
         --arm64 <dir>/appcast.xml --x86-64 <dir>/appcast.xml \
         --download-prefix https://.../download/v0.75.0/ --out appcast/appcast.xml
@@ -41,8 +49,11 @@ from appcast_feed import (  # noqa: E402
     parse,
     parse_text,
     read,
+    remove_version,
     sole_item_text,
 )
+
+DEFAULT_KEEP_RELEASES = 5
 
 MergeError = FeedError
 
@@ -113,7 +124,31 @@ def check_base(base_root, base_path, version, bundle_version):
             )
 
 
-def merge(base_path, arm64_path, x86_64_path, version, download_prefix, out_path):
+def releases_in_order(text, path):
+    """Every distinct shortVersionString, newest first, in document order."""
+    ordered = []
+    for item in channel_items(parse_text(text), path):
+        version = item_short_version(item)
+        if version and version not in ordered:
+            ordered.append(version)
+    return ordered
+
+
+def prune(text, path, keep_releases):
+    """Drops every item belonging to a release outside the newest `keep_releases`."""
+    if keep_releases <= 0:
+        return text, []
+    ordered = releases_in_order(text, path)
+    doomed = ordered[keep_releases:]
+    result = text
+    for version in doomed:
+        result, removed = remove_version(result, path, version)
+        if removed == 0:
+            raise FeedError(f"{path}: {version} was listed for pruning but no item carries it")
+    return result, doomed
+
+
+def merge(base_path, arm64_path, x86_64_path, version, download_prefix, out_path, keep_releases):
     base_text = read(base_path)
     base_root = parse(base_path)
 
@@ -139,6 +174,20 @@ def merge(base_path, arm64_path, x86_64_path, version, download_prefix, out_path
     if merged_items[0].find(HARDWARE) is None:
         raise FeedError("the arm64 item is not first; Sparkle offers the first item the host can run")
 
+    merged, dropped = prune(merged, "merged feed", keep_releases)
+    if dropped:
+        pruned_items = channel_items(parse_text(merged), "pruned feed")
+        if not pruned_items:
+            raise FeedError("pruning emptied the feed")
+        if item_short_version(pruned_items[0]) != version:
+            raise FeedError(f"pruning left {item_short_version(pruned_items[0])} newest instead of {version}")
+        if pruned_items[0].find(HARDWARE) is None:
+            raise FeedError("pruning left a non-arm64 item first")
+        kept = releases_in_order(merged, "pruned feed")
+        if len(kept) != keep_releases:
+            raise FeedError(f"pruning left {len(kept)} releases, expected {keep_releases}")
+        print(f"pruned {len(dropped)} release(s) below the newest {keep_releases}: {', '.join(dropped)}")
+
     pathlib.Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     pathlib.Path(out_path).write_text(merged, encoding="utf-8")
     return merged
@@ -152,10 +201,24 @@ def main(argv=None):
     parser.add_argument("--x86-64", required=True, dest="x86_64", help="generate_appcast output for x86_64")
     parser.add_argument("--download-prefix", required=True, help="every enclosure URL must start with this")
     parser.add_argument("--out", required=True, help="where to write the merged feed")
+    parser.add_argument(
+        "--keep-releases",
+        type=int,
+        default=DEFAULT_KEEP_RELEASES,
+        help=f"how many releases the published feed keeps, newest first (default: {DEFAULT_KEEP_RELEASES}; 0 keeps all)",
+    )
     args = parser.parse_args(argv)
 
     try:
-        merge(args.base, args.arm64, args.x86_64, args.version, args.download_prefix, args.out)
+        merge(
+            args.base,
+            args.arm64,
+            args.x86_64,
+            args.version,
+            args.download_prefix,
+            args.out,
+            args.keep_releases,
+        )
     except FeedError as error:
         print(f"::error::merge-appcast: {error}", file=sys.stderr)
         return 1

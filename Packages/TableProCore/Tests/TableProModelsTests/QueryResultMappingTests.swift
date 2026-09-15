@@ -1,7 +1,7 @@
-import Testing
 import Foundation
 @testable import TableProModels
 @testable import TableProPluginKit
+import Testing
 
 @Suite("QueryResult Mapping Tests")
 struct QueryResultMappingTests {
@@ -50,11 +50,11 @@ struct QueryResultMappingTests {
 
     @Test("Maps PluginTableInfo to TableInfo")
     func mapPluginTableInfo() {
-        let tablePlugin = PluginTableInfo(name: "users", type: "TABLE", rowCount: 1000)
+        let tablePlugin = PluginTableInfo(name: "users", type: "TABLE", rowCount: 1_000)
         let table = TableInfo(from: tablePlugin)
         #expect(table.name == "users")
         #expect(table.type == .table)
-        #expect(table.rowCount == 1000)
+        #expect(table.rowCount == 1_000)
 
         let viewPlugin = PluginTableInfo(name: "active_users", type: "VIEW")
         let view = TableInfo(from: viewPlugin)

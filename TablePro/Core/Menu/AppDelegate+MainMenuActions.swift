@@ -26,7 +26,7 @@ extension AppDelegate: NSMenuItemValidation {
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
-        UpdaterBridge.shared.checkForUpdates()
+        SoftwareUpdater.shared.checkForUpdates()
     }
 
     @objc func openIntegrations(_ sender: Any?) {
@@ -81,6 +81,10 @@ extension AppDelegate: NSMenuItemValidation {
         WelcomeRouter.shared.route(.importFromApp)
     }
 
+    @objc func importFromAWS(_ sender: Any?) {
+        WelcomeRouter.shared.route(.importFromAWS)
+    }
+
     @objc func openProjectFolder(_ sender: Any?) {
         WelcomeRouter.shared.route(.openProjectFolder)
     }
@@ -123,7 +127,10 @@ extension AppDelegate: NSMenuItemValidation {
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(checkForUpdates(_:)):
-            return UpdaterBridge.shared.canCheckForUpdates
+            /// Menu validation is the one moment AppKit gives an already-built item, and a
+            /// deferred update has no other way to reach this title.
+            menuItem.title = SoftwareUpdater.shared.checkForUpdatesTitle
+            return SoftwareUpdater.shared.canCheckForUpdates
         case #selector(reopenClosedTab(_:)):
             return !RecentlyClosedTabStore.shared.entries.isEmpty
         default:

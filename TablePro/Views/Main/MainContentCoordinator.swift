@@ -6,11 +6,11 @@
 //  Separates view logic from presentation for better maintainability.
 //
 
-import CodeEditSourceEditor
 import Combine
 import Foundation
 import os
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 
 /// Discard action types for unified alert handling
@@ -224,6 +224,11 @@ final class MainContentCoordinator: ObservableObject {
     /// the value filter or the displayed order changes. The grid's own state lives on a plain
     /// AppKit object reached through observation-ignored hops, so it cannot invalidate a view.
     @Published var gridDisplayRevision: Int = 0
+
+    /// Bumped when an inspector edit rewrites the selected row's values, so the inspector's JSON
+    /// rendering re-reads the row. Apart from `gridDisplayRevision`, which drives a full rebuild of
+    /// the field list and takes first responder out of whatever is being typed into.
+    var inspectorRowContentRevision: Int = 0
 
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     weak var dataTabDelegate: DataTabGridDelegate?

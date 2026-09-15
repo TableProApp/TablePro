@@ -148,6 +148,10 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        /// A selection change, a refresh or an undo rebuilds the fields under whatever was being
+        /// typed, so the run it was building ends here rather than folding the next keystroke into
+        /// a step that belongs to another row.
+        coordinator.endInspectorEditRun()
         switch gridSelectionOwner {
         case .schemaGrid:
             updateSchemaSidebarEditState()
@@ -209,6 +213,7 @@ extension MainContentView {
         }
         trailingPaneState.inspector.editState.configure(
             selectedRowIndices: selectedIndices,
+            rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             columns: tableRows.columns,
             columnTypes: columnTypes,
@@ -220,45 +225,32 @@ extension MainContentView {
         )
 
         guard isSidebarEditable else {
-            trailingPaneState.inspector.editState.onFieldChanged = nil
+            clearSidebarEditHandlers()
             return
         }
 
         let capturedCoordinator = coordinator
         let capturedEditState = trailingPaneState.inspector.editState
-        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue in
-            guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
-            let tableRows = capturedCoordinator.tabSessionRegistry.tableRows(for: tab.id)
-            let columnName =
-                columnIndex < tableRows.columns.count ? tableRows.columns[columnIndex] : ""
-
-            let displayIDs = capturedCoordinator.activeGridDisplayIDs
-            for rowIndex in capturedEditState.selectedRowIndices {
-                guard let resolvedRow = DisplayRowMapping.row(
-                    forDisplay: rowIndex,
-                    displayIDs: displayIDs,
-                    in: tableRows
-                ) else { continue }
-                let originalRow = Array(resolvedRow.values)
-
-                let oldValue: PluginCellValue
-                if columnIndex < capturedEditState.fields.count {
-                    oldValue = PluginCellValue.fromOptional(capturedEditState.fields[columnIndex].originalValue)
-                } else if columnIndex < originalRow.count {
-                    oldValue = originalRow[columnIndex]
-                } else {
-                    oldValue = .null
-                }
-
-                capturedCoordinator.changeManager.recordCellChange(
-                    rowID: resolvedRow.id,
-                    columnIndex: columnIndex,
-                    columnName: columnName,
-                    oldValue: oldValue,
-                    newValue: newValue,
-                    originalRow: originalRow
-                )
-            }
+        trailingPaneState.inspector.editState.onFieldChanged = { columnIndex, newValue, continuity in
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: capturedEditState.rowIDs,
+                continuity: continuity
+            )
+        }
+        trailingPaneState.inspector.editState.onFieldReverted = { columnIndex, valuesByRow in
+            capturedCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+        }
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs in
+            /// A value window commits on every keystroke exactly as the field it detached from
+            /// does, so its typing folds into one undo step the same way.
+            capturedCoordinator.stageInspectorFieldEdit(
+                columnIndex: columnIndex,
+                value: newValue,
+                rowIDs: rowIDs,
+                continuity: .typing
+            )
         }
     }
 
@@ -302,7 +294,13 @@ extension MainContentView {
 
     private func clearSidebarEditState() {
         trailingPaneState.inspector.editState.fields = []
+        clearSidebarEditHandlers()
+    }
+
+    private func clearSidebarEditHandlers() {
         trailingPaneState.inspector.editState.onFieldChanged = nil
+        trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 
     /// Populate the inspector from the grid that owns a schema selection, and send every
@@ -319,12 +317,14 @@ extension MainContentView {
         trailingPaneState.inspector.editState.configure(schemaFields: row.fields, displayRow: displayRow)
 
         guard row.isEditable else {
-            trailingPaneState.inspector.editState.onFieldChanged = nil
+            clearSidebarEditHandlers()
             return
         }
 
         let capturedCoordinator = coordinator
-        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue in
+        trailingPaneState.inspector.editState.onFieldReverted = nil
+        trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
+        trailingPaneState.inspector.editState.onFieldChanged = { fieldIndex, newValue, _ in
             capturedCoordinator.inspectorRowSource?.commitInspectorField(
                 displayRow: displayRow,
                 fieldIndex: fieldIndex,

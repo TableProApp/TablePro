@@ -58,6 +58,7 @@ final class AppEvents {
 
     let databaseDidConnect = PassthroughSubject<DatabaseDidConnect, Never>()
 
+    let connectionListStateChanged = PassthroughSubject<Void, Never>()
 
     // MARK: - Window
 

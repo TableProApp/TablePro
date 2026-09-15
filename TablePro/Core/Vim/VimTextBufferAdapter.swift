@@ -2,14 +2,14 @@
 //  VimTextBufferAdapter.swift
 //  TablePro
 //
-//  Adapts CodeEditTextView's TextView to the VimTextBuffer protocol
+//  Adapts TableProTextEngine's TextView to the VimTextBuffer protocol
 //
 
 import AppKit
-import CodeEditTextView
 import Foundation
+import TableProTextEngine
 
-/// Bridges CodeEditTextView's TextView to VimTextBuffer for the Vim engine
+/// Bridges TableProTextEngine's TextView to VimTextBuffer for the Vim engine
 @MainActor
 final class VimTextBufferAdapter: VimTextBuffer {
     private weak var textView: TextView?

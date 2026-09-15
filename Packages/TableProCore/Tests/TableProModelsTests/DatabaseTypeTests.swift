@@ -1,6 +1,6 @@
-import Testing
 import Foundation
 @testable import TableProModels
+import Testing
 
 @Suite("DatabaseType Tests")
 struct DatabaseTypeTests {

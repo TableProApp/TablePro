@@ -18,6 +18,9 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
   push:
     branches: [main]
     paths:
@@ -30,6 +33,9 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
   workflow_dispatch:
 
 concurrency:
@@ -103,11 +109,20 @@ jobs:
       # Only a real release runs sign-and-appcast.sh, so nothing on a pull request ever exercised
       # the code that edits the file every install polls. These two cover the parts that can be
       # tested without a signing key: which bytes move, and which releases are refused.
+      - name: Validate the appcast text primitives
+        run: python3 scripts/ci/test_appcast_feed.py
+
       - name: Validate the appcast merge
         run: python3 scripts/ci/test_merge_appcast.py
 
       - name: Validate release withdrawal
         run: python3 scripts/ci/test_pull_release.py
+
+      # The framework the app links and the generate_appcast that signs its feed are the same
+      # project, and nothing compared them. project.yml declares majorVersion, which XcodeGen
+      # writes as upToNextMajorVersion, so a resolve can move the framework alone.
+      - name: Check the Sparkle version agrees everywhere
+        run: python3 scripts/ci/check-sparkle-version.py
 
       # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
       # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was

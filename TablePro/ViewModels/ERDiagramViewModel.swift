@@ -396,20 +396,18 @@ final class ERDiagramViewModel: ObservableObject {
             )
         }
         cachedNodeRects = rects
+        cachedCanvasSize = Self.canvasSize(enclosing: rects.values)
+    }
 
-        if graph.nodes.isEmpty {
-            cachedCanvasSize = CGSize(width: 800, height: 600)
-        } else {
-            var csMaxX: CGFloat = 0
-            var csMaxY: CGFloat = 0
-            for (_, rect) in rects {
-                csMaxX = max(csMaxX, rect.maxX)
-                csMaxY = max(csMaxY, rect.maxY)
-            }
-            cachedCanvasSize = CGSize(
-                width: csMaxX + Self.canvasPadding, height: csMaxY + Self.canvasPadding
-            )
+    private static func canvasSize(enclosing rects: some Collection<CGRect>) -> CGSize {
+        guard !rects.isEmpty else { return CGSize(width: 800, height: 600) }
+        var maxX: CGFloat = 0
+        var maxY: CGFloat = 0
+        for rect in rects {
+            maxX = max(maxX, rect.maxX)
+            maxY = max(maxY, rect.maxY)
         }
+        return CGSize(width: maxX + canvasPadding, height: maxY + canvasPadding)
     }
 
     // MARK: - Drag & Auto-Pan
@@ -443,6 +441,7 @@ final class ERDiagramViewModel: ObservableObject {
     func endDrag() {
         if draggingNodeId != nil {
             persistPositions()
+            fitCanvasToNodes()
         }
         isDragging = false
         draggingNodeId = nil
@@ -501,10 +500,12 @@ final class ERDiagramViewModel: ObservableObject {
             return
         }
 
-        let delta = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
-        viewport.scrollBy(delta)
-        autoPanAccum.x += delta.width
-        autoPanAccum.y += delta.height
+        let requested = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
+        extendCanvas(toScrollBy: requested)
+        let scrolled = viewport.scrollBy(requested)
+        guard scrolled != .zero else { return }
+        autoPanAccum.x += scrolled.width
+        autoPanAccum.y += scrolled.height
 
         setPositionOverride(
             nodeId: nodeId,
@@ -512,6 +513,33 @@ final class ERDiagramViewModel: ObservableObject {
                 x: nodeStart.x + lastDragTranslation.width + autoPanAccum.x,
                 y: nodeStart.y + lastDragTranslation.height + autoPanAccum.y
             )
+        )
+    }
+
+    /// The canvas is sized from the nodes, so at a low zoom the edge band reaches further past the
+    /// dragged table than the canvas does and the view had nowhere to scroll. Growing it by the step,
+    /// document included, is what lets this same tick scroll.
+    private func extendCanvas(toScrollBy delta: CGSize) {
+        let visible = viewport.visibleDocumentRect
+        let extended = CGSize(
+            width: delta.width > 0 ? max(cachedCanvasSize.width, visible.maxX + delta.width) : cachedCanvasSize.width,
+            height: delta.height > 0 ? max(cachedCanvasSize.height, visible.maxY + delta.height) : cachedCanvasSize.height
+        )
+        guard extended != cachedCanvasSize else { return }
+        cachedCanvasSize = extended
+        viewport.resizeDocument(to: extended)
+    }
+
+    /// A drag only ever grows the canvas, so a table dragged out and back left empty space to scroll
+    /// into that Fit to Window then fitted. On an axis scrolled away from the origin it stops at the
+    /// far edge on screen, or the view would snap out from under the table just dropped. An axis at
+    /// the origin shrinks to the tables, because zoomed out the pane can be far larger than the canvas.
+    private func fitCanvasToNodes() {
+        let visible = viewport.visibleDocumentRect
+        let content = Self.canvasSize(enclosing: cachedNodeRects.values)
+        cachedCanvasSize = CGSize(
+            width: visible.minX > 0 ? max(content.width, visible.maxX) : content.width,
+            height: visible.minY > 0 ? max(content.height, visible.maxY) : content.height
         )
     }
 

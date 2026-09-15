@@ -3,13 +3,13 @@
 //  TablePro
 //
 //  Runs the language's diagnostic producer on a debounce and renders the result as underlines
-//  through CodeEditTextView's EmphasisManager, which owns its own drawing layer.
+//  through TableProTextEngine's EmphasisManager, which owns its own drawing layer.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class QueryDiagnosticsController {

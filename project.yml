@@ -37,21 +37,17 @@ fileGroups:
   - project.yml
 
 packages:
-  CodeEditSourceEditor:
-    path: LocalPackages/CodeEditSourceEditor
-  CodeEditLanguages:
-    path: LocalPackages/CodeEditLanguages
-  # Reached transitively by CodeEditSourceEditor, but the app links its product
-  # directly, so it has to be declared here too.
-  CodeEditTextView:
-    path: LocalPackages/CodeEditTextView
+  TableProEditor:
+    path: Packages/TableProEditor
+  TableProGrammars:
+    path: Packages/TableProGrammars
   TableProCore:
     path: Packages/TableProCore
   TableProOracle:
     path: Packages/TableProOracle
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    majorVersion: 2.9.5
+    majorVersion: 2.10.0
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
@@ -227,13 +223,13 @@ targets:
       - target: CSVInspectorPlugin
         embed: true
         copy: { destination: plugins }
-      - package: CodeEditSourceEditor
-      - package: CodeEditLanguages
-      - package: CodeEditTextView
+      - package: TableProEditor
+        products: [TableProEditorKit, TableProTextEngine]
+      - package: TableProGrammars
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -452,6 +448,8 @@ targets:
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
@@ -652,7 +650,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd

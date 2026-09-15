@@ -171,6 +171,59 @@ final class QueryPlanResultUITests: UITestCase {
     }
 
 
+    func testEachPlanKeepsItsOwnZoom() throws {
+        let app = try launchWithSampleDatabase()
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track JOIN Album ON Track.AlbumId = Album.AlbumId;", in: app)
+
+        let window = app.windows.firstMatch
+        let modePicker = window.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "A parsed plan must offer its view modes")
+        let zoomLevel = window.buttons["Reset Zoom"].firstMatch
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Diagram mode must show the zoom level")
+        zoomLevel.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "100%" })
+        window.buttons["Zoom Out"].firstMatch.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" })
+
+        modePicker.radioButtons["Tree"].click()
+        XCTAssertTrue(window.outlines["query-plan-outline"].firstMatch.waitToExist(timeout: 10))
+        modePicker.radioButtons["Diagram"].click()
+
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Diagram mode must come back with its zoom level")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" },
+            "Leaving Diagram mode and coming back must keep the zoom the plan was left on"
+        )
+
+        app.typeKey("t", modifierFlags: .command)
+        XCTAssertTrue(editorTextView(in: app).waitToExist(timeout: 10), "A new query tab must open")
+        app.typeKey("[", modifierFlags: [.command, .shift])
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Show Previous Tab must return to the plan")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" },
+            "Returning to the editor tab must keep the plan's zoom"
+        )
+
+        editorTextView(in: app).click()
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { (zoomLevel.value as? String) == "100%" },
+            "Running the statement again makes a new plan, which must not inherit the old plan's zoom"
+        )
+
+        let compareMode = modePicker.radioButtons["Compare"]
+        XCTAssertTrue(waitUntilHittable(compareMode, timeout: 10), "A re-run plan must offer Compare")
+        compareMode.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (compareMode.value as? Int) == 1 })
+        editorTextView(in: app).click()
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+        XCTAssertFalse(
+            waitForPredicate(timeout: 5) { (modePicker.radioButtons["Diagram"].value as? Int) == 1 },
+            "Compare follows a statement that is run again, so a re-run must not drop the pane back to Diagram"
+        )
+        XCTAssertEqual(compareMode.value as? Int, 1)
+    }
+
     // MARK: - Helpers
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {

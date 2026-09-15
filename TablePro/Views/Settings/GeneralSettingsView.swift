@@ -3,13 +3,13 @@
 //  TablePro
 //
 
-import Sparkle
+import AppKit
 import SwiftUI
 
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
-    @ObservedObject var updaterBridge: UpdaterBridge
+    var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
     @State private var initialLanguage: AppLanguage?
@@ -23,22 +23,25 @@ struct GeneralSettingsView: View {
     /// synced settings blob to overwrite on another Mac.
     private var automaticallyChecksForUpdates: Binding<Bool> {
         Binding(
-            get: { updaterBridge.automaticallyChecksForUpdates },
-            set: { updaterBridge.setAutomaticallyChecksForUpdates($0) }
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.setAutomaticallyChecksForUpdates($0) }
         )
     }
 
     private var automaticallyDownloadsUpdates: Binding<Bool> {
         Binding(
-            get: { updaterBridge.automaticallyDownloadsUpdates },
-            set: { updaterBridge.setAutomaticallyDownloadsUpdates($0) }
+            get: { updater.automaticallyDownloadsUpdates },
+            set: { updater.setAutomaticallyDownloadsUpdates($0) }
         )
     }
 
-    private var updateCheckFrequency: Binding<UpdateCheckFrequency> {
-        Binding(
-            get: { UpdateCheckFrequency.closest(to: updaterBridge.updateCheckInterval) },
-            set: { updaterBridge.setUpdateCheckInterval($0.seconds) }
+    private var lastUpdateCheckDescription: String {
+        guard let date = updater.lastUpdateCheckDate else {
+            return String(localized: "Last checked: never")
+        }
+        return String(
+            format: String(localized: "Last checked: %@"),
+            date.formatted(date: .abbreviated, time: .shortened)
         )
     }
 
@@ -156,29 +159,32 @@ struct GeneralSettingsView: View {
                     .accessibilityIdentifier("automatic-update-check-toggle")
 
                 Toggle("Download and install updates automatically", isOn: automaticallyDownloadsUpdates)
-                    .disabled(!updaterBridge.allowsAutomaticUpdates)
+                    .disabled(!updater.allowsAutomaticUpdates)
                     .accessibilityIdentifier("automatic-update-install-toggle")
+                    .help(String(localized: "A new version downloads in the background and installs the next time you quit TablePro."))
 
-                Picker("Check for updates:", selection: updateCheckFrequency) {
-                    ForEach(UpdateCheckFrequency.allCases) { frequency in
-                        Text(frequency.title).tag(frequency)
+                LabeledContent {
+                    Button(updater.checkForUpdatesTitle) {
+                        updater.checkForUpdates()
                     }
+                    .disabled(!updater.canCheckForUpdates)
+                    .accessibilityIdentifier("check-for-updates-button")
+                } label: {
+                    Text(lastUpdateCheckDescription)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("last-update-check-label")
                 }
-                .disabled(!updaterBridge.automaticallyChecksForUpdates)
-                .accessibilityIdentifier("update-check-frequency-picker")
+                .accessibilityElement(children: .contain)
 
-                Button("Check for Updates…") {
-                    updaterBridge.checkForUpdates()
+                Button {
+                    NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
+                } label: {
+                    Text(String(localized: "What's New"))
                 }
-                .disabled(!updaterBridge.canCheckForUpdates)
-
-                if let changelogURL = URL(string: MainMenuLink.changelog) {
-                    Link("What's New", destination: changelogURL)
-                }
+                .buttonStyle(.link)
+                .accessibilityIdentifier("whats-new-link")
             } header: {
                 Text("Software Update")
-            } footer: {
-                Text("Updates install when you quit TablePro. Checking weekly means a security fix can reach you up to a week later.")
             }
 
             Section {
@@ -213,7 +219,7 @@ struct GeneralSettingsView: View {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
-        updaterBridge: UpdaterBridge.shared,
+        updater: SoftwareUpdater.shared,
         onResetAll: {}
     )
     .frame(width: 450, height: 500)

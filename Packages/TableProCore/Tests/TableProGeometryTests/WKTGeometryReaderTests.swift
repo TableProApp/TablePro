@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProGeometry
+import XCTest
 
 /// Every spelling here was produced by a live server in this repository's investigation of #2532:
 /// PostGIS 3.6.4, MySQL 8.4.11, MariaDB 12.3.3 and DuckDB 1.5.4. They disagree with each other, so
@@ -31,7 +31,7 @@ final class WKTGeometryReaderTests: XCTestCase {
 
     func testPostGISEWKTCarriesItsSRID() {
         let parsed = value("SRID=4326;POINT(-122.4194 37.7749)")
-        XCTAssertEqual(parsed?.srid, 4326)
+        XCTAssertEqual(parsed?.srid, 4_326)
         XCTAssertEqual(parsed?.geometry, .point(SpatialPoint(x: -122.4194, y: 37.7749)))
     }
 
@@ -137,7 +137,7 @@ final class WKTGeometryReaderTests: XCTestCase {
     }
 
     func testSRIDPrefixOnACollection() {
-        XCTAssertEqual(value("SRID=3857;GEOMETRYCOLLECTION(POINT(1 2))")?.srid, 3857)
+        XCTAssertEqual(value("SRID=3857;GEOMETRYCOLLECTION(POINT(1 2))")?.srid, 3_857)
     }
 
     /// A curved or polyhedral type is named rather than dropped, because the pane has to say which

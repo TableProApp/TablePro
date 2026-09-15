@@ -2,20 +2,20 @@
 //  SQLEditorView.swift
 //  TablePro
 //
-//  SwiftUI wrapper for CodeEditSourceEditor-based SQL editor
+//  SwiftUI wrapper for TableProEditorKit-based SQL editor
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
-import CodeEditTextView
 import Combine
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
+import TableProTextEngine
 
 // MARK: - SQLEditorView
 
-/// SwiftUI SQL editor powered by CodeEditSourceEditor
+/// SwiftUI SQL editor powered by TableProEditorKit
 struct SQLEditorView: View {
     @Binding var text: String
     @Binding var cursorPositions: [CursorPosition]

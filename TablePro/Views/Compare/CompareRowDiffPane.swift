@@ -2,11 +2,12 @@
 //  CompareRowDiffPane.swift
 //  TablePro
 //
-//  The row differences of one table, and the two column sets that decide them.
+//  The selected table's scope, and the rows its comparison found.
 //
-//  The entry list is a capped preview, never the whole difference: the script is
-//  built from a fresh streamed pass. Anywhere the cap is in play the pane says
-//  so, because a list that silently stops looks like a smaller difference.
+//  The row list is a capped preview, never the whole difference: the script is
+//  built from a fresh streamed pass. Anywhere the cap, the row limit or a filter
+//  is in play the pane says so, because a list that silently stops looks like a
+//  smaller difference.
 //
 
 import SwiftUI
@@ -19,6 +20,7 @@ internal enum RowDiffFilter: String, CaseIterable, Hashable {
     case update
     case delete
     case same
+    case conflict
 
     internal var title: String {
         switch self {
@@ -34,6 +36,8 @@ internal enum RowDiffFilter: String, CaseIterable, Hashable {
             return String(localized: "Delete")
         case .same:
             return String(localized: "Same")
+        case .conflict:
+            return String(localized: "Outside Filter")
         }
     }
 
@@ -42,7 +46,7 @@ internal enum RowDiffFilter: String, CaseIterable, Hashable {
         case .all:
             return true
         case .difference:
-            return entry.kind != .identical
+            return entry.kind.isDifference
         case .insert:
             return entry.kind == .insert
         case .update:
@@ -51,6 +55,21 @@ internal enum RowDiffFilter: String, CaseIterable, Hashable {
             return entry.kind == .delete
         case .same:
             return entry.kind == .identical
+        case .conflict:
+            return entry.kind == .conflict
+        }
+    }
+
+    /// Matching rows are retained apart from differences, so a table of mostly identical rows can
+    /// never crowd a difference out of the preview, and Same and All Rows still list rows.
+    internal func entries(in summary: DataDiffSummary) -> [RowDiffEntry] {
+        switch self {
+        case .all:
+            return summary.entries + summary.identicalEntries
+        case .same:
+            return summary.identicalEntries
+        case .difference, .insert, .update, .delete, .conflict:
+            return summary.entries.filter(matches)
         }
     }
 }
@@ -81,145 +100,167 @@ internal struct CompareRowDiffPane: View {
 
     private func planBody(_ plan: DataComparePlan) -> some View {
         VStack(spacing: 0) {
-            columnEditors(plan)
-            Divider()
-            filterBar
-            if plan.summary?.truncatedEntries == true {
-                notice(String(
-                    localized: "This list is a capped preview. Apply covers every difference, not only the rows listed here."
-                ))
-            }
-            if let skipped = plan.summary?.skippedNullKeyCount, skipped > 0 {
-                notice(String(
-                    format: String(
-                        localized: "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them."
-                    ),
-                    skipped
-                ))
-            }
-            if filter == .same, plan.summary?.identicalCount ?? 0 > 0 {
-                notice(String(
-                    format: String(
-                        localized: "%d rows match. Matching rows are counted, not listed, so a difference is never crowded out of this list."
-                    ),
-                    plan.summary?.identicalCount ?? 0
-                ))
-            }
-            Divider()
-            entryList(plan)
-        }
-    }
-
-    // MARK: - Column editors
-
-    private func columnEditors(_ plan: DataComparePlan) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 16) {
-                columnMenu(
-                    title: String(localized: "Key columns"),
-                    summary: keySummary(plan),
-                    systemImage: "key",
-                    identifier: "compare.rows.keyColumns"
-                ) {
-                    ForEach(plan.columns, id: \.self) { column in
-                        Toggle(column, isOn: keyBinding(column, plan: plan))
-                    }
-                }
-
-                columnMenu(
-                    title: String(localized: "Compared columns"),
-                    summary: comparedSummary(plan),
-                    systemImage: "text.magnifyingglass",
-                    identifier: "compare.rows.comparedColumns"
-                ) {
-                    ForEach(nonKeyColumns(plan), id: \.self) { column in
-                        Toggle(column, isOn: comparedBinding(column))
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            Text("A column left out of the comparison is still written on insert and update. Changing either list needs another comparison.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
+            CompareTableScopeEditor(session: session, plan: plan)
             if session.needsRecompare {
                 recompareNotice
             }
+            Divider()
+            reviewBar(plan)
+            notices(for: plan)
+            Divider()
+            rows(for: plan)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
-    /// The label is the joined key column list, so `.fixedSize()` on the menu overrode both the
-    /// truncation and the width the pane proposed. A composite key pushed the second menu past the
-    /// detail pane's minimum width, where it was clipped and could not be opened at all. The label
-    /// truncates instead and the full list stays reachable through the tooltip.
-    private func columnMenu(
-        title: String,
-        summary: String,
-        systemImage: String,
-        identifier: String,
-        @ViewBuilder content: () -> some View
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Menu {
-                content()
-            } label: {
-                Label(summary, systemImage: systemImage)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+    // MARK: - Review bar
+
+    private func reviewBar(_ plan: DataComparePlan) -> some View {
+        let listed = plan.summary.map { filter.entries(in: $0) } ?? []
+        return HStack(spacing: 8) {
+            Picker(String(localized: "Show"), selection: $filter) {
+                ForEach(availableFilters(for: plan), id: \.self) { option in
+                    Text(option.title).tag(option)
+                }
             }
-            .help(summary)
-            .accessibilityIdentifier(identifier)
+            .fixedSize()
+            .accessibilityIdentifier("compare.rows.show")
+
+            Spacer(minLength: 0)
+
+            if let summary = plan.summary {
+                Text(inclusionSummary(plan: plan, summary: summary))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Menu(String(localized: "Include")) {
+                Button("Include Every Listed Row") {
+                    session.setRowsIncluded(true, entries: listed, planId: plan.id)
+                }
+                Button("Exclude Every Listed Row") {
+                    session.setRowsIncluded(false, entries: listed, planId: plan.id)
+                }
+            }
+            .fixedSize()
+            .disabled(!listed.contains { $0.kind.isDifference } || !session.canChangeSetup)
+            .accessibilityIdentifier("compare.rows.includeMenu")
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func availableFilters(for plan: DataComparePlan) -> [RowDiffFilter] {
+        let showsConflicts = (plan.summary?.conflictCount ?? 0) > 0 || filter == .conflict
+        return RowDiffFilter.allCases.filter { $0 != .conflict || showsConflicts }
+    }
+
+    private func inclusionSummary(plan: DataComparePlan, summary: DataDiffSummary) -> String {
+        let listed = summary.entries.filter { $0.kind.isDifference }
+        let included = listed.filter { !plan.excludedRowKeys.contains($0.keyIdentity) }.count
+        return String(
+            format: String(localized: "%1$d of %2$d listed differences included"),
+            included, listed.count
+        )
     }
 
     private var recompareNotice: some View {
         HStack(spacing: 8) {
             Label {
-                Text("Some tables have not been compared with the columns now chosen.")
+                Text("Some included tables have not been compared with their current settings.")
             } icon: {
                 Image(systemName: "exclamationmark.arrow.circlepath")
             }
             .font(.callout)
             .foregroundStyle(CompareStatusStyle.warning)
             .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
             Button("Compare", action: onCompare)
                 .disabled(!session.canCompare)
                 .accessibilityIdentifier("compare.rows.recompare")
         }
-    }
-
-    // MARK: - Filter
-
-    private var filterBar: some View {
-        HStack(spacing: 8) {
-            Picker(String(localized: "Show"), selection: $filter) {
-                ForEach(RowDiffFilter.allCases, id: \.self) { option in
-                    Text(option.title).tag(option)
-                }
-            }
-            .fixedSize()
-            Spacer(minLength: 0)
-        }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.bottom, 8)
     }
 
-    /// A row whose key holds NULL has no identity a merge join can use, so it is left out of the
-    /// comparison and out of the sync. That used to be counted and never shown, so the pane
-    /// reported no differences and the user concluded the two tables matched.
-    private func notice(_ text: String) -> some View {
+    // MARK: - Notices
+
+    /// Names the last key both sides were read past, because that value is what the user puts in
+    /// the table's filter to read the next stretch. Without it a row limit is a dead end: the pane
+    /// says the answer is partial and gives no way to continue it.
+    private func rowLimitNotice(for summary: DataDiffSummary) -> String {
+        guard let resumeKey = summary.resumeKey else {
+            return String(
+                format: String(
+                    localized: "Compared %@ keys in key order. Rows past the limit were not read on either side, and rows with NULL in a key column are not read under a limit."
+                ),
+                summary.comparedKeyCount.formatted()
+            )
+        }
+        return String(
+            format: String(
+                localized: "Compared %1$@ keys in key order, up to %2$@. Filter both sides past that key for the next rows. NULL keys are not read under a limit."
+            ),
+            summary.comparedKeyCount.formatted(),
+            KeyOrdering.description(of: resumeKey)
+        )
+    }
+
+    @ViewBuilder
+    private func notices(for plan: DataComparePlan) -> some View {
+        if let failure = plan.comparisonFailure {
+            notice(failure, systemImage: "exclamationmark.octagon.fill")
+        }
+        if let summary = plan.summary {
+            if summary.stoppedAtRowLimit {
+                notice(rowLimitNotice(for: summary), systemImage: "info.circle.fill")
+            }
+            if summary.truncatedEntries {
+                notice(
+                    String(localized: "This list is a capped preview. Apply covers every difference, not only the rows listed here."),
+                    systemImage: "info.circle.fill"
+                )
+            }
+            if summary.skippedNullKeyCount > 0 {
+                notice(
+                    String(
+                        format: String(
+                            localized: "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them."
+                        ),
+                        summary.skippedNullKeyCount
+                    ),
+                    systemImage: "info.circle.fill"
+                )
+            }
+            if summary.conflictCount > 0 {
+                notice(
+                    String(
+                        format: String(
+                            localized: "%d rows exist on the other side outside its filter. They are never written. Widen the filter to sync them."
+                        ),
+                        summary.conflictCount
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+            }
+            if filter == .same || filter == .all, summary.identicalCount > summary.identicalEntries.count {
+                notice(
+                    String(
+                        format: String(localized: "%1$d rows match. The first %2$d are listed."),
+                        summary.identicalCount, summary.identicalEntries.count
+                    ),
+                    systemImage: "info.circle.fill"
+                )
+            }
+        }
+    }
+
+    private func notice(_ text: String, systemImage: String) -> some View {
         Label {
             Text(text)
         } icon: {
-            Image(systemName: "info.circle.fill")
+            Image(systemName: systemImage)
         }
         .font(.callout)
         .foregroundStyle(CompareStatusStyle.warning)
@@ -229,12 +270,12 @@ internal struct CompareRowDiffPane: View {
         .padding(.bottom, 6)
     }
 
-    // MARK: - Entries
+    // MARK: - Rows
 
     @ViewBuilder
-    private func entryList(_ plan: DataComparePlan) -> some View {
+    private func rows(for plan: DataComparePlan) -> some View {
         if let summary = plan.summary {
-            let entries = summary.entries.filter { filter.matches($0) }
+            let entries = filter.entries(in: summary)
             if entries.isEmpty {
                 UnavailableStateView {
                     Label("No Rows Match", systemImage: "line.3.horizontal.decrease.circle")
@@ -242,13 +283,7 @@ internal struct CompareRowDiffPane: View {
                     Text("Change the filter to see the other rows.")
                 }
             } else {
-                List(entries) { entry in
-                    CompareRowDiffEntryView(
-                        entry: entry,
-                        isIncluded: rowBinding(entry, plan: plan)
-                    )
-                }
-                .listStyle(.inset)
+                CompareRowGrid(session: session, plan: plan, filter: filter, entries: entries)
             }
         } else {
             UnavailableStateView {
@@ -260,137 +295,11 @@ internal struct CompareRowDiffPane: View {
     }
 
     /// The plan's own refusal first, then whatever is keeping Compare itself unavailable, and only
-    /// then the generic invitation. A dimmed action with no reason is what the HIG asks an app not
-    /// to leave a user holding.
+    /// then the generic invitation.
     private func notComparedDescription(for plan: DataComparePlan) -> String {
         plan.unavailableReason
+            ?? plan.comparisonFailure
             ?? session.compareDisabledReason
             ?? String(localized: "Include this table and compare again to see its rows.")
-    }
-
-    // MARK: - Bindings
-
-    private func keyBinding(_ column: String, plan: DataComparePlan) -> Binding<Bool> {
-        Binding(
-            get: { plan.isKeyColumn(column) },
-            set: { _ in session.toggleKeyColumn(column, for: plan.id) }
-        )
-    }
-
-    private func comparedBinding(_ column: String) -> Binding<Bool> {
-        Binding(
-            get: { session.isColumnCompared(column) },
-            set: { _ in session.toggleComparedColumn(column) }
-        )
-    }
-
-    private func rowBinding(_ entry: RowDiffEntry, plan: DataComparePlan) -> Binding<Bool> {
-        Binding(
-            get: { session.isRowIncluded(entry, in: plan) },
-            set: { session.setRowIncluded($0, entry: entry, planId: plan.id) }
-        )
-    }
-
-    // MARK: - Summaries
-
-    private func nonKeyColumns(_ plan: DataComparePlan) -> [String] {
-        plan.columns.filter { !plan.isKeyColumn($0) }
-    }
-
-    private func keySummary(_ plan: DataComparePlan) -> String {
-        guard !plan.keyColumns.isEmpty else { return String(localized: "None chosen") }
-        return plan.keyColumns.joined(separator: ", ")
-    }
-
-    private func comparedSummary(_ plan: DataComparePlan) -> String {
-        let excluded = nonKeyColumns(plan).filter { !session.isColumnCompared($0) }
-        guard !excluded.isEmpty else { return String(localized: "All") }
-        return String(format: String(localized: "%d left out"), excluded.count)
-    }
-}
-
-internal struct CompareRowDiffEntryView: View {
-    internal let entry: RowDiffEntry
-    @Binding internal var isIncluded: Bool
-
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-
-    internal var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Toggle(String(localized: "Include this row"), isOn: $isIncluded)
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                    .disabled(entry.kind == .identical)
-                    .accessibilityIdentifier("compare.rows.include.\(entry.id.uuidString)")
-
-                Label {
-                    Text(CompareStatusStyle.title(for: entry.kind))
-                } icon: {
-                    Image(systemName: CompareStatusStyle.symbolName(for: entry.kind))
-                }
-                .font(.caption)
-                .foregroundStyle(kindTint)
-
-                Text(entry.keyDescription)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
-                    .textSelection(.enabled)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Spacer(minLength: 0)
-            }
-
-            ForEach(entry.cellDifferences, id: \.column) { difference in
-                cellDifferenceRow(difference)
-            }
-        }
-        .padding(.vertical, 2)
-        .listRowBackground(rowBackground)
-    }
-
-    private func cellDifferenceRow(_ difference: CellDifference) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(difference.column)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-            Text(Self.describe(difference.sourceValue))
-                .font(ThemeEngine.shared.valueFontSwiftUI)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Image(systemName: "arrow.right")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            Text(Self.describe(difference.targetValue))
-                .font(ThemeEngine.shared.valueFontSwiftUI)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
-            Text(difference.rule.displayName)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var kindTint: Color {
-        guard !differentiateWithoutColor else { return .primary }
-        return CompareStatusStyle.tint(for: entry.kind)
-    }
-
-    private var rowBackground: Color {
-        guard !differentiateWithoutColor else { return .clear }
-        return CompareStatusStyle.rowTint(for: entry.kind)
-    }
-
-    private static func describe(_ value: PluginCellValue) -> String {
-        switch value {
-        case .null:
-            return "NULL"
-        case .text(let text):
-            return text
-        case .bytes(let data):
-            return String(format: String(localized: "%d bytes"), data.count)
-        }
     }
 }

@@ -37,6 +37,11 @@ struct SSHTunnelFormState {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    /// What the keychain held for the inline namespace when the form opened, so an emptied field
+    /// can be told apart from a keychain that could not be read.
+    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+    private(set) var storedKeyPassphraseState: ConnectionStorage.StoredSecretState = .absent
+
     // Remote database file
     var remoteFilePath: String = ""
 
@@ -121,10 +126,22 @@ struct SSHTunnelFormState {
             totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
         } else {
             // Inline/disabled: load from connection keychain namespace
+            storedPasswordState = storage.sshPasswordState(for: connectionId)
+            storedKeyPassphraseState = storage.keyPassphraseState(for: connectionId)
             password = storage.loadSSHPassword(for: connectionId) ?? ""
             keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
             totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
         }
+    }
+
+    /// The user emptied an inline SSH secret that had a value. Without this the old secret stays in
+    /// the keychain and the next connect still authenticates with it.
+    var clearsStoredPassword: Bool {
+        password.isEmpty && storedPasswordState == .stored
+    }
+
+    var clearsStoredKeyPassphrase: Bool {
+        keyPassphrase.isEmpty && storedKeyPassphraseState == .stored
     }
 
     /// Build the SSHTunnelMode for saving to the connection.

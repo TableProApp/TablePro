@@ -144,13 +144,17 @@ internal struct CompareMetadataService {
     internal func bothSideTableReads(
         context: CompareRunner.Context,
         includeViews: Bool,
-        profile: TableReadProfile
+        profile: TableReadProfile,
+        targetProfile: TableReadProfile? = nil
     ) async throws -> (source: [TableStructureRead], target: [TableStructureRead]) {
         async let source = tableReads(
             for: context.source, connection: context.sourceConnection, includeViews: includeViews, profile: profile
         )
         async let target = tableReads(
-            for: context.target, connection: context.targetConnection, includeViews: includeViews, profile: profile
+            for: context.target,
+            connection: context.targetConnection,
+            includeViews: includeViews,
+            profile: targetProfile ?? profile
         )
         return try await (source, target)
     }
@@ -555,9 +559,14 @@ internal struct TableReadProfile: Sendable {
     )
 
     /// A data comparison pairs tables by name, reads the columns they share and walks their rows.
-    /// It reads foreign keys to order the statements it writes, and it never looks at an index or
-    /// at a storage engine.
+    /// It reads foreign keys to order the statements it writes, and it never looks at an index.
     internal static let data = TableReadProfile(
         wantsIndexes: false, wantsForeignKeys: true, wantsTableMetadata: false
+    )
+
+    /// A MySQL-family target also needs its storage engines, because a MyISAM table cannot roll
+    /// back and a run that stops part way has to say so.
+    internal static let dataWithStorageEngines = TableReadProfile(
+        wantsIndexes: false, wantsForeignKeys: true, wantsTableMetadata: true
     )
 }

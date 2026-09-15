@@ -20,8 +20,12 @@ enum UserDefinedTypeSuggestions {
     /// table's schema holds a domain called `text`. The engine's own spelling is used where the
     /// driver supplied one, because only the engine knows which names it folds or reserves; the
     /// fallback quotes each part that is not a plain lower-case identifier.
+    ///
+    /// A kind that cannot stand as a column type is left out rather than offered and rejected by
+    /// the server: a SQL Server table type is a table-valued parameter and nothing else.
     static func entries(types: [UserDefinedTypeInfo], tableSchema: String?) -> [String] {
         types
+            .filter(\.kind.isUsableAsColumnType)
             .map { type -> String in
                 if let spelling = type.columnTypeSpelling, !spelling.isEmpty { return spelling }
                 guard let schema = type.schema, !schema.isEmpty else { return identifier(type.name) }

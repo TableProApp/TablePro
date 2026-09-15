@@ -5,9 +5,9 @@
 //  DDL-first editor sheet for creating and editing triggers.
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
 struct TriggerEditorView: View {

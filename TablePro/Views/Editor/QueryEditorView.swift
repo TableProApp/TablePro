@@ -5,9 +5,9 @@
 //  SQL query editor wrapper with toolbar
 //
 
-import CodeEditSourceEditor
 import os
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 
 /// SQL query editor view with execute button

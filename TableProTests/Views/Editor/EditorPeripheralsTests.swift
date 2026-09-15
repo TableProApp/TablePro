@@ -3,10 +3,10 @@
 //  TableProTests
 //
 
-import CodeEditSourceEditor
 import Foundation
-import Testing
 @testable import TablePro
+import TableProEditorKit
+import Testing
 
 /// A gutter can be shown without line numbers so it can host the fold rail alone, and that is what left a 30pt
 /// column holding a 14pt control, blank whenever the document had nothing to fold. Every editor in the app builds
@@ -59,12 +59,6 @@ struct EditorPeripheralsTests {
         #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).gutterFitsContent == false)
         #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).gutterFitsContent)
         #expect(EditorPeripherals.preview(folding: true).gutterFitsContent)
-    }
-
-    @Test("The minimap is off everywhere")
-    func minimapIsOff() {
-        #expect(EditorPeripherals.editor(lineNumbers: true, folding: true).showMinimap == false)
-        #expect(EditorPeripherals.inline(lineNumbers: true, folding: true).showMinimap == false)
     }
 
     @Test("Every editor reveals invisible characters unless the reader turned them off")

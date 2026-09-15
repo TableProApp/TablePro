@@ -26,6 +26,33 @@ Enable IAM database authentication on the RDS instance or Aurora cluster. MySQL,
 A user is either password-authenticated or IAM-authenticated, never both. Connecting as a user that still has only a password fails.
 </Warning>
 
+## Import from AWS
+
+Choose **File > Import > Import from AWS…** and the endpoints come from the AWS API instead of the console. The profile needs `rds:DescribeDBInstances` and `rds:DescribeDBClusters`, both in the `AmazonRDSReadOnlyAccess` policy.
+
+<Frame caption="Regions are searched in parallel, four at a time">
+  <img className="block dark:hidden" src="/images/import-from-aws.png" alt="Import from AWS sheet, profile acme-prod, us-east-1 checked, Authentication set to AWS IAM" />
+  <img className="hidden dark:block" src="/images/import-from-aws-dark.png" alt="Import from AWS sheet, profile acme-prod, us-east-1 checked, Authentication set to AWS IAM" />
+</Frame>
+
+<Steps>
+  <Step title="Pick a profile">
+    The list holds the profiles in `~/.aws/config` and `~/.aws/credentials`, and the line under it names how that one signs in. An expired IAM Identity Center session offers **Sign In** here.
+  </Step>
+  <Step title="Pick regions">
+    AWS has no default region, so **Continue** stays dimmed until at least one is selected. The profile's own `region` starts selected.
+  </Step>
+  <Step title="Review and import">
+    Every instance and cluster arrives as a row with its endpoint, port, and engine. A cluster brings its writer endpoint, and its reader endpoint as a second row that starts deselected.
+  </Step>
+</Steps>
+
+A row matching a saved connection on host and port is marked duplicate and starts deselected, with **As Copy**, **Replace**, and **Skip** on the row. **Username** stays empty, because the IAM database user is rarely the master user.
+
+Imported connections carry the region and the profile, and take IAM authentication on every database that has it enabled. The rest ask for a password on the first connect.
+
+A region that answers with an error keeps its own line and leaves the others running. Engines with no TablePro driver, and databases with no endpoint yet, are named at the top of the list and skipped.
+
 ## Setting up
 
 In the connection form, set **Authentication** to one of the AWS IAM options. The **Password** field gives way to the AWS fields, and **Username** takes the IAM database user.
@@ -53,13 +80,16 @@ IAM also requires encryption in transit, so an [SSL mode](/connections/ssl) of *
 
 ## Profiles
 
-**Profile Name** lists the profiles found in `~/.aws/config` and `~/.aws/credentials` and accepts a typed name. Blank means `default`. Profiles resolve the way the AWS CLI resolves them:
+**Profile Name** lists the profiles found in `~/.aws/config` and `~/.aws/credentials` and accepts a typed name. Blank means `default`. A profile resolves by what it declares, the way the AWS CLI resolves it, so **AWS IAM (Profile)** and **AWS IAM (SSO)** reach the same profiles:
 
+- `role_arn` assume-role profiles, resolved through STS. Base credentials come from `source_profile`, chaining up to five deep and resolving that profile by its own kind, or from `credential_source = Environment`. `mfa_serial` is not supported.
+- IAM Identity Center profiles, through `sso_session` or the older inline `sso_start_url`, using the token cache in `~/.aws/sso/cache`.
 - Static `aws_access_key_id` / `aws_secret_access_key` pairs.
-- `credential_process` commands, so a profile can be backed by SSO, 1Password, or any other credential helper.
-- `role_arn` assume-role profiles, resolved through STS. Base credentials come from `source_profile`, chaining up to five deep, or from `credential_source = Environment`. `mfa_serial` is not supported.
+- `credential_process` commands, so a profile can be backed by 1Password or any other credential helper.
 
-For **AWS IAM (SSO)**, run `aws sso login --profile <name>` first. A connect that fails on an expired session offers the browser sign-in.
+`web_identity_token_file` is not supported and says so rather than reporting the profile incomplete.
+
+A connect that fails on an expired IAM Identity Center session offers the browser sign-in; `aws sso login --profile <name>` does the same from the shell.
 
 ## Tunnels and port forwards
 
@@ -91,7 +121,7 @@ PostgreSQL reports this and MySQL reports `Access denied` when the token was sig
 
 ### Profile "…" was not found
 
-The profile has no static keys, no `credential_process`, and no `role_arn`. Check the name and the contents of `~/.aws/config` and `~/.aws/credentials`.
+The profile declares no credentials at all: no `role_arn`, no `sso_session` or `sso_start_url`, no static keys, and no `credential_process`. Check the name and the contents of `~/.aws/config` and `~/.aws/credentials`.
 
 ### AWS SSO Sign-In Required
 

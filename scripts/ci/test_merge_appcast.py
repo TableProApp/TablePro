@@ -21,6 +21,8 @@ SPEC = importlib.util.spec_from_file_location(
 merge_appcast = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(merge_appcast)
 
+import appcast_feed  # noqa: E402
+
 PREFIX = "https://github.com/TableProApp/TablePro/releases/download/v0.75.0/"
 
 
@@ -74,7 +76,7 @@ BASE = feed(item("0.74.0", 130, "arm64"), item("0.74.0", 130, None), item("0.73.
 
 
 class MergeAppcastTests(unittest.TestCase):
-    def merge(self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX):
+    def merge(self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX, keep_releases=0):
         arm64 = feed(item(version, 131, "arm64")) if arm64 is None else arm64
         x86_64 = feed(item(version, 131, None)) if x86_64 is None else x86_64
         with tempfile.TemporaryDirectory() as directory:
@@ -89,7 +91,12 @@ class MergeAppcastTests(unittest.TestCase):
                 version,
                 prefix,
                 work / "out.xml",
+                keep_releases,
             )
+
+    def versions(self, merged):
+        items = merge_appcast.channel_items(merge_appcast.parse_text(merged), "merged")
+        return [merge_appcast.item_short_version(i) for i in items]
 
     def assertRefused(self, fragment, **kwargs):
         with self.assertRaises(merge_appcast.MergeError) as caught:
@@ -188,9 +195,44 @@ class MergeAppcastTests(unittest.TestCase):
     def test_the_published_feed_is_a_valid_base(self):
         published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
         merged = self.merge(base=published.read_text(encoding="utf-8"))
+        versions = self.versions(merged)
+        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
+        self.assertGreater(len(versions), 100)
+
+    def test_keeps_every_release_when_pruning_is_off(self):
+        self.assertEqual(self.versions(self.merge(keep_releases=0)), ["0.75.0", "0.75.0", "0.74.0", "0.74.0", "0.73.0"])
+
+    def test_prunes_to_the_newest_releases(self):
+        merged = self.merge(keep_releases=2)
+        self.assertEqual(self.versions(merged), ["0.75.0", "0.75.0", "0.74.0", "0.74.0"])
+
+    def test_pruning_keeps_the_arm64_item_first(self):
+        merged = self.merge(keep_releases=1)
         items = merge_appcast.channel_items(merge_appcast.parse_text(merged), "merged")
-        self.assertEqual([merge_appcast.item_short_version(i) for i in items[:2]], ["0.75.0", "0.75.0"])
-        self.assertGreater(len(items), 100)
+        self.assertEqual(self.versions(merged), ["0.75.0", "0.75.0"])
+        self.assertIsNotNone(items[0].find(merge_appcast.HARDWARE))
+        self.assertIsNone(items[1].find(merge_appcast.HARDWARE))
+
+    def test_pruning_a_feed_shorter_than_the_limit_drops_nothing(self):
+        self.assertEqual(self.versions(self.merge(keep_releases=99)), ["0.75.0", "0.75.0", "0.74.0", "0.74.0", "0.73.0"])
+
+    def test_pruning_keeps_the_retained_items_byte_for_byte(self):
+        """The kept items are moved, never re-serialized: an entity-escaped CDATA block would grow
+        the feed by 9% and make every future diff unreadable."""
+        merged = self.merge(keep_releases=2)
+        kept = appcast_feed.item_spans(merged)
+        survivor = merged[kept[2][0]:kept[3][1]]
+        original = appcast_feed.item_spans(BASE)
+        self.assertEqual(survivor, BASE[original[0][0]:original[1][1]])
+
+    def test_pruning_the_published_feed_bounds_its_size(self):
+        published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
+        base = published.read_text(encoding="utf-8")
+        merged = self.merge(base=base, keep_releases=merge_appcast.DEFAULT_KEEP_RELEASES)
+        versions = self.versions(merged)
+        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
+        self.assertEqual(len(dict.fromkeys(versions)), merge_appcast.DEFAULT_KEEP_RELEASES)
+        self.assertLess(len(merged), len(base) // 3)
 
 
 if __name__ == "__main__":

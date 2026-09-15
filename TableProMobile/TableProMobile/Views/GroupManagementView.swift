@@ -1,11 +1,29 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProModels
 
 struct GroupManagementView: View {
+    private struct GroupRow: Identifiable {
+        let group: ConnectionGroup
+        let depth: Int
+        var id: UUID { group.id }
+    }
+
+    private enum GroupSheet: Identifiable {
+        case add(parentId: UUID?)
+        case edit(ConnectionGroup)
+
+        var id: String {
+            switch self {
+            case .add(let parentId): "add-\(parentId?.uuidString ?? "root")"
+            case .edit(let group): "edit-\(group.id.uuidString)"
+            }
+        }
+    }
+
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
-    @State private var editingGroup: ConnectionGroup?
-    @State private var showingAddGroup = false
+    @State private var activeSheet: GroupSheet?
     @State private var groupToDelete: ConnectionGroup?
 
     private var showDeleteConfirmation: Binding<Bool> {
@@ -16,47 +34,20 @@ struct GroupManagementView: View {
     }
 
     var body: some View {
+        let graph = LibraryGroupGraph(groups: appState.groups)
+        let groupsById = Dictionary(appState.groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let rows = graph.flattened().compactMap { entry in
+            groupsById[entry.id].map { GroupRow(group: $0, depth: entry.depth) }
+        }
+        let counts = Dictionary(grouping: appState.connections.compactMap(\.groupId), by: { $0 }).mapValues(\.count)
+
         NavigationStack {
             List {
-                ForEach(appState.groups.sorted(by: { $0.sortOrder < $1.sortOrder })) { group in
-                    Button {
-                        editingGroup = group
-                    } label: {
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(ConnectionColorPicker.swiftUIColor(for: group.color))
-                                .frame(width: 12, height: 12)
-
-                            Text(group.name)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            let count = appState.connections.filter { $0.groupId == group.id }.count
-                            Text("\(count)")
-                                .foregroundStyle(.secondary)
-                                .font(.subheadline)
-                        }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            groupToDelete = group
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                        .tint(.red)
-                    }
-                    .accessibilityAction(named: Text("Delete group")) {
-                        groupToDelete = group
-                    }
+                ForEach(rows) { row in
+                    groupRow(row, count: counts[row.id] ?? 0, canNest: graph.canCreateSubgroup(under: row.id))
                 }
                 .onMove { source, destination in
-                    var sorted = appState.groups.sorted(by: { $0.sortOrder < $1.sortOrder })
-                    sorted.move(fromOffsets: source, toOffset: destination)
-                    for index in sorted.indices {
-                        sorted[index].sortOrder = index
-                    }
-                    appState.reorderGroups(sorted)
+                    reorder(rows: rows, graph: graph, source: source, destination: destination)
                 }
             }
             .overlay {
@@ -66,7 +57,7 @@ struct GroupManagementView: View {
                     } description: {
                         Text("Create a group to organize your connections.")
                     } actions: {
-                        Button("Create Group") { showingAddGroup = true }
+                        Button("Create Group") { activeSheet = .add(parentId: nil) }
                             .buttonStyle(.borderedProminent)
                     }
                 }
@@ -82,7 +73,11 @@ struct GroupManagementView: View {
                     }
                 }
             } message: {
-                Text("Connections in this group will be moved to ungrouped.")
+                if let group = groupToDelete, !graph.descendantIds(of: group.id).isEmpty {
+                    Text("Its subgroups are deleted too. Their connections move to Ungrouped.")
+                } else {
+                    Text("Connections in this group will be moved to ungrouped.")
+                }
             }
             .navigationTitle("Groups")
             .navigationBarTitleDisplayMode(.inline)
@@ -92,23 +87,75 @@ struct GroupManagementView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        showingAddGroup = true
+                        activeSheet = .add(parentId: nil)
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel(Text("Add Group"))
                     CloseButton { dismiss() }
                 }
             }
-            .sheet(isPresented: $showingAddGroup) {
-                GroupFormSheet { group in
-                    appState.addGroup(group)
-                }
-            }
-            .sheet(item: $editingGroup) { group in
-                GroupFormSheet(editing: group) { updated in
-                    appState.updateGroup(updated)
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .add(let parentId):
+                    GroupFormSheet(parentId: parentId) { group in
+                        appState.addGroup(group)
+                    }
+                case .edit(let group):
+                    GroupFormSheet(editing: group) { updated in
+                        appState.updateGroup(updated)
+                    }
                 }
             }
         }
+    }
+
+    private func groupRow(_ row: GroupRow, count: Int, canNest: Bool) -> some View {
+        Button {
+            activeSheet = .edit(row.group)
+        } label: {
+            ConnectionGroupRowLabel(group: row.group, connectionCount: count)
+                .padding(.leading, CGFloat(row.depth) * 20)
+                .foregroundStyle(.primary)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                groupToDelete = row.group
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .contextMenu {
+            Button {
+                activeSheet = .edit(row.group)
+            } label: {
+                Label("Edit Group", systemImage: "pencil")
+            }
+            if canNest {
+                Button {
+                    activeSheet = .add(parentId: row.id)
+                } label: {
+                    Label("New Subgroup", systemImage: "folder.badge.plus")
+                }
+            }
+            Divider()
+            Button(role: .destructive) {
+                groupToDelete = row.group
+            } label: {
+                Label("Delete Group", systemImage: "trash")
+            }
+        }
+        .accessibilityAction(named: Text("Delete group")) {
+            groupToDelete = row.group
+        }
+    }
+
+    private func reorder(rows: [GroupRow], graph: LibraryGroupGraph, source: IndexSet, destination: Int) {
+        guard let movedIndex = source.first, rows.indices.contains(movedIndex) else { return }
+        let parentId = graph.parentId(of: rows[movedIndex].id)
+        var ordered = rows.map(\.id)
+        ordered.move(fromOffsets: source, toOffset: destination)
+        appState.reorderGroups(ordered.filter { graph.parentId(of: $0) == parentId })
     }
 }

@@ -305,7 +305,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         dbproc = proc
         _isConnected = true
         lock.unlock()
-        applyMaxTextSize(proc)
+        establishSession(proc)
     }
 
     private func teardown(_ proc: UnsafeMutablePointer<DBPROCESS>) {
@@ -313,11 +313,20 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         _ = dbclose(proc)
     }
 
-    private func applyMaxTextSize(_ proc: UnsafeMutablePointer<DBPROCESS>) {
-        guard dbcmd(proc, "SET TEXTSIZE \(Int32.max)") != FAIL, dbsqlexec(proc) != FAIL else {
-            freetdsLogger.error("Failed to raise TEXTSIZE; large text columns may be truncated to the 2048-byte default")
-            return
+    /// A server that refuses one of these still gets a working connection: db-lib's own defaults
+    /// are wrong rather than fatal, and failing the connect over them would take the database away
+    /// from a user who could otherwise work in it.
+    private func establishSession(_ proc: UnsafeMutablePointer<DBPROCESS>) {
+        for statement in MSSQLSessionOptions.establishment {
+            guard dbcmd(proc, statement) != FAIL, dbsqlexec(proc) != FAIL else {
+                freetdsLogger.error("Session option statement refused: \(statement, privacy: .public)")
+                continue
+            }
+            drainResults(proc)
         }
+    }
+
+    private func drainResults(_ proc: UnsafeMutablePointer<DBPROCESS>) {
         while true {
             let resCode = dbresults(proc)
             if resCode == FAIL || resCode == Int32(NO_MORE_RESULTS) {

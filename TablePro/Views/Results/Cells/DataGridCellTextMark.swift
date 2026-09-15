@@ -25,6 +25,7 @@ enum DataGridCellTextMark: Equatable {
     static func resolve(state: RowVisualState, columnIndex: Int) -> DataGridCellTextMark? {
         if state.isDeleted { return .struckThrough }
         if state.isInserted { return .underlined }
+        if state.isStruck(columnIndex: columnIndex) { return .struckThrough }
         return state.isModified(columnIndex: columnIndex) ? .underlined : nil
     }
 
@@ -48,8 +49,16 @@ enum DataGridCellTextMark: Equatable {
     /// Resolved from the state rather than from the mark, because one line covers two changes a
     /// reader needs told apart: a whole row that is new, and one edited value in a row that is not.
     static func accessibilityDescription(state: RowVisualState, columnIndex: Int) -> String? {
-        if state.isDeleted { return String(localized: "marked for deletion") }
-        if state.isInserted { return String(localized: "new row") }
-        return state.isModified(columnIndex: columnIndex) ? String(localized: "edited") : nil
+        switch state.vocabulary {
+        case .pendingEdit:
+            if state.isDeleted { return String(localized: "marked for deletion") }
+            if state.isInserted { return String(localized: "new row") }
+            return state.isModified(columnIndex: columnIndex) ? String(localized: "edited") : nil
+        case .comparison:
+            if state.isDeleted { return String(localized: "only in the target") }
+            if state.isInserted { return String(localized: "only in the source") }
+            if state.isStruck(columnIndex: columnIndex) { return String(localized: "target value, differs") }
+            return state.isModified(columnIndex: columnIndex) ? String(localized: "source value, differs") : nil
+        }
     }
 }

@@ -7,13 +7,13 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
-import CodeEditTextView
 import Foundation
-import TableProPluginKit
-import Testing
 @testable import TablePro
+import TableProEditorKit
+import TableProGrammars
+import TableProPluginKit
+import TableProTextEngine
+import Testing
 
 @Suite("Statement run controls")
 @MainActor

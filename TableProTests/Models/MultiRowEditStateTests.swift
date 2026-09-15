@@ -693,7 +693,7 @@ struct MultiRowEditStateTests {
         func updateFieldFiresCallbackForNewEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -709,7 +709,7 @@ struct MultiRowEditStateTests {
             sut.updateField(at: 1, value: "Bob")
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -724,7 +724,7 @@ struct MultiRowEditStateTests {
         func updateFieldDoesNotFireCallbackWhenSettingToOriginalNoPriorEdit() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -739,7 +739,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -756,7 +756,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToDefault(at: 0)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -771,7 +771,7 @@ struct MultiRowEditStateTests {
         func setFieldToNullFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -785,7 +785,7 @@ struct MultiRowEditStateTests {
         func setFieldToDefaultFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -799,7 +799,7 @@ struct MultiRowEditStateTests {
         func setFieldToFunctionFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -813,7 +813,7 @@ struct MultiRowEditStateTests {
         func setFieldToEmptyFiresCallback() {
             let sut = makeSUT()
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -830,7 +830,7 @@ struct MultiRowEditStateTests {
             sut.setFieldToNull(at: 1)
 
             var callbackCalls: [(index: Int, value: String?)] = []
-            sut.onFieldChanged = { index, value in
+            sut.onFieldChanged = { index, value, _ in
                 callbackCalls.append((index, value.asText))
             }
 
@@ -1068,7 +1068,7 @@ struct MultiRowEditStateTests {
             sut.configure(schemaFields: schemaFields(), displayRow: 0)
 
             var committed: [(Int, String?)] = []
-            sut.onFieldChanged = { index, value in committed.append((index, value.asText)) }
+            sut.onFieldChanged = { index, value, _ in committed.append((index, value.asText)) }
             sut.updateField(at: 0, value: "user_email")
 
             #expect(committed.count == 1)
@@ -1082,7 +1082,7 @@ struct MultiRowEditStateTests {
             sut.configure(schemaFields: schemaFields(), displayRow: 0)
 
             var committed = 0
-            sut.onFieldChanged = { _, _ in committed += 1 }
+            sut.onFieldChanged = { _, _, _ in committed += 1 }
             sut.updateField(at: 0, value: "email")
 
             #expect(committed == 0)

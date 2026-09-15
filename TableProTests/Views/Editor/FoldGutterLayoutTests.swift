@@ -4,12 +4,12 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
-import CodeEditTextView
 import Foundation
-import Testing
 @testable import TablePro
+import TableProEditorKit
+import TableProGrammars
+import TableProTextEngine
+import Testing
 
 @Suite("Fold gutter layout")
 @MainActor
@@ -22,7 +22,6 @@ struct FoldGutterLayoutTests {
             peripherals: .init(
                 showGutter: true,
                 showLineNumbers: showLineNumbers,
-                showMinimap: false,
                 showFoldingRibbon: showFoldingRibbon
             ),
             text: "SELECT 1;\nSELECT 2;\n"

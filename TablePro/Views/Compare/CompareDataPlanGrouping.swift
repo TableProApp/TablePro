@@ -153,9 +153,9 @@ internal enum CompareDataPlanGrouping {
     }
 
     private static func bucket(for plan: DataComparePlan) -> Bucket {
-        guard plan.isComparable else { return .uncomparable }
+        guard plan.isComparable, plan.comparisonFailure == nil else { return .uncomparable }
         guard let summary = plan.summary else { return .notCompared }
-        return summary.differenceCount > 0 ? .differing : .identical
+        return summary.differenceCount + summary.conflictCount > 0 ? .differing : .identical
     }
 
     private static func group(

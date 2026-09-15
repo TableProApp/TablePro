@@ -13,7 +13,13 @@ struct RemoteCommandResult: Sendable {
     let standardOutput: String
     let standardError: String
 
-    var succeeded: Bool { exitStatus == 0 }
+    /// The name of the signal that killed the command, when one did. A process killed by a signal
+    /// carries no exit status, so `libssh2_channel_get_exit_status` reports the stored `0`; without
+    /// this, an OOM-killed or interrupted `VACUUM INTO` would read as success and its half-written
+    /// snapshot would be adopted.
+    let exitSignal: String?
+
+    var succeeded: Bool { exitStatus == 0 && exitSignal == nil }
 
     var trimmedOutput: String {
         standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,12 +75,27 @@ enum LibSSH2ExecChannel {
             let err = drain(channel: channel, streamId: sshExtendedDataStderr)
             libssh2_channel_close(channel)
             let status = libssh2_channel_get_exit_status(channel)
+            let signal = exitSignal(channel: channel, session: session)
 
             Self.logger.debug(
-                "remote command exited \(status, privacy: .public): \(command, privacy: .public)"
+                "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .public)"
             )
-            return RemoteCommandResult(exitStatus: status, standardOutput: out, standardError: err)
+            return RemoteCommandResult(
+                exitStatus: status, standardOutput: out, standardError: err, exitSignal: signal
+            )
         }
+    }
+
+    /// The signal name libssh2 recorded for the channel's process, or nil when it exited normally.
+    /// libssh2 allocates the string, so it is freed here.
+    private static func exitSignal(channel: OpaquePointer, session: OpaquePointer) -> String? {
+        var signalPtr: UnsafeMutablePointer<CChar>?
+        var signalLen = 0
+        libssh2_channel_get_exit_signal(channel, &signalPtr, &signalLen, nil, nil, nil, nil)
+        defer { if let signalPtr { libssh2_free(session, signalPtr) } }
+        guard let signalPtr, signalLen > 0 else { return nil }
+        let name = String(cString: signalPtr)
+        return name.isEmpty ? nil : name
     }
 
     private static func drain(channel: OpaquePointer, streamId: Int32) -> String {

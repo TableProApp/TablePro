@@ -84,8 +84,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case runStatementAndAdvance
     case previewSQL
     case find
+    case findAndReplace
     case findNext
     case findPrevious
+    case useSelectionForFind
     case aiExplainQuery
     case aiOptimizeQuery
 
@@ -153,7 +155,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .find, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
+             .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
@@ -177,7 +180,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     /// the two menu items that end up claiming it. The three find commands all route that way.
     var context: ShortcutContext {
         switch self {
-        case .find, .findNext, .findPrevious:
+        case .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind:
             return .global
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .removeInvisibleCharacters, .foldAll, .unfoldAll,
@@ -235,8 +238,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .nextStatement: return String(localized: "Next Statement")
         case .runStatementAndAdvance: return String(localized: "Run Statement and Advance")
         case .find: return String(localized: "Find")
+        case .findAndReplace: return String(localized: "Find and Replace")
         case .findNext: return String(localized: "Find Next")
         case .findPrevious: return String(localized: "Find Previous")
+        case .useSelectionForFind: return String(localized: "Use Selection for Find")
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
         case .jumpToColumn: return String(localized: "Jump to Column")
@@ -299,7 +304,6 @@ extension ShortcutAction {
         (.special(.space, control: true), String(localized: "Show Completions")),
         (.special(.upArrow, option: true), String(localized: "Move Line Up")),
         (.special(.downArrow, option: true), String(localized: "Move Line Down")),
-        (.character("j", command: true, control: true), String(localized: "Jump to Definition")),
         (.special(.upArrow, shift: true, option: true), String(localized: "Extend Selection to Previous Statement")),
         (.special(.downArrow, shift: true, option: true), String(localized: "Extend Selection to Next Statement"))
     ]
@@ -538,8 +542,10 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleFold: .special(.leftArrow, command: true, option: true),
         .previewSQL: .character("p", command: true, shift: true),
         .find: .character("f", command: true),
+        .findAndReplace: .character("f", command: true, option: true),
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),
+        .useSelectionForFind: .character("e", command: true),
         .aiExplainQuery: .character("l", command: true),
         .aiOptimizeQuery: .character("l", command: true, option: true),
         .export: .character("e", command: true, shift: true),
@@ -586,7 +592,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
         .toggleAssistant: .character("a", command: true, option: true),
-        .toggleFilters: .character("f", command: true, option: true),
+        .toggleFilters: .character("f", command: true, shift: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),
         .previousResultTab: .character("[", command: true, option: true),

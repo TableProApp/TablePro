@@ -2,14 +2,14 @@
 //  JSONCodeEditor.swift
 //  TablePro
 //
-//  JSON text view backed by CodeEditSourceEditor (tree-sitter), sharing the
+//  JSON text view backed by TableProEditorKit (tree-sitter), sharing the
 //  app's editor theme and font with the SQL editor.
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 internal struct JSONCodeEditor: View {
     @Binding var text: String

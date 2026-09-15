@@ -42,6 +42,28 @@ extension MainContentCoordinator {
         rowEditingCoordinator.handleUndoResult(result)
     }
 
+    func stageInspectorFieldEdit(
+        columnIndex: Int,
+        value: PluginCellValue,
+        rowIDs: [RowID],
+        continuity: FieldEditContinuity
+    ) {
+        rowEditingCoordinator.stageInspectorFieldEdit(
+            columnIndex: columnIndex,
+            value: value,
+            rowIDs: rowIDs,
+            continuity: continuity
+        )
+    }
+
+    func endInspectorEditRun() {
+        rowEditingCoordinator.endInspectorEditRun()
+    }
+
+    func revertInspectorFieldEdit(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
+        rowEditingCoordinator.revertInspectorFieldEdit(columnIndex: columnIndex, valuesByRow: valuesByRow)
+    }
+
     func copySelectedRowsToClipboard(indices: Set<Int>) {
         rowEditingCoordinator.copySelectedRowsToClipboard(indices: indices)
     }

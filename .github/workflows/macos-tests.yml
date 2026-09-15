@@ -12,7 +12,6 @@ on:
       - "TablePro/**"
       - "Plugins/**"
       - "Packages/**"
-      - "LocalPackages/**"
       - "TableProTests/**"
       - "TableProUITests/**"
       - "Native/**"
@@ -95,7 +94,7 @@ jobs:
             --base "$BASE_SHA" \
             --ref "$REF" \
             --skip-release-commit \
-            'TablePro/' 'Plugins/' 'Packages/' 'LocalPackages/' \
+            'TablePro/' 'Plugins/' 'Packages/' \
             'TableProTests/' 'TableProUITests/' 'Native/' 'Configs/' 'Libs/' 'scripts/' \
             '\.github/actions/' '\.github/macos-(ui-)?test-quarantine\.txt$' \
             'TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$' \
@@ -128,6 +127,11 @@ jobs:
       - name: Run TableProCore package tests
         run: swift test --package-path Packages/TableProCore
 
+      # The grammars and their highlight queries. Pinned to the tracked Package.resolved so a
+      # SwiftTreeSitter bump that forgets the lockfile fails here rather than floating.
+      - name: Run TableProGrammars package tests
+        run: swift test --package-path Packages/TableProGrammars --force-resolved-versions
+
       # The only thing that runs TableProOracleCore's suites. AllPlugins proves the module
       # compiles and nothing more, and the package is not a TableProTests dependency, so the cases
       # cannot move there: importing it drags oracle-nio into the app test bundle. Gated on its own
@@ -140,14 +144,12 @@ jobs:
         if: needs.changes.outputs.oracle == 'true'
         run: swift test --package-path Packages/TableProOracle --force-resolved-versions
 
-      # CodeEditSourceEditor is deliberately not run here. `swift test` cannot build it on this
-      # runner: its CodeEditSymbols dependency fails with "type 'Bundle' has no member 'module'",
-      # after a SwiftPM cache warning about a missing maintenance.lock. It builds fine inside the
-      # Xcode project, so the app target still compiles it; only the standalone package test run
-      # is broken. Its own suites also fail on main (HighlighterTests, TagEditingTests, plus one
-      # that aborts the runner), so this needs fixing at the package level before it can gate.
-      - name: Run CodeEditTextView package tests
-        run: swift test --package-path LocalPackages/CodeEditTextView
+
+      # The editor, both targets. Two XCTest cases skip themselves on a headless runner (no screen,
+      # no key window), so the expected result is 112 executed with 2 skipped, plus 102 Swift Testing
+      # cases. Pinned to the tracked Package.resolved like its siblings.
+      - name: Run TableProEditor package tests
+        run: swift test --package-path Packages/TableProEditor --force-resolved-versions
 
   # Compiles the app, both test bundles and all 31 plugins once, then hands the products to the
   # test jobs. That build used to happen inside the same job that ran the tests, which meant the

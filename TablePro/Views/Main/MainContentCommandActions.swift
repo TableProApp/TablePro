@@ -1402,43 +1402,6 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    // MARK: - Undo/Redo (Group A — Called Directly)
-
-    /// A Create Table tab keeps its `resultsViewMode` at `.data`, so it needs its own arm. Without
-    /// one, Cmd+Z in the visual table editor reached the window's undo manager, which owns none of
-    /// the draft, and the grid's own undo had no caller at all.
-    func undoChange() {
-        if isUsersRolesTab {
-            coordinator?.usersRolesActions?.undo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.undo?()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.undo?()
-            return
-        }
-        coordinator?.contentWindow?.undoManager?.undo()
-    }
-
-    func redoChange() {
-        if isUsersRolesTab {
-            coordinator?.usersRolesActions?.redo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.redo?()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.redo?()
-            return
-        }
-        coordinator?.contentWindow?.undoManager?.redo()
-    }
-
     // MARK: - Group B Broadcast Subscribers
 
     // MARK: Data Broadcasts

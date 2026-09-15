@@ -116,6 +116,10 @@ class DataGridRowView: NSTableRowView {
 
         let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
         let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+        if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
+            guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
+            return coordinator.toggleCheckbox(row: rowIndex, columnIndex: dataColumn)
+        }
         guard let appearance = coordinator.cellAppearance(
             row: rowIndex,
             columnIndex: dataColumn,
@@ -168,7 +172,8 @@ class DataGridRowView: NSTableRowView {
             let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
             coordinator.cellRenderer.draw(
                 appearance,
-                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
+                controlView: view
             )
         }
     }
@@ -501,13 +506,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let jsonViewItem = NSMenuItem(
-            title: String(localized: "Show Row as JSON"),
-            action: #selector(showRowAsJSON),
-            keyEquivalent: ""
-        )
-        jsonViewItem.target = self
-        menu.addItem(jsonViewItem)
+        if coordinator.supportsColumnCommands {
+            let jsonViewItem = NSMenuItem(
+                title: String(localized: "Show Row as JSON"),
+                action: #selector(showRowAsJSON),
+                keyEquivalent: ""
+            )
+            jsonViewItem.target = self
+            menu.addItem(jsonViewItem)
+        }
 
         if dataColumnIndex >= 0,
            let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
@@ -534,13 +541,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let exportItem = NSMenuItem(
-            title: String(localized: "Export Results…"),
-            action: #selector(exportResults),
-            keyEquivalent: ""
-        )
-        exportItem.target = self
-        menu.addItem(exportItem)
+        if coordinator.supportsColumnCommands {
+            let exportItem = NSMenuItem(
+                title: String(localized: "Export Results…"),
+                action: #selector(exportResults),
+                keyEquivalent: ""
+            )
+            exportItem.target = self
+            menu.addItem(exportItem)
+        }
 
         if coordinator.delegate?.dataGridCanClearResults() == true {
             let clearResultsItem = NSMenuItem(

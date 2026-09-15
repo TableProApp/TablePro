@@ -187,7 +187,7 @@ struct InstalledPluginsView: View {
             .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
         case .requiresAppUpdate:
             Button(String(localized: "Update TablePro")) {
-                UpdaterBridge.shared.checkForUpdates()
+                SoftwareUpdater.shared.checkForUpdates()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
