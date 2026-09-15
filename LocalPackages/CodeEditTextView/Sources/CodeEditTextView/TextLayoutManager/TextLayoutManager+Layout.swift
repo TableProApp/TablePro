@@ -7,6 +7,15 @@
 
 import AppKit
 
+/// Grows `span` to cover `range`, starting it there when it covers nothing yet.
+private func extend(_ span: inout NSRange?, with range: NSRange) {
+    guard let current = span else {
+        span = range
+        return
+    }
+    span = NSRange(start: Swift.min(current.location, range.location), end: Swift.max(current.max, range.max))
+}
+
 extension TextLayoutManager {
     /// Contains all data required to perform layout on a text line.
     private struct LineLayoutData {
@@ -88,6 +97,7 @@ extension TextLayoutManager {
         var usedFragmentIDs = Set<LineFragment.ID>()
         let forceLayout: Bool = needsLayout
         var didLayoutChange = false
+        var didLineHeightChange = false
         var newVisibleLines: Set<TextLine.ID> = []
         var yContentAdjustment: CGFloat = 0
 
@@ -97,6 +107,12 @@ extension TextLayoutManager {
         // of zero width, which is what an unparented layout view reports.
         var relaidOutMinY: CGFloat = .greatestFiniteMagnitude
         var relaidOutMaxY: CGFloat = -.greatestFiniteMagnitude
+
+        // The same two spans in document offsets, for a delegate that keeps geometry over the text rather than
+        // pixels in a backing store. `laidOutOffsets` covers every line the pass visited, which is where geometry
+        // can be read; `relaidOutOffsets` covers the lines it measured again, which is where geometry has moved.
+        var laidOutOffsets: NSRange?
+        var relaidOutOffsets: NSRange?
 
 #if DEBUG
         var laidOutLines: Set<TextLine.ID> = []
@@ -109,7 +125,10 @@ extension TextLayoutManager {
             let wasNotVisible = !visibleLineIds.contains(linePosition.data.id)
             let lineNotEntirelyLaidOut = linePosition.height != linePosition.data.lineFragments.height
 
-            defer { newVisibleLines.insert(linePosition.data.id) }
+            defer {
+                newVisibleLines.insert(linePosition.data.id)
+                extend(&laidOutOffsets, with: linePosition.range)
+            }
 
             guard forceLayout || linePositionNeedsLayout || wasNotVisible || lineNotEntirelyLaidOut else {
                 // The line keeps its fragments, but a line above it may have moved it and the viewport may have
@@ -130,6 +149,7 @@ extension TextLayoutManager {
                 yRange: minY..<maxY
             )
             yContentAdjustment += yAdjustment
+            extend(&relaidOutOffsets, with: linePosition.range)
             relaidOutMinY = min(relaidOutMinY, linePosition.yPos)
             relaidOutMaxY = max(
                 relaidOutMaxY,
@@ -146,6 +166,12 @@ extension TextLayoutManager {
             // - Line updated for width change (wasLineHeightChanged)
 
             didLayoutChange = didLayoutChange || wasLineHeightChanged || lineNotEntirelyLaidOut
+
+            // Narrower than `didLayoutChange` on purpose. That one is also true of a line laid out for the
+            // first time, which asks the rest of the pass to re-place its views; only a height that changed
+            // moves the lines below it. Geometry kept over the text follows this signal, or one newly revealed
+            // line re-measures every emphasis below it on every frame of a scroll.
+            didLineHeightChange = didLineHeightChange || wasLineHeightChanged
         }
 
         // Enqueue any lines not used in this layout pass.
@@ -188,11 +214,52 @@ extension TextLayoutManager {
             )
         }
 
+        reportLayout(
+            relaidOut: relaidOutOffsets,
+            laidOut: laidOutOffsets,
+            movedEverythingBelow: didLineHeightChange || yContentAdjustment != 0,
+            ySpan: minY...Swift.max(minY, maxY)
+        )
+
 #if DEBUG
         return laidOutLines
 #else
         return []
 #endif
+    }
+
+    /// Tells the delegate what this pass laid out and what it moved.
+    ///
+    /// Runs after the layout lock and the `CATransaction`, beside the other delegate calls, because the internal
+    /// data structures are final at that point and a delegate that lays out again cannot break line storage.
+    /// - Parameters:
+    ///   - relaidOut: The span of text this pass measured again, `nil` if it measured none.
+    ///   - laidOut: The span of text this pass visited, `nil` if it visited none.
+    ///   - movedEverythingBelow: Whether a height change or a scroll adjustment moved every line below `relaidOut`,
+    ///                           including the ones this pass never visited.
+    ///   - ySpan: The vertical span this pass laid out.
+    private func reportLayout(
+        relaidOut: NSRange?,
+        laidOut: NSRange?,
+        movedEverythingBelow: Bool,
+        ySpan: ClosedRange<CGFloat>
+    ) {
+        if let relaidOut {
+            if movedEverythingBelow {
+                invalidateGeometry(from: relaidOut.location)
+            } else {
+                invalidateGeometry(in: relaidOut)
+            }
+        }
+
+        // Cleared only once it has been handed over. A pass that runs with no delegate keeps accumulating, since
+        // the lines it laid out will not be laid out again to raise the same invalidation a second time.
+        guard let delegate else { return }
+        let invalidatedRange = pendingGeometryInvalidation
+        pendingGeometryInvalidation = nil
+        delegate.layoutManagerDidLayout(
+            TextLayoutUpdate(invalidatedRange: invalidatedRange, laidOutRange: laidOut, laidOutYSpan: ySpan)
+        )
     }
 
     // MARK: - Layout Single Line

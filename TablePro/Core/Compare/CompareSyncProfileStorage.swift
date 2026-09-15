@@ -24,6 +24,11 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
     internal var structureOptions: StructureCompareOptions
     internal var dataOptions: DataCompareOptions
     internal var selectedObjects: [String]
+    internal var tableScopes: [String: DataTableScope]
+
+    /// The compared-column exclusions a profile saved before they became per table. Read so a
+    /// saved comparison keeps leaving out the columns it left out, never written back.
+    internal var legacyExcludedColumns: Set<String>
 
     internal init(
         id: UUID = UUID(),
@@ -34,7 +39,9 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
         includedKinds: Set<CompareObjectKind> = [.table],
         structureOptions: StructureCompareOptions,
         dataOptions: DataCompareOptions,
-        selectedObjects: [String]
+        selectedObjects: [String],
+        tableScopes: [String: DataTableScope] = [:],
+        legacyExcludedColumns: Set<String> = []
     ) {
         self.id = id
         self.name = name
@@ -45,6 +52,54 @@ internal struct CompareSyncProfile: Codable, Hashable, Identifiable {
         self.structureOptions = structureOptions
         self.dataOptions = dataOptions
         self.selectedObjects = selectedObjects
+        self.tableScopes = tableScopes
+        self.legacyExcludedColumns = legacyExcludedColumns
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case source
+        case target
+        case mode
+        case includedKinds
+        case structureOptions
+        case dataOptions
+        case selectedObjects
+        case tableScopes
+        case legacyExcludedColumns
+    }
+
+    private enum LegacyDataOptionsKeys: String, CodingKey {
+        case excludedFromComparison
+    }
+
+    internal init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        source = try container.decode(DatabaseScope.self, forKey: .source)
+        target = try container.decode(DatabaseScope.self, forKey: .target)
+        mode = try container.decode(CompareSyncMode.self, forKey: .mode)
+        includedKinds = try container.decodeIfPresent(Set<CompareObjectKind>.self, forKey: .includedKinds) ?? [.table]
+        structureOptions = try container.decodeIfPresent(StructureCompareOptions.self, forKey: .structureOptions)
+            ?? .default
+        dataOptions = try container.decodeIfPresent(DataCompareOptions.self, forKey: .dataOptions) ?? .default
+        selectedObjects = try container.decodeIfPresent([String].self, forKey: .selectedObjects) ?? []
+        tableScopes = try container.decodeIfPresent([String: DataTableScope].self, forKey: .tableScopes) ?? [:]
+        /// Kept on the profile once it has been read, because saving or deleting any comparison
+        /// rewrites the whole stored array, and a profile still waiting to be loaded would lose the
+        /// columns it was told to leave out.
+        if let carried = try container.decodeIfPresent(Set<String>.self, forKey: .legacyExcludedColumns) {
+            legacyExcludedColumns = carried
+            return
+        }
+        guard container.contains(.dataOptions) else {
+            legacyExcludedColumns = []
+            return
+        }
+        let legacy = try container.nestedContainer(keyedBy: LegacyDataOptionsKeys.self, forKey: .dataOptions)
+        legacyExcludedColumns = try legacy.decodeIfPresent(Set<String>.self, forKey: .excludedFromComparison) ?? []
     }
 }
 
@@ -171,7 +226,8 @@ internal final class CompareSyncProfileStorage {
                 includedKinds: [.table],
                 structureOptions: entry.structureOptions,
                 dataOptions: entry.dataOptions,
-                selectedObjects: entry.selectedTables
+                selectedObjects: entry.selectedTables,
+                legacyExcludedColumns: entry.excludedColumns
             )
         }
         persist(migrated)
@@ -179,7 +235,7 @@ internal final class CompareSyncProfileStorage {
         return migrated
     }
 
-    private struct LegacyProfile: Codable {
+    private struct LegacyProfile: Decodable {
         let id: UUID
         let name: String
         let sourceConnectionId: UUID
@@ -188,5 +244,37 @@ internal final class CompareSyncProfileStorage {
         let structureOptions: StructureCompareOptions
         let dataOptions: DataCompareOptions
         let selectedTables: [String]
+        /// The compared-column exclusions this shape stored inside its options, read here because
+        /// `DataCompareOptions` no longer carries them and the migration is the last chance to.
+        let excludedColumns: Set<String>
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name, sourceConnectionId, targetConnectionId, mode
+            case structureOptions, dataOptions, selectedTables
+        }
+
+        private enum LegacyDataOptionsKeys: String, CodingKey {
+            case excludedFromComparison
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(UUID.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            sourceConnectionId = try container.decode(UUID.self, forKey: .sourceConnectionId)
+            targetConnectionId = try container.decode(UUID.self, forKey: .targetConnectionId)
+            mode = try container.decode(CompareSyncMode.self, forKey: .mode)
+            structureOptions = try container.decodeIfPresent(
+                StructureCompareOptions.self, forKey: .structureOptions
+            ) ?? .default
+            dataOptions = try container.decodeIfPresent(DataCompareOptions.self, forKey: .dataOptions) ?? .default
+            selectedTables = try container.decodeIfPresent([String].self, forKey: .selectedTables) ?? []
+            guard container.contains(.dataOptions) else {
+                excludedColumns = []
+                return
+            }
+            let legacy = try container.nestedContainer(keyedBy: LegacyDataOptionsKeys.self, forKey: .dataOptions)
+            excludedColumns = try legacy.decodeIfPresent(Set<String>.self, forKey: .excludedFromComparison) ?? []
+        }
     }
 }

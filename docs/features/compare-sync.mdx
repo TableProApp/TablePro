@@ -73,15 +73,37 @@ Tables start unchecked. Tick the ones to compare, then press **Compare**: a data
 
 Rows are matched by key, read in key order from both sides and walked in lockstep, so neither side is ever held in memory in full.
 
-- Key columns default to the primary key and are editable per table. Composite keys work. A table with no usable key lists as not comparable rather than being matched on a guess.
-- The compare set and the write set are separate. Exclude `updated_at` from the comparison and it is still written on insert and update.
-- A generated column is read and compared but never written, because engines reject an explicit value for one.
-- NULL equals only NULL. Numeric tolerance and timestamp precision are set in **Options**, and two spellings of the same instant at different offsets are equal.
-- When a value is flagged, the row names the rule that fired.
+### Setting a table's scope
 
-Filter the rows six ways: **All**, **Difference**, **Insert**, **Update**, **Delete**, **Same**. Each row has its own **Include** checkbox.
+Select a table, then set its scope at the top of the **Rows** tab. Each table keeps its own settings.
 
-The row list is a capped preview. Past the cap the pane says so, and **Apply** still covers every difference: the script is built from a fresh pass over both sides, not from the rows on screen.
+| Setting | What it does |
+|---|---|
+| **Key columns** | The columns that identify a row. Defaults to the primary key; composite keys work. A key that matches more than one row stops that table's comparison and names the key. |
+| **Compared columns** | The columns checked for differences. A column left out is still written on insert and update. |
+| **Filter** | A SQL condition, such as `status = 'active'`, read on both sides. Clear **Use the same filter for the target** to give the target its own condition. |
+| **Rows** | **All**, or the first N rows in key order. |
+
+A filter is a single condition. A semicolon, a comment, or an unclosed quote or parenthesis is refused before either side is read. Press `Return` or leave the field to apply it.
+
+- A table with no usable key lists as not comparable rather than being matched on a guess.
+- A generated column is read and compared but never written. An identity column the target always generates is inserted with `OVERRIDING SYSTEM VALUE` on PostgreSQL and `IDENTITY_INSERT` on SQL Server, and never updated.
+- NULL equals only NULL. Numeric tolerance applies to numeric columns and timestamp precision to date and time columns, both set in **Options**.
+- A row with NULL in a key column is left out and counted.
+
+### Row limits and filters
+
+A row limit reads the first N rows of each side in key order, and every key both sides were read past is compared. Rows past that point are not read, so none of them is inserted or deleted. The review pane names the last key compared: put it in the **Filter** on both sides, as `id > 5000`, to compare the next stretch.
+
+With a filter, a row that matches on one side and exists outside the filter on the other is listed as **Outside Filter** and never written. Widen the filter to sync it.
+
+### Reviewing rows
+
+Every column shows in a grid. A row only in the source is underlined, a row only in the target is struck through, and a changed row shows its source line above its target line with each differing value marked.
+
+**Show** narrows the grid to **All Rows**, **Difference**, **Insert**, **Update**, **Delete** or **Same**, plus **Outside Filter** when a filter produced any. Clear a row's **Include** checkbox, or select rows and press `Space`, to leave them out of the script. The **Include** menu above the grid includes or excludes every listed row.
+
+The grid lists up to 5,000 differences and 1,000 matching rows. Past either cap the pane says so, and **Apply** still covers every difference.
 
 ### One connection, two databases
 
@@ -92,6 +114,10 @@ A data comparison needs both sides open at once. On an engine that pools connect
 **Generate Script** builds the SQL. It is read-only: each statement carries the hazards its operation plan computed, and those cannot be recovered from edited text. **Copy** and **Save…** take it elsewhere, and the query editor runs a hand-edited version through the normal path.
 
 Statements are ordered by foreign key dependency, not alphabetically. Tables are created parent-first and dropped child-first; row inserts run parent-first and row deletes child-first.
+
+A data script is built from a fresh read of both sides. An included table that has not been compared with its current scope holds the script back until it is compared or excluded, and a table whose rows changed since the comparison stops the script with that table named. Compare again, then generate.
+
+A structure script is checked the same way. Both schemas are read again, and an object whose structure moved since the comparison stops the script with that object named rather than writing DDL against a schema that no longer exists.
 
 Script generation needs matching database types, with MySQL and MariaDB counting as one family. A cross-engine pair still compares, read-only: column data types are engine-specific strings, so generating DDL for one engine from another's metadata is not sound.
 
@@ -107,13 +133,17 @@ Anything that would destroy data is generated, listed, and held back. Dropping a
 
 **On error** chooses between stopping and rolling back, stopping and keeping what ran, and skipping and continuing. A transaction cannot be combined with skip and continue, because together they leave the target half-applied.
 
-Whether a transaction covers the run depends on the engine. MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync on those engines runs without one rather than implying a rollback that will not happen.
+Whether a transaction covers the run depends on the engine. MySQL, MariaDB and Oracle commit implicitly on every DDL statement, so a structure sync on those engines runs without one rather than implying a rollback that will not happen. A data sync into a MySQL or MariaDB table on a storage engine that cannot roll back, such as MyISAM, keeps the rows a rolled-back run already wrote, and the result names those tables.
 
-Closing the window mid-run asks first, and says that statements which already ran stay applied.
+An UPDATE or DELETE that changes more than the one row it was built for counts as a failed statement, and **On error** decides what happens next.
+
+The source, the target, the mode and **Options** stay locked while a run applies. A target whose connection is switched to **Read-Only** after it was picked turns **Apply** off.
+
+Closing the window mid-run asks first, and says that statements which already ran stay applied. After a run, press **Compare** to see where the target stands; the included tables stay checked for the next sync.
 
 ## Saving a comparison
 
-**Save Comparison…** names the current setup: the source, the target, the mode, the object kinds, the options and the included objects. It sits in the **Comparisons** menu and under **Database > Compare**.
+**Save Comparison…** names the current setup: the source, the target, the mode, the object kinds, the options, the included objects, and each table's key columns, compared columns, filter and row limit. Rows left out of a script are not saved. It sits in the **Comparisons** menu and under **Database > Compare**.
 
 Loading one sets both pickers. **Comparisons** lists them all whatever pair is on screen; **Options** lists them too, with a **Delete** for each.
 

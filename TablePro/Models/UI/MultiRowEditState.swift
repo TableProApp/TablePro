@@ -76,6 +76,14 @@ final class MultiRowEditState {
     var onFieldChanged: ((Int, PluginCellValue) -> Void)?
 
     private(set) var selectedRowIndices: Set<Int> = []
+
+    /// The rows an edit is staged against, captured when the selection was configured.
+    ///
+    /// `selectedRowIndices` are display positions, and a commit that resolves them when the
+    /// keystroke arrives writes into whatever row the sort, the value filter or a later selection
+    /// left at that position.
+    private(set) var rowIDs: [RowID] = []
+
     private(set) var allRows: [[String?]] = []
     private(set) var columns: [String] = []
     private(set) var columnTypes: [ColumnType] = []
@@ -87,6 +95,7 @@ final class MultiRowEditState {
     /// Configure state for the given selection
     func configure(
         selectedRowIndices: Set<Int>,
+        rowIDs: [RowID] = [],
         allRows: [[String?]],
         columns: [String],
         columnTypes: [ColumnType],
@@ -101,6 +110,7 @@ final class MultiRowEditState {
         let selectionChanged = self.selectedRowIndices != selectedRowIndices
 
         self.selectedRowIndices = selectedRowIndices
+        self.rowIDs = rowIDs
         self.allRows = allRows
         self.columns = columns
         self.columnTypes = columnTypes
@@ -193,6 +203,7 @@ final class MultiRowEditState {
         let reusedIds = selectedRowIndices == [displayRow] && columns == names ? fields.map(\.id) : []
 
         selectedRowIndices = [displayRow]
+        rowIDs = []
         columns = names
         columnTypes = Array(repeating: .text(rawType: nil), count: names.count)
         allRows = [schemaFields.map(\.value)]
@@ -317,6 +328,7 @@ final class MultiRowEditState {
         fields = []
         onFieldChanged = nil
         selectedRowIndices = []
+        rowIDs = []
         allRows = []
         columns = []
         columnTypes = []

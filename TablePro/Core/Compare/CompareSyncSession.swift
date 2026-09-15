@@ -100,6 +100,8 @@ internal final class CompareSyncSession {
     internal var isStaleAfterApply = false
     internal var runTask: Task<Void, Never>?
     internal var pendingSelection: Set<String> = []
+    internal var pendingTableScopes: [String: DataTableScope] = [:]
+    internal var pendingLegacyExcludedColumns: Set<String> = []
 
     /// Which setup the answers on screen belong to.
     ///
@@ -165,6 +167,7 @@ internal final class CompareSyncSession {
     }
 
     internal func swapEndpoints() {
+        guard canChangeSetup else { return }
         let previousSource = source
         source = target
         target = previousSource
@@ -201,21 +204,34 @@ internal final class CompareSyncSession {
         case .applying:
             return String(format: String(localized: "Applying to %@…"), target?.qualifiedDescription ?? "")
         case .comparing, .connecting, .buildingScript:
-            return String(localized: "Comparing only. Nothing has been written.")
+            return comparingOnlyText
         case .idle:
             return idleBannerText
         }
     }
 
+    /// A write that already happened stays true whatever is compared next, so once one has, the
+    /// strip stops promising that nothing was written.
+    private var comparingOnlyText: String {
+        hasWrittenToTarget
+            ? String(localized: "Comparing only. Changes applied earlier stay in the target.")
+            : String(localized: "Comparing only. Nothing has been written.")
+    }
+
     private var idleBannerText: String {
         switch lastAction {
         case .none:
-            return String(localized: "Comparing only. Nothing has been written.")
+            return comparingOnlyText
         case .compared(let date, let differences):
             /// The count is not the first argument, so a plural variation on the format string
-            /// cannot key on it; the singular is chosen here instead. Without this the strip read
-            /// "1 differences".
+            /// cannot key on it; the singular is chosen here instead.
             let time = Self.timeFormatter.string(from: date)
+            if hasWrittenToTarget {
+                guard differences != 1 else {
+                    return String(format: String(localized: "Compared %@. 1 difference."), time)
+                }
+                return String(format: String(localized: "Compared %@. %d differences."), time, differences)
+            }
             guard differences != 1 else {
                 return String(
                     format: String(localized: "Compared %@. 1 difference. Nothing has been written."), time
@@ -247,6 +263,7 @@ internal final class CompareSyncSession {
     }
 
     internal func setAction(_ action: TableSyncAction, for result: CompareObjectResult) {
+        guard canChangeSetup else { return }
         actions[result.id] = action
         invalidateScript()
     }
@@ -256,7 +273,7 @@ internal final class CompareSyncSession {
     }
 
     internal func setIncluded(_ included: Bool, forIds ids: [String]) {
-        guard let report else { return }
+        guard canChangeSetup, let report else { return }
         let byId = Dictionary(report.comparable.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for id in ids {
             guard let result = byId[id] else { continue }
@@ -265,12 +282,17 @@ internal final class CompareSyncSession {
         invalidateScript()
     }
 
+    /// In data mode this counts the tables that would put a statement in the script, not the tables
+    /// that differ. A table whose only differences are deletes, with Delete switched off, used to
+    /// count as included and send Generate Script to "Nothing is selected to apply."
     internal var selectedObjectCount: Int {
         switch mode {
         case .structure:
             return actions.values.filter { $0 != .skip }.count
         case .data:
-            return dataPlans.filter { $0.isEnabled && $0.isComparable && ($0.summary?.differenceCount ?? 0) > 0 }.count
+            return dataPlans.filter {
+                $0.isEnabled && $0.isComparable && $0.scriptableRowCount(options: dataOptions) > 0
+            }.count
         }
     }
 
@@ -286,14 +308,12 @@ internal final class CompareSyncSession {
 
     /// The HIG asks an app to "show people when a command can't be carried out and help people
     /// understand why", and to give a disabled control a tooltip naming the unmet precondition
-    /// rather than repeating its own name. Validation used to compute these conditions and throw
-    /// the reason away, returning a bare Bool, so every disabled toolbar item said only what it
-    /// was called.
+    /// rather than repeating its own name.
     internal var compareDisabledReason: String? {
         if isBusy { return String(localized: "A comparison is already running.") }
         guard let source else { return String(localized: "Choose a source to compare from.") }
         guard let target else { return String(localized: "Choose a target to compare against.") }
-        if let refusal = target.ineligibleAsTargetReason { return refusal }
+        if let refusal = targetWriteRefusal { return refusal }
         guard source.id != target.id else {
             return String(localized: "The source and the target are the same database.")
         }
@@ -311,6 +331,9 @@ internal final class CompareSyncSession {
         if mode == .structure, !canGenerateStructureScript {
             return crossEngineNotice ?? String(localized: "These two engines cannot share a script.")
         }
+        if mode == .data, let blocker = dataScriptBlocker {
+            return blocker
+        }
         guard selectedObjectCount > 0 else {
             return mode == .structure
                 ? String(localized: "Include at least one object to generate a script for it.")
@@ -320,21 +343,17 @@ internal final class CompareSyncSession {
     }
 
     /// Apply is available whenever there is a comparison to apply, and it builds its own script
-    /// when none has been built. Requiring Generate Script first made every sync a three-press
-    /// sequence for a script the Apply sheet shows in full anyway.
+    /// when none has been built.
     ///
-    /// An unallowed hazard is deliberately not a reason any more. The allowance for one lives
-    /// inside the Apply sheet, so withholding the sheet until every hazard was allowed put the
-    /// control behind the door it was locking. The sheet's own Apply button still refuses to run
-    /// while one is outstanding, which is where the refusal belongs.
+    /// An unallowed hazard is deliberately not a reason. The allowance for one lives inside the
+    /// Apply sheet, and the sheet's own Apply button still refuses to run while one is outstanding.
     internal var applyDisabledReason: String? {
         if isBusy { return String(localized: "A run is already in progress.") }
         if isStaleAfterApply {
             return String(localized: "The script already ran. Compare again to see where the target stands.")
         }
-        guard target?.canBeWrittenTo == true else {
-            return target?.ineligibleAsTargetReason ?? String(localized: "Choose a target to write to.")
-        }
+        guard target != nil else { return String(localized: "Choose a target to write to.") }
+        if let refusal = targetWriteRefusal { return refusal }
         guard statements.isEmpty else { return nil }
         return scriptDisabledReason
     }
@@ -358,8 +377,6 @@ internal final class CompareSyncSession {
         return nil
     }
 
-    /// A statement carrying an unacknowledged hazard is why Apply stays disabled rather than
-    /// silently dropping it: the count the user is about to run has to be the count they saw.
     internal var unacknowledgedHazardCount: Int {
         statements.filter { $0.isRefusedByDefault && !executionSettings.canRun($0) }.count
     }
@@ -391,8 +408,8 @@ internal final class CompareSyncSession {
         return dataPlans.first { $0.id == selectedPlanId }
     }
 
-    /// What the window's bottom status bar reads. The HIG names a count of a window's contents as
-    /// the sanctioned use of a bottom bar, with Finder's item and selection counts as the example.
+    /// What the window's bottom status bar reads. Nothing compared means no counts: four zeros over
+    /// a list of tables nobody has read claimed the databases matched.
     internal var statusCounts: [CompareStatusCount] {
         switch mode {
         case .structure:
@@ -404,8 +421,8 @@ internal final class CompareSyncSession {
                 CompareStatusCount(status: .identical, count: report.count(of: .identical))
             ]
         case .data:
-            guard !dataPlans.isEmpty else { return [] }
             let compared = dataPlans.compactMap { $0.summary }
+            guard !compared.isEmpty else { return [] }
             return [
                 CompareStatusCount(status: .onlyInSource, count: compared.reduce(0) { $0 + $1.insertCount }),
                 CompareStatusCount(status: .differs, count: compared.reduce(0) { $0 + $1.updateCount }),
@@ -430,15 +447,22 @@ internal final class CompareSyncSession {
     // MARK: - Lifecycle
 
     /// `lastAction` is what the banner reads, so it is part of the result and is cleared with it.
-    /// Leaving it behind made the banner claim "52 differences" over a pane reading "No Comparison
-    /// Yet": changing an endpoint correctly discarded the answer, and the banner kept advertising
-    /// it. `hasWrittenToTarget` deliberately survives, because a write already happened and no
-    /// later comparison makes that untrue.
-    internal func resetComparison() {
+    /// `hasWrittenToTarget` deliberately survives, because a write already happened and no later
+    /// comparison makes that untrue.
+    ///
+    /// A pair that has not changed keeps every table's scope, because a mode or option change asks
+    /// the same tables a different question rather than naming different tables. A pair that has
+    /// changed drops them along with everything else a table list still waiting to arrive was going
+    /// to be given.
+    internal func resetComparison(keepingTableScopes: Bool = false) {
         /// The setup the work in flight was started for is the one being replaced, so it is stopped
-        /// here rather than left holding `runTask`. A preload taking that slot from an orphaned run
-        /// left Stop with nothing to cancel while the run went on reading.
+        /// here rather than left holding `runTask`.
         cancelRunningWork()
+        let carriedScopes = keepingTableScopes ? currentTableScopes : [:]
+        let carriedLegacyExclusions = keepingTableScopes ? pendingLegacyExcludedColumns : []
+        pendingSelection = []
+        pendingTableScopes = carriedScopes
+        pendingLegacyExcludedColumns = carriedLegacyExclusions
         report = nil
         sourceSnapshots = [:]
         targetSnapshots = [:]
@@ -456,8 +480,7 @@ internal final class CompareSyncSession {
         invalidateAnswer()
         setupGeneration &+= 1
         /// Every path that resets a comparison is a path that changed the setup: an endpoint, the
-        /// mode, or an option. So this is also where the setup is written down, and reopening the
-        /// window lands on the same pair instead of on two empty pickers.
+        /// mode, or an option. So this is also where the setup is written down.
         rememberSetup()
     }
 
@@ -467,8 +490,7 @@ internal final class CompareSyncSession {
     }
 
     /// What one run was started for, captured before it can suspend. Every helper takes the
-    /// caller's claim rather than reading the session again: re-reading inside a callee adopts
-    /// whatever the setup has become, which is exactly the ownership the fence is meant to check.
+    /// caller's claim rather than reading the session again.
     internal struct RunClaim: Sendable {
         internal let setup: Int
         internal let answer: Int
@@ -491,22 +513,28 @@ internal final class CompareSyncSession {
         claim.setup == setupGeneration && claim.answer == answerRevision
     }
 
-    /// The one place a table list is published, so the tables a saved comparison asked for are
-    /// applied where the list arrives rather than at the next Compare. Left in `pendingSelection`,
-    /// they were reapplied later over whatever the user had ticked in the meantime.
+    /// The one place a table list is published, so what a saved comparison or the remembered setup
+    /// asked for is applied where the list arrives rather than at the next Compare.
     internal func adoptDataPlans(_ plans: [DataComparePlan]) {
-        var adopted = plans
+        let hadPending = !pendingSelection.isEmpty || !pendingTableScopes.isEmpty
+            || !pendingLegacyExcludedColumns.isEmpty
+        var adopted = plans.map(withPendingScope)
         if !pendingSelection.isEmpty {
             for index in adopted.indices {
                 adopted[index].isEnabled = pendingSelection.contains(adopted[index].id)
             }
-            pendingSelection = []
         }
+        pendingSelection = []
+        pendingTableScopes = [:]
+        pendingLegacyExcludedColumns = []
+
         let previousSelection = selectedPlanId
         dataPlans = adopted
         hasLoadedDataPlans = true
-        /// A rebuild keeps whatever row the user was reading, when that table is still there. Only
-        /// a list that no longer holds it falls back to the first table taking part.
+        if hadPending {
+            rememberSetup()
+        }
+        /// A rebuild keeps whatever row the user was reading, when that table is still there.
         if let previousSelection, adopted.contains(where: { $0.id == previousSelection }) {
             selectedPlanId = previousSelection
             return
@@ -515,9 +543,7 @@ internal final class CompareSyncSession {
     }
 
     /// The one place a structure report's inclusions are published, so what the user ticked while
-    /// the comparison ran survives it. The Include controls stay live throughout, and a rebuild
-    /// that reset them to nothing discarded every choice made during the run. This is the same rule
-    /// the data side already follows, where a rebuilt plan carries the tick it had.
+    /// the comparison ran survives it.
     internal func adoptActions(for report: CompareReport) {
         let carried = actions
         actions = [:]
@@ -532,30 +558,33 @@ internal final class CompareSyncSession {
     }
 
     /// A comparison streams every row of both sides, so the plans it started from can be minutes
-    /// old by the time it has summaries for them, and the ticks, keys and row exclusions stay live
-    /// throughout. Writing the run's own array back put every one of those edits behind the list it
-    /// captured before the first row was read. Only the summary belongs to the run, so only the
-    /// summary is carried over, and only onto a plan still asking the question the run answered.
+    /// old by the time it has summaries for them, and the ticks, scopes and row exclusions stay
+    /// live throughout. Only the answer belongs to the run, so only the answer is carried over, and
+    /// only onto a plan still asking the question the run answered.
     internal func applyComparedSummaries(from compared: [DataComparePlan]) {
         let byId = Dictionary(compared.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for index in dataPlans.indices {
             guard let run = byId[dataPlans[index].id],
-                  run.keyColumns == dataPlans[index].keyColumns,
+                  run.scope == dataPlans[index].scope,
                   run.columns == dataPlans[index].columns else { continue }
             dataPlans[index].summary = run.summary
-            dataPlans[index].unavailableReason = run.unavailableReason
+            dataPlans[index].comparisonFailure = run.comparisonFailure
+            /// A capped preview does not list every difference, so an exclusion that falls outside
+            /// it is kept rather than dropped: forgetting it would write the row the user refused.
+            guard let summary = run.summary, !summary.truncatedEntries else { continue }
+            let listed = Set(summary.entries.map(\.keyIdentity))
+            dataPlans[index].excludedRowKeys = dataPlans[index].excludedRowKeys.intersection(listed)
         }
     }
 
-    /// After a run the report describes a target that has since changed, so it is stale rather than
+    /// After a run the answer describes a target that has since changed, so it is stale rather than
     /// wrong: it stays on screen to be read, and every action that would write again is withdrawn
-    /// until the user compares once more.
+    /// until the user compares once more. The tables stay ticked, so that Compare is one press, and
+    /// a row the user refused stays refused: it was never written, and the next comparison lists it
+    /// again.
     internal func markAppliedAndStale() {
         statements = []
         actions = [:]
-        for index in dataPlans.indices {
-            dataPlans[index].isEnabled = false
-        }
         isStaleAfterApply = true
     }
 
@@ -566,7 +595,7 @@ internal final class CompareSyncSession {
     }
 
     /// For the edits that make a computed answer wrong rather than merely restating which parts of
-    /// it to apply: a new setup, a new key column, a new set of compared columns.
+    /// it to apply: a new setup, a new key column, a new filter, a new set of compared columns.
     internal func invalidateAnswer() {
         answerRevision &+= 1
         invalidateScript()
@@ -577,8 +606,7 @@ internal final class CompareSyncSession {
     /// otherwise publish over a comparison the user has stopped.
     ///
     /// It advances them without clearing what is on screen. Apply cancels the work in flight and
-    /// then reads the very statements it is about to run, so discarding the script here left every
-    /// confirmed Apply executing nothing and reporting success.
+    /// then reads the very statements it is about to run.
     internal func cancelRunningWork() {
         progress?.cancel()
         runTask?.cancel()
@@ -587,10 +615,6 @@ internal final class CompareSyncSession {
     }
 
     /// The user's own Stop, which reports itself here rather than waiting for the task to notice.
-    /// `Task.cancel()` is cooperative and a run already inside a driver call may never observe it,
-    /// so a message published from the cancellation path is a message that may never arrive; and a
-    /// run that does observe it can no longer tell the user's Stop from being superseded by the
-    /// next run, because both reach it the same way.
     internal func stopRunningWork() {
         let stopped = activity
         cancelRunningWork()
@@ -610,6 +634,13 @@ internal final class CompareSyncSession {
 
     internal var isBusy: Bool {
         activity != .idle
+    }
+
+    /// A sync that is writing to its target owns the setup until it finishes. Changing an endpoint,
+    /// the mode, an option or a table's scope under it used to cancel the run part way and publish
+    /// its result onto the new pair.
+    internal var canChangeSetup: Bool {
+        activity != .applying
     }
 
     private static let timeFormatter: DateFormatter = {

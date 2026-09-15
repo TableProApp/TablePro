@@ -11,6 +11,7 @@ struct WelcomeActionsPanel: View {
     let onOpenFile: () -> Void
     let onImportFromURL: () -> Void
     let onImportFromApp: () -> Void
+    let onImportFromAWS: () -> Void
     let onImportConnectionsFile: () -> Void
     let onOpenProjectFolder: () -> Void
 
@@ -84,6 +85,7 @@ struct WelcomeActionsPanel: View {
                     importConnectionsFile: onImportConnectionsFile,
                     importFromURL: onImportFromURL,
                     importFromApp: onImportFromApp,
+                    importFromAWS: onImportFromAWS,
                     openProjectFolder: onOpenProjectFolder
                 ))
                 .frame(maxWidth: .infinity)

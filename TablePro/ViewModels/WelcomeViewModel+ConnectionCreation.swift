@@ -17,6 +17,8 @@ extension WelcomeViewModel {
             importConnectionsFromFile()
         case .importFromApp:
             importConnectionsFromApp()
+        case .importFromAWS:
+            importConnectionsFromAWS()
         case .importFromURL:
             urlImportPresented = true
         case .openProjectFolder:

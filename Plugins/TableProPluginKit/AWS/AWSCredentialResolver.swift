@@ -1,15 +1,93 @@
 import Foundation
 
+public enum AWSProfileKind: String, Sendable, Equatable {
+    case singleSignOn
+    case assumeRole
+    case accessKey
+    case credentialProcess
+    case webIdentity
+    case unknown
+}
+
+public enum AWSProfileCredentialSource: Sendable, Equatable {
+    case webIdentity
+    case assumeRole(roleArn: String)
+    case singleSignOn
+    case staticKeys
+    case credentialProcess(command: String)
+    case undeclared
+
+    public var kind: AWSProfileKind {
+        switch self {
+        case .webIdentity: .webIdentity
+        case .assumeRole: .assumeRole
+        case .singleSignOn: .singleSignOn
+        case .staticKeys: .accessKey
+        case .credentialProcess: .credentialProcess
+        case .undeclared: .unknown
+        }
+    }
+}
+
 public enum AWSCredentialResolver {
+    public static func credentialSource(for settings: [String: String]) -> AWSProfileCredentialSource {
+        if settings["web_identity_token_file"]?.isEmpty == false {
+            return .webIdentity
+        }
+        if let roleArn = settings["role_arn"], !roleArn.isEmpty {
+            return .assumeRole(roleArn: roleArn)
+        }
+        if declaresSSO(settings) {
+            return .singleSignOn
+        }
+        if staticCredentials(from: settings) != nil {
+            return .staticKeys
+        }
+        if let command = settings["credential_process"], !command.isEmpty {
+            return .credentialProcess(command: command)
+        }
+        return .undeclared
+    }
+
+    public static func profileKind(named profileName: String) -> AWSProfileKind {
+        credentialSource(for: settings(forProfile: profileName)).kind
+    }
+
+    public static func profileRegion(named profileName: String) -> String? {
+        guard let region = settings(forProfile: profileName)["region"], !region.isEmpty else { return nil }
+        return region
+    }
+
+    private static func settings(forProfile profileName: String) -> [String: String] {
+        AWSConfigFile.mergedProfileSettings(
+            profileName: profileName,
+            configContents: AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath),
+            credentialsContents: AWSConfigFile.readFile(AWSConfigFile.defaultCredentialsPath)
+        )
+    }
+
     public static func resolve(source: String, fields: [String: String]) async throws -> AWSCredentials {
+        try await resolve(source: source, fields: fields, session: AWSHTTP.shared)
+    }
+
+    public static func resolve(
+        source: String,
+        fields: [String: String],
+        session: URLSession
+    ) async throws -> AWSCredentials {
         switch source {
-        case "profile":
-            return try await resolveProfile(fields: fields)
-        case "sso":
-            return try await resolveSSO(fields: fields)
+        case "profile", "sso":
+            return try await resolveProfile(fields: fields, session: session)
         default:
             return try resolveAccessKey(fields: fields)
         }
+    }
+
+    public static func resolveProfile(
+        named profileName: String,
+        session: URLSession = AWSHTTP.shared
+    ) async throws -> AWSCredentials {
+        try await resolveProfileChain(profileName: profileName, depth: 0, session: session)
     }
 
     private static func resolveAccessKey(fields: [String: String]) throws -> AWSCredentials {
@@ -28,12 +106,16 @@ public enum AWSCredentialResolver {
         )
     }
 
-    private static func resolveProfile(fields: [String: String]) async throws -> AWSCredentials {
+    private static func resolveProfile(fields: [String: String], session: URLSession) async throws -> AWSCredentials {
         let profileName = fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
-        return try await resolveProfileChain(profileName: profileName, depth: 0)
+        return try await resolveProfileChain(profileName: profileName, depth: 0, session: session)
     }
 
-    private static func resolveProfileChain(profileName: String, depth: Int) async throws -> AWSCredentials {
+    private static func resolveProfileChain(
+        profileName: String,
+        depth: Int,
+        session: URLSession
+    ) async throws -> AWSCredentials {
         guard depth < 5 else {
             throw AWSAuthError.assumeRoleChainTooDeep(profileName)
         }
@@ -47,40 +129,90 @@ public enum AWSCredentialResolver {
             throw AWSAuthError.profileIncomplete(profileName)
         }
 
-        if let roleArn = settings["role_arn"], !roleArn.isEmpty {
+        switch credentialSource(for: settings) {
+        case .webIdentity:
+            throw AWSAuthError.webIdentityUnsupported(profileName)
+
+        case .assumeRole(let roleArn):
             if let mfaSerial = settings["mfa_serial"], !mfaSerial.isEmpty {
                 throw AWSAuthError.mfaUnsupported(profileName)
             }
-            let base = try await baseCredentials(for: settings, profileName: profileName, depth: depth)
+            let base = try await baseCredentials(
+                for: settings,
+                profileName: profileName,
+                depth: depth,
+                session: session
+            )
             return try await AWSSTS.assumeRole(
                 roleArn: roleArn,
                 roleSessionName: settings["role_session_name"] ?? defaultSessionName(for: profileName),
                 externalId: settings["external_id"],
                 durationSeconds: settings["duration_seconds"].flatMap(Int.init),
-                region: settings["region"] ?? "us-east-1",
+                region: signingRegion(for: settings, roleArn: roleArn),
                 baseCredentials: base,
-                session: URLSession.shared
+                session: session
             )
-        }
 
-        if let credentials = staticCredentials(from: settings) {
+        case .singleSignOn:
+            return try await resolveSSO(profileName: profileName, session: session)
+
+        case .staticKeys:
+            guard let credentials = staticCredentials(from: settings) else {
+                throw AWSAuthError.profileIncomplete(profileName)
+            }
             return credentials
-        }
 
-        if let command = settings["credential_process"], !command.isEmpty {
+        case .credentialProcess(let command):
             return try await runCredentialProcess(command, profileName: profileName)
-        }
 
-        throw AWSAuthError.profileIncomplete(profileName)
+        case .undeclared:
+            throw AWSAuthError.profileIncomplete(profileName)
+        }
+    }
+
+    private static func declaresSSO(_ settings: [String: String]) -> Bool {
+        let keys = ["sso_session", "sso_start_url", "sso_account_id", "sso_role_name"]
+        return keys.contains { (settings[$0] ?? "").isEmpty == false }
+    }
+
+    public static func signingRegion(for settings: [String: String], roleArn: String? = nil) -> String {
+        if let region = settings["region"], !region.isEmpty {
+            return AWSPartition.canonicalRegion(region)
+        }
+        let partition = roleArn.flatMap(AWSPartition.resolve(arn:))
+        let environment = ProcessInfo.processInfo.environment
+        for key in ["AWS_REGION", "AWS_DEFAULT_REGION"] {
+            guard let region = environment[key], !region.isEmpty else { continue }
+            let canonical = AWSPartition.canonicalRegion(region)
+            guard let partition, AWSPartition.resolve(region: canonical) != partition else {
+                return canonical
+            }
+        }
+        return partition?.defaultRegion ?? AWSPartition.standard.defaultRegion
+    }
+
+    public static func singleSignOnProfile(rootedAt profileName: String, depth: Int = 0) -> String? {
+        guard depth < 5 else { return nil }
+        let settings = settings(forProfile: profileName)
+        switch credentialSource(for: settings) {
+        case .singleSignOn:
+            return profileName
+        case .assumeRole:
+            guard let source = settings["source_profile"], !source.isEmpty else { return nil }
+            return singleSignOnProfile(rootedAt: source, depth: depth + 1)
+        default:
+            return nil
+        }
     }
 
     private static func baseCredentials(
         for settings: [String: String],
         profileName: String,
-        depth: Int
+        depth: Int,
+        session: URLSession
     ) async throws -> AWSCredentials {
         if let sourceProfile = settings["source_profile"], !sourceProfile.isEmpty {
-            return try await resolveProfileChain(profileName: sourceProfile, depth: depth + 1)
+            return try await resolveProfileChain(profileName: sourceProfile, depth: depth + 1, session: session)
         }
         if let credentialSource = settings["credential_source"], !credentialSource.isEmpty {
             guard credentialSource == "Environment" else {
@@ -267,8 +399,7 @@ public enum AWSCredentialResolver {
         return withFractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
-    private static func resolveSSO(fields: [String: String]) async throws -> AWSCredentials {
-        let profileName = fields["awsProfileName"].flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+    private static func resolveSSO(profileName: String, session: URLSession) async throws -> AWSCredentials {
         let cacheDir = NSString("~/.aws/sso/cache").expandingTildeInPath
 
         guard let configContent = AWSConfigFile.readFile(AWSConfigFile.defaultConfigPath) else {
@@ -285,7 +416,7 @@ public enum AWSCredentialResolver {
             accessToken: accessToken,
             settings: settings,
             profileName: profileName,
-            session: URLSession.shared
+            session: session
         )
         return AWSCredentials(
             accessKeyId: credentials.accessKeyId,

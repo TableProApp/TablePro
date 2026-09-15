@@ -71,13 +71,13 @@ extension ConnectionSignInProvider {
         message: { fields in
             String(
                 format: String(localized: "The SSO session for profile \"%@\" has expired. Sign in with your browser?"),
-                AWSSSOLoginService.profileName(from: fields)
+                AWSSSOLoginService.signInProfileName(from: fields)
             )
         },
         signedInMessage: String(localized: "AWS SSO sign-in finished. Test the connection again."),
         failureTitle: String(localized: "AWS SSO Sign-In Failed"),
         signIn: { fields, _ in
-            try await AWSSSOLoginService.signIn(profileName: AWSSSOLoginService.profileName(from: fields))
+            try await AWSSSOLoginService.signIn(profileName: AWSSSOLoginService.signInProfileName(from: fields))
         }
     )
 

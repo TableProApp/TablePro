@@ -25,6 +25,14 @@ public final class EmphasisManager {
         let layer: CAShapeLayer
         private(set) var textLayer: CATextLayer?
 
+        /// Set while the layer's geometry may not match the current text layout.
+        ///
+        /// Starts set: a layer has no geometry until something measures its text.
+        var needsGeometryUpdate = true
+
+        /// The vertical span the layer was last drawn over, `nil` while it draws nothing.
+        var drawnYSpan: ClosedRange<CGFloat>?
+
         init(emphasis: Emphasis, layer: CAShapeLayer) {
             self.emphasis = emphasis
             self.layer = layer
@@ -57,7 +65,14 @@ public final class EmphasisManager {
     private let activeColor: NSColor = .findHighlightColor
     private let inactiveColor: NSColor = NSColor.lightGray.withAlphaComponent(0.4)
     private var originalSelectionColor: NSColor?
+    private var hasPendingGeometryUpdates = false
     let toolTips = EmphasisToolTips()
+
+#if DEBUG
+    /// Counts the emphases whose geometry has been measured, so a test can prove a pass that laid out nothing new
+    /// measured nothing.
+    var geometryUpdateCount = 0
+#endif
 
     weak var textView: TextView?
 
@@ -87,7 +102,6 @@ public final class EmphasisManager {
 
         let layers = emphases.map { createEmphasisLayer(for: $0) }
         emphasisGroups[id, default: []].append(contentsOf: layers)
-        layers.forEach { registerToolTip(for: $0) }
         // Handle selections
         handleSelections(for: emphases)
 
@@ -186,45 +200,148 @@ public final class EmphasisManager {
     // MARK: - Drawing Layers
 
     /// Updates the positions and bounds of all emphasis layers to match the current text layout.
+    ///
+    /// Layout reports what it moved through ``layoutDidUpdate(_:)``, and that is what ordinarily keeps these layers
+    /// over their text. This measures every emphasis whether its text moved or not, for a caller that has changed
+    /// the layout behind the layout manager's back.
     public func updateLayerBackgrounds() {
-        for emphasis in emphasisGroups.flatMap(\.value) {
-            guard let shapePath = makeShapePath(
-                forStyle: emphasis.emphasis.style,
-                range: emphasis.emphasis.range
-            ) else {
-                // An emphasis marks specific text. Once that text is gone there is no shape to
-                // draw, and the layer would otherwise keep painting the last one it had, over
-                // whatever now occupies that place. Hiding rather than clearing is what lets the
-                // shape come back when the range lays out again.
-                emphasis.layer.isHidden = true
-                emphasis.textLayer?.isHidden = true
-                toolTips.unregister(emphasis.layer, in: textView)
-                continue
+        withoutImplicitAnimations {
+            var pendingRemains = false
+            forEachEmphasisLayer { emphasisLayer in
+                updateGeometry(of: emphasisLayer)
+                pendingRemains = pendingRemains || emphasisLayer.needsGeometryUpdate
             }
-            emphasis.layer.isHidden = false
-            emphasis.textLayer?.isHidden = false
-            draw(shapePath, on: emphasis.layer)
-            if !emphasis.isAttached {
-                attach(emphasis)
-            }
-
-            // Update text layer if it exists
-            if let textLayer = emphasis.textLayer, var bounds = shapePath.drawableBounds {
-                bounds.origin.y += 1 // Move down by 1 pixel
-                textLayer.frame = bounds
-            }
-            registerToolTip(for: emphasis)
+            hasPendingGeometryUpdates = pendingRemains
         }
+    }
+
+    /// Brings the emphasis layers a layout pass moved back over their text.
+    ///
+    /// Only the emphases the pass changed are measured, and only once the lines they mark have been laid out. Every
+    /// other emphasis costs one flag check, which is what keeps a document full of search matches from measuring all
+    /// of them on every frame of a scroll.
+    /// - Parameter update: What the layout pass laid out and what it moved.
+    func layoutDidUpdate(_ update: TextLayoutUpdate) {
+        if let invalidatedRange = update.invalidatedRange {
+            markNeedsGeometryUpdate(in: invalidatedRange)
+        }
+        guard hasPendingGeometryUpdates else { return }
+
+        withoutImplicitAnimations {
+            var pendingRemains = false
+            forEachEmphasisLayer { emphasisLayer in
+                guard emphasisLayer.needsGeometryUpdate else { return }
+                guard isLaidOut(emphasisLayer, in: update) else {
+                    pendingRemains = true
+                    return
+                }
+                updateGeometry(of: emphasisLayer)
+                pendingRemains = pendingRemains || emphasisLayer.needsGeometryUpdate
+            }
+            hasPendingGeometryUpdates = pendingRemains
+        }
+    }
+
+    private func markNeedsGeometryUpdate(in range: NSRange) {
+        forEachEmphasisLayer { emphasisLayer in
+            guard emphasisLayer.emphasis.range.overlaps(range) else { return }
+            emphasisLayer.needsGeometryUpdate = true
+            hasPendingGeometryUpdates = true
+        }
+    }
+
+    /// Whether this pass laid out enough of the document to measure the emphasis.
+    ///
+    /// The layer's own drawn span counts as well as the range of its text. An emphasis whose text the pass has
+    /// pushed out of the span it laid out leaves its layer behind, over whatever has moved in under it, so a layer
+    /// standing inside the span is measured again even when its text no longer is.
+    private func isLaidOut(_ emphasisLayer: EmphasisLayer, in update: TextLayoutUpdate) -> Bool {
+        if let laidOutRange = update.laidOutRange, emphasisLayer.emphasis.range.overlaps(laidOutRange) {
+            return true
+        }
+        guard let drawnYSpan = emphasisLayer.drawnYSpan else { return false }
+        return drawnYSpan.overlaps(update.laidOutYSpan)
+    }
+
+    private func forEachEmphasisLayer(_ body: (EmphasisLayer) -> Void) {
+        for group in emphasisGroups.values {
+            for emphasisLayer in group {
+                body(emphasisLayer)
+            }
+        }
+    }
+
+    /// Runs `body` with Core Animation's implicit actions off.
+    ///
+    /// These layers are sublayers of the text view's own layer rather than a view's backing layer, so Core Animation
+    /// hands them an action for a bounds or position change made outside a drawing pass. A highlight marks text, and
+    /// has to arrive where that text is rather than slide there.
+    private func withoutImplicitAnimations(_ body: () -> Void) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        body()
+        CATransaction.commit()
+    }
+
+    /// Measures the emphasis against the current text layout and moves its layers there.
+    /// - Parameter emphasisLayer: The emphasis to measure.
+    /// - Returns: Whether the emphasis was given geometry and attached to the text view.
+    @discardableResult
+    private func updateGeometry(of emphasisLayer: EmphasisLayer) -> Bool {
+#if DEBUG
+        geometryUpdateCount += 1
+#endif
+        guard let shapePath = makeShapePath(
+            forStyle: emphasisLayer.emphasis.style,
+            range: emphasisLayer.emphasis.range
+        ) else {
+            // An emphasis marks specific text. Once that text is gone there is no shape to
+            // draw, and the layer would otherwise keep painting the last one it had, over
+            // whatever now occupies that place. Hiding rather than clearing is what lets the
+            // shape come back when the range lays out again.
+            emphasisLayer.layer.isHidden = true
+            emphasisLayer.textLayer?.isHidden = true
+            emphasisLayer.drawnYSpan = nil
+            toolTips.unregister(emphasisLayer.layer, in: textView)
+            emphasisLayer.needsGeometryUpdate = rangeIsInDocument(emphasisLayer.emphasis.range)
+            return false
+        }
+
+        emphasisLayer.layer.isHidden = false
+        emphasisLayer.textLayer?.isHidden = false
+        draw(shapePath, on: emphasisLayer.layer)
+        if !emphasisLayer.isAttached {
+            attach(emphasisLayer)
+        }
+
+        // Update text layer if it exists
+        if let textLayer = emphasisLayer.textLayer, var bounds = shapePath.drawableBounds {
+            bounds.origin.y += 1 // Move down by 1 pixel
+            textLayer.frame = bounds
+        }
+        registerToolTip(for: emphasisLayer)
+
+        emphasisLayer.drawnYSpan = shapePath.drawableBounds.map { $0.minY...Swift.max($0.minY, $0.maxY) }
+        emphasisLayer.needsGeometryUpdate = !emphasisLayer.isAttached
+        return emphasisLayer.isAttached
+    }
+
+    /// Whether the range still names text that is in the document.
+    ///
+    /// An emphasis an edit has taken out of the document has nothing left to draw and nothing to wait for; only
+    /// another edit could bring its text back, and that marks it again. One whose text is still there but that has
+    /// no shape yet is waiting on its lines to be laid out, and stays marked for that.
+    private func rangeIsInDocument(_ range: NSRange) -> Bool {
+        guard let documentLength = textView?.textStorage.length else { return false }
+        return range.resolved(inDocumentOfLength: documentLength) == range
     }
 
     private func createEmphasisLayer(for emphasis: Emphasis) -> EmphasisLayer {
         let emphasisLayer = EmphasisLayer(emphasis: emphasis, layer: createShapeLayer(for: emphasis))
-        guard let shapePath = makeShapePath(forStyle: emphasis.style, range: emphasis.range) else {
+        guard updateGeometry(of: emphasisLayer) else {
+            hasPendingGeometryUpdates = hasPendingGeometryUpdates || emphasisLayer.needsGeometryUpdate
             return emphasisLayer
         }
-
-        draw(shapePath, on: emphasisLayer.layer)
-        attach(emphasisLayer)
 
         if emphasis.inactive == false && emphasis.style == .standard {
             applyPopAnimation(to: emphasisLayer.layer)
@@ -258,10 +375,7 @@ public final class EmphasisManager {
         // anyway puts the emphasis somewhere it does not belong: `roundedPathForRange` answers a
         // range past the end with the caret rect at the end of the document, so a stale search
         // highlight would reappear there rather than disappear.
-        guard let documentLength = textView?.textStorage.length,
-              range.resolved(inDocumentOfLength: documentLength) == range else {
-            return nil
-        }
+        guard rangeIsInDocument(range) else { return nil }
 
         switch emphasisStyle {
         case .standard, .outline:
