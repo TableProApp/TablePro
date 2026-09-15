@@ -90,6 +90,12 @@
       <description>GtkSourceView style scheme id for the SQL editor.</description>
     </key>
 
+    <key name="connect-dialog-driver" type="s">
+      <default>'postgres'</default>
+      <summary>Driver the connect dialog opens with</summary>
+      <description>Id of the driver last connected to, so the dialog opens on it with its own default port.</description>
+    </key>
+
     <key name="csv-null-to-empty" type="b">
       <default>true</default>
       <summary>Write NULL as an empty field</summary>

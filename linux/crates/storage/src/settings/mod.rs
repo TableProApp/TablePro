@@ -122,6 +122,16 @@ impl AppSettings {
         self.set_string(keys::STYLE_SCHEME, scheme)
     }
 
+    /// The driver the connect dialog opens on. Remembered so the
+    /// common case is one click, not a combo hunt every time.
+    pub fn connect_dialog_driver(&self) -> String {
+        self.settings.string(keys::CONNECT_DIALOG_DRIVER).into()
+    }
+
+    pub fn set_connect_dialog_driver(&self, driver_id: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::CONNECT_DIALOG_DRIVER, driver_id)
+    }
+
     pub fn csv_options(&self) -> CsvOptions {
         CsvOptions {
             null_to_empty: self.settings.boolean(keys::CSV_NULL_TO_EMPTY),

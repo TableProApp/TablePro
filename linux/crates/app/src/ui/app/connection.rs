@@ -18,6 +18,7 @@ impl App {
             .launch(ConnectDialogInit {
                 storage: self.storage.clone(),
                 registry: self.registry.clone(),
+                settings: self.settings.clone(),
                 tasks: self.tasks.clone(),
             })
             .forward(sender.input_sender(), |out| match out {
