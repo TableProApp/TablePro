@@ -6,9 +6,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 @Suite("Completion Engine", .serialized)
 struct CompletionEngineTests {
@@ -187,8 +187,8 @@ struct CompletionEngineTests {
 
         for position in positions {
             let result = await engine.getCompletions(text: text, cursorPosition: position)
-            if result != nil {
-                #expect(result!.replacementRange.location >= 0)
+            if let result {
+                #expect(result.replacementRange.location >= 0)
             }
         }
     }
