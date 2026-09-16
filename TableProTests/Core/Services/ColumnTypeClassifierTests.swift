@@ -1035,6 +1035,35 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "text[]").displayName == "Text Array")
         }
 
+        /// PostgreSQL spells a domain's array through `format_type`, which puts the parameters
+        /// before the brackets. The base/params split dropped everything after the last `)`, so the
+        /// `[]` was lost and the column classified as its element: a `bit(8)[]` got the boolean
+        /// dropdown, which writes a scalar into an array column.
+        @Test("A parameterized array keeps its brackets")
+        func classifiesParameterizedArrays() {
+            let numeric = classifier.classify(rawTypeName: "numeric(10,2)[]")
+            #expect(numeric.arrayElement == .decimal(rawType: "numeric(10,2)"))
+            #expect(numeric.rawType == "numeric(10,2)[]")
+            #expect(numeric.supportsElementEditing)
+
+            #expect(classifier.classify(rawTypeName: "bit(8)[]").arrayElement != nil)
+            #expect(!classifier.classify(rawTypeName: "bit(8)[]").isBooleanType)
+            #expect(
+                classifier.classify(rawTypeName: "character varying(255)[]").arrayElement
+                    == .text(rawType: "character varying(255)")
+            )
+            #expect(classifier.classify(rawTypeName: "timestamp(3) with time zone[]").arrayElement != nil)
+        }
+
+        /// The app's own spelling for an enum array puts the `[]` on the base and the labels in the
+        /// parentheses, which is the one array form the suffix test cannot see.
+        @Test("The enum array spelling still resolves its labels")
+        func classifiesEnumArraySpelling() {
+            let type = classifier.classify(rawTypeName: "ENUM[](mood)")
+            #expect(type.arrayElement?.isEnumType == true)
+            #expect(type.rawType == "ENUM[](mood)")
+        }
+
         @Test("Types that are not bracket arrays keep their existing classification")
         func leavesOtherTypesAlone() {
             #expect(classifier.classify(rawTypeName: "ARRAY").isJsonType)

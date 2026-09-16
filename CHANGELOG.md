@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.
 - Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
