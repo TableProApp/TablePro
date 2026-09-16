@@ -297,22 +297,23 @@ public final class SuggestionController: NSWindowController {
 
         guard !activeTextView.textView.hasMarkedText() else { return event }
 
-        switch Int(event.keyCode) {
-        case kVK_Escape:
+        switch SuggestionKeyPolicy.outcome(
+            forKeyCode: Int(event.keyCode),
+            modifiers: event.modifierFlags,
+            hasSelection: model.selectedItem != nil
+        ) {
+        case .dismiss:
             close()
             return nil
-        case kVK_DownArrow:
-            model.moveDown()
+        case .moveSelection(let delta):
+            if delta > 0 { model.moveDown() } else { model.moveUp() }
             return nil
-        case kVK_UpArrow:
-            model.moveUp()
-            return nil
-        case kVK_Return, kVK_Tab:
+        case .applySelection:
             if let item = model.selectedItem {
                 model.applySelectedItem(item: item)
             }
             return nil
-        default:
+        case .passThrough:
             return event
         }
     }

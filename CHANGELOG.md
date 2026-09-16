@@ -76,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Cmd+Return` running nothing while the editor's autocomplete list is open.
+- Dead `Return`, `Tab` and arrow keys over an autocomplete list showing "No Completions".
 - `Return` in the raw SQL filter accepting a suggestion nobody selected instead of applying the filter.
 - `Return` on a filter value replacing what was typed with the first suggestion.
 - Filter autocomplete opening a full column list where the editor's stays shut.
