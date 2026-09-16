@@ -283,11 +283,11 @@ struct FilterRowView: View {
             }
         } label: {
             operatorMenuTitle
+                .accessibilityLabel(String(localized: "Filter operator"))
         }
         .menuStyle(.button)
         .controlSize(.small)
         .fixedSize()
-        .accessibilityLabel(String(localized: "Filter operator"))
         .accessibilityValue(operatorAccessibilityValue)
         .help(caseSensitivityHelp)
     }

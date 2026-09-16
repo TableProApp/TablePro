@@ -13,7 +13,6 @@
 import XCTest
 
 final class ResultStatementLinkUITests: UITestCase {
-
     /// Three statements, none of them naming a single table, so every result has to fall back to naming itself. Before
     /// this change the strip read "Result 1", "Result 2", "Result 3".
     private let script = """
@@ -28,15 +27,19 @@ final class ResultStatementLinkUITests: UITestCase {
 
         let menu = openChooser(in: app)
         let items = menu.menuItems
-        let labels = (0 ..< items.count).map { items.element(boundBy: $0).label }
+        /// `title`, not `label`, for the same reason the chooser itself is read that way: a name
+        /// that comes from the item's own content reaches XCUITest as `AXTitle`.
+        let names = (0 ..< items.count).map { items.element(boundBy: $0).title }
+        let descriptions = (0 ..< items.count).map { items.element(boundBy: $0).label }
 
         XCTAssertTrue(
-            labels.contains { $0.contains("monthly totals") },
-            "A statement with a leading comment is named after it, got \(labels)"
+            names.contains { $0.contains("monthly totals") },
+            "A statement with a leading comment is named after it, got titles \(names) labels \(descriptions)"
         )
-        XCTAssertFalse(
-            labels.filter { $0.hasPrefix("Result ") }.count == 3,
-            "Results must not all fall back to the positional name, got \(labels)"
+        XCTAssertNotEqual(
+            names.filter { $0.hasPrefix("Result ") }.count,
+            3,
+            "Results must not all fall back to the positional name, got \(names)"
         )
         app.typeKey(.escape, modifierFlags: [])
     }
@@ -92,9 +95,11 @@ final class ResultStatementLinkUITests: UITestCase {
             .matching(identifier: "result-set-menu")
             .firstMatch
         XCTAssertTrue(chooser.waitToExist(timeout: 20), "The script must produce a result per statement")
+        /// `title`, not `label`: the chooser is named by its own label content, which reaches
+        /// XCUITest as `AXTitle`. `label` is `AXDescription` and stays empty for such a control.
         XCTAssertTrue(
-            waitForPredicate(timeout: 15) { chooser.label.contains("3") },
-            "Three statements must produce three results, got \(chooser.label)"
+            waitForPredicate(timeout: 15) { chooser.title.contains("3") },
+            "Three statements must produce three results, got \(chooser.title)"
         )
         return app
     }

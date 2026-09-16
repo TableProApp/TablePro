@@ -98,13 +98,13 @@ internal struct AssistantPaneView: View {
             }
         } label: {
             icon("clock")
+                .accessibilityLabel(String(localized: "Conversation history"))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .frame(width: 24, height: 22)
         .contentShape(Rectangle())
         .help(String(localized: "Conversation history"))
-        .accessibilityLabel(String(localized: "Conversation history"))
     }
 
     private func icon(_ systemName: String) -> some View {

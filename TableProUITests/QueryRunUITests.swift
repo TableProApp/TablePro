@@ -56,9 +56,12 @@ final class QueryRunUITests: UITestCase {
             chooser.waitToExist(timeout: 30),
             "Two statements must produce two results, which the status bar's chooser reports"
         )
+        /// `title`, not `label`. A SwiftUI `Menu` named by its own label content publishes that name
+        /// as `AXTitle`, which XCUITest exposes as `title`; `label` is `AXDescription` and is what
+        /// `.accessibilityLabel` would have filled, had it not wiped the name instead.
         XCTAssertTrue(
-            waitForPredicate(timeout: 10) { chooser.label.contains("2") },
-            "The chooser's title counts the results: expected it to name two, got \(chooser.label)"
+            waitForPredicate(timeout: 10) { chooser.title.contains("2") },
+            "The chooser's title counts the results: expected it to name two, got \(chooser.title)"
         )
     }
 

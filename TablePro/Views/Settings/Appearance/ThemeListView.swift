@@ -90,12 +90,12 @@ internal struct ThemeListView: View {
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)
+                        .accessibilityLabel(Text("Add Theme"))
                 }
                 .menuIndicator(.hidden)
                 .buttonStyle(.borderless)
                 .frame(width: 28)
                 .help(Text("Add Theme"))
-                .accessibilityLabel(Text("Add Theme"))
 
                 Button {
                     showDeleteConfirmation = true
@@ -124,12 +124,12 @@ internal struct ThemeListView: View {
                 } label: {
                     Image(systemName: "gearshape")
                         .frame(width: 24, height: 24)
+                        .accessibilityLabel(Text("Theme Actions"))
                 }
                 .menuIndicator(.hidden)
                 .buttonStyle(.borderless)
                 .frame(width: 28)
                 .help(Text("Theme Actions"))
-                .accessibilityLabel(Text("Theme Actions"))
 
                 Spacer()
             }

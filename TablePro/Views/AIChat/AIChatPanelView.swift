@@ -440,11 +440,11 @@ struct AIChatPanelView: View {
                 Image(systemName: "at")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(String(localized: "Attach context"))
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help(String(localized: "Attach context"))
-            .accessibilityLabel(String(localized: "Attach context"))
         }
     }
 
@@ -480,11 +480,11 @@ struct AIChatPanelView: View {
             Image(systemName: "command")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel(String(localized: "Slash commands"))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help(String(localized: "Slash commands"))
-        .accessibilityLabel(String(localized: "Slash commands"))
     }
 
     @ViewBuilder

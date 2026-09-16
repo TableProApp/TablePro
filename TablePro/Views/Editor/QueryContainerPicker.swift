@@ -70,10 +70,10 @@ struct QueryContainerPicker: View {
                     .lineLimit(1)
             }
             .foregroundStyle(.secondary)
+            .accessibilityLabel(scopeAccessibilityLabel)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .accessibilityLabel(scopeAccessibilityLabel)
     }
 
     private func containerButton(_ container: DatabaseMetadata) -> some View {

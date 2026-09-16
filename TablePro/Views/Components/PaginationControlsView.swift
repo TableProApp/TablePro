@@ -85,13 +85,13 @@ struct PaginationControlsView: View {
         } label: {
             Text(pagination.pageSize.formatted())
                 .monospacedDigit()
+                .accessibilityLabel(String(localized: "Rows per page"))
         }
         .menuStyle(.button)
         .fixedSize()
         .controlSize(.small)
         .disabled(pagination.isLoading)
         .help(String(localized: "Rows per page"))
-        .accessibilityLabel(String(localized: "Rows per page"))
         .accessibilityValue(pagination.pageSize.formatted())
         .accessibilityIdentifier("pagination-page-size")
         .popover(isPresented: $showCustomPopover, arrowEdge: .top) {

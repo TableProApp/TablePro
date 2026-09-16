@@ -135,11 +135,11 @@ struct HighlightRuleRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityLabel(String(localized: "Rule operator"))
         }
         .menuStyle(.button)
         .controlSize(.small)
         .fixedSize()
-        .accessibilityLabel(String(localized: "Rule operator"))
         .accessibilityValue(rule.filterOperator.displayName)
     }
 

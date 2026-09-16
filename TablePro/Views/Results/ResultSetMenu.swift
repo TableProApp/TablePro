@@ -66,13 +66,13 @@ struct ResultSetMenu: View {
                 }
                 Text(isSpelledOut ? model.title : model.compactTitle)
             }
+            .accessibilityLabel(model.title)
         }
         .menuStyle(.button)
         .accessoryBarStyle()
         .controlSize(.small)
         .fixedSize()
         .help(String(localized: "Choose which result this pane shows"))
-        .accessibilityLabel(model.title)
         .accessibilityIdentifier("result-set-menu")
     }
 }
