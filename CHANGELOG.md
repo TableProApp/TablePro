@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Query > Clear Query** and **Query > Clear Results**.
 - Result chooser in the status bar, naming the result on screen and offering Pin, Unpin, Close and Close Others.
 - A reason on a dimmed Run, Explain, Format or Favorite saying why it cannot run.
+- Formatted JSON inspection and per-element editing for PostgreSQL `jsonb[]` and `json[]` columns. (#2897)
+- Array element editor in the row inspector.
+- **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
 
 ### Changed
 
@@ -65,9 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Ctrl+Cmd+J` from the editor's reserved shortcuts, so it can be bound in Settings > Keyboard.
 - Result tab strip above the query results, and the "Query" heading above the editor.
 - Trash button that cleared the query and the results under one name.
+- **Auto-uppercase keywords** in Settings > Editor, replaced by **Keyword case**.
 
 ### Fixed
 
+- Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
 - Empty Elasticsearch and Weaviate exports, which asked the engine for `SELECT * FROM`.
@@ -183,6 +188,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
 - AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
 - Autocomplete committing a different column between launches when two scored the same.
+- MongoDB autocomplete inserting `$MATCH` and `DB`, which the server rejects.
+- ClickHouse autocomplete offering 18 function names the server rejects, `TOSTRING` and `UNIQ` among them.
+- Completion inserted beside a non-ASCII prefix instead of replacing it: `SELECT 名` became `SELECT 名名前`.
+- Caret landing after the closing parenthesis when accepting a function in the filter panel's Raw SQL field.
 
 ### Security
 
