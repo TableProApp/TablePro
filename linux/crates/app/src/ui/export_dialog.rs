@@ -11,15 +11,21 @@ use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOpt
 enum Format {
     Csv,
     Json,
+    Markdown,
+    Html,
+    Xml,
 }
 
 impl Format {
-    const ALL: [Format; 2] = [Format::Csv, Format::Json];
+    const ALL: [Format; 5] = [Format::Csv, Format::Json, Format::Markdown, Format::Html, Format::Xml];
 
     fn label(self) -> &'static str {
         match self {
             Format::Csv => "CSV",
             Format::Json => "JSON",
+            Format::Markdown => "Markdown",
+            Format::Html => "HTML",
+            Format::Xml => "XML",
         }
     }
 
@@ -27,6 +33,9 @@ impl Format {
         match self {
             Format::Csv => "csv",
             Format::Json => "json",
+            Format::Markdown => "md",
+            Format::Html => "html",
+            Format::Xml => "xml",
         }
     }
 
@@ -34,6 +43,9 @@ impl Format {
         match self {
             Format::Csv => "text/csv",
             Format::Json => "application/json",
+            Format::Markdown => "text/markdown",
+            Format::Html => "text/html",
+            Format::Xml => "application/xml",
         }
     }
 }
@@ -284,12 +296,18 @@ fn save_with_file_dialog(
 
     let parent_for_alert = parent.clone();
     let toast_overlay = toast_overlay.clone();
+    // The HTML document titles itself after the export, and the
+    // callback outlives this call, so it carries its own copy.
+    let title = name.to_owned();
     file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
         let Ok(file) = outcome else { return };
         let Some(path) = file.path() else { return };
         let encoded = match format {
             Format::Csv => export::render_csv(&result.columns, &result.rows, &options).map_err(|e| e.to_string()),
             Format::Json => Ok(export::render_json(&result.columns, &result.rows)),
+            Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows)),
+            Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title)),
+            Format::Xml => Ok(export::render_xml(&result.columns, &result.rows)),
         };
         let written = encoded.and_then(|text| std::fs::write(&path, text).map_err(|e| e.to_string()));
         match written {
