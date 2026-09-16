@@ -169,7 +169,8 @@ internal struct InspectorFieldRow: View {
             Label { Text("Value Options") } icon: { EmptyView() }
         }
         .labelStyle(.iconOnly)
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.visible)
         .fixedSize()
         .help(String(localized: "Value Options"))

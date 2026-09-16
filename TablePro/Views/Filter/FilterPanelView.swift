@@ -219,7 +219,8 @@ struct FilterPanelView: View {
             Image(systemName: "ellipsis.circle")
                 .accessibilityLabel(String(localized: "Filter options"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .help(String(localized: "Filter options"))
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {

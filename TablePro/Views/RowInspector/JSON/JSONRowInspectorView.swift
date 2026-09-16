@@ -96,7 +96,8 @@ struct JSONRowInspectorView: View {
                 .frame(width: 22, height: 20)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .help(String(localized: "JSON view options"))

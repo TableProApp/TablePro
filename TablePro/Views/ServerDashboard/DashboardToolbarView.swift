@@ -22,7 +22,8 @@ struct DashboardToolbarView: View {
                 Label(viewModel.refreshInterval.displayLabel, systemImage: "arrow.clockwise")
                     .monospacedDigit()
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .fixedSize()
 
             Button {

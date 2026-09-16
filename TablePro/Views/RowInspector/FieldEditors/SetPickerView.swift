@@ -41,7 +41,8 @@ internal struct SetPickerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
         .background(.quinary, in: RoundedRectangle(cornerRadius: 5))

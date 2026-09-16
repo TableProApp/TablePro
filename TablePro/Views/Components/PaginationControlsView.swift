@@ -227,7 +227,8 @@ struct PaginationControlsView: View {
             } label: {
                 pageIndicatorLabel
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .disabled(pagination.isLoading)
             .help(String(localized: "Go to page"))
             .pageIndicatorAccessibility(value: pageIndicatorAccessibilityValue)
