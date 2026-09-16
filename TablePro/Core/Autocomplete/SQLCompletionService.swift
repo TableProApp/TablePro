@@ -53,8 +53,15 @@ final class SQLCompletionService: QueryCompletionService {
         SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
     }
 
+    /// The incremental path reads its own prefix off the live token, which carries an opening
+    /// identifier quote, so it takes the same match text the analyzer resolves for a fresh request.
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        engine.rank(items, prefix: prefix, context: lastContext, keywordCase: keywordCase)
+        engine.rank(
+            items,
+            prefix: SQLTokenBoundary.matchText(of: prefix),
+            context: lastContext,
+            keywordCase: keywordCase
+        )
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {

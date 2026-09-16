@@ -126,6 +126,20 @@ struct CompletionEngineTests {
         }
     }
 
+    /// The seam the quoted prefix died at: every candidate filtered out, so the engine reported no
+    /// completion context at all and the popup closed.
+    @Test(
+        "A quoted table prefix still produces a completion context",
+        arguments: ["SELECT * FROM `cat", "SELECT * FROM `cat`"]
+    )
+    func quotedTablePrefixProducesAContext(text: String) async {
+        await schemaProvider.updateTables([TestFixtures.makeTableInfo(name: "category")])
+        let result = await engine.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(result != nil)
+        #expect(result?.items.contains { $0.label == "category" } == true)
+    }
+
     @Test("WHERE clause returns items")
     func testWhereClause() async {
         let text = "SELECT * FROM users WHERE "

@@ -118,6 +118,26 @@ struct QueryCompletionRankingTests {
         #expect((session?.candidates.count ?? 0) <= 400)
     }
 
+    /// The incremental path reads its prefix off the live token, quote included, so it needed the
+    /// same trim the analyzer does. Without it, typing a quote closed the open popup on that
+    /// keystroke because every candidate was filtered out.
+    @MainActor
+    @Test(
+        "A quoted prefix still ranks the identifier it names",
+        arguments: ["`cat", "`cat`", "\"cat"]
+    )
+    func quotedPrefixRanksTheIdentifier(prefix: String) {
+        let service = SQLCompletionService(schemaProvider: nil, databaseType: .mysql)
+        let items = [
+            SQLCompletionItem.table("category", isView: false),
+            SQLCompletionItem.table("inflation_rates", isView: false)
+        ]
+
+        let ranked = service.rank(items, prefix: prefix)
+
+        #expect(ranked.first?.label == "category")
+    }
+
     @MainActor
     @Test("MongoDB collection methods still rank the exact method first")
     func mongoCollectionMethodsRank() {

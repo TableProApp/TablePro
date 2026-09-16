@@ -37,6 +37,18 @@ enum SQLTokenBoundary {
         isIdentifierChar(ch) || ch == backtick || ch == doubleQuote
     }
 
+    private static let identifierQuotes = CharacterSet(charactersIn: "`\"")
+
+    /// The text a segment is matched on, which is not the text it replaces.
+    ///
+    /// ``segmentStart(in:endingAt:)`` deliberately keeps an opening quote inside the segment so an
+    /// accepted completion overwrites it, but no candidate's filter text carries one, and the
+    /// matcher needs every character of the pattern to appear in the target. Leaving the quote in
+    /// dropped every candidate, keyword items included, so a quoted identifier completed nothing.
+    static func matchText(of segment: String) -> String {
+        segment.trimmingCharacters(in: identifierQuotes)
+    }
+
     /// Start of the identifier segment ending at `cursor`, scanning backward
     /// over identifier and quote characters and stopping at a dot, so a
     /// qualified name like `schema.tab` resolves to the segment after the dot.
