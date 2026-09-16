@@ -8,38 +8,37 @@
 import CloudKit
 import Combine
 import Foundation
-import Observation
 import os
 import TableProSyncTransport
 
 /// Central coordinator for iCloud sync
-@MainActor @Observable
-final class SyncCoordinator {
+@MainActor
+final class SyncCoordinator: ObservableObject {
     static let shared = SyncCoordinator()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SyncCoordinator")
 
-    private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
-    private(set) var lastSyncDate: Date?
-    private(set) var iCloudAccountAvailable: Bool = false
+    @Published private(set) var syncStatus: SyncStatus = .disabled(.userDisabled)
+    @Published private(set) var lastSyncDate: Date?
+    @Published private(set) var iCloudAccountAvailable: Bool = false
 
-    @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private let engine = CloudKitSyncEngine()
-    @ObservationIgnored private let changeTracker: SyncChangeTracker
-    @ObservationIgnored private let metadataStorage: SyncMetadataStorage
-    @ObservationIgnored private let recordCache = SyncRecordCache(
+    private let services: AppServices
+    private let engine = CloudKitSyncEngine()
+    private let changeTracker: SyncChangeTracker
+    private let metadataStorage: SyncMetadataStorage
+    private let recordCache = SyncRecordCache(
         directory: AppStorageEnvironment.shared.supportDirectory
             .appendingPathComponent("SyncRecordCache", isDirectory: true),
         defaults: AppStorageEnvironment.shared.defaults
     )
-    @ObservationIgnored private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
-    @ObservationIgnored private var changeCancellable: AnyCancellable?
-    @ObservationIgnored private var licenseCancellable: AnyCancellable?
-    @ObservationIgnored private var syncTask: Task<Void, Never>?
-    @ObservationIgnored private var hasStarted = false
+    private let accountObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
+    private var changeCancellable: AnyCancellable?
+    private var licenseCancellable: AnyCancellable?
+    private var syncTask: Task<Void, Never>?
+    private var hasStarted = false
 
     /// Bumped every time something other than a sync run decides the status, so a run that has been
     /// suspended across the network can tell whether its outcome is still the current answer.
-    @ObservationIgnored private var statusGeneration = 0
+    private var statusGeneration = 0
 
     init(services: AppServices = .live) {
         self.services = services

@@ -7,7 +7,7 @@ import SwiftUI
 
 /// How this connection is recognised in the connection list and the window chrome.
 struct AppearancePaneView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Form {

@@ -3,11 +3,11 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
-@MainActor @Observable
-final class ColumnJumpViewModel {
+@MainActor
+final class ColumnJumpViewModel: ObservableObject {
     struct Match: Identifiable, Equatable {
         let entry: GridColumnEntry
         let matchedIndices: [Int]
@@ -16,13 +16,13 @@ final class ColumnJumpViewModel {
     }
 
     let entries: [GridColumnEntry]
-    private(set) var matches: [Match] = []
-    var selectedId: String?
-    var searchText: String {
+    @Published private(set) var matches: [Match] = []
+    @Published var selectedId: String?
+    @Published var searchText: String {
         didSet { refilter() }
     }
 
-    @ObservationIgnored private var rankedQuery: String
+    private var rankedQuery: String
 
     /// - Parameter cursorColumnIndex: the data index under the grid's cell cursor, which the empty
     ///   list opens on so Return with nothing typed goes nowhere the reader is not already looking.

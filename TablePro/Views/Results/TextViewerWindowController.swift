@@ -65,7 +65,7 @@ private struct TextViewerWindowContent: View {
             font: ThemeEngine.shared.valueFont,
             textContainerInset: NSSize(width: 8, height: 10)
         )
-        .onChange(of: text) {
+        .onChange(of: text) { _ in
             guard isEditable else { return }
             onCommit?(text)
         }

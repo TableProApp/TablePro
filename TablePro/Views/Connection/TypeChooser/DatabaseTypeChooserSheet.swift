@@ -11,7 +11,7 @@ struct DatabaseTypeChooserSheet: View {
     let onImportFromURL: (() -> Void)?
     let onCancel: () -> Void
 
-    @State private var model = DatabaseTypeChooserModel()
+    @StateObject private var model = DatabaseTypeChooserModel()
     @Environment(\.dismiss) private var dismiss
 
     init(
@@ -72,7 +72,7 @@ struct DatabaseTypeChooserSheet: View {
     @ViewBuilder
     private var content: some View {
         if model.groupedTypes.isEmpty {
-            ContentUnavailableView.search(text: model.searchText)
+            UnavailableStateView.search(text: model.searchText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
@@ -105,7 +105,7 @@ struct DatabaseTypeChooserSheet: View {
                         proxy.scrollTo(initialType, anchor: .center)
                     }
                 }
-                .onChange(of: model.highlightedType) { _, highlighted in
+                .onChange(of: model.highlightedType) { highlighted in
                     guard let highlighted else { return }
                     proxy.scrollTo(highlighted)
                 }

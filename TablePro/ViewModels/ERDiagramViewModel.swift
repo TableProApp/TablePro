@@ -6,8 +6,7 @@ import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class ERDiagramViewModel {
+final class ERDiagramViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ERDiagram")
 
     // MARK: - Configuration
@@ -55,22 +54,22 @@ final class ERDiagramViewModel {
         }
     }
 
-    var loadState: LoadState = .loading
-    var needsInitialFit = true
-    var graph: ERDiagramGraph = .empty
-    var isCompactMode = false {
+    @Published var loadState: LoadState = .loading
+    @Published var needsInitialFit = true
+    @Published var graph: ERDiagramGraph = .empty
+    @Published var isCompactMode = false {
         didSet { rebuildVisibleGraph() }
     }
 
-    var collapseJunctions = true {
+    @Published var collapseJunctions = true {
         didSet { rebuildVisibleGraph() }
     }
 
     var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
 
-    @ObservationIgnored private var fullGraph: ERDiagramGraph = .empty
-    @ObservationIgnored private var allColumns: [String: [ColumnInfo]] = [:]
-    @ObservationIgnored private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
+    private var fullGraph: ERDiagramGraph = .empty
+    private var allColumns: [String: [ColumnInfo]] = [:]
+    private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -80,37 +79,37 @@ final class ERDiagramViewModel {
     /// It belongs to the model rather than the view because an editor-tab switch destroys
     /// `ERDiagramView` and rebuilds it against the same model: a viewport held as view state came
     /// back at 100% scrolled to the origin every time the user left the tab and returned.
-    @ObservationIgnored let viewport = DiagramViewportController()
+    let viewport = DiagramViewportController()
 
     /// Selection outlives the view for the same reason.
-    var selectedNodeId: UUID?
+    @Published var selectedNodeId: UUID?
 
     // MARK: - Drag State
 
-    private(set) var isDragging = false
-    private(set) var draggingNodeId: UUID?
-    @ObservationIgnored private var dragNodeStart: CGPoint?
-    @ObservationIgnored private var lastDragTranslation: CGSize = .zero
+    @Published private(set) var isDragging = false
+    @Published private(set) var draggingNodeId: UUID?
+    private var dragNodeStart: CGPoint?
+    private var lastDragTranslation: CGSize = .zero
 
     // MARK: - Auto-Pan
 
-    @ObservationIgnored nonisolated(unsafe) private var autoPanTask: Task<Void, Never>?
-    @ObservationIgnored private var autoPanVelocity: CGPoint = .zero
-    @ObservationIgnored private var autoPanAccum: CGPoint = .zero
+    nonisolated(unsafe) private var autoPanTask: Task<Void, Never>?
+    private var autoPanVelocity: CGPoint = .zero
+    private var autoPanAccum: CGPoint = .zero
 
     private static let edgeThreshold: CGFloat = 40
     private static let maxPanSpeed: CGFloat = 8
 
     // MARK: - Positions
 
-    private(set) var computedLayout: [UUID: CGPoint] = [:]
-    private(set) var positionOverrides: [UUID: CGPoint] = [:]
-    @ObservationIgnored nonisolated(unsafe) private var layoutTask: Task<Void, Never>?
-    private(set) var cachedNodeRects: [UUID: CGRect] = [:]
-    @ObservationIgnored private var columnCountByNodeId: [UUID: Int] = [:]
-    @ObservationIgnored private var nodeIdToName: [UUID: String] = [:]
+    @Published private(set) var computedLayout: [UUID: CGPoint] = [:]
+    @Published private(set) var positionOverrides: [UUID: CGPoint] = [:]
+    nonisolated(unsafe) private var layoutTask: Task<Void, Never>?
+    @Published private(set) var cachedNodeRects: [UUID: CGRect] = [:]
+    private var columnCountByNodeId: [UUID: Int] = [:]
+    private var nodeIdToName: [UUID: String] = [:]
 
-    @ObservationIgnored private let services: AppServices
+    private let services: AppServices
 
     // MARK: - Initialization
 
@@ -364,7 +363,7 @@ final class ERDiagramViewModel {
 
     // MARK: - Canvas Size
 
-    private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
+    @Published private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
     private static let canvasPadding: CGFloat = 80
 
     // MARK: - Node Rect (for edge rendering)

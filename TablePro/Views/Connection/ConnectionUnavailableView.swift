@@ -13,7 +13,7 @@ internal struct ConnectionUnavailableView: View {
     internal let onManageConnections: () -> Void
 
     internal var body: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label {
                 Text(headline)
             } icon: {

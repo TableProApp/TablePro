@@ -7,26 +7,25 @@
 
 import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
 /// Manages database connections and active drivers
-@MainActor @Observable
-final class DatabaseManager {
+@MainActor
+final class DatabaseManager: ObservableObject {
     static let shared = DatabaseManager()
     nonisolated internal static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
 
-    @ObservationIgnored internal let connectionStorage: ConnectionStorage
-    @ObservationIgnored internal let appSettingsStorage: AppSettingsStorage
-    @ObservationIgnored internal let pluginManager: PluginManager
-    @ObservationIgnored internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
+    internal let connectionStorage: ConnectionStorage
+    internal let appSettingsStorage: AppSettingsStorage
+    internal let pluginManager: PluginManager
+    internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
     /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
     /// credential profile when the connection links to one, the connection otherwise. Held here
     /// rather than on the session because a profile's answer belongs to every connection using it,
     /// and one of them being disconnected does not make it wrong for the rest.
-    @ObservationIgnored internal var promptedPasswords: [UUID: String] = [:]
+    internal var promptedPasswords: [UUID: String] = [:]
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
@@ -54,17 +53,17 @@ final class DatabaseManager {
     /// contentless window or a file opened from Finder. Never resolve the target of an
     /// operation through it: read the connection id from the window or tab that owns the
     /// operation instead.
-    internal var lastActiveSessionId: UUID?
+    @Published internal var lastActiveSessionId: UUID?
 
     /// Health monitors for active connections (MySQL/PostgreSQL only)
-    @ObservationIgnored internal var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
+    internal var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
 
     /// Tracks connections with user queries currently in-flight.
     /// The health monitor skips pings while a query is running to avoid
     /// racing on non-thread-safe driver connections.
-    @ObservationIgnored internal var queriesInFlight: [UUID: Int] = [:]
+    internal var queriesInFlight: [UUID: Int] = [:]
     /// Tracks when the first query started for each session (used for staleness detection).
-    @ObservationIgnored internal var queryStartTimes: [UUID: Date] = [:]
+    internal var queryStartTimes: [UUID: Date] = [:]
 
     /// When each connection's server last answered, whether that was the connect itself, a health
     /// check, or a check made because the user was about to use it.
@@ -74,46 +73,46 @@ final class DatabaseManager {
     /// unwritable in practice: `updateSession` discards a write that leaves
     /// `isContentViewEquivalent` unchanged, which is exactly a timestamp-only write, and going
     /// around that through `setSession` broadcasts a status change nothing happened to.
-    @ObservationIgnored internal var lastVerifiedAt: [UUID: Date] = [:]
+    internal var lastVerifiedAt: [UUID: Date] = [:]
 
     /// Collapses concurrent verifications of one connection into a single check, so a window
     /// waking up with several tabs pointed at the same connection asks once. Separate from
     /// `ensureConnectedDedup` because a verification can run while a connect is in flight.
-    @ObservationIgnored internal let verificationDedup = OnceTask<UUID, Void>()
+    internal let verificationDedup = OnceTask<UUID, Void>()
 
     /// Connection IDs currently undergoing SSH tunnel recovery.
     /// Prevents duplicate concurrent recovery when both the keepalive death handler
     /// and the wake-from-sleep handler fire for the same connection.
-    @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
+    internal var recoveringConnectionIds = Set<UUID>()
 
     /// Why a session was torn down, kept past the session entry so a window that only observes
     /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
-    @ObservationIgnored internal var disconnectReasons: [UUID: ConnectionEndReason] = [:]
+    internal var disconnectReasons: [UUID: ConnectionEndReason] = [:]
 
     /// Connections the user disconnected on purpose. Kept past the session entry for the same
     /// reason `disconnectReasons` is: the window learns the session went away by watching the
     /// entry disappear, and a deliberate disconnect is not the same event as losing a connection.
-    @ObservationIgnored internal var userRequestedDisconnects = Set<UUID>()
+    internal var userRequestedDisconnects = Set<UUID>()
 
     /// Sessions currently being torn down, so a second disconnect cannot run the teardown again and
     /// finish it against a session the user has since reconnected.
-    @ObservationIgnored internal var disconnectsInFlight = Set<UUID>()
+    internal var disconnectsInFlight = Set<UUID>()
 
     /// Installed at launch. Every disconnect writes the connection's tabs to disk through this
     /// before the session entry goes away, because the window can outlive the session.
-    @ObservationIgnored internal var tabStatePersister: (any SessionTabStatePersisting)?
+    internal var tabStatePersister: (any SessionTabStatePersisting)?
 
-    @ObservationIgnored internal var connectionUpdatedCancellable: AnyCancellable?
-    @ObservationIgnored internal var healthCheckSettingCancellable: AnyCancellable?
+    internal var connectionUpdatedCancellable: AnyCancellable?
+    internal var healthCheckSettingCancellable: AnyCancellable?
     /// The tail of the serialized monitor restarts. See `observeHealthCheckSetting`.
-    @ObservationIgnored internal var healthMonitorRestart: Task<Void, Never>?
+    internal var healthMonitorRestart: Task<Void, Never>?
 
-    @ObservationIgnored internal let ensureConnectedDedup = OnceTask<UUID, Void>()
+    internal let ensureConnectedDedup = OnceTask<UUID, Void>()
 
     /// Generation token per connection. A cancelled or superseded attempt keeps running
     /// when its driver blocks in a C call, so every attempt validates its generation
     /// before touching shared session state and discards its driver when it lost.
-    @ObservationIgnored internal var connectionAttempts = ConnectionAttemptRegistry()
+    internal var connectionAttempts = ConnectionAttemptRegistry()
 
     /// The step each in-flight connect last reported, so a window that joins one already running
     /// can seed itself. `AppEvents.connectionStageChanged` is a `PassthroughSubject`, so it holds
@@ -121,16 +120,16 @@ final class DatabaseManager {
     /// which is how a connection dialling through an SSH jump host announced itself as "Opening
     /// the connection" for the whole of the tunnel handshake. Written only by the current attempt,
     /// for the same reason every other shared write here is generation-checked.
-    @ObservationIgnored internal var connectionStages: [UUID: ConnectionStage] = [:]
+    internal var connectionStages: [UUID: ConnectionStage] = [:]
 
     /// Orders operations that move the shared driver, so two windows cannot interleave
     /// their pins and each run against the other's database.
-    @ObservationIgnored internal let sessionDriverGate = SessionDriverGate()
+    internal let sessionDriverGate = SessionDriverGate()
 
     /// The drivers each connection is currently executing user SQL on, keyed by an
     /// operation token so a finishing operation can only release its own handle. Stop
     /// reaches the right one even when a cross-database tab runs on a pooled connection.
-    @ObservationIgnored internal var runningDrivers: [UUID: [UUID: RunningDriver]] = [:]
+    internal var runningDrivers: [UUID: [UUID: RunningDriver]] = [:]
 
     /// Session for `lastActiveSessionId`, subject to the same caveats.
     var lastActiveSession: ConnectionSession? {

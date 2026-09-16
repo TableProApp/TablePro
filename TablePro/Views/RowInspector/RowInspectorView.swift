@@ -12,7 +12,7 @@ import SwiftUI
 /// grows in place and the pop-out windows take anything larger, so the fields around it never go
 /// away.
 internal struct RowInspectorView: View {
-    @Bindable internal var state: RowInspectorState
+    @ObservedObject internal var state: RowInspectorState
     internal let connection: DatabaseConnection
 
     @Environment(\.commandActions) private var commandActions
@@ -91,7 +91,7 @@ internal struct RowInspectorView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Row Selected"),
             systemImage: "sidebar.right",
             description: Text(String(localized: "Select a row to see its fields"))

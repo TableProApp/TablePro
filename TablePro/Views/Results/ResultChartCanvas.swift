@@ -82,7 +82,7 @@ struct ResultChartCanvas: View {
                 selectionMark(at: x, selection: selection)
             }
         })
-        .chartXSelection(value: $selectedCategory)
+        .chartXSelectionCompat(value: $selectedCategory)
     }
 
     private var numericChart: some View {
@@ -97,7 +97,7 @@ struct ResultChartCanvas: View {
                 selectionMark(at: x, selection: selection)
             }
         })
-        .chartXSelection(value: $selectedNumber)
+        .chartXSelectionCompat(value: $selectedNumber)
     }
 
     private var dateChart: some View {
@@ -112,7 +112,7 @@ struct ResultChartCanvas: View {
                 selectionMark(at: x, selection: selection)
             }
         })
-        .chartXSelection(value: $selectedDate)
+        .chartXSelectionCompat(value: $selectedDate)
     }
 
     /// The per-series stroke lives on the chart's line-style scale, not on the mark: a constant
@@ -307,23 +307,39 @@ struct ResultChartCanvas: View {
 
     @ChartContentBuilder
     private func selectionMark<X: Plottable>(at x: X, selection: ResultChartSelection) -> some ChartContent {
-        RuleMark(x: .value(projection.xAxisLabel, x))
-            .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(0.7))
-            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-            .annotation(
-                position: .top,
-                alignment: .leading,
-                spacing: 8,
-                overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .fit(to: .chart))
-            ) {
-                ResultChartSelectionCallout(
-                    selection: selection,
-                    xAxisLabel: projection.xAxisLabel,
-                    yAxisLabel: projection.yAxisLabel,
-                    seriesLabel: projection.seriesLabel
-                )
-            }
-            .accessibilityHidden(true)
+        if #available(macOS 14.0, *) {
+            RuleMark(x: .value(projection.xAxisLabel, x))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                .annotation(
+                    position: .top,
+                    alignment: .leading,
+                    spacing: 8,
+                    overflowResolution: AnnotationOverflowResolution(x: .fit(to: .chart), y: .fit(to: .chart))
+                ) {
+                    callout(for: selection)
+                }
+                .accessibilityHidden(true)
+        } else {
+            /// `overflowResolution` is macOS 14. Without it the callout can run past the plot
+            /// edge at the extremes of the axis; the position and spacing are unchanged.
+            RuleMark(x: .value(projection.xAxisLabel, x))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor).opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                .annotation(position: .top, alignment: .leading, spacing: 8) {
+                    callout(for: selection)
+                }
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func callout(for selection: ResultChartSelection) -> some View {
+        ResultChartSelectionCallout(
+            selection: selection,
+            xAxisLabel: projection.xAxisLabel,
+            yAxisLabel: projection.yAxisLabel,
+            seriesLabel: projection.seriesLabel
+        )
     }
 
     static func orderedSeriesNames(in projection: ResultChartProjection) -> [String] {

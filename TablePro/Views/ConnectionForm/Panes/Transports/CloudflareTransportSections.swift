@@ -7,7 +7,7 @@ import AppKit
 import SwiftUI
 
 struct CloudflareTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var viewModel: CloudflareTunnelPaneViewModel { coordinator.cloudflareTunnel }
 

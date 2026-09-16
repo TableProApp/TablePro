@@ -55,99 +55,99 @@ internal protocol WelcomeOutlineControlling: AnyObject {
     func focusList(selectFirstRow: Bool)
 }
 
-@MainActor @Observable
-final class WelcomeViewModel {
+@MainActor
+final class WelcomeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
     private static let teamLibraryNamespace = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
-    @ObservationIgnored let services: AppServices
-    @ObservationIgnored let recentConnections: RecentConnectionsStore
-    @ObservationIgnored let listPreferences: ConnectionListPreferences
-    @ObservationIgnored weak var outlineController: WelcomeOutlineControlling?
+    let services: AppServices
+    let recentConnections: RecentConnectionsStore
+    let listPreferences: ConnectionListPreferences
+    weak var outlineController: WelcomeOutlineControlling?
     var storage: ConnectionStorage { services.connectionStorage }
     var groupStorage: GroupStorage { services.groupStorage }
 
     // MARK: - Library
 
-    private(set) var connections: [DatabaseConnection] = []
-    private(set) var groups: [ConnectionGroup] = []
-    private(set) var tags: [ConnectionTag] = []
-    @ObservationIgnored private(set) var connectionsById: [UUID: DatabaseConnection] = [:]
-    @ObservationIgnored private(set) var groupsById: [UUID: ConnectionGroup] = [:]
-    @ObservationIgnored private(set) var tagsById: [UUID: ConnectionTag] = [:]
-    @ObservationIgnored private(set) var groupGraph = LibraryGroupGraph(groups: [ConnectionGroup]())
-    @ObservationIgnored private(set) var groupConnectionCounts: [UUID: Int] = [:]
-    var linkedConnections: [LinkedConnection] = [] {
+    @Published private(set) var connections: [DatabaseConnection] = []
+    @Published private(set) var groups: [ConnectionGroup] = []
+    @Published private(set) var tags: [ConnectionTag] = []
+    private(set) var connectionsById: [UUID: DatabaseConnection] = [:]
+    private(set) var groupsById: [UUID: ConnectionGroup] = [:]
+    private(set) var tagsById: [UUID: ConnectionTag] = [:]
+    private(set) var groupGraph = LibraryGroupGraph(groups: [ConnectionGroup]())
+    private(set) var groupConnectionCounts: [UUID: Int] = [:]
+    @Published var linkedConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
-    var teamLibraryConnections: [LinkedConnection] = [] {
+    @Published var teamLibraryConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
 
     // MARK: - Query
 
-    var searchText = "" { didSet { scheduleRebuild(previous: oldValue) } }
-    var searchTokens: [WelcomeTagToken] = [] {
+    @Published var searchText = "" { didSet { scheduleRebuild(previous: oldValue) } }
+    @Published var searchTokens: [WelcomeTagToken] = [] {
         didSet { if searchTokens != oldValue { rebuildOutline() } }
     }
-    var tagMatch: LibraryTagMatch = .any {
+    @Published var tagMatch: LibraryTagMatch = .any {
         didSet { if tagMatch != oldValue { rebuildOutline() } }
     }
 
     // MARK: - Outline
 
-    private(set) var outline: LibraryOutline = .empty
-    private(set) var outlineRevision = 0
-    private(set) var sortMode: LibrarySortMode
-    var expandedGroupIds: Set<UUID> = [] {
+    @Published private(set) var outline: LibraryOutline = .empty
+    @Published private(set) var outlineRevision = 0
+    @Published private(set) var sortMode: LibrarySortMode
+    @Published var expandedGroupIds: Set<UUID> = [] {
         didSet { groupExpansionStore.save(expandedGroupIds) }
     }
-    var selection: [LibraryRowID] = []
+    @Published var selection: [LibraryRowID] = []
 
     // MARK: - Presentation
 
-    private(set) var hasImportableApp = false
-    var presentsWelcomeSheet = false
-    var connectionsToDelete: [DatabaseConnection] = []
-    var showDeleteConfirmation = false
-    var pendingDeleteHasFavorites = false
-    @ObservationIgnored private var deleteRequestToken = UUID()
-    var showDeleteGroupConfirmation = false
-    var groupToDelete: ConnectionGroup?
-    var activeSheet: WelcomeActiveSheet?
-    var pluginInstallConnection: DatabaseConnection?
+    @Published private(set) var hasImportableApp = false
+    @Published var presentsWelcomeSheet = false
+    @Published var connectionsToDelete: [DatabaseConnection] = []
+    @Published var showDeleteConfirmation = false
+    @Published var pendingDeleteHasFavorites = false
+    private var deleteRequestToken = UUID()
+    @Published var showDeleteGroupConfirmation = false
+    @Published var groupToDelete: ConnectionGroup?
+    @Published var activeSheet: WelcomeActiveSheet?
+    @Published var pluginInstallConnection: DatabaseConnection?
 
-    var databaseTypeChooser: DatabaseTypeChooserPayload?
-    var urlImportPresented = false
-    var pendingInstallType: DatabaseType?
-    @ObservationIgnored var pendingInstallPayload: DatabaseTypeChooserPayload?
+    @Published var databaseTypeChooser: DatabaseTypeChooserPayload?
+    @Published var urlImportPresented = false
+    @Published var pendingInstallType: DatabaseType?
+    var pendingInstallPayload: DatabaseTypeChooserPayload?
 
-    var libraryErrorMessage: String?
+    @Published var libraryErrorMessage: String?
 
-    var connectionError: String?
-    var connectionErrorRecovery: PendingConnectionRecovery?
-    var showConnectionError = false
-    var pluginDiagnostic: PluginDiagnosticItem?
+    @Published var connectionError: String?
+    @Published var connectionErrorRecovery: PendingConnectionRecovery?
+    @Published var showConnectionError = false
+    @Published var pluginDiagnostic: PluginDiagnosticItem?
 
-    var showImportFilePanel = false
-    var importResultCount: Int?
+    @Published var showImportFilePanel = false
+    @Published var importResultCount: Int?
     /// Set when a sheet (import file / import-from-app) finishes work and is about to dismiss.
     /// Flushed in the sheet's `onDismiss` so the result alert appears after the sheet animation.
-    var pendingImportResultCount: Int?
+    @Published var pendingImportResultCount: Int?
 
     // MARK: - Observers
 
-    @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
-    @ObservationIgnored private var listStateCancellable: AnyCancellable?
-    @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
-    @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
-    @ObservationIgnored private var licenseCancellable: AnyCancellable?
-    @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
-    @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
-    @ObservationIgnored private let importableAppDetector: @MainActor () -> Bool
-    @ObservationIgnored private let groupExpansionStore: WelcomeGroupExpansionStore
-    @ObservationIgnored private let hasStoredGroupExpansion: Bool
+    private var connectionUpdatedCancellable: AnyCancellable?
+    private var listStateCancellable: AnyCancellable?
+    private var linkedFoldersCancellable: AnyCancellable?
+    private var teamLibraryCancellable: AnyCancellable?
+    private var licenseCancellable: AnyCancellable?
+    private var welcomeRouterTask: Task<Void, Never>?
+    private var searchDebounceTask: Task<Void, Never>?
+    private let importableAppDetector: @MainActor () -> Bool
+    private let groupExpansionStore: WelcomeGroupExpansionStore
+    private let hasStoredGroupExpansion: Bool
 
     // MARK: - Initialization
 
@@ -467,13 +467,9 @@ final class WelcomeViewModel {
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 box.set(continuation)
-                withObservationTracking({
-                    _ = router.pendingRequest
-                    _ = router.pendingImport
-                    _ = router.pendingConnectionShare
-                    _ = router.pendingError
-                    _ = router.pendingPluginInstall
-                }, onChange: {
+                /// One-shot: the continuation resumes on the first change, and the sink is
+                /// released with the box, so nothing needs re-arming.
+                box.hold(router.onMainActorChange {
                     box.resume(with: true)
                 })
             }
@@ -483,6 +479,15 @@ final class WelcomeViewModel {
     }
 
     private final class ContinuationBox: @unchecked Sendable {
+        private var observation: AnyCancellable?
+
+        /// Keeps the subscription alive until the continuation resumes.
+        func hold(_ cancellable: AnyCancellable) {
+            lock.lock()
+            defer { lock.unlock() }
+            observation = cancellable
+        }
+
         private var continuation: CheckedContinuation<Bool, Never>?
         private let lock = NSLock()
 
@@ -494,6 +499,7 @@ final class WelcomeViewModel {
 
         func resume(with value: Bool) {
             lock.lock()
+            observation = nil
             let pending = continuation
             continuation = nil
             lock.unlock()

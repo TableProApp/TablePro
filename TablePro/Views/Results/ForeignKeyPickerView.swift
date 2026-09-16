@@ -151,7 +151,7 @@ struct ForeignKeyPickerView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .frame(height: 220)
-            .onChange(of: selection) { _, newValue in
+            .onChange(of: selection) { newValue in
                 guard let newValue else { return }
                 proxy.scrollTo(newValue)
             }

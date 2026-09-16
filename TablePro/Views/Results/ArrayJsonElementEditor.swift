@@ -29,14 +29,14 @@ internal struct ArrayJsonElementEditor: View {
             detail
         }
         .onAppear(perform: selectFirstIfNeeded)
-        .onChange(of: rows.map(\.id), selectFirstIfNeeded)
+        .onChange(of: rows.map(\.id)) { _ in selectFirstIfNeeded() }
     }
 
     private var elementList: some View {
         List(selection: $selection) {
             /// `ForEach(rows.enumerated(), id:)` is the modern form and does not compile here:
             /// `EnumeratedSequence`'s `RandomAccessCollection` conformance is macOS 26, and the
-            /// deployment target is 14. The copy is a constant factor on the identity walk `ForEach`
+            /// deployment target is 13. The copy is a constant factor on the identity walk `ForEach`
             /// already does over every row.
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                 elementRow(row, index: index)
@@ -94,7 +94,7 @@ internal struct ArrayJsonElementEditor: View {
                 }
             }
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "No Element Selected"), systemImage: "list.bullet.rectangle")
             } description: {
                 Text("Select an element to read or edit its JSON.")

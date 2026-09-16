@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import os
 import SwiftUI
@@ -60,6 +61,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
+    private var appearanceObservation: AnyCancellable?
+    private var treeObservations: [AnyCancellable] = []
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
@@ -124,18 +127,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// sync write-back included. `refreshVisibleRows` reconfigures every row of every open window,
     /// so the two values are compared before it runs.
     private func observeObjectListAppearance() {
-        withObservationTracking {
-            _ = AppSettingsManager.shared.general
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                let appearance = Self.objectListAppearance()
-                if appearance != self.observedAppearance {
-                    self.observedAppearance = appearance
-                    self.refreshVisibleRows()
-                }
-                self.observeObjectListAppearance()
-            }
+        appearanceObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+            guard let self else { return }
+            let appearance = Self.objectListAppearance()
+            guard appearance != self.observedAppearance else { return }
+            self.observedAppearance = appearance
+            self.refreshVisibleRows()
         }
     }
 
@@ -217,14 +214,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private func beginObserving() {
         observationGeneration += 1
         let generation = observationGeneration
-        withObservationTracking { [weak self] in
-            self?.snapshotDependencies()
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self, generation == self.observationGeneration else { return }
-                self.scheduleReconcile()
-            }
+        /// `snapshotDependencies` read across four objects, and `objectWillChange` is per
+        /// object, so each one gets its own sink. `scheduleReconcile` already coalesces, which
+        /// is what absorbs the wider wake set.
+        let reconcile: () -> Void = { [weak self] in
+            guard let self, generation == self.observationGeneration else { return }
+            self.scheduleReconcile()
         }
+        treeObservations = [
+            service.onMainActorChange(reconcile),
+            schemaService.onMainActorChange(reconcile),
+            sidebarState?.onMainActorChange(reconcile),
+            sidebarState?.redisKeyTreeViewModel?.onMainActorChange(reconcile),
+        ].compactMap { $0 }
     }
 
     private func scheduleReconcile() {
@@ -466,7 +468,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 forceNonPreview: forceNonPreview,
                 activateGridFocus: activateGridFocus
             )
-            FeatureTipSignals.sidebarTableOpened()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.sidebarTableOpened()
+            }
             publishSelection()
         }
     }
@@ -672,7 +676,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     ) {
         switch intent {
         case .openPermanently(let ref):
-            FeatureTipSignals.tableKeptOpen()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.tableKeptOpen()
+            }
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)

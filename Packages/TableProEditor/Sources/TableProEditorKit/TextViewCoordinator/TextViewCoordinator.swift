@@ -35,6 +35,14 @@ public protocol TextViewCoordinator: AnyObject {
     /// - Parameter controller: The text view controller that did disappear.
     func controllerDidDisappear(controller: TextViewController)
 
+    /// Offers a key down to the app before the editor's own key handling sees it.
+    ///
+    /// The editor owns exactly one `NSEvent` local monitor, and anything else that wants a key first
+    /// answers here rather than installing a second one, because `addLocalMonitorForEvents` has no
+    /// defined ordering between monitors matching the same mask.
+    /// - Returns: `nil` to claim the event, or the event to pass it on.
+    func textViewShouldClaimKeyDown(controller: TextViewController, event: NSEvent) -> NSEvent?
+
     /// Called when the text view's text changed.
     /// - Parameter controller: The text controller.
     func textViewDidChangeText(controller: TextViewController)
@@ -63,6 +71,7 @@ public protocol TextViewCoordinator: AnyObject {
 public extension TextViewCoordinator {
     func controllerDidAppear(controller: TextViewController) { }
     func controllerDidDisappear(controller: TextViewController) { }
+    func textViewShouldClaimKeyDown(controller: TextViewController, event: NSEvent) -> NSEvent? { event }
     func textViewDidChangeText(controller: TextViewController) { }
     func textViewDidReplaceDocument(controller: TextViewController) { }
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) { }

@@ -3,17 +3,16 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-final class DatabaseTypeChooserModel {
-    var searchText: String = "" {
+final class DatabaseTypeChooserModel: ObservableObject {
+    @Published var searchText: String = "" {
         didSet { settleHighlight() }
     }
 
-    var highlightedType: DatabaseType?
+    @Published var highlightedType: DatabaseType?
 
     private let allTypes: [DatabaseType]
 

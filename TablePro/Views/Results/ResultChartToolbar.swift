@@ -60,7 +60,7 @@ struct ResultChartToolbar: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
-                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .scrollBounceBasedOnSize(axes: .horizontal)
                 .accessibilityIdentifier("result-chart-data-scope")
 
                 Image(systemName: "info.circle")

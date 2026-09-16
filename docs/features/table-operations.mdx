@@ -117,8 +117,35 @@ Databases the server will not drop are left out of the drop item. A drop that fa
 
 ### Schemas
 
-On engines that group tables by schema, the same menu appears on a schema row: PostgreSQL, SQL Server, SurrealDB, and Dameng. PostgreSQL and Dameng drop the schema with `CASCADE`. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first.
+On engines that group tables by schema, the same menu appears on a schema row: PostgreSQL, SQL Server, SurrealDB, and Dameng. PostgreSQL and Dameng drop the schema with `CASCADE`. SQL Server has no cascade, so it refuses to drop a schema that still holds objects; drop those first. The confirmation only promises to take dependent objects with it on the engines that do.
 
 <Danger>
 Dropping a schema permanently deletes everything in it. On PostgreSQL and Dameng it also drops objects in other schemas that depend on it.
 </Danger>
+
+### Creating and editing a schema
+
+**New Schema…** and **Edit Schema…** sit on the schema row's menu, at the bottom of the schema switcher, and under **Database > Schema**. Both open a sheet whose last section is the statements it will run.
+
+| Database | Create | Owner | Privileges |
+|----------|--------|-------|------------|
+| PostgreSQL | Yes | Yes | `USAGE`, `CREATE` |
+| PGlite | Yes | Yes | `USAGE`, `CREATE` |
+| Redshift | Yes | Yes | No |
+| CockroachDB | Yes | Yes | No |
+| SQL Server | No | No | No |
+| Oracle | No | No | No |
+| Dameng | No | No | No |
+| Snowflake | No | No | No |
+| Trino | No | No | No |
+| DuckDB | No | No | No |
+| SurrealDB | No | No | No |
+| BigQuery | No | No | No |
+
+A schema on Oracle is a user, so it is created in [Users & Roles](/features/table-operations) rather than here. Redshift and CockroachDB report an owner and a comment but no privilege grid, because neither reads a schema ACL the way PostgreSQL does.
+
+Only the boxes you change produce SQL: a role you never touch generates neither a `GRANT` nor a `REVOKE`. The grid is re-read against the server at the moment you press **Save**, so a grant another session added while the sheet was open survives.
+
+A checked box is dimmed when another role granted that privilege. `REVOKE` removes only what the role you are connected as granted, so clearing such a box would run a statement that succeeds and leaves the access in place. Connect as the granting role, or as a member of it, to change those.
+
+System schemas are refused for create, edit, rename and drop.

@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct FilterPanelView: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
@@ -57,14 +57,14 @@ struct FilterPanelView: View {
             focusedFilterId = filterState.filters.last?.id
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: columns) { _, newColumns in
+        .onChange(of: columns) { newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
                 coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
                 focusedFilterId = filterState.filters.last?.id
             }
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: coordinator.currentTableName) { _, _ in
+        .onChange(of: coordinator.currentTableName) { _ in
             refreshRawSQLCompletionProvider()
         }
         .task(id: coordinator.currentTableName) {

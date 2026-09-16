@@ -49,7 +49,6 @@ extension FindViewController {
         } onComplete: { }
 
         viewModel.isFocused = true
-        findPanel.addEventMonitor()
 
         NotificationCenter.default.post(
             name: FindPanelViewModel.Notifications.didToggle,
@@ -67,7 +66,6 @@ extension FindViewController {
     func hideFindPanel(animated: Bool = true) {
         viewModel.isShowingFindPanel = false
         _ = findPanel.resignFirstResponder()
-        findPanel.removeEventMonitor()
 
         conditionalAnimated(animated) {
             viewModel.target?.findPanelWillHide(panelHeight: viewModel.panelHeight)

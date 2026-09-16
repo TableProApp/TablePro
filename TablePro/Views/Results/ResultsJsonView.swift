@@ -106,7 +106,7 @@ internal struct ResultsJsonView: View {
         .task(id: renderKey) {
             await rebuild()
         }
-        .onChange(of: viewMode) {
+        .onChange(of: viewMode) { _ in
             AppSettingsManager.shared.editor.jsonViewerPreferredMode = viewMode
         }
     }
@@ -161,7 +161,7 @@ internal struct ResultsJsonView: View {
     @ViewBuilder
     private var content: some View {
         if tableRows.rows.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Data"),
                 systemImage: "curlybraces",
                 description: Text(String(localized: "Execute a query to view results as JSON"))
@@ -187,7 +187,7 @@ internal struct ResultsJsonView: View {
     }
 
     private func treeErrorView(_ error: JSONTreeParseError) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(
                 error == .tooLarge
                     ? String(localized: "JSON Too Large")

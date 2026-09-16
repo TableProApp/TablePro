@@ -10,7 +10,6 @@
 import AppKit
 import Combine
 import Foundation
-import Observation
 import os
 import SwiftUI
 import TableProPluginKit
@@ -18,8 +17,7 @@ import UniformTypeIdentifiers
 
 /// Provides command actions for MainContentView, reached through `MainContentCoordinator.commandActions`.
 @MainActor
-@Observable
-final class MainContentCommandActions {
+final class MainContentCommandActions: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
 
     enum WindowCloseOutcome {
@@ -29,20 +27,20 @@ final class MainContentCommandActions {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored internal weak var coordinator: MainContentCoordinator?
-    @ObservationIgnored private let connection: DatabaseConnection
+    internal weak var coordinator: MainContentCoordinator?
+    private let connection: DatabaseConnection
 
     // MARK: - Bindings
 
-    @ObservationIgnored private let selectionState: GridSelectionState
-    @ObservationIgnored private let selectedTables: Binding<Set<DatabaseTreeTableRef>>
-    @ObservationIgnored private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
-    @ObservationIgnored private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
-    @ObservationIgnored private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
-    @ObservationIgnored private let trailingPaneState: TrailingPaneState
+    private let selectionState: GridSelectionState
+    private let selectedTables: Binding<Set<DatabaseTreeTableRef>>
+    private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
+    private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
+    private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
+    private let trailingPaneState: TrailingPaneState
 
     /// The window this instance belongs to — used for key-window guards.
-    @ObservationIgnored weak var window: NSWindow? {
+    weak var window: NSWindow? {
         didSet {
             guard window !== oldValue else { return }
             updateTextInputFocusTracking()
@@ -54,17 +52,17 @@ final class MainContentCommandActions {
     /// Whether a text input holds first responder in this instance's window.
     /// Stored rather than computed so Observation wakes the menu when focus
     /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
-    var focusOwnsTextInput = false
+    @Published var focusOwnsTextInput = false
 
-    @ObservationIgnored let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
+    let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
-    @ObservationIgnored var isTextInputFocusCheckScheduled = false
+    var isTextInputFocusCheckScheduled = false
 
     /// Task handles for async notification observers; cancelled on deinit.
-    @ObservationIgnored private var notificationTasks: [Task<Void, Never>] = []
+    private var notificationTasks: [Task<Void, Never>] = []
 
     /// Combine subscriptions for typed AppEvents publishers.
-    @ObservationIgnored private var eventCancellables: Set<AnyCancellable> = []
+    private var eventCancellables: Set<AnyCancellable> = []
 
     // MARK: - Initialization
 

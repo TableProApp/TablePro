@@ -400,6 +400,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -419,7 +422,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -466,6 +469,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -476,7 +481,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["padb_harvest"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
@@ -531,6 +536,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
                     supportsDropColumn: false,
@@ -551,7 +558,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["system"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -598,6 +605,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: false,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -617,7 +627,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [

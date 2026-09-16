@@ -15,8 +15,20 @@ struct ColumnTypeClassifier {
         if Self.isAngleBracketCompositeType(stripped) {
             return .json(rawType: rawTypeName)
         }
+        /// `extractBaseAndParams` splits at the first `(` and keeps nothing after the last `)`, so
+        /// a parameterized array's `[]` never reached the test below: `numeric(10,2)[]` classified
+        /// as `.decimal` and `bit(8)[]` as `.boolean`, which put a boolean dropdown on an array
+        /// column. PostgreSQL spells a domain's array this way through `format_type`.
+        if stripped.hasSuffix("[]") {
+            let elementRaw = String(stripped.dropLast(2))
+            guard !elementRaw.isEmpty else { return .text(rawType: rawTypeName) }
+            return .array(rawType: rawTypeName, element: classify(rawTypeName: elementRaw))
+        }
+
         let (base, params) = extractBaseAndParams(stripped)
 
+        /// The app's own spelling for an enum array, `ENUM[](mood)`, puts the `[]` on the base and
+        /// the labels in the parentheses, so it is the one array form the suffix test above misses.
         if base.hasSuffix("[]") {
             let elementBase = String(base.dropLast(2))
             guard !elementBase.isEmpty else { return .text(rawType: rawTypeName) }

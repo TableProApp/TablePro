@@ -6,8 +6,8 @@
 //  creates the adapter/source objects, and wires progress to the UI.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -25,15 +25,15 @@ struct ImportState {
 
 // MARK: - Import Service
 
-@MainActor @Observable
-final class ImportService {
+@MainActor
+final class ImportService: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ImportService")
 
-    var state = ImportState()
+    @Published var state = ImportState()
 
     private let connection: DatabaseConnection
     private let historyRecorder: QueryHistoryRecording
-    private var currentProgress: PluginImportProgress?
+    @Published private var currentProgress: PluginImportProgress?
 
     init(connection: DatabaseConnection, historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared) {
         self.connection = connection

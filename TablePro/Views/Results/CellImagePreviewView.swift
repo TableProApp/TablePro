@@ -46,7 +46,7 @@ internal struct CellImagePreviewView: View {
                 .accessibilityElement()
                 .accessibilityLabel(String(localized: "Image preview"))
         case .tooLarge(let byteCount):
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "Too Large to Preview"), systemImage: "photo")
             } description: {
                 Text(String(
@@ -55,7 +55,7 @@ internal struct CellImagePreviewView: View {
                 ))
             }
         case .failed:
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label(String(localized: "Could Not Render This Image"), systemImage: "exclamationmark.triangle")
             } description: {
                 Text(String(

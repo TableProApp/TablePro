@@ -4,7 +4,7 @@ import TableProImport
 internal struct FavoritesTabView: View {
     @Environment(\.sidebarRowSize) private var systemRowSize
 
-    @State private var viewModel: FavoritesSidebarViewModel
+    @StateObject private var viewModel: FavoritesSidebarViewModel
     @State private var favoriteTables: [FavoriteTablesStorage.FavoriteEntry] = []
     @State private var favoriteDatabases: Set<FavoriteDatabaseEntry> = []
     @State private var folderToDelete: SQLFavoriteFolder?
@@ -16,7 +16,7 @@ internal struct FavoritesTabView: View {
     @State private var showRemoveLinkedFolderAlert = false
     let connectionId: UUID
     let databaseType: DatabaseType
-    @Bindable private var sharedSidebarState: SharedSidebarState
+    @ObservedObject private var sharedSidebarState: SharedSidebarState
     let tables: [TableInfo]
     private var coordinator: MainContentCoordinator?
 
@@ -69,7 +69,7 @@ internal struct FavoritesTabView: View {
         self.databaseType = databaseType
         self.sharedSidebarState = sharedSidebarState
         self.tables = tables
-        _viewModel = State(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
+        _viewModel = StateObject(wrappedValue: FavoritesSidebarViewModel(connectionId: connectionId))
         self.coordinator = coordinator
     }
 
@@ -588,7 +588,7 @@ internal struct FavoritesTabView: View {
     /// row of three buttons is wider than the sidebar, and the view sizes its whole content to that
     /// row, so the description and the buttons ran past both edges and were cut off.
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Favorites"), systemImage: "star")
         } description: {
             Text("Save frequently used queries, or link a folder of .sql files to share with your team.")
@@ -609,14 +609,14 @@ internal struct FavoritesTabView: View {
     }
 
     private func noSearchMatchState(_ term: String) -> some View {
-        ContentUnavailableView.search(text: term)
+        UnavailableStateView.search(text: term)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// A filter miss is not a failed search, so it never borrows the search placeholder's "check
     /// the spelling" advice. The filter control stays on screen above this, which is the reset.
     private var noFilterMatchState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Matching Favorites"), systemImage: "line.3.horizontal.decrease.circle")
         } description: {
             Text("No favorites match the selected environment.")

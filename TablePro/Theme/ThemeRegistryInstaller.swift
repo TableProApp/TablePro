@@ -6,16 +6,16 @@
 //  Themes are pure JSON (no executable code, no .tableplugin bundles).
 //
 
+import Combine
 import CryptoKit
 import Foundation
 import os
 
 @MainActor
-@Observable
-internal final class ThemeRegistryInstaller {
+internal final class ThemeRegistryInstaller: ObservableObject {
     static let shared = ThemeRegistryInstaller()
 
-    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeRegistryInstaller")
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeRegistryInstaller")
 
     private init() {}
 

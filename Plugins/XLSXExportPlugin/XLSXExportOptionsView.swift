@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct XLSXExportOptionsView: View {
-    @Bindable var plugin: XLSXExportPlugin
+    @ObservedObject var plugin: XLSXExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

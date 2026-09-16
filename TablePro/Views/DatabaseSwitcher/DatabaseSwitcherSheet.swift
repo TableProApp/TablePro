@@ -19,7 +19,7 @@ struct DatabaseSwitcherSheet: View {
     let connectionId: UUID
     let onSelect: (String) -> Void
 
-    @State private var viewModel: DatabaseSwitcherViewModel
+    @StateObject private var viewModel: DatabaseSwitcherViewModel
 
     private enum FocusField { case list }
 
@@ -39,7 +39,7 @@ struct DatabaseSwitcherSheet: View {
         self.databaseType = databaseType
         self.connectionId = connectionId
         self.onSelect = onSelect
-        self._viewModel = State(
+        self._viewModel = StateObject(
             wrappedValue: DatabaseSwitcherViewModel(
                 connectionId: connectionId,
                 currentDatabase: currentDatabase,
@@ -136,16 +136,13 @@ struct DatabaseSwitcherSheet: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .list)
-            .onChange(of: viewModel.selectedDatabase) { _, newValue in
+            .onChange(of: viewModel.selectedDatabase) { newValue in
                 guard let item = newValue else { return }
                 withMotion(.easeInOut(duration: 0.15)) {
                     proxy.scrollTo(item, anchor: .center)
                 }
             }
-            .onKeyPress(.return) {
-                commitSelection()
-                return .handled
-            }
+            .modifier(ReturnKeyCommit(action: commitSelection))
         }
     }
 
@@ -243,4 +240,22 @@ struct DatabaseSwitcherSheet: View {
         databaseType: .postgresql,
         connectionId: UUID()
     ) { _ in }
+}
+
+/// `onKeyPress` is macOS 14. On 13 the sheet's default button still commits, so Return keeps
+/// working; what the handler adds is committing while focus sits in the list.
+private struct ReturnKeyCommit: ViewModifier {
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.onKeyPress(.return) {
+                action()
+                return .handled
+            }
+        } else {
+            content
+        }
+    }
 }

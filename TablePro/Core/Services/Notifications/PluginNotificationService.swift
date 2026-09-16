@@ -8,8 +8,8 @@ import Foundation
 import os
 import UserNotifications
 
-@MainActor @Observable
-final class PluginNotificationService {
+@MainActor
+final class PluginNotificationService: ObservableObject {
     static let shared = PluginNotificationService()
 
     static let identifierPrefix = "com.TablePro.plugin."
@@ -18,10 +18,10 @@ final class PluginNotificationService {
     private static let failedIdentifierPrefix = identifierPrefix + "failed."
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginNotifications")
 
-    private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @Published private(set) var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
-    @ObservationIgnored private var cancellables: Set<AnyCancellable> = []
-    @ObservationIgnored private var deliveredFailureIdentifiers: Set<String> = []
+    private var cancellables: Set<AnyCancellable> = []
+    private var deliveredFailureIdentifiers: Set<String> = []
 
     private init() {}
 

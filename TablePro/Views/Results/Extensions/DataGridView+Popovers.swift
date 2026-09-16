@@ -373,13 +373,15 @@ extension TableViewCoordinator {
         else { return }
         let columnName = tableRows.columns[columnIndex]
 
+        let columnType = tableRows.columnTypes[columnIndex]
+        let delimiter = PostgresArrayDelimiter.forColumn(columnType)
         let typedValue = cellTypedValue(at: row, column: columnIndex)
         let literal: String?
         if typedValue.isNull {
             literal = nil
         } else {
             let stored = typedValue.asText ?? ""
-            guard PostgresArrayLiteralCodec.parse(stored) != nil else {
+            guard PostgresArrayLiteralCodec.parse(stored, delimiter: delimiter) != nil else {
                 beginCellEdit(row: row, tableColumnIndex: column)
                 return
             }
@@ -388,7 +390,7 @@ extension TableViewCoordinator {
 
         let allowedValues = tableRows.columnEnumValues[columnName] ?? []
         let isNullable = tableRows.columnNullable[columnName] ?? true
-        let elementEditor = tableRows.columnTypes[columnIndex].arrayElementEditor ?? .scalar
+        let elementEditor = columnType.arrayElementEditor ?? .scalar
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
 
         dismissActiveCellEditorPopover()
@@ -401,6 +403,7 @@ extension TableViewCoordinator {
                 literal: literal,
                 allowedValues: allowedValues,
                 isNullable: isNullable,
+                delimiter: delimiter,
                 elementEditor: elementEditor,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
@@ -500,7 +503,7 @@ extension TableViewCoordinator {
     ) -> NSMenuItem {
         switch option {
         case .sectionHeader(let title):
-            return NSMenuItem.sectionHeader(title: title)
+            return NSMenuItem.sectionHeaderCompat(title: title)
         case .value(let title, let sql):
             let item = NSMenuItem(title: title, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
             item.target = self

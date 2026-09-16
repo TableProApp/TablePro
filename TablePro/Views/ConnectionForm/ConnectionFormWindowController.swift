@@ -57,6 +57,7 @@ internal final class ConnectionFormWindowController: NSWindowController, NSWindo
         /// generic string and the type would never reach the titlebar.
         let window = NSWindow(contentViewController: split)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.connectionForm)
+        window.keepsKeyViewLoopCurrent()
         /// `.fullSizeContentView` with a transparent titlebar is what lets the sidebar run the
         /// window's full height and carry the traffic lights, the way System Settings and this
         /// app's own main window do. Without it the titlebar is an opaque band across the top and

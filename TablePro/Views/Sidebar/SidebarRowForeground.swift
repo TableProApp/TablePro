@@ -17,11 +17,20 @@ internal enum SidebarRowForeground {
         if isSystem { return .system }
         return .normal
     }
+
+    static func fallbackStyle(for role: Role) -> AnyShapeStyle {
+        switch role {
+        case .active: AnyShapeStyle(Color.accentColor)
+        case .system: AnyShapeStyle(.secondary)
+        case .normal: AnyShapeStyle(.primary)
+        }
+    }
 }
 
 /// Emphasis is not a role. AppKit publishes the row's background prominence into the hosted view,
 /// and `.primary` and `.secondary` both answer it on their own, so only the active-object tint needs
 /// resolving: an accent label on an accent fill reads as unselected.
+@available(macOS 14.0, *)
 private struct SidebarRowForegroundModifier: ViewModifier {
     let role: SidebarRowForeground.Role
 
@@ -46,7 +55,15 @@ private struct SidebarRowForegroundModifier: ViewModifier {
 }
 
 internal extension View {
+    /// `backgroundProminence` is macOS 14; before it the row cannot tell it sits on a
+    /// prominent selection, so the active tint stays at the accent colour.
+    @ViewBuilder
     func sidebarRowForeground(isActive: Bool, isSystem: Bool) -> some View {
-        modifier(SidebarRowForegroundModifier(role: SidebarRowForeground.role(isActive: isActive, isSystem: isSystem)))
+        let role = SidebarRowForeground.role(isActive: isActive, isSystem: isSystem)
+        if #available(macOS 14.0, *) {
+            modifier(SidebarRowForegroundModifier(role: role))
+        } else {
+            foregroundStyle(SidebarRowForeground.fallbackStyle(for: role))
+        }
     }
 }

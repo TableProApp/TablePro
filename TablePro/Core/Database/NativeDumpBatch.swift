@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 
 /// One database's share of a backup.
@@ -78,16 +78,15 @@ struct NativeDumpBatchState: Equatable {
 /// because the second was unreadable helps nobody. Every item's outcome is reported, so a partial
 /// run never looks like a whole one.
 @MainActor
-@Observable
-final class NativeDumpBatch {
+final class NativeDumpBatch: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "NativeDumpBatch")
 
-    private(set) var state = NativeDumpBatchState()
+    @Published private(set) var state = NativeDumpBatchState()
 
-    @ObservationIgnored private let makeService: @MainActor () -> any NativeDumpRunning
-    @ObservationIgnored private let estimateSize: @MainActor (DatabaseConnection, String) async -> Int64?
-    @ObservationIgnored private var current: (any NativeDumpRunning)?
-    @ObservationIgnored private var cancelled = false
+    private let makeService: @MainActor () -> any NativeDumpRunning
+    private let estimateSize: @MainActor (DatabaseConnection, String) async -> Int64?
+    private var current: (any NativeDumpRunning)?
+    private var cancelled = false
 
     init(
         makeService: @escaping @MainActor () -> any NativeDumpRunning = { NativeDumpService(kind: .backup) },

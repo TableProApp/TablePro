@@ -9,7 +9,6 @@
 import AppKit
 import Combine
 import Foundation
-import Observation
 import os
 import SwiftUI
 import TableProEditorKit
@@ -67,23 +66,22 @@ internal struct DataGridFontCacheResolved {
 
 // MARK: - ThemeEngine
 
-@Observable
 @MainActor
-internal final class ThemeEngine {
+internal final class ThemeEngine: ObservableObject {
     static let shared = ThemeEngine()
 
     // MARK: - Active Theme
 
-    private(set) var activeTheme: ThemeDefinition
+    @Published private(set) var activeTheme: ThemeDefinition
 
     /// Pre-resolved colors (rebuilt on theme change)
-    private(set) var colors: ResolvedThemeColors
+    @Published private(set) var colors: ResolvedThemeColors
 
     /// Cached editor fonts
-    private(set) var editorFonts: EditorFontCache
+    @Published private(set) var editorFonts: EditorFontCache
 
     /// Cached data grid fonts
-    private(set) var dataGridFonts: DataGridFontCacheResolved
+    @Published private(set) var dataGridFonts: DataGridFontCacheResolved
 
     // MARK: - Stored Value Font
 
@@ -100,22 +98,22 @@ internal final class ThemeEngine {
 
     // MARK: - Available Themes
 
-    private(set) var availableThemes: [ThemeDefinition]
+    @Published private(set) var availableThemes: [ThemeDefinition]
 
     // MARK: - Editor Behavioral Settings (read from AppSettingsManager)
 
     /// These are not theme properties but are needed by makeEditorTheme()
-    @ObservationIgnored var highlightCurrentLine: Bool = true
-    @ObservationIgnored var highlightCurrentStatement: Bool = true
-    @ObservationIgnored var showLineNumbers: Bool = true
-    @ObservationIgnored var tabWidth: Int = 4
-    @ObservationIgnored var wordWrap: Bool = false
+    var highlightCurrentLine: Bool = true
+    var highlightCurrentStatement: Bool = true
+    var showLineNumbers: Bool = true
+    var tabWidth: Int = 4
+    var wordWrap: Bool = false
 
     // MARK: - Private
 
-    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
-    @ObservationIgnored private var accessibilityObserver: NSObjectProtocol?
-    @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEngine")
+    private var accessibilityObserver: NSObjectProtocol?
+    private var lastAccessibilityScale: CGFloat = 1.0
 
     // MARK: - Init
 
@@ -337,11 +335,11 @@ internal final class ThemeEngine {
 
     // MARK: - Appearance
 
-    @ObservationIgnored private(set) var appearanceMode: AppAppearanceMode = .auto
-    private(set) var effectiveAppearance: ThemeAppearance = .light
-    @ObservationIgnored private var currentLightThemeId: String = "tablepro.default-light"
-    @ObservationIgnored private var currentDarkThemeId: String = "tablepro.default-dark"
-    @ObservationIgnored private var systemAppearanceObservation: NSKeyValueObservation?
+    private(set) var appearanceMode: AppAppearanceMode = .auto
+    @Published private(set) var effectiveAppearance: ThemeAppearance = .light
+    private var currentLightThemeId: String = "tablepro.default-light"
+    private var currentDarkThemeId: String = "tablepro.default-dark"
+    private var systemAppearanceObservation: NSKeyValueObservation?
 
     /// Central entry point: resolves effective appearance, picks the correct theme, activates it,
     /// and derives NSApp.appearance from the theme's own appearance metadata.

@@ -594,7 +594,7 @@ struct FilterValueTextField: NSViewRepresentable {
                     .padding(4)
                 }
                 .focusable(false)
-                .onChange(of: state.selectedIndex) { _, newIndex in
+                .onChange(of: state.selectedIndex) { newIndex in
                     withMotion(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)
                     }

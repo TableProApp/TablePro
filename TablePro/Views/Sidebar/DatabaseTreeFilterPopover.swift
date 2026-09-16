@@ -10,8 +10,8 @@ struct DatabaseTreeFilterPopover: View {
 
     @Binding var selectedDatabases: Set<String>
 
-    @Bindable private var treeService = DatabaseTreeMetadataService.shared
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var searchText: String = ""
 
     private static let width: CGFloat = 300
@@ -61,14 +61,14 @@ struct DatabaseTreeFilterPopover: View {
     @ViewBuilder
     private var content: some View {
         if selectableDatabases.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Databases"),
                 systemImage: "cylinder",
                 description: Text(String(localized: "Connect to load the database list."))
             )
             .frame(maxWidth: .infinity, minHeight: 160)
         } else if matchingDatabases.isEmpty {
-            ContentUnavailableView.search(text: searchText)
+            UnavailableStateView.search(text: searchText)
                 .frame(maxWidth: .infinity, minHeight: 160)
         } else {
             databaseList

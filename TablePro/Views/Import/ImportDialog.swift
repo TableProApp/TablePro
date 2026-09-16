@@ -125,7 +125,7 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
@@ -138,7 +138,7 @@ struct ImportDialog: View {
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .onChange(of: showErrorDialog) { _, isShowing in
+        .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
@@ -285,7 +285,7 @@ struct ImportDialog: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _, _ in
+                    .onChange(of: selectedEncoding) { _ in
                         loadFileTask?.cancel()
                         if let url = fileURL {
                             loadFileTask = Task {

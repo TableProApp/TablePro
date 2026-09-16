@@ -123,8 +123,16 @@ struct CatalogEditAdoption {
             if let schema, ref.qualifyingSchema != schema { return ref }
             return nil
         }
-        guard container.kind == .database else { return }
         let sidebarState = SharedSidebarState.forConnection(connectionId)
+        /// A dropped schema takes its own Recent entries with it and leaves its siblings alone.
+        /// Skipping this left every Recent row for that schema opening a tab whose query failed
+        /// with "relation does not exist", and the entries outlived a reconnect and a restart
+        /// because they persist per connection in UserDefaults.
+        if let schema {
+            sidebarState.clearRecentTables(inDatabase: database, schema: schema)
+            return
+        }
+        guard container.kind == .database else { return }
         sidebarState.clearRecentTables(inDatabase: database)
         var selected = sidebarState.databaseFilterSelected
         guard selected.remove(database) != nil else { return }

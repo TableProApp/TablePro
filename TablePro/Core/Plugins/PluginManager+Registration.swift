@@ -614,6 +614,21 @@ extension PluginManager {
             .capabilities.supportsRenameSchema ?? false
     }
 
+    func supportsCreateSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsCreateSchema ?? false
+    }
+
+    func supportsSchemaOwner(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsSchemaOwner ?? false
+    }
+
+    func supportsSchemaPrivileges(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsSchemaPrivileges ?? false
+    }
+
     func rowMatchExcludedTypePrefixes(for databaseType: DatabaseType) -> [String] {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchExcludedTypePrefixes ?? []
     }

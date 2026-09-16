@@ -253,6 +253,14 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func renameSchema(name: String, to newName: String) async throws
 
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]?
+
+    func alterSchemaStatements(from current: PluginSchemaDetails, to target: PluginSchemaDefinition) -> [String]?
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails?
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]?
 
     func switchSessionContext(id: String, to value: String) async throws
@@ -495,6 +503,17 @@ extension DatabaseDriver {
     func renameSchema(name: String, to newName: String) async throws {
         throw PluginDriverUnsupportedOperation.renameSchema
     }
+
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? { nil }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? { nil }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? { nil }
 

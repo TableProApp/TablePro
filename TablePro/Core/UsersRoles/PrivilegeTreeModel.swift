@@ -1,34 +1,28 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class PrivilegeTreeModel {
+final class PrivilegeTreeModel: ObservableObject {
     enum Mode: Equatable {
         case hierarchy
         case granted
         case searchResults
     }
 
-    private(set) var roots: [PrivilegeNode] = []
-    private(set) var mode: Mode = .hierarchy
-    private(set) var structureVersion = 0
+    @Published private(set) var roots: [PrivilegeNode] = []
+    @Published private(set) var mode: Mode = .hierarchy
+    @Published private(set) var structureVersion = 0
 
-    @ObservationIgnored
-    private var databases: [String] = []
+    @Published private var databases: [String] = []
 
-    @ObservationIgnored
-    private var hasServerScope = false
+    @Published private var hasServerScope = false
 
-    @ObservationIgnored
-    private var restrictsBrowsing = false
+    @Published private var restrictsBrowsing = false
 
-    @ObservationIgnored
-    private var currentDatabase: String?
+    @Published private var currentDatabase: String?
 
-    @ObservationIgnored
-    private var loader: PrincipalListLoader?
+    @Published private var loader: PrincipalListLoader?
 
     func configure(
         databases: [String],

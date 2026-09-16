@@ -7,7 +7,9 @@ extension MainContentCoordinator {
     @discardableResult
     func recordHistory(_ request: QueryHistoryRecordRequest) -> Task<Bool, Never> {
         if request.source == .editor {
-            FeatureTipSignals.editorQueryRan()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.editorQueryRan()
+            }
         }
         let recorder = services.queryHistoryManager
         return Task(priority: .utility) {

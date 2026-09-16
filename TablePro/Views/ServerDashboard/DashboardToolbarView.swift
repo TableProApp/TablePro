@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DashboardToolbarView: View {
-    @Bindable var viewModel: ServerDashboardViewModel
+    @ObservedObject var viewModel: ServerDashboardViewModel
 
     var body: some View {
         HStack(spacing: 12) {

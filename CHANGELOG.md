@@ -38,11 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Result chooser in the status bar, naming the result on screen and offering Pin, Unpin, Close and Close Others.
 - A reason on a dimmed Run, Explain, Format or Favorite saying why it cannot run.
 - Formatted JSON inspection and per-element editing for PostgreSQL `jsonb[]` and `json[]` columns. (#2897)
+- **New Schema…** and **Edit Schema…** for PostgreSQL, with owner, comment, `USAGE` and `CREATE` privileges and a statement preview. (#2908)
 - Array element editor in the row inspector.
 - **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
+- **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904)
 
 ### Changed
 
+- Minimum macOS lowered to 13.0 (Ventura).
 - Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
 - The editor's find panel keeps the mode it was left in instead of reverting to Find each time it opens.
 - Duplicate Connection shares a linked credential profile instead of copying its password.
@@ -69,10 +72,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Result tab strip above the query results, and the "Query" heading above the editor.
 - Trash button that cleared the query and the results under one name.
 - **Auto-uppercase keywords** in Settings > Editor, replaced by **Keyword case**.
+- `Escape` shortcut for Clear Selection in Settings > Keyboard.
 
 ### Fixed
 
 - Nested Elasticsearch fields showing as null in the grid, and filters on those leaves matching nothing.
+- `Esc` no longer leaving Vim's Insert mode in the SQL editor, with `Ctrl+[` still working. (#2914)
+- Vim mode inert until the editor is refocused when it is turned on while the editor already has focus.
+- A find bar open in one window swallowing `Esc` in every other window.
+- `Tab` accepting an AI suggestion instead of the selected item in the autocomplete list.
+- Drop Schema and Drop Database skipping Safe Mode's confirmation and Touch ID, and writing no audit record.
+- New Database offered on a read-only connection, and running without Safe Mode's confirmation.
+- Drop Schema failing on Redshift, CockroachDB and PGlite, which offered it with nothing behind it.
+- Missing `CREATE SCHEMA` steps when duplicating a Redshift or CockroachDB database with more than one schema.
+- Drop Schema promising to delete dependent objects on engines with no `CASCADE`, such as SQL Server and BigQuery.
+- Recent Tables entries left pointing at tables in a dropped schema.
+- `Tab` reaching no further than the sidebar, leaving the editor, data grid, inspector and assistant unreachable from the keyboard. (#2904)
+- Clear Selection enabled on a window with nothing to clear.
+- PostgreSQL `box[]` cell split into fragments by the element editor, which read it with a comma.
+- Empty PostgreSQL `jsonb` object copied to another engine as an empty array. (Copy Objects)
+- Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.
+- Two chevrons on the row inspector's `SET` field.
 - Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
@@ -188,6 +208,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
 - AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
 - AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
+- Auto-uppercase keywords leaving `ADD`, `MERGE`, `CALL`, `COMMENT` and 17 more in the case they were typed.
+- Autocomplete committing a different column between launches when two scored the same.
 - MongoDB autocomplete inserting `$MATCH` and `DB`, which the server rejects.
 - ClickHouse autocomplete offering 18 function names the server rejects, `TOSTRING` and `UNIQ` among them.
 - Completion inserted beside a non-ASCII prefix instead of replacing it: `SELECT 名` became `SELECT 名名前`.

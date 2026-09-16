@@ -15,7 +15,7 @@ options:
   transitivelyLinkDependencies: false
   localPackagesGroup: Packages
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "13.0"
 
 configs:
   Debug: debug
@@ -542,6 +542,8 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaManagementQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaStatementPlanner.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift

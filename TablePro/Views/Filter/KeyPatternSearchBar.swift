@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct KeyPatternSearchBar: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let descriptor: BrowseFilterDescriptor
 
     @State private var pattern: String = ""
@@ -35,7 +35,7 @@ struct KeyPatternSearchBar: View {
                 /// width of its widest one, so an unbounded one could make this bar wider than the
                 /// pane and clip the grid beside it.
                 .frame(maxWidth: Self.typeScopeMaximumWidth)
-                .onChange(of: typeScope) { _, _ in apply() }
+                .onChange(of: typeScope) { _ in apply() }
             }
 
             if isActive {
@@ -48,7 +48,7 @@ struct KeyPatternSearchBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .onAppear(perform: syncFromState)
-        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _, _ in
+        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _ in
             syncFromState()
         }
     }

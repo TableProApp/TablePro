@@ -3,19 +3,19 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@Observable
 @MainActor
-final class SSLPaneViewModel {
-    var mode: SSLMode = .disabled
-    var caCertPath: String = ""
-    var clientCertPath: String = ""
-    var clientKeyPath: String = ""
-    var clientKeyPassphrase: String = ""
+final class SSLPaneViewModel: ObservableObject {
+    @Published var mode: SSLMode = .disabled
+    @Published var caCertPath: String = ""
+    @Published var clientCertPath: String = ""
+    @Published var clientKeyPath: String = ""
+    @Published var clientKeyPassphrase: String = ""
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     /// Silent on a driver that renders no SSL section, so a stored mode the form cannot show
     /// cannot disable Save over a certificate field the user has no way to reach.

@@ -23,7 +23,7 @@ struct TableTransferSheet: View {
     /// session happened to be browsing and matched the bare names against that one instead.
     var preselectedSchema: String?
 
-    @State private var service = TableTransferService()
+    @StateObject private var service = TableTransferService()
     @State private var destinationConnectionId: UUID?
     @State private var destinationDatabase = ""
     @State private var availableDestinations: [DatabaseConnection] = []
@@ -115,7 +115,7 @@ struct TableTransferSheet: View {
                     Text(connection.name).tag(UUID?.some(connection.id))
                 }
             }
-            .onChange(of: destinationConnectionId) {
+            .onChange(of: destinationConnectionId) { _ in
                 Task {
                     await loadDestinationDatabases()
                     await loadColumnsForSelection()

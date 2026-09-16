@@ -31,10 +31,10 @@ import SwiftUI
 /// elements" (WWDC25 session 219). The band is already the system's glass, so these fills are the
 /// top layer on it rather than a second pane of it.
 internal struct EditorTabStrip: View {
-    internal let tabManager: QueryTabManager
+    @ObservedObject internal var tabManager: QueryTabManager
     /// The pointer's owner. AppKit measures the run and drives every press; this view draws what
     /// that produced. Nothing here reads a mouse.
-    internal let interaction: EditorTabStripInteraction
+    @ObservedObject internal var interaction: EditorTabStripInteraction
     /// The dimension this engine's tabs are anchored to, so a label can name the container it
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
@@ -56,7 +56,7 @@ internal struct EditorTabStrip: View {
 
     /// Read here rather than pushed in at build time, so changing the preference re-lays every
     /// open strip at once instead of the next time an unrelated pane happens to rebuild.
-    @State private var settings = AppSettingsManager.shared
+    @ObservedObject private var settings = AppSettingsManager.shared
 
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -79,15 +79,19 @@ internal struct EditorTabStrip: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         /// A closed tab leaves its id behind, and the tab that slides into its place would
         /// otherwise light up under a pointer that never moved onto it.
-        .onChange(of: tabManager.tabs.map(\.id), initial: true) { _, ids in
+        .onAppear {
+            interaction.dropClosedTabs(keeping: tabManager.tabs.map(\.id))
+            interaction.overflow = settings.tabs.overflow
+        }
+        .onChange(of: tabManager.tabs.map(\.id)) { ids in
             interaction.dropClosedTabs(keeping: ids)
         }
-        .onChange(of: settings.tabs.overflow, initial: true) { _, style in
+        .onChange(of: settings.tabs.overflow) { style in
             interaction.overflow = style
         }
         /// Cmd+1..9, opening a table from the sidebar and closing a tab can all land on a tab that
         /// is scrolled out of sight, so the selection pulls itself into view.
-        .onChange(of: tabManager.selectedTabId) { _, newValue in
+        .onChange(of: tabManager.selectedTabId) { newValue in
             guard let newValue else { return }
             withMotion(.easeOut(duration: 0.15)) {
                 interaction.revealTab(id: newValue)
@@ -95,7 +99,7 @@ internal struct EditorTabStrip: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
-        .accessibilityAddTraits(.isTabBar)
+        .modifier(TabBarAccessibilityTrait())
     }
 
     private var trackHeight: CGFloat {
@@ -448,8 +452,8 @@ private struct EditorTabStripCloseButtonStyle: ButtonStyle {
     }
 
     private func fill(isPressed: Bool) -> Color {
-        if isPressed { return Color(nsColor: .tertiarySystemFill) }
-        return isHovering ? Color(nsColor: .quaternarySystemFill) : .clear
+        if isPressed { return Color(nsColor: .tertiaryFill) }
+        return isHovering ? Color(nsColor: .quaternaryFill) : .clear
     }
 }
 
@@ -562,6 +566,19 @@ private extension View {
                         y: isLightAppearance ? 0.5 : 0
                     )
             )
+        }
+    }
+}
+
+/// `AccessibilityTraits.isTabBar` is macOS 14. Without it VoiceOver announces the strip as a
+/// plain container; the label and the per-tab elements are unchanged.
+private struct TabBarAccessibilityTrait: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.accessibilityAddTraits(.isTabBar)
+        } else {
+            content
         }
     }
 }

@@ -10,7 +10,7 @@ import SwiftUI
 internal struct ThemeEditorView: View {
     @Binding var selectedThemeId: String
 
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
     private var theme: ThemeDefinition { engine.activeTheme }
     private var isEditable: Bool { theme.isEditable }
 

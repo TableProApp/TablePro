@@ -49,7 +49,7 @@ struct HighlightRulesPopover: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "No Highlight Rules"), systemImage: "highlighter")
         } description: {
             Text("Right-click a cell and choose Highlight to color rows by value.")

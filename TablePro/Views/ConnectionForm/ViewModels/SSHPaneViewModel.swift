@@ -3,14 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class SSHPaneViewModel {
-    var state = SSHTunnelFormState()
+final class SSHPaneViewModel: ObservableObject {
+    @Published var state = SSHTunnelFormState()
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }

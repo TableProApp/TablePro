@@ -32,11 +32,11 @@ struct IntegrationsActivityLogPane: View {
         )
         .overlay(alignment: .center) { overlay }
         .searchable(text: $searchText, placement: .toolbar, prompt: Text(String(localized: "Search activity")))
-        .inspector(isPresented: $showInspector) {
-            ActivityLogInspector(entry: selectedEntry,
-                                 connectionLabel: connectionName)
-                .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
-        }
+        .modifier(ActivityLogInspectorPane(
+            isPresented: $showInspector,
+            entry: selectedEntry,
+            connectionLabel: connectionName
+        ))
         .toolbar(content: toolbar)
         .navigationTitle(IntegrationsActivitySection.activityLog.title)
         .navigationSubtitle(retentionSubtitle)
@@ -44,10 +44,10 @@ struct IntegrationsActivityLogPane: View {
         .onReceive(AppEvents.shared.mcpAuditLogChanged) { _ in
             Task { await reload() }
         }
-        .onChange(of: selectedTokenId) { _, _ in Task { await reload() } }
-        .onChange(of: selectedCategory) { _, _ in Task { await reload() } }
-        .onChange(of: selectedRange) { _, _ in Task { await reload() } }
-        .onChange(of: sortOrder) { _, newValue in
+        .onChange(of: selectedTokenId) { _ in Task { await reload() } }
+        .onChange(of: selectedCategory) { _ in Task { await reload() } }
+        .onChange(of: selectedRange) { _ in Task { await reload() } }
+        .onChange(of: sortOrder) { newValue in
             entries.sort(using: newValue)
         }
     }
@@ -70,15 +70,15 @@ struct IntegrationsActivityLogPane: View {
     @ViewBuilder
     private var emptyState: some View {
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            ContentUnavailableView.search(text: searchText)
+            UnavailableStateView.search(text: searchText)
         } else if hasNoFilters {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No activity yet"),
                 systemImage: "tray",
                 description: Text(String(localized: "External integrations and MCP client requests will appear here."))
             )
         } else {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No matching activity"),
                 systemImage: "line.3.horizontal.decrease.circle",
                 description: Text(String(localized: "No activity matches the current filters."))
@@ -417,7 +417,7 @@ private struct ActivityLogInspector: View {
             if let entry {
                 detailForm(for: entry)
             } else {
-                ContentUnavailableView(
+                UnavailableStateView(
                     String(localized: "No Selection"),
                     systemImage: "list.bullet.rectangle",
                     description: Text(String(localized: "Select an activity entry to see its details."))
@@ -513,6 +513,33 @@ enum ActivityTimeRange: String, CaseIterable, Identifiable {
         case .last7Days: return now.addingTimeInterval(-7 * 86_400)
         case .last30Days: return now.addingTimeInterval(-30 * 86_400)
         case .all: return nil
+        }
+    }
+}
+
+/// `.inspector` and `.inspectorColumnWidth` are macOS 14. Before them the pane is shown beside
+/// the log in an `HSplitView`, which is the same arrangement without the system's show/hide
+/// animation and its width persistence.
+private struct ActivityLogInspectorPane: ViewModifier {
+    @Binding var isPresented: Bool
+    let entry: AuditEntry?
+    let connectionLabel: (UUID?) -> String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.inspector(isPresented: $isPresented) {
+                ActivityLogInspector(entry: entry, connectionLabel: connectionLabel)
+                    .inspectorColumnWidth(min: 260, ideal: 320, max: 480)
+            }
+        } else {
+            HSplitView {
+                content
+                if isPresented {
+                    ActivityLogInspector(entry: entry, connectionLabel: connectionLabel)
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 480)
+                }
+            }
         }
     }
 }

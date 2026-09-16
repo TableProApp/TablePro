@@ -100,7 +100,10 @@ internal enum FieldEditorResolver {
     private static func arrayElementEditor(for type: ColumnType, originalValue: String?) -> ArrayElementEditor? {
         guard let elementEditor = type.arrayElementEditor,
               let originalValue,
-              PostgresArrayLiteralCodec.parse(originalValue) != nil
+              PostgresArrayLiteralCodec.parse(
+                  originalValue,
+                  delimiter: PostgresArrayDelimiter.forColumn(type)
+              ) != nil
         else { return nil }
         return elementEditor
     }

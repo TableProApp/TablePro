@@ -9,14 +9,14 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarView: View {
-    @State private var viewModel: SidebarViewModel
-    @State private var settingsManager = AppSettingsManager.shared
+    @StateObject private var viewModel: SidebarViewModel
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsSchemaProgress = false
 
-    private var schemaService: SchemaService { SchemaService.shared }
+    @ObservedObject private var schemaService = SchemaService.shared
 
-    var sidebarState: SharedSidebarState
-    var windowState: WindowSidebarState
+    @ObservedObject var sidebarState: SharedSidebarState
+    @ObservedObject var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
 
@@ -95,7 +95,7 @@ struct SidebarView: View {
         )
         /// Nothing observable is written here. This initializer runs on every evaluation of the
         /// parent's body, and the view model already seeds its own filter and watches the field.
-        _viewModel = State(wrappedValue: vm)
+        _viewModel = StateObject(wrappedValue: vm)
         self.connectionId = connectionId
         self.coordinator = coordinator
     }
@@ -106,7 +106,9 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                FeatureTipInline(tip: OpenQuicklyTip(shortcut: FeatureTipShortcut.display(for: .quickSwitcher)))
+                if #available(macOS 14.0, *) {
+                    FeatureTipInline(tip: OpenQuicklyTip(shortcut: FeatureTipShortcut.display(for: .quickSwitcher)))
+                }
                 tablesContent
             case .favorites:
                 if let coordinator {
@@ -124,13 +126,13 @@ struct SidebarView: View {
 
             sidebarFooter
         }
-        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
+        .onChange(of: settingsManager.general.showRecentTables) { _ in
             sidebarState.reloadRecentTablesFromStore()
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
         }
-        .onChange(of: viewModel.showOperationDialog) { _, isPresented in
+        .onChange(of: viewModel.showOperationDialog) { isPresented in
             guard isPresented else { return }
             presentOperationAlert()
         }
@@ -205,16 +207,19 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var databaseTreeContent: some View {
-        DatabaseTreeView(
-            connectionId: connectionId,
-            databaseType: viewModel.databaseType,
-            viewModel: viewModel,
-            windowState: windowState,
-            pendingTruncates: $pendingTruncates,
-            pendingDeletes: $pendingDeletes,
-            coordinator: coordinator,
-            sidebarState: sidebarState
-        )
+        if let coordinator {
+            DatabaseTreeView(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                viewModel: viewModel,
+                windowState: windowState,
+                pendingTruncates: $pendingTruncates,
+                pendingDeletes: $pendingDeletes,
+                coordinator: coordinator,
+                toolbarState: coordinator.toolbarState,
+                sidebarState: sidebarState
+            )
+        }
     }
 
     @ViewBuilder
@@ -308,7 +313,7 @@ struct SidebarView: View {
     }
 
     private var noMatchState: some View {
-        ContentUnavailableView.search(text: viewModel.searchText)
+        UnavailableStateView.search(text: viewModel.searchText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -55,7 +55,7 @@ internal struct ExportRowScopeEditor: View {
                 TextField("All rows", text: $rowLimitText)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 120)
-                    .onChange(of: rowLimitText) { _, entered in
+                    .onChange(of: rowLimitText) { entered in
                         let digits = entered.filter(\.isWholeNumber)
                         if digits != entered { rowLimitText = digits }
                     }

@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
@@ -23,25 +24,24 @@ enum PgpassStatus {
     }
 }
 
-@Observable
 @MainActor
-final class AuthPaneViewModel {
-    var username: String = ""
-    var password: String = ""
-    var promptForPassword: Bool = false
-    var additionalFieldValues: [String: String] = [:]
-    var pgpassStatus: PgpassStatus = .notChecked
+final class AuthPaneViewModel: ObservableObject {
+    @Published var username: String = ""
+    @Published var password: String = ""
+    @Published var promptForPassword: Bool = false
+    @Published var additionalFieldValues: [String: String] = [:]
+    @Published var pgpassStatus: PgpassStatus = .notChecked
 
     /// Which credentials this connection signs in with: its own, or a named profile shared with
     /// every other connection pointing at the same one.
-    var credentialMode: CredentialMode = .inline
-    var credentialProfiles: [CredentialProfile] = []
+    @Published var credentialMode: CredentialMode = .inline
+    @Published var credentialProfiles: [CredentialProfile] = []
 
     /// What the keychain held when the form opened. An empty password field means the user cleared
     /// it only if there was something to clear and the read succeeded.
-    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+    @Published private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     var authFields: [ConnectionField] {
         guard let type = coordinator?.value?.network.type else { return [] }
@@ -106,7 +106,7 @@ final class AuthPaneViewModel {
         usesCredentialProfile && selectedCredentialProfile == nil
     }
 
-    var isSavingCredentialsAsProfile = false
+    @Published var isSavingCredentialsAsProfile = false
 
     func loadCredentialProfiles() {
         credentialProfiles = CredentialProfileStorage.shared.loadProfiles()

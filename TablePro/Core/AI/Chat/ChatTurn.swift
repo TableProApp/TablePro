@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 
 enum ChatRole: String, Codable, Sendable {
     case user
@@ -22,11 +22,11 @@ enum ChatContentBlockKind: Sendable, Equatable {
     case sqlWalkthrough(SqlWalkthroughBlock)
 }
 
-@MainActor @Observable
-final class ChatContentBlock: Identifiable {
+@MainActor
+final class ChatContentBlock: ObservableObject, Identifiable {
     let id: UUID
-    var kind: ChatContentBlockKind
-    var isStreaming: Bool
+    @Published var kind: ChatContentBlockKind
+    @Published var isStreaming: Bool
 
     init(id: UUID = UUID(), kind: ChatContentBlockKind, isStreaming: Bool = false) {
         self.id = id
@@ -94,15 +94,15 @@ extension ChatContentBlock {
     }
 }
 
-@MainActor @Observable
-final class ChatTurn: Identifiable {
+@MainActor
+final class ChatTurn: ObservableObject, Identifiable {
     let id: UUID
     let role: ChatRole
-    var blocks: [ChatContentBlock]
+    @Published var blocks: [ChatContentBlock]
     let timestamp: Date
-    var usage: AITokenUsage?
-    var modelId: String?
-    var providerId: String?
+    @Published var usage: AITokenUsage?
+    @Published var modelId: String?
+    @Published var providerId: String?
 
     init(
         id: UUID = UUID(),

@@ -6,9 +6,9 @@
 import SwiftUI
 
 struct PluginInstallStatusRow: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
-    private var tracker: PluginInstallTracker { PluginInstallTracker.shared }
+    @ObservedObject private var tracker = PluginInstallTracker.shared
 
     var body: some View {
         LabeledContent(String(localized: "Plugin")) {

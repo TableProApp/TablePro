@@ -30,7 +30,7 @@ struct HexColorPicker: View {
 
 internal struct ThemeEditorColorsSection: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorColorsSection")
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
     private var theme: ThemeDefinition { engine.activeTheme }
 
     var body: some View {

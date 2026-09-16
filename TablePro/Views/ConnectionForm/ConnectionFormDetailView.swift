@@ -12,7 +12,7 @@ import SwiftUI
 /// `.sidebarTrackingSeparator` to resolve. Wrapping the split view to span a bar across both
 /// columns would take that away, and the sidebar has nothing to commit anyway.
 struct ConnectionFormDetailView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         VStack(spacing: 0) {

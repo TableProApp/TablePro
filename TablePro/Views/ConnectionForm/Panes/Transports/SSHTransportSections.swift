@@ -12,7 +12,7 @@ import SwiftUI
 /// selected it, which is why the old `Toggle("Enable SSH Tunnel")` that made up an entire pane on
 /// its own is gone.
 struct SSHTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         SSHServerSections(sshState: $coordinator.ssh.state)
@@ -96,7 +96,7 @@ struct SSHTransportSections: View {
 /// The server half is the same problem whether what comes back is a socket or a file, so it is the
 /// same view. What this adds is the path.
 struct RemoteFileTransportSections: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Section {

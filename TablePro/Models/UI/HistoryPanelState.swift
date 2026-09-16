@@ -1,9 +1,8 @@
+import Combine
 import Foundation
-import Observation
 
 @MainActor
-@Observable
-final class HistoryPanelState {
+final class HistoryPanelState: ObservableObject {
     let connectionId: UUID
 
     var isVisible: Bool { didSet { persistIfChanged(oldValue != isVisible) } }
@@ -15,7 +14,7 @@ final class HistoryPanelState {
 
     /// Search text is deliberately not persisted: a stale query on relaunch reads as an empty
     /// history rather than as a filter the user forgot they left behind.
-    var searchText: String = ""
+    @Published var searchText: String = ""
 
     /// Device-local and shared by every connection, because pausing is a decision about this Mac
     /// rather than about one database.

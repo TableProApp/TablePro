@@ -9,7 +9,7 @@ import TableProSyncTransport
 struct SyncStatusIndicator: View {
     let onActivateLicense: () -> Void
 
-    private let syncCoordinator = SyncCoordinator.shared
+    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
 
     var body: some View {
         if shouldShow {
@@ -18,8 +18,8 @@ struct SyncStatusIndicator: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: iconName)
-                        .contentTransition(.symbolEffect(.replace))
-                        .symbolEffect(.pulse, isActive: syncCoordinator.syncStatus.isSyncing)
+                        .symbolReplaceTransition()
+                        .pulsingSymbol(isActive: syncCoordinator.syncStatus.isSyncing)
                     Text(statusLabel)
                         .contentTransition(.numericText())
                 }

@@ -69,7 +69,7 @@ internal struct CrossEngineValueCoercer: Sendable {
         case .date, .time, .timestamp:
             return temporal(value, kind: pair.target)
         case .json:
-            return json(value)
+            return json(value, source: pair.source)
         default:
             return value
         }
@@ -131,8 +131,13 @@ internal struct CrossEngineValueCoercer: Sendable {
 
     /// A PostgreSQL array arrives as `{1,2,3}`, which a JSON column on the target rejects. The
     /// elements are the same; only the brackets and the quoting differ.
-    private func json(_ value: PluginCellValue) -> PluginCellValue {
-        guard sourceFamily == .postgres, case .text(let text) = value else { return value }
+    ///
+    /// It reads the source column, not the text: `{…}` is also how every JSON object arrives, and
+    /// keying on the brackets alone rewrote a `jsonb` `{}` as `[]`. A non-empty object survived
+    /// only by accident, because its `:` makes the array parse fail, so the bug was invisible
+    /// until a row held an empty one and `jsonb_typeof` came back `array`.
+    private func json(_ value: PluginCellValue, source: CanonicalTypeKind?) -> PluginCellValue {
+        guard sourceFamily == .postgres, case .array = source, case .text(let text) = value else { return value }
         guard text.hasPrefix("{"), text.hasSuffix("}") else { return value }
         guard let elements = PostgresArrayLiteralCodec.parse(text) else { return value }
         var items: [String] = []

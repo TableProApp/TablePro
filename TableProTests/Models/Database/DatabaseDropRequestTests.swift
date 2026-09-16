@@ -75,6 +75,23 @@ struct DatabaseDropRequestTests {
         #expect(dropRequest.message.contains("depend"))
     }
 
+    /// SQL Server and BigQuery have no `CASCADE` and refuse a non-empty schema outright, so the
+    /// confirmation must not promise to take dependent objects with it. The same sentence used to
+    /// appear for every engine, which made it both an understatement on PostgreSQL and a promise
+    /// SQL Server could not keep.
+    @Test("A schema drop on an engine with no cascade promises nothing about dependents")
+    func schemaDropWithoutCascadeMakesNoPromise() {
+        let dropRequest = request(
+            [.schema(database: "sales", schema: "reporting")],
+            entityName: "Schema",
+            entityNamePlural: "Schemas",
+            dropsDependentObjects: false
+        )
+
+        #expect(dropRequest.kind == .schema)
+        #expect(!dropRequest.message.contains("depend"))
+    }
+
     @Test("The menu title ends with an ellipsis because it opens a confirmation")
     func menuTitleHasEllipsis() {
         #expect(request([.database("sales")]).menuTitle.hasSuffix("…"))

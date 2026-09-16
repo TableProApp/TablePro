@@ -56,6 +56,7 @@ internal struct ArrayFieldEditorView: View {
                 literal: initialLiteral,
                 allowedValues: allowedValues,
                 isNullable: false,
+                delimiter: PostgresArrayDelimiter.forColumn(context.columnType),
                 elementEditor: elementEditor,
                 isReadOnly: context.isReadOnly,
                 onCommit: { context.value.wrappedValue = $0 ?? "" },
@@ -79,6 +80,11 @@ internal struct ArrayFieldEditorView: View {
     /// over the user's value.
     private var initialLiteral: String {
         let text = context.valueState.editableText
-        return text.isEmpty ? PostgresArrayLiteralCodec.serialize([]) : text
+        return text.isEmpty
+            ? PostgresArrayLiteralCodec.serialize(
+                [],
+                delimiter: PostgresArrayDelimiter.forColumn(context.columnType)
+            )
+            : text
     }
 }

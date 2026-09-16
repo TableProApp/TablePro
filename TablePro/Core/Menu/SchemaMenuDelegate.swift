@@ -14,6 +14,10 @@ final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
 
     private static let switcherAction = #selector(MainSplitViewController.openSchemaSwitcher(_:))
 
+    private static let createAction = #selector(MainSplitViewController.createSchema(_:))
+
+    private static let editAction = #selector(MainSplitViewController.editCurrentSchema(_:))
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         /// Added here rather than when the container was built, because this method clears the
@@ -35,6 +39,7 @@ final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
             return
         }
         let current = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+        addManagementItems(to: menu, coordinator: coordinator, current: current)
         for schema in sections.user {
             menu.addItem(item(for: schema, current: current))
         }
@@ -43,6 +48,41 @@ final class SchemaMenuDelegate: NSObject, NSMenuDelegate {
         for schema in sections.system {
             menu.addItem(item(for: schema, current: current))
         }
+    }
+
+    /// The only route to creating and editing a schema on a sidebar shape that draws no schema
+    /// row, which is every shape but the database tree. Both open a sheet, so both take an
+    /// ellipsis; the noun is the engine's, so this reads "New Dataset\u{2026}" on BigQuery.
+    private func addManagementItems(
+        to menu: NSMenu,
+        coordinator: MainContentCoordinator,
+        current: String?
+    ) {
+        let context = coordinator.schemaEditContext
+        let entity = PluginManager.shared.schemaEntityName(for: coordinator.connection.type)
+        var added = false
+        if SchemaEditEligibility.canCreate(context: context) {
+            let item = NSMenuItem(
+                title: String(format: String(localized: "New %@\u{2026}"), entity),
+                action: Self.createAction,
+                keyEquivalent: ""
+            )
+            item.target = nil
+            menu.addItem(item)
+            added = true
+        }
+        if let current, !current.isEmpty, SchemaEditEligibility.hasEditableFacet(context), !context.isReadOnly {
+            let item = NSMenuItem(
+                title: String(format: String(localized: "Edit %1$@ \"%2$@\"\u{2026}"), entity, current),
+                action: Self.editAction,
+                keyEquivalent: ""
+            )
+            item.target = nil
+            menu.addItem(item)
+            added = true
+        }
+        guard added else { return }
+        menu.addItem(.separator())
     }
 
     private func item(for schema: String, current: String?) -> NSMenuItem {

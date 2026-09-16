@@ -13,7 +13,7 @@
 import SwiftUI
 
 internal struct CopyObjectsProgressView: View {
-    internal let session: ObjectCopySession
+    @ObservedObject internal var session: ObjectCopySession
 
     internal var body: some View {
         VStack(spacing: 16) {

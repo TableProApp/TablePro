@@ -63,6 +63,13 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            schemaEditEligibility: SchemaEditEligibility.Context(
+                supportsCreateSchema: PluginManager.shared.supportsCreateSchema(for: databaseType),
+                supportsSchemaOwner: PluginManager.shared.supportsSchemaOwner(for: databaseType),
+                supportsSchemaPrivileges: PluginManager.shared.supportsSchemaPrivileges(for: databaseType),
+                supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
+                isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
+            ),
             tableOperationEligibility: tableOperationEligibility(
                 candidates: selected.union(clickedRef.map { [$0] } ?? [])
             ),
@@ -70,6 +77,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             containerEntityNamePlural: PluginManager.shared.containerEntityNamePlural(for: databaseType),
             schemaEntityName: PluginManager.shared.schemaEntityName(for: databaseType),
             schemaEntityNamePlural: PluginManager.shared.schemaEntityNamePlural(for: databaseType),
+            supportsCascadeDrop: PluginManager.shared.supportsCascadeDrop(for: databaseType),
             objectKindTitles: objectKindTitles(),
             isFavorite: clickedRef.map { isFavorite($0) } ?? false,
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments(),

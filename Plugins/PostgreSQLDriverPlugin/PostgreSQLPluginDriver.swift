@@ -125,6 +125,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     /// A duplicated database arrives with `public` alone, so every other schema its tables are
     /// qualified with has to be made before the first `CREATE TABLE` names one.
+    ///
+    /// Overrides the protocol's plain `IF NOT EXISTS` form because PostgreSQL before 9.3 has no
+    /// such clause and needs the `DO` block instead. Redshift and CockroachDB both accept the
+    /// plain form, so they keep the shared one.
     func createSchemaStatement(name: String) -> String? {
         PostgreSQLVersionedStatements.createSchema(name, capabilities: versionedCapabilities)
     }
@@ -730,10 +734,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func dropDatabase(name: String) async throws {
         _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
-    }
-
-    func dropSchema(name: String) async throws {
-        _ = try await execute(query: "DROP SCHEMA \(quoteIdentifier(name)) CASCADE")
     }
 
     private struct Template1Defaults {

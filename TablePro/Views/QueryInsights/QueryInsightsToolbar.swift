@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QueryInsightsToolbar: View {
-    @Bindable var viewModel: QueryInsightsViewModel
+    @ObservedObject var viewModel: QueryInsightsViewModel
 
     var body: some View {
         VStack(spacing: 0) {

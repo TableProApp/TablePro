@@ -13,8 +13,7 @@ import os
 import TableProImport
 
 @MainActor
-@Observable
-final class TeamLibrarySyncCoordinator {
+final class TeamLibrarySyncCoordinator: ObservableObject {
     static let shared = TeamLibrarySyncCoordinator()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibrarySyncCoordinator")
@@ -24,8 +23,8 @@ final class TeamLibrarySyncCoordinator {
     private let isFeatureAvailable: @MainActor () -> Bool
     private let credentialsProvider: @MainActor () -> (key: String, machineId: String)?
 
-    private(set) var library: TeamLibraryPullResponse = .empty
-    private(set) var isPublishing = false
+    @Published private(set) var library: TeamLibraryPullResponse = .empty
+    @Published private(set) var isPublishing = false
 
     init(
         apiClient: TeamLibraryAPIClient = LiveTeamLibraryAPIClient.shared,

@@ -28,6 +28,15 @@ actor SQLSchemaProvider {
         let name: String
     }
 
+    /// A total order over cache keys, so a walk of `columnCache` emits the same sequence every run.
+    /// Nil and empty schemas sort together and ahead of a named one.
+    private static func isOrderedBefore(_ lhs: ColumnCacheKey, _ rhs: ColumnCacheKey) -> Bool {
+        let leftSchema = lhs.schema ?? ""
+        let rightSchema = rhs.schema ?? ""
+        if leftSchema != rightSchema { return leftSchema < rightSchema }
+        return lhs.name < rhs.name
+    }
+
     private var tables: [TableInfo] = []
     private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
     private var columnAccessOrder: [ColumnCacheKey] = []
@@ -601,7 +610,13 @@ actor SQLSchemaProvider {
         var allEntries: [(table: String, col: ColumnInfo)] = []
         var nameCount: [String: Int] = [:]
 
-        for (key, columns) in columnCache {
+        // Sorted, because this emission order is what `rankResults` falls back to for candidates
+        // that score the same, and a Dictionary hands its pairs back in an order that is seeded per
+        // process and shifts again whenever the cache takes an insert. Two equally ranked columns
+        // from different tables would otherwise swap places between launches, and Return would
+        // commit whichever one the hash seed put first.
+        for key in columnCache.keys.sorted(by: Self.isOrderedBefore) {
+            guard let columns = columnCache[key] else { continue }
             let tableName = fallbackTableLabel(for: key, canonicalName: canonicalNames[key.name] ?? key.name)
             for col in columns {
                 allEntries.append((table: tableName, col: col))

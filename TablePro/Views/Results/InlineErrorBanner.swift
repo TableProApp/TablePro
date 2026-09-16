@@ -36,7 +36,7 @@ struct InlineErrorBanner: View {
             }
             .frame(height: min(messageHeight, maxMessageHeight))
             .scrollDisabled(messageFits)
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBasedOnSize()
             if let onFixWithAI {
                 Button(String(localized: "Fix with AI")) { onFixWithAI() }
                     .controlSize(.small)
