@@ -298,21 +298,29 @@ mod tests {
         dialog.imp().clear_button.emit_clicked();
         confirm_the_alert(&window);
 
-        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
-            count(&runtime, &history) == 0 && toast_text(&window).is_some()
-        })
-        .unwrap_or_else(|_| {
-            panic!(
-                "clearing left {} entries and said {:?}",
-                count(&runtime, &history),
-                toast_text(&window)
-            )
-        });
+        // The toast is posted once the clear has finished, so it is
+        // the signal to wait on. Waiting on the row count instead ran
+        // a database query on every spin of the main loop, and on a
+        // loaded machine the budget went on that polling rather than
+        // on the work, which failed the test for being busy.
+        crate::test_support::wait_until(WAIT, || toast_text(&window).is_some())
+            .unwrap_or_else(|_| panic!("clearing said nothing, and left {} entries", count(&runtime, &history)));
 
         let toast = toast_text(&window).unwrap_or_default();
         assert!(toast.contains("cleared"), "{toast}");
+        assert_eq!(
+            count(&runtime, &history),
+            0,
+            "the toast said the history was cleared while its rows were still there"
+        );
         drop(window);
     }
+
+    /// How long a test waits for work that crosses a thread. Long
+    /// enough that a loaded machine cannot decide the outcome; a
+    /// passing test returns as soon as its condition holds and never
+    /// spends it.
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
     /// An AdwDialog needs a real window to present into before its
     /// toast overlay renders anything.
@@ -320,10 +328,8 @@ mod tests {
         let window = adw::Window::new();
         window.present();
         dialog.present(Some(&window));
-        crate::test_support::wait_until(std::time::Duration::from_secs(5), || {
-            dialog.imp().clear_button.is_mapped()
-        })
-        .expect("the dialog never appeared");
+        crate::test_support::wait_until(WAIT, || dialog.imp().clear_button.is_mapped())
+            .expect("the dialog never appeared");
         window
     }
 
