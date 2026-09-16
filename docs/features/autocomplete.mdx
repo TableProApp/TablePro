@@ -5,7 +5,7 @@ description: Schema-aware SQL autocomplete for keywords, tables, columns, and fu
 
 An alias and a dot give you that table's columns, and that holds for a subquery or a `WITH` table that exists only in the statement you are writing. Everything the popup offers is decided by where the cursor sits.
 
-It opens itself after FROM, JOIN, ON and the other clauses with a short answer, and stays shut where a full list would be noise, such as after a comma in a SELECT list. `Ctrl+Space` overrides both.
+It opens itself with nothing typed after FROM, JOIN, INTO, ON, SET, USING, RETURNING, a `::` cast, an INSERT or ALTER column list, and the first item after SELECT. Where a full list would be noise, such as in WHERE or inside a function call, type a character or press `Ctrl+Space`.
 
 <Frame caption="Context-aware autocomplete">
   <img
@@ -78,7 +78,7 @@ A FROM clause anywhere in the statement, even after the cursor, decides which ta
 SELECT na|  -- Columns matching "na" from all cached tables
 SELECT | FROM users  -- Columns from users
 SELECT u.| FROM users u  -- Columns from users via alias
-SELECT * FROM users WHERE |  -- Columns from users
+SELECT * FROM users WHERE |  -- Ctrl+Space for columns from users
 ```
 
 ## Aliases, subqueries and CTEs
@@ -107,8 +107,8 @@ SELECT t.| FROM totals t  -- region, total
 Functions appear in SELECT, WHERE and expression contexts, the connection's own dialect alongside the common SQL ones: `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery.
 
 ```sql
-SELECT COUNT(|  -- Columns and *
-WHERE date_column > |  -- NOW(), CURRENT_DATE, …
+SELECT COUNT(|  -- Ctrl+Space for columns and *
+WHERE date_column > |  -- Ctrl+Space for NOW(), CURRENT_DATE, …
 ```
 
 Operators the dialect declares appear in WHERE, ON, HAVING and AND, each with what it does and the types it takes. On PostgreSQL that covers JSON, array and range containment, regex, full-text search and the network operators:
@@ -129,7 +129,7 @@ Typing `::` offers the dialect's type names in the spelling you write, not the i
 ```sql
 SELECT id::|             -- integer, bigint, text, timestamptz, jsonb, uuid, …
 SELECT payload::js|      -- json, jsonb, jsonpath
-WHERE status = |         -- 'pending', 'active', 'archived'
+WHERE status = |         -- Ctrl+Space for 'pending', 'active', 'archived'
 WHERE mood <> 'ha|       -- 'happy'
 ```
 

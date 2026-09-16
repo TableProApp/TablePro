@@ -41,10 +41,6 @@ final class SQLCompletionService: QueryCompletionService {
         return Array(items.prefix(engine.provider.seedPoolLimit))
     }
 
-    func prepare() async {
-        await engine.retrySchemaIfNeeded()
-    }
-
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         engine.updateFavoriteKeywords(keywords)
     }
@@ -117,7 +113,7 @@ final class SQLCompletionService: QueryCompletionService {
 
         switch context.clauseType {
         case .from, .join, .into, .set, .insertColumns, .on,
-             .alterTableColumn, .returning, .using, .dropObject, .createIndex:
+             .alterTableColumn, .returning, .using, .dropObject, .createIndex, .castTarget:
             return false
         case .select where !context.isAfterComma:
             return false

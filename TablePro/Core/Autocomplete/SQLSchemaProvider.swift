@@ -40,10 +40,6 @@ actor SQLSchemaProvider {
     private var tables: [TableInfo] = []
     private var columnCache: [ColumnCacheKey: [ColumnInfo]] = [:]
     private var columnAccessOrder: [ColumnCacheKey] = []
-    private var isLoading = false
-    private var lastLoadError: Error?
-    private var lastRetryAttempt: Date?
-    private let retryCooldown: TimeInterval = 30
     private var loadTask: Task<Void, Never>?
     private var eagerColumnTask: Task<Void, Never>?
     private var eagerLoadSchema: String?
@@ -104,32 +100,26 @@ actor SQLSchemaProvider {
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
         if let connection { self.connectionInfo = connection }
-        isLoading = true
-        lastLoadError = nil
 
         let task = Task<Void, Never> {
             do {
                 let fetched = try await driver.fetchTables()
                 await self.setLoadedTables(fetched)
             } catch {
-                await self.setLoadError(error)
+                Self.logger.error(
+                    "[schema] loadSchema failed: \(error.localizedDescription, privacy: .public)"
+                )
             }
         }
         loadTask = task
         await task.value
         loadTask = nil
-        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count) error=\(self.lastLoadError != nil)")
+        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
     }
 
     private func setLoadedTables(_ newTables: [TableInfo]) {
         tables = newTables
-        isLoading = false
         startEagerColumnLoad()
-    }
-
-    private func setLoadError(_ error: Error) {
-        lastLoadError = error
-        isLoading = false
     }
 
     /// Get the current connection info
@@ -201,25 +191,6 @@ actor SQLSchemaProvider {
         connectionInfo?.type.implicitSchemaName ?? eagerLoadSchema
     }
 
-    func retryLoadSchemaIfNeeded() async {
-        guard lastLoadError != nil, tables.isEmpty, !isLoading else { return }
-        guard let driver = cachedDriver else { return }
-        if let last = lastRetryAttempt, Date().timeIntervalSince(last) < retryCooldown { return }
-        lastRetryAttempt = Date()
-        lastLoadError = nil
-        await loadSchema(using: driver, connection: connectionInfo)
-    }
-
-    /// Check if schema is loaded
-    func isSchemaLoaded() -> Bool {
-        !tables.isEmpty
-    }
-
-    /// Check if currently loading
-    func isCurrentlyLoading() -> Bool {
-        isLoading
-    }
-
     func updateTables(_ newTables: [TableInfo]) {
         tables = newTables
     }
@@ -238,8 +209,6 @@ actor SQLSchemaProvider {
         self.fieldPathTasks.removeAll()
         self.cachedDriver = driver
         self.eagerLoadSchema = (driver as? SchemaSwitchable)?.currentSchema
-        self.isLoading = false
-        self.lastLoadError = nil
         if let connection { self.connectionInfo = connection }
         startEagerColumnLoad()
     }

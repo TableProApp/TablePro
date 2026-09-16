@@ -37,7 +37,7 @@ The form shows no Database field: a connection reaches one cluster, and its indi
 
 ## Browsing indices
 
-The sidebar lists indices as tables, hiding names that begin with `.`.
+The sidebar lists indices as tables, hiding names that begin with `.`. Browsing an alias, or any name that resolves to several indices, shows the union of their mappings.
 
 Columns come from the index mapping. `object` fields flatten to dotted paths such as `address.city`. A `nested` field gets one JSON column for the whole array of objects, plus a dotted column per leaf (`identifiers.type`) whose cell is a JSON array with one entry per object, `null` where an object omits the field. Array and object values render as JSON in the cell. Every document also carries `_id`, `_index` and `_score`; `_id` is the primary key and all three are read-only.
 

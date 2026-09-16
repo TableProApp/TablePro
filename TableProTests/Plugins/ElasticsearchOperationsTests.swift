@@ -49,4 +49,23 @@ struct ElasticsearchOperationsTests {
     func onlyIndicesAreDroppable(objectType: String) {
         #expect(ElasticsearchOperations.deleteIndex(named: "test_index", objectType: objectType) == nil)
     }
+
+    @Test("A read cannot change a mapping", arguments: ["GET", "HEAD", "get", "head"])
+    func readsKeepTheMapping(method: String) {
+        #expect(ElasticsearchOperations.changesMapping(method: method) == false)
+    }
+
+    @Test("Everything else can change a mapping", arguments: ["PUT", "POST", "DELETE", "PATCH", "put"])
+    func writesChangeTheMapping(method: String) {
+        #expect(ElasticsearchOperations.changesMapping(method: method))
+    }
+
+    /// The statement the sidebar's drop runs is itself a mapping change, so the cache it leaves
+    /// behind has to go with it.
+    @Test("Dropping an index is a mapping change")
+    func dropIsAMappingChange() throws {
+        let statement = try #require(ElasticsearchOperations.deleteIndex(named: "test_index", objectType: "TABLE"))
+        let request = try #require(ElasticsearchConsoleParser.parse(statement))
+        #expect(ElasticsearchOperations.changesMapping(method: request.method))
+    }
 }

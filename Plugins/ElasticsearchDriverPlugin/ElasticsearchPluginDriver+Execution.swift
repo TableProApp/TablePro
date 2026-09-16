@@ -303,6 +303,9 @@ extension ElasticsearchPluginDriver {
         guard (200..<300).contains(response.statusCode) else {
             throw mapWriteError(response)
         }
+        if ElasticsearchOperations.changesMapping(method: request.method) {
+            invalidateMappingCache()
+        }
 
         if let json = response.json as? [String: Any],
            json["hits"] is [String: Any],

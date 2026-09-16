@@ -54,10 +54,6 @@ final class CompletionEngine {
         provider.updateFavoriteKeywords(keywords)
     }
 
-    func retrySchemaIfNeeded() async {
-        await provider.retrySchemaIfNeeded()
-    }
-
     /// Statement-start keyword items available synchronously, without schema access.
     /// Used to seed a filterable completion context before the async fetch completes.
     func keywordCompletions() -> [SQLCompletionItem] {

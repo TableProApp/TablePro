@@ -758,6 +758,34 @@ struct ElasticsearchMappingFlattenerTests {
         #expect(row?[1].asText == "[\"CPF\"]")
     }
 
+    @Test("An alias mapping keyed by real index names unions their fields")
+    func aliasMappingUnionsEveryIndex() {
+        let response: [String: Any] = [
+            "logs-2026-08": ["mappings": ["properties": [
+                "message": ["type": "text"],
+                "level": ["type": "keyword"],
+            ]]],
+            "logs-2026-09": ["mappings": ["properties": [
+                "message": ["type": "text"],
+                "traceId": ["type": "keyword"],
+            ]]],
+        ]
+        let properties = ElasticsearchMappingFlattener.properties(fromMappingResponse: response, index: "logs")
+        #expect(Set(properties.keys) == ["message", "level", "traceId"])
+    }
+
+    @Test("A response that names the index exactly uses only that index")
+    func exactIndexMappingWins() {
+        let response: [String: Any] = [
+            "logs-2026-08": ["mappings": ["properties": ["level": ["type": "keyword"]]]],
+            "logs-2026-09": ["mappings": ["properties": ["traceId": ["type": "keyword"]]]],
+        ]
+        let properties = ElasticsearchMappingFlattener.properties(
+            fromMappingResponse: response, index: "logs-2026-09"
+        )
+        #expect(Set(properties.keys) == ["traceId"])
+    }
+
     @Test("A nested field inside a nested field reports both ancestors")
     func doublyNestedMappingReportsBothAncestors() {
         let properties: [String: Any] = [
