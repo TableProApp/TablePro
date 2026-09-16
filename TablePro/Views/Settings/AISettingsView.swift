@@ -215,7 +215,8 @@ struct AISettingsView: View {
         } label: {
             Label(String(localized: "Add Provider…"), systemImage: "plus")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 

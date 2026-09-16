@@ -28,7 +28,8 @@ internal struct ValuePickerFieldView: View {
                 Label { Text("Choose Value") } icon: { EmptyView() }
             }
             .labelStyle(.iconOnly)
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .menuIndicator(.visible)
             .fixedSize()
             .disabled(context.isReadOnly)

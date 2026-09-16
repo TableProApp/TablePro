@@ -100,7 +100,8 @@ internal struct AssistantPaneView: View {
             icon("clock")
                 .accessibilityLabel(String(localized: "Conversation history"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .frame(width: 24, height: 22)
         .contentShape(Rectangle())

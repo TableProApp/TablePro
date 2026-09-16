@@ -80,7 +80,8 @@ struct SchemaPickerControl: View {
                     .truncationMode(.middle)
                     .accessibilityLabel(String(format: String(localized: "Current %@"), entityName.lowercased()))
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
         }
     }
 }

@@ -72,7 +72,8 @@ struct QueryInsightsToolbar: View {
         } label: {
             Label(sourceSummary, systemImage: "line.3.horizontal.decrease.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .accessibilityIdentifier("query-insights-source-filter")
     }

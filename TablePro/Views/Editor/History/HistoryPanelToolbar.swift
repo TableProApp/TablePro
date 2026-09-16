@@ -94,7 +94,8 @@ struct HistoryPanelToolbar: View {
         } label: {
             Label(sourceSummary, systemImage: "line.3.horizontal.decrease.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .accessibilityIdentifier("query-history-source-filter")
     }

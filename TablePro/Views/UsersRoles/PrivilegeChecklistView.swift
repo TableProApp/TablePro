@@ -67,7 +67,8 @@ struct PrivilegeChecklistView: View {
         } label: {
             Image(systemName: "ellipsis.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(viewModel.privilegeSections.isEmpty)

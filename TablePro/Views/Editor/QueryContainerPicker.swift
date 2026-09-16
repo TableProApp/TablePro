@@ -72,7 +72,8 @@ struct QueryContainerPicker: View {
             .foregroundStyle(.secondary)
             .accessibilityLabel(scopeAccessibilityLabel)
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 

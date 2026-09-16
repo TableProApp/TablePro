@@ -323,7 +323,8 @@ struct ExportDialog: View {
         } label: {
             Image(systemName: "bookmark")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .help(String(localized: "Saved selections"))
         .popover(isPresented: $isNamingProfile, arrowEdge: .bottom) {
