@@ -168,7 +168,9 @@ actor SQLSchemaProvider {
             evictIfNeeded()
             return columns
         } catch {
-            Self.logger.debug("Column fetch failed for autocomplete: \(error.localizedDescription)")
+            Self.logger.error(
+                "Column fetch failed for autocomplete table=\(tableName) error=\(error.localizedDescription, privacy: .public)"
+            )
             return []
         }
     }

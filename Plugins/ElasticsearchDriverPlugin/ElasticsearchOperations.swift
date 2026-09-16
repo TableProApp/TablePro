@@ -42,6 +42,17 @@ enum ElasticsearchOperations {
         return index
     }
 
+    /// Whether a console request that succeeded can have changed an index mapping.
+    ///
+    /// `GET` and `HEAD` cannot. Everything else can: `PUT /<index>` and `PUT /<index>/_mapping`
+    /// declare fields outright, `POST /_aliases` moves an alias onto a different index, and a
+    /// `POST` or `PUT` of a document adds a field under dynamic mapping.
+    static func changesMapping(method: String) -> Bool {
+        !readOnlyMethods.contains(method.uppercased())
+    }
+
+    private static let readOnlyMethods: Set<String> = ["GET", "HEAD"]
+
     /// Only an index. Elasticsearch has no views or materialized views, so anything else the app
     /// asks about is not something this engine can drop.
     static func isIndexObject(_ objectType: String) -> Bool {

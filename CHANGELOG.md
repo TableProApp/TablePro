@@ -77,6 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Autocomplete popup never opening again after a completion request came back with nothing. (#2915)
+- Completion popup opening by itself over an editor whose popup had already been dismissed.
+- Escape and `Ctrl+Space` doing nothing after a completion request came back with nothing.
+- Nested Elasticsearch fields showing as null in the grid, and filters on those leaves matching nothing.
+- Typesense object array columns misaligning when an element omitted the field.
 - Two disclosure chevrons on the connection form's Tags row.
 - **Add tags** not opening the tag menu when the words themselves are clicked.
 - `Esc` no longer leaving Vim's Insert mode in the SQL editor, with `Ctrl+[` still working. (#2914)

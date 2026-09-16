@@ -164,7 +164,7 @@ struct TypesenseSchemaTests {
         #expect(rows[0][2] == .text("[3,5]"))
     }
 
-    @Test("An element missing the leaf contributes nothing, and no element means null")
+    @Test("An element missing the leaf keeps its place, and no element means null")
     func objectArrayLeavesTolerateGaps() {
         let documents: [[String: Any]] = [
             ["variants": [["sku": "A1"], ["qty": 9]]],
@@ -172,9 +172,19 @@ struct TypesenseSchemaTests {
             ["variants": []],
         ]
         let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku"])
-        #expect(rows[0][0] == .text("[\"A1\"]"))
+        #expect(rows[0][0] == .text("[\"A1\",null]"))
         #expect(rows[1][0] == .null)
         #expect(rows[2][0] == .null)
+    }
+
+    /// Two leaves of one array are read side by side, so a gap in either has to hold its position
+    /// or the second sku reads as the first variant's.
+    @Test("Sibling leaves of one object array stay the same length")
+    func objectArrayLeavesStayAligned() {
+        let documents: [[String: Any]] = [["variants": [["qty": 3], ["sku": "B2", "qty": 5]]]]
+        let rows = TypesenseSchema.rows(for: documents, columns: ["variants.sku", "variants.qty"])
+        #expect(rows[0][0] == .text("[null,\"B2\"]"))
+        #expect(rows[0][1] == .text("[3,5]"))
     }
 
     @Test("A deeper path still walks through an array on the way")

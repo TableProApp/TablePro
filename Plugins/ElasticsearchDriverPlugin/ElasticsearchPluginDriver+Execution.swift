@@ -70,6 +70,7 @@ extension ElasticsearchPluginDriver {
         guard let conn = connection else { throw ElasticsearchError.notConnected }
         let mappingColumns = try await cachedMappingColumns(index)
         let fields = ElasticsearchMappingFlattener.fieldInfo(from: mappingColumns)
+        let nestedParents = ElasticsearchMappingFlattener.nestedParents(from: mappingColumns)
         let parsed = ElasticsearchParsedSearch(
             index: index, from: 0, size: Self.deepPageBatchSize, sorts: [], filters: [], logicMode: "AND"
         )
@@ -103,7 +104,9 @@ extension ElasticsearchPluginDriver {
                 )))
             }
             if let resolved = columns {
-                continuation.yield(.rows(ElasticsearchMappingFlattener.rows(forHits: hits, columns: resolved)))
+                continuation.yield(.rows(ElasticsearchMappingFlattener.rows(
+                    forHits: hits, columns: resolved, nestedParents: nestedParents
+                )))
             }
 
             searchAfter = hits.last?["sort"] as? [Any]
@@ -300,6 +303,9 @@ extension ElasticsearchPluginDriver {
         guard (200..<300).contains(response.statusCode) else {
             throw mapWriteError(response)
         }
+        if ElasticsearchOperations.changesMapping(method: request.method) {
+            invalidateMappingCache()
+        }
 
         if let json = response.json as? [String: Any],
            json["hits"] is [String: Any],
@@ -323,7 +329,11 @@ extension ElasticsearchPluginDriver {
         startTime: Date
     ) -> PluginQueryResult {
         let columns = ElasticsearchMappingFlattener.columns(forHits: hits, mappingColumns: mappingColumns)
-        let rows = ElasticsearchMappingFlattener.rows(forHits: hits, columns: columns)
+        let rows = ElasticsearchMappingFlattener.rows(
+            forHits: hits,
+            columns: columns,
+            nestedParents: ElasticsearchMappingFlattener.nestedParents(from: mappingColumns)
+        )
         let typeNames = columns.map { column -> String in
             switch column {
             case ElasticsearchMappingFlattener.idColumn, ElasticsearchMappingFlattener.indexColumn:

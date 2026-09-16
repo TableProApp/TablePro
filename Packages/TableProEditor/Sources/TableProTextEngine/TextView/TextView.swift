@@ -341,6 +341,9 @@ open class TextView: NSView, NSTextContent {
         }
 
         wantsLayer = true
+        /// See `LineFragmentView`: the pre-macOS-14 default clips a view to its own bounds, and
+        /// every line fragment, selection and cursor is a subview of this one.
+        clipsToBounds = false
         postsFrameChangedNotifications = true
         postsBoundsChangedNotifications = true
         autoresizingMask = [.width, .height]

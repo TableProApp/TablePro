@@ -78,11 +78,8 @@ internal struct EditorTabStrip: View {
         .padding(.horizontal, EditorTabStripLayout.stripInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         /// A closed tab leaves its id behind, and the tab that slides into its place would
-        /// otherwise light up under a pointer that never moved onto it.
-        .onAppear {
-            interaction.dropClosedTabs(keeping: tabManager.tabs.map(\.id))
-            interaction.overflow = settings.tabs.overflow
-        }
+        /// otherwise light up under a pointer that never moved onto it. The initial list is seeded
+        /// where the strip is built, so these two carry changes only.
         .onChange(of: tabManager.tabs.map(\.id)) { ids in
             interaction.dropClosedTabs(keeping: ids)
         }
@@ -129,9 +126,15 @@ internal struct EditorTabStrip: View {
     /// press owns the wheel and the autoscroll too, so one object decides where a tab is and the
     /// drawing follows it rather than the two agreeing by construction.
     private var track: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(Array(displayedTabs.enumerated()), id: \.element.id) { index, tab in
-                item(for: tab, at: index, in: displayedTabs, label: labels[tab.id])
+        /// The run and the list are read once, together, and the placement is handed to each item
+        /// rather than looked up again inside the `ForEach`, whose closures SwiftUI evaluates
+        /// lazily. One paint is then measured against one run: a tab drawn from a list the run was
+        /// not built for has no rectangle, and is drawn nowhere.
+        let run = interaction.run
+        let tabs = displayedTabs
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                item(for: tab, at: index, in: tabs, placement: run.placement(at: index), label: labels[tab.id])
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -139,10 +142,10 @@ internal struct EditorTabStrip: View {
         /// is cut by that curve instead of squaring it off. A capsule only stays right for one
         /// row: its radius is half the height, so a wrapped track would curve away most of the
         /// first row's close target while the pointer still hit-tests the whole rectangle.
-        .clipShape(EditorTabStripLayout.trackShape(forRowCount: interaction.run.rowCount))
+        .clipShape(EditorTabStripLayout.trackShape(forRowCount: run.rowCount))
         .padding(EditorTabStripLayout.trackPadding)
         .frame(height: trackHeight)
-        .trackSurface(rowCount: interaction.run.rowCount)
+        .trackSurface(rowCount: run.rowCount)
     }
 
     private var displayedTabs: [QueryTab] {
@@ -159,9 +162,10 @@ internal struct EditorTabStrip: View {
         for tab: QueryTab,
         at index: Int,
         in tabs: [QueryTab],
+        placement: EditorTabPlacement?,
         label: EditorTabLabelResolver.Label?
     ) -> some View {
-        if let placement = interaction.run.placement(at: index) {
+        if let placement {
             EditorTabStripItem(
                 tab: tab,
                 label: label ?? EditorTabLabelResolver.Label(text: tab.title, description: tab.title),

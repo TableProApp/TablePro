@@ -45,6 +45,9 @@ public final class SuggestionController: NSWindowController {
     /// Closes autocomplete when first responder changes away from the active text view
     private var firstResponderKVO: NSKeyValueObservation?
     private var mouseEventMonitor: Any?
+    /// Whether `willCloseNotification` already drove the teardown for the close in progress, so
+    /// the explicit call behind it runs only when AppKit posted nothing.
+    private var didCleanUpForThisClose = false
     private var sizeObservers: Set<AnyCancellable> = []
 
     // MARK: - Initialization
@@ -188,16 +191,23 @@ public final class SuggestionController: NSWindowController {
         window.orderFront(nil)
     }
 
-    /// Close the window. Cleanup is performed by ``handleWindowWillClose(_:)``
-    /// which fires off `NSWindow.willCloseNotification`. Routing through the
-    /// notification means cleanup is idempotent and runs even when callers
-    /// invoke `window.close()` on the underlying `NSWindow` directly.
+    /// Close the window and end the session.
+    ///
+    /// AppKit posts `NSWindow.willCloseNotification` at most once per shown episode: measured, a
+    /// `close()` on a panel that was never ordered front again posts nothing, so a cleanup that
+    /// only runs from the notification leaves the model claiming a session with no window behind
+    /// it. Cleanup therefore runs here too, and ``performCleanup()`` is idempotent so the
+    /// notification arriving first costs nothing.
     override public func close() {
         if popover != nil {
             popover?.close()
             popover = nil
         }
+        didCleanUpForThisClose = false
         super.close()
+        if !didCleanUpForThisClose {
+            performCleanup()
+        }
     }
 
     @objc private func handleWindowWillClose(_ notification: Notification) {
@@ -205,8 +215,12 @@ public final class SuggestionController: NSWindowController {
         performCleanup()
     }
 
+    /// Runs the controller's own teardown before ``SuggestionViewModel/willClose()``, because that
+    /// ends the session through the public `completionWindowDidClose()` callback and a conformer
+    /// is free to start a new one from it. Tearing down afterwards would take the replacement's
+    /// monitors and parent attachment with it.
     private func performCleanup() {
-        model.willClose()
+        didCleanUpForThisClose = true
         removeEventMonitors()
 
         if let window, let parent = window.parent {
@@ -221,6 +235,8 @@ public final class SuggestionController: NSWindowController {
         firstResponderKVO?.invalidate()
         firstResponderKVO = nil
         placementAnchor = nil
+
+        model.willClose()
     }
 
     // MARK: - Cursors Updated

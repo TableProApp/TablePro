@@ -46,9 +46,13 @@ final class FindViewController: NSViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func loadView() {
-        /// See `TextViewController.loadView()`: `super` looks for a nib on macOS 13 and raises.
-        view = NSView()
+    override func loadView() { // swiftlint:disable:this prohibited_super_call
+        /// See `PlainControllerView`: `super` looks for a nib on macOS 13 and raises.
+        if #available(macOS 14.0, *) {
+            super.loadView()
+        } else {
+            view = PlainControllerView.make()
+        }
 
         // Set up the `childView` as a subview of our view. Constrained to all edges, except the top is constrained to
         // the find panel's bottom

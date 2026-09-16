@@ -160,6 +160,18 @@ internal final class EditorTabStripInteraction: ObservableObject {
         tearingOffTabId = nil
     }
 
+    /// Takes the tab list and the overflow style from the model that owns them.
+    ///
+    /// The run `EditorTabInteractionView.layout()` measures is built from `tabIds`, so the list has
+    /// to arrive from whoever builds the strip rather than from one of its view modifiers: a band
+    /// is installed hidden and has no appearance to wait for, and a run measured against a list
+    /// that is still empty divides the whole track among the tabs it knew about, leaving the rest
+    /// without a placement. A tab with no placement is drawn nowhere.
+    internal func adopt(tabIds ids: [UUID], overflow style: EditorTabStripOverflow) {
+        overflow = style
+        dropClosedTabs(keeping: ids)
+    }
+
     /// A tab that closed under the pointer leaves both orders, and the drag ends outright when the
     /// tab being dragged is the one that went.
     internal func dropClosedTabs(keeping ids: [UUID]) {

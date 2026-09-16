@@ -38,7 +38,7 @@ A scoped or search-only key restricts what the connection can reach. The sidebar
 
 Collections are tables and documents are rows. `id` leads every grid, is the primary key, and is read-only: Typesense refuses to rewrite a document's id.
 
-Columns come from the collection schema. An `object` field flattens to its dotted leaves, so `meta.pages` is a column and `meta` is not, and array and object values render as JSON in the cell. A collection created with the `.*` auto-schema learns its fields from the documents it is given, and those learned fields become columns as soon as the structure is reloaded.
+Columns come from the collection schema. An `object` field flattens to its dotted leaves, so `meta.pages` is a column and `meta` is not, and array and object values render as JSON in the cell. A leaf of an `object[]` field is a column of its own (`variants.sku`) holding one entry per element, `null` where an element omits it. A collection created with the `.*` auto-schema learns its fields from the documents it is given, and those learned fields become columns as soon as the structure is reloaded.
 
 Sorting reaches only the fields the schema marks `sort: true`. Numeric and boolean fields get it by default, a `string` field does not unless it was created with `sort: true`, and `id` never has it. A column with no sort stays unsorted rather than failing the read. Typesense takes at most three sort fields, so a fourth sorted column is dropped.
 

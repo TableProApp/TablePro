@@ -24,6 +24,29 @@ struct ElasticsearchStatementGenerator {
     let columns: [String]
     let columnTypeNames: [String]
 
+    /// A `nested` column carries the whole array of objects, and its dotted leaves are views of
+    /// those same bytes. Writing both makes Elasticsearch expand the dotted key into the object the
+    /// array already fills, which it rejects as a mapping conflict, so the array is written once
+    /// through its parent and an edit to a leaf is refused rather than sent.
+    private let nestedLeafColumns: Set<String>
+
+    init(index: String, columns: [String], columnTypeNames: [String]) {
+        self.index = index
+        self.columns = columns
+        self.columnTypeNames = columnTypeNames
+        self.nestedLeafColumns = Self.nestedLeaves(columns: columns, typeNames: columnTypeNames)
+    }
+
+    private static func nestedLeaves(columns: [String], typeNames: [String]) -> Set<String> {
+        let parents = zip(columns, typeNames)
+            .filter { $0.1 == ElasticsearchMappingFlattener.nestedTypeName }
+            .map(\.0)
+        guard !parents.isEmpty else { return [] }
+        return Set(columns.filter { column in
+            parents.contains { column.hasPrefix("\($0).") }
+        })
+    }
+
     private var metaColumns: Set<String> { Set(ElasticsearchMappingFlattener.metaColumns) }
 
     func generateStatements(
@@ -74,7 +97,7 @@ struct ElasticsearchStatementGenerator {
         }
 
         var document: [String: Any] = [:]
-        for column in columns where !metaColumns.contains(column) {
+        for column in columns where !metaColumns.contains(column) && !nestedLeafColumns.contains(column) {
             guard let value = values[column], let text = value.asText else { continue }
             document[column] = jsonValue(text, for: column)
         }
@@ -98,6 +121,12 @@ struct ElasticsearchStatementGenerator {
 
         var doc: [String: Any] = [:]
         for cellChange in change.cellChanges where !metaColumns.contains(cellChange.columnName) {
+            if nestedLeafColumns.contains(cellChange.columnName) {
+                Self.logger.warning(
+                    "Skipping UPDATE of nested leaf \(cellChange.columnName, privacy: .public) - edit the parent column"
+                )
+                continue
+            }
             if let text = cellChange.newValue.asText {
                 doc[cellChange.columnName] = jsonValue(text, for: cellChange.columnName)
             } else {
