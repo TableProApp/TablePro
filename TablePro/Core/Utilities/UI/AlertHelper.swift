@@ -49,8 +49,11 @@ final class AlertHelper {
         return NSApp.windows.first { $0.isVisible && isContentWindow($0) }
     }
 
+    /// A decision the user has not answered yet is never a parent for the next one. It is titled,
+    /// so it qualifies on shape alone, and the detached arm leaves it key while it waits: without
+    /// this a second alert would open as a sheet on the consent window it is asking about.
     static func isContentWindow(_ window: NSWindow) -> Bool {
-        !(window is NSPanel) && window.styleMask.contains(.titled)
+        !(window is NSPanel) && !(window is ModalDecisionWindow) && window.styleMask.contains(.titled)
     }
 
     /// The one presentation path for every alert in the app: a sheet on the window the user was
@@ -224,9 +227,17 @@ final class AlertHelper {
     }
 
     /// The one presentation path for a SwiftUI decision the user must answer: a critical sheet on
-    /// the window they were working in, and an application-modal window when none qualifies. The
-    /// modal loop runs directly rather than inside a continuation-installing closure, which would
-    /// block the main actor while the continuation is still being installed.
+    /// the window they were working in, and a window of its own when none qualifies.
+    ///
+    /// Both arms resolve through the gate's continuation. `NSApp.runModal` used to drive the
+    /// windowless arm, which nested an AppKit event loop inside the Swift concurrency job that
+    /// routed the request, and let AppKit re-enter main-actor code from inside that loop. Awaiting
+    /// the gate leaves the run loop to AppKit and suspends the job the way every other arm does.
+    ///
+    /// `sizingOptions = []` stays: it is the firewall that stops hosted content pinning the
+    /// window's split dividers (#1872), and it also makes `preferredContentSize` inert, so the
+    /// window's size has to be measured and written here. Measured behind it: a window built from a
+    /// hosting controller with only `preferredContentSize` set comes out 1x32.
     private static func runHostedDecision<Value: Sendable>(
         title: String,
         fittingWidth: CGFloat,
@@ -234,14 +245,26 @@ final class AlertHelper {
         window: NSWindow?,
         rootView: some View
     ) async throws -> Value {
+        /// Resolved before the measurement, not after, because the screen the decision lands on is
+        /// the parent's and the caller passes no window for the detached case.
+        let parent = resolveWindow(window)
+        let styleMask: NSWindow.StyleMask = [.titled, .closable]
+        let budget = ModalDecisionWindowSizing.contentBudget(
+            within: ModalDecisionWindowSizing.availableSize(for: parent),
+            styleMask: styleMask
+        )
+
         let host = NSHostingController(rootView: rootView)
         host.sizingOptions = []
-        let fitted = host.sizeThatFits(in: NSSize(width: fittingWidth, height: CGFloat.greatestFiniteMagnitude))
-        host.view.frame = NSRect(origin: .zero, size: fitted)
+        let fitted = host.sizeThatFits(in: ModalDecisionWindowSizing.proposal(width: fittingWidth, within: budget))
+        host.view.frame = NSRect(
+            origin: .zero,
+            size: ModalDecisionWindowSizing.contentSize(fitting: fitted, within: budget)
+        )
 
         host.title = title
         let sheetWindow = ModalDecisionWindow(contentViewController: host)
-        sheetWindow.styleMask = [.titled, .closable]
+        sheetWindow.styleMask = styleMask
         sheetWindow.isReleasedWhenClosed = false
         /// The HIG gives Escape to Cancel on every alert and sheet, and a confirmation that came
         /// forward over the user's own work is exactly the one that has to stay dismissable.
@@ -251,16 +274,16 @@ final class AlertHelper {
         gate.windowDelegate = delegate
         sheetWindow.delegate = delegate
 
-        guard let parent = resolveWindow(window) else {
+        guard let parent else {
             gate.onResolve = { [weak sheetWindow] in
-                NSApp.stopModal()
-                sheetWindow?.close()
+                guard let sheetWindow else { return }
+                sheetWindow.close()
+                AppActivationPolicyController.shared.reevaluate(excluding: sheetWindow)
             }
             AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
             sheetWindow.center()
-            NSApp.runModal(for: sheetWindow)
-            AppActivationPolicyController.shared.reevaluate(excluding: sheetWindow)
-            return try gate.result()
+            sheetWindow.makeKeyAndOrderFront(nil)
+            return try await gate.value()
         }
 
         gate.onResolve = { [weak sheetWindow] in

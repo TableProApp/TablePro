@@ -111,7 +111,7 @@ one-time code to `redirect`.
 | `challenge` | yes | Base64url SHA-256 of the verifier: exactly 43 characters (PKCE). |
 | `redirect` | yes | Where the code is delivered. A loopback `http(s)` URL or a private-use scheme registered by an installed app; anything else is refused. |
 | `scopes` | no | One value: `readWrite` or `fullAccess`. Matching is case-insensitive and takes `read_write`, `read-write`, `full_access`, `full-access` and `full`. Any other value, or none, requests `readOnly`. |
-| `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Defaults to all. |
+| `connection-ids` | no | Comma-separated UUIDs to preselect in the allowlist. Only omitting it means every connection: an empty value, or one entry that is not a UUID, refuses the link. |
 
 These parameters are a request, not a grant: the sheet lets the user raise or lower every one of
 them.

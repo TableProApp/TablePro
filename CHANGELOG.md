@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pairing approval in a window of its own when no window can host it as a sheet.
 - System disclosure chevron on the row inspector's value and default menus.
 - Minimum macOS lowered to 13.0 (Ventura).
 - Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
@@ -77,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Crash on launch when a pairing deep link opens the approval sheet. (#2930)
 - `Return` in the raw SQL filter accepting a suggestion nobody selected instead of applying the filter.
 - `Return` on a filter value replacing what was typed with the first suggestion.
 - Filter autocomplete opening a full column list where the editor's stays shut.
@@ -230,6 +232,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Pairing approval never showed the address the one-time code is delivered to. (#2930)
+- A pairing link whose connection allowlist failed to parse widened the request to every connection. (#2930)
 - Sparkle 2.10.0, carrying installer fixes for a symlink attack and a privilege escalation under root.
 - SQLite denies the `fts3_tokenizer` function, which could crash the app from a crafted query on any connection.
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)

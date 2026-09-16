@@ -23,7 +23,7 @@ sequenceDiagram
     E->>E: challenge = base64url(SHA-256(verifier))
     E->>T: open tablepro://integrations/pair<br/>?client=…&challenge=…&redirect=…&scopes=…
     T->>M: lazy-start server
-    T->>U: Approval sheet (client, scopes, connections, expiry)
+    T->>U: Approval sheet (client, destination, scopes, connections, expiry)
     U->>T: Approve
     T->>T: mint token, hold pending exchange<br/>{ code, plaintext, challenge }, 5 min
     T->>E: open redirect URL with code<br/>(context JSON for raycast://, ?code= otherwise)
@@ -33,9 +33,13 @@ sequenceDiagram
     E->>E: store token in the Keychain
 ```
 
-<Frame caption="The pairing approval sheet">
-  <img className="block dark:hidden" src="/images/mcp-pairing-approval-sheet.png" alt="TablePro sheet asking to approve a pairing request with scope, connection, and expiry pickers" />
-  <img className="hidden dark:block" src="/images/mcp-pairing-approval-sheet-dark.png" alt="TablePro sheet asking to approve a pairing request with scope, connection, and expiry pickers" />
+The name in the heading is whatever `client` asked to be called, so read the line under it: it names
+the address the code is delivered to. Approve only when that address belongs to the app you started
+the pairing from.
+
+<Frame caption="Scope, connections and expiry are all editable before Approve">
+  <img className="block dark:hidden" src="/images/mcp-pairing-approval-sheet.png" alt="Approval sheet headed Allow Raycast to access TablePro, with the delivery address, a permissions picker, a connection list and an expiry picker" />
+  <img className="hidden dark:block" src="/images/mcp-pairing-approval-sheet-dark.png" alt="Approval sheet headed Allow Raycast to access TablePro, with the delivery address, a permissions picker, a connection list and an expiry picker" />
 </Frame>
 
 ## The whole client, in one file

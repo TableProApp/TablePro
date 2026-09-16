@@ -203,10 +203,23 @@ internal enum DeeplinkParser {
         }
 
         let scopes = value("scopes")?.nilIfEmpty
+        /// Only an absent parameter means every connection. Naming the parameter and then handing
+        /// over something unreadable used to fall back to absent, which turned a request scoped to
+        /// one connection into a request for all of them with the sheet pre-ticked to All
+        /// Connections. So presence is the test, not a non-empty value, and an empty field is kept
+        /// rather than dropped so it has to answer the same guard. (#2930)
         let connectionIds: Set<UUID>?
-        if let csv = value("connection-ids")?.nilIfEmpty {
-            let parsed = csv.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
-            connectionIds = parsed.isEmpty ? nil : Set(parsed)
+        if queryItems.contains(where: { $0.name == "connection-ids" }) {
+            let csv = value("connection-ids") ?? ""
+            var parsed: Set<UUID> = []
+            for rawId in csv.split(separator: ",", omittingEmptySubsequences: false) {
+                let trimmed = rawId.trimmingCharacters(in: .whitespaces)
+                guard let connectionId = UUID(uuidString: trimmed) else {
+                    return .failure(.invalidUUID(trimmed))
+                }
+                parsed.insert(connectionId)
+            }
+            connectionIds = parsed
         } else {
             connectionIds = nil
         }
