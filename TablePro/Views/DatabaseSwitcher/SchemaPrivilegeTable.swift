@@ -6,86 +6,37 @@
 import SwiftUI
 import TableProPluginKit
 
-/// Who holds what on one schema: a row per role, a checkbox per privilege.
+/// Who holds what on one schema: a row per role, a checkbox column per privilege.
 ///
 /// The transpose of `PrivilegeChecklistView`, which asks the same question of one role across
 /// every object. Checkboxes rather than switches, which is what the HIG asks for a grid of
-/// independent on-off settings, and a row the user did not touch emits neither a GRANT nor a
-/// REVOKE.
+/// independent on-off settings.
 ///
-/// A `Grid` rather than a `Table`, because the privilege set is the engine's and a `Table` cannot
-/// take a dynamic column count before macOS 14.4 (`TableColumnForEach`), which is past our
-/// deployment target. `Grid` aligns the columns for real, so the headings sit over their boxes.
+/// A real `Table`, so the column headings, the row striping and the metrics are AppKit's rather
+/// than hand-drawn. The privilege set is the engine's, so the columns come from
+/// `TableColumnForEach`; that is what puts the app's floor at macOS 14.4.
 struct SchemaPrivilegeTable: View {
     let model: SchemaEditorViewModel
 
-    private let roleColumnWidth: CGFloat = 180
-    private let privilegeColumnWidth: CGFloat = 72
-
     var body: some View {
-        if model.privileges.isEmpty {
-            ContentUnavailableView(
-                String(localized: "No Privileges"),
-                systemImage: "lock",
-                description: Text("No privileges can be granted on a schema here.")
-            )
-        } else if model.granteeRows.isEmpty {
-            ContentUnavailableView(
-                String(localized: "No Roles"),
-                systemImage: "person.2",
-                description: Text("Add a role to grant it access to this schema.")
-            )
-        } else {
-            matrix
-        }
-    }
+        Table(model.granteeRows) {
+            TableColumn(String(localized: "Role")) { row in
+                Text(row.displayName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(row.locked.isEmpty ? "" : String(localized: "Granted by another role"))
+            }
+            .width(min: 120, ideal: 200)
 
-    private var matrix: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerRow
-            Divider()
-            ScrollView {
-                Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
-                    ForEach(model.granteeRows) { row in
-                        GridRow {
-                            Text(row.displayName)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(width: roleColumnWidth, alignment: .leading)
-                            ForEach(model.privileges, id: \.name) { privilege in
-                                checkbox(privilege, row: row)
-                            }
-                        }
-                    }
+            TableColumnForEach(model.privileges, id: \.name) { privilege in
+                TableColumn(privilege.label) { row in
+                    checkbox(privilege, row: row)
                 }
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .width(min: 56, ideal: 72)
             }
         }
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-        )
+        .tableStyle(.inset)
         .accessibilityIdentifier("schema-privilege-table")
-    }
-
-    private var headerRow: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 0) {
-            GridRow {
-                Text(String(localized: "Role"))
-                    .frame(width: roleColumnWidth, alignment: .leading)
-                ForEach(model.privileges, id: \.name) { privilege in
-                    Text(privilege.label)
-                        .frame(width: privilegeColumnWidth, alignment: .center)
-                }
-            }
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A cell another role granted is shown checked and dimmed. `REVOKE` removes only what the
@@ -102,8 +53,6 @@ struct SchemaPrivilegeTable: View {
         .toggleStyle(.checkbox)
         .labelsHidden()
         .disabled(!row.canEdit(privilege.name))
-        .frame(width: privilegeColumnWidth, alignment: .center)
-        .help(row.canEdit(privilege.name) ? "" : String(localized: "Granted by another role"))
         .accessibilityLabel(
             Text(
                 String(

@@ -7,16 +7,21 @@ import Foundation
 import TableProPluginKit
 
 /// One grantee's row in the privileges table: the role, and which privileges it holds.
-///
-/// `revocable` is the subset this connection's role can actually take away. PostgreSQL's `REVOKE`
-/// removes only what the executing role granted, so a privilege another role granted stays checked
-/// and uneditable: a revoke there succeeds, changes nothing, and would be reported as done while
-/// the access remained.
 struct SchemaGranteeRow: Identifiable, Hashable {
     let grantee: PluginSchemaGrantee
     var granted: Set<String>
     var grantable: Set<String>
-    var revocable: Set<String>
+
+    /// Privileges the server holds for this grantee that the connected role cannot take away,
+    /// because another role granted them. PostgreSQL's `REVOKE` removes only what the executing
+    /// role granted, so a revoke here succeeds, changes nothing, and would be reported as done
+    /// while the access remained.
+    ///
+    /// Read from the server once, at load, and never from the form afterwards. Deciding this from
+    /// the live `granted` set instead latched every box the user ticked: the tick moved the
+    /// privilege into `granted`, a privilege that does not exist on the server yet can have no
+    /// grantor, so the cell went uneditable and could never be cleared again.
+    let locked: Set<String>
 
     var id: String {
         switch grantee {
@@ -29,11 +34,7 @@ struct SchemaGranteeRow: Identifiable, Hashable {
 
     func holds(_ privilege: String) -> Bool { granted.contains(privilege) }
 
-    /// A held privilege is editable only where it can be revoked. An unheld one always is, because
-    /// a new grant is made by the connected role and needs no prior authority.
-    func canEdit(_ privilege: String) -> Bool {
-        granted.contains(privilege) ? revocable.contains(privilege) : true
-    }
+    func canEdit(_ privilege: String) -> Bool { !locked.contains(privilege) }
 }
 
 /// Validation and diffing for the schema sheets, kept out of the views so both the rules and the
@@ -79,31 +80,35 @@ enum SchemaFormRules {
         privileges: [PluginPrivilegeDescriptor]
     ) -> [SchemaGranteeRow] {
         let names = Set(privileges.map(\.name))
-        var byGrantee: [PluginSchemaGrantee: SchemaGranteeRow] = [:]
-        var conflictingGrantors: Set<String> = []
+        var granted: [PluginSchemaGrantee: Set<String>] = [:]
+        var grantable: [PluginSchemaGrantee: Set<String>] = [:]
+        /// Counted per grantor so two of them on one cell can be told from one. Either case puts
+        /// the cell out of reach: with two, revoking the connected role's entry leaves the other
+        /// in force; with one that is not the connected role, the revoke does nothing at all.
+        var grantors: [PluginSchemaGrantee: [String: Set<String>]] = [:]
+
         for grant in details.grants where names.contains(grant.privilege) {
-            var row = byGrantee[grant.grantee]
-                ?? SchemaGranteeRow(grantee: grant.grantee, granted: [], grantable: [], revocable: [])
-            let key = "\(row.id)\u{1}\(grant.privilege)"
-            /// A second grantor for the same cell takes it out of reach: the connected role can
-            /// revoke its own entry and the other would still be in force.
-            if row.granted.contains(grant.privilege) {
-                conflictingGrantors.insert(key)
-            }
-            row.granted.insert(grant.privilege)
-            if grant.isGrantable { row.grantable.insert(grant.privilege) }
-            if grant.grantor != nil, grant.grantor == details.currentRole {
-                row.revocable.insert(grant.privilege)
-            }
-            byGrantee[grant.grantee] = row
+            granted[grant.grantee, default: []].insert(grant.privilege)
+            if grant.isGrantable { grantable[grant.grantee, default: []].insert(grant.privilege) }
+            grantors[grant.grantee, default: [:]][grant.privilege, default: []]
+                .insert(grant.grantor ?? "")
         }
-        return byGrantee.values
-            .map { row in
-                var resolved = row
-                resolved.revocable = row.revocable.filter {
-                    !conflictingGrantors.contains("\(row.id)\u{1}\($0)")
+
+        return granted.keys
+            .map { grantee -> SchemaGranteeRow in
+                let held = granted[grantee] ?? []
+                let locked = held.filter { privilege in
+                    let issuers = grantors[grantee]?[privilege] ?? []
+                    guard issuers.count == 1, let issuer = issuers.first else { return true }
+                    guard let currentRole = details.currentRole, !currentRole.isEmpty else { return true }
+                    return issuer != currentRole
                 }
-                return resolved
+                return SchemaGranteeRow(
+                    grantee: grantee,
+                    granted: held,
+                    grantable: grantable[grantee] ?? [],
+                    locked: locked
+                )
             }
             .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }

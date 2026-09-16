@@ -175,8 +175,10 @@ final class SchemaEditorViewModel {
 
     func addGrantee(_ grantee: PluginSchemaGrantee) {
         guard !granteeRows.contains(where: { $0.grantee == grantee }) else { return }
+        /// A role added here holds nothing on the server yet, so nothing about it is locked: every
+        /// box the user ticks is theirs to untick again.
         granteeRows.append(
-            SchemaGranteeRow(grantee: grantee, granted: [], grantable: [], revocable: [])
+            SchemaGranteeRow(grantee: grantee, granted: [], grantable: [], locked: [])
         )
         granteeRows.sort { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }

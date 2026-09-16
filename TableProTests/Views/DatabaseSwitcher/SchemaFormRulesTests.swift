@@ -113,6 +113,34 @@ struct SchemaFormRulesTests {
         #expect(rows[0].canEdit("CREATE"))
     }
 
+    /// Editability is a fact about the server's ACL, read once. Deciding it from the live form
+    /// latched every box the user ticked: the tick moved the privilege into `granted`, a grant
+    /// that does not exist yet has no grantor, so the cell went dead and could never be cleared.
+    @Test("A privilege the connected role granted stays editable after it is toggled")
+    func ownGrantStaysEditableAcrossAToggle() {
+        var row = SchemaFormRules.rows(
+            from: details([
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", grantor: "admin")
+            ]),
+            privileges: privileges
+        )[0]
+
+        #expect(row.canEdit("USAGE"))
+        row.granted.remove("USAGE")
+        #expect(row.canEdit("USAGE"))
+        row.granted.insert("USAGE")
+        #expect(row.canEdit("USAGE"))
+    }
+
+    @Test("A role added in the sheet locks nothing, so every box it gains stays editable")
+    func anAddedRoleLocksNothing() {
+        var row = SchemaGranteeRow(grantee: .role("new_role"), granted: [], grantable: [], locked: [])
+
+        #expect(row.canEdit("USAGE"))
+        row.granted.insert("USAGE")
+        #expect(row.canEdit("USAGE"))
+    }
+
     @Test("A privilege granted by two roles is not editable by either")
     func twoGrantorsMakeACellUneditable() {
         let rows = SchemaFormRules.rows(

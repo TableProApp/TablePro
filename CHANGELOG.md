@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Minimum macOS is now 14.4.
 - Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
 - The editor's find panel keeps the mode it was left in instead of reverting to Find each time it opens.
 - Duplicate Connection shares a linked credential profile instead of copying its password.

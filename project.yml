@@ -15,7 +15,7 @@ options:
   transitivelyLinkDependencies: false
   localPackagesGroup: Packages
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "14.4"
 
 configs:
   Debug: debug

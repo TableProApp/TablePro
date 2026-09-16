@@ -12,13 +12,16 @@ import TableProPluginKit
 /// and committal, which is what the HIG puts in a sheet. The generated statements sit inside it
 /// rather than behind a second sheet: only one sheet shows at a time, and a preview the user has
 /// to open another window to read is a preview nobody checks.
+///
+/// The content scrolls and the buttons do not. A fixed-height sheet with three stretching sections
+/// left the fields clustered at the top and two dead zones underneath, which is what this shape
+/// replaces: every section is as tall as its own content, the sheet asks for the height that adds
+/// up to, and only the scroll view gives way when that exceeds the cap.
 struct SchemaEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State var model: SchemaEditorViewModel
     var onCompleted: ((String) -> Void)?
-
-    @State private var newGrantee = ""
 
     private var entityName: String {
         PluginManager.shared.schemaEntityName(for: model.databaseType)
@@ -36,7 +39,8 @@ struct SchemaEditorSheet: View {
 
             footer
         }
-        .frame(width: 520, height: model.supportsPrivileges ? 620 : 460)
+        .frame(width: 540)
+        .frame(minHeight: 320, maxHeight: 680)
         .background(Color(nsColor: .windowBackgroundColor))
         .onExitCommand {
             if !model.isApplying { dismiss() }
@@ -45,7 +49,7 @@ struct SchemaEditorSheet: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.headline)
             if let subtitle {
@@ -56,7 +60,8 @@ struct SchemaEditorSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     private var title: String {
@@ -68,8 +73,8 @@ struct SchemaEditorSheet: View {
         }
     }
 
-    /// The fully qualified target and the database it lands in, named before the user fills the
-    /// form rather than after they press the button.
+    /// The database the change lands in, named before the user fills the form rather than after
+    /// they press the button.
     private var subtitle: String? {
         guard let database = model.database, !database.isEmpty else { return nil }
         return String(format: String(localized: "In database %@"), database)
@@ -98,11 +103,12 @@ struct SchemaEditorSheet: View {
 
     private func failureState(_ message: String) -> some View {
         VStack(spacing: 8) {
-            Text(String(localized: "Could not load this schema"))
+            Text(String(format: String(localized: "Could not load this %@"), entityName.lowercased()))
                 .font(.body.weight(.medium))
             RevealedTextView(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Button(String(localized: "Retry")) {
                 Task { await model.load() }
             }
@@ -113,47 +119,53 @@ struct SchemaEditorSheet: View {
     }
 
     private var form: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            generalSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                generalSection
 
-            if model.supportsPrivileges {
-                Divider()
-                privilegesSection
+                if model.supportsPrivileges {
+                    privilegesSection
+                }
+
+                statementsSection
             }
-
-            Divider()
-            previewSection
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
         /// The whole form, not just the buttons: `apply()` executes the plan it built when the
         /// button was pressed, so a name typed while the statements were in flight would create one
         /// schema and report another.
         .disabled(model.isApplying)
     }
 
+    // MARK: - General
+
     private var generalSection: some View {
-        Form {
-            TextField(
-                String(localized: "Name"),
-                text: $model.name,
-                prompt: Text(String(format: String(localized: "%@ name"), entityName))
-            )
-            .disabled(!model.isNameEditable)
+        SchemaEditorSection(title: String(localized: "General")) {
+            Form {
+                TextField(
+                    String(localized: "Name"),
+                    text: $model.name,
+                    prompt: Text(String(format: String(localized: "%@ name"), entityName.lowercased()))
+                )
+                .disabled(!model.isNameEditable)
 
-            if model.supportsOwner {
-                ownerField
+                if model.supportsOwner {
+                    ownerField
+                }
+
+                TextField(
+                    String(localized: "Comment"),
+                    text: $model.comment,
+                    prompt: Text(String(localized: "Optional"))
+                )
             }
+            .formStyle(.columns)
 
-            TextField(String(localized: "Comment"), text: $model.comment, prompt: Text(""))
-        }
-        .formStyle(.columns)
-        .overlay(alignment: .bottomLeading) {
             if let problem = model.nameProblem, !model.name.isEmpty {
-                Text(problem.message)
+                Label(problem.message, systemImage: "exclamationmark.circle")
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .offset(y: 14)
             }
         }
     }
@@ -190,20 +202,39 @@ struct SchemaEditorSheet: View {
         }
     }
 
+    // MARK: - Privileges
+
     private var privilegesSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(String(localized: "Privileges"))
-                    .font(.subheadline.weight(.medium))
-                Spacer()
-                addGranteeControl
+        SchemaEditorSection(title: String(localized: "Privileges"), accessory: { addRoleMenu }) {
+            if model.granteeRows.isEmpty {
+                Text(emptyPrivilegesMessage)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                SchemaPrivilegeTable(model: model)
+                    .frame(height: tableHeight)
             }
-            SchemaPrivilegeTable(model: model)
-                .frame(minHeight: 140)
         }
     }
 
-    private var addGranteeControl: some View {
+    /// A new schema has no grants, so the section carries the one control that does anything until
+    /// a role is added. Opening on an empty table was a box the user had to look past.
+    private var emptyPrivilegesMessage: String {
+        model.privileges.isEmpty
+            ? String(localized: "No privileges can be granted on a schema here.")
+            : String(localized: "No roles have access yet. Add one to grant it.")
+    }
+
+    /// Sized to the rows it has rather than to the space left over, capped so a server with many
+    /// roles scrolls inside the table instead of pushing the statements off the sheet.
+    private var tableHeight: CGFloat {
+        let heading: CGFloat = 26
+        let row: CGFloat = 24
+        return heading + min(CGFloat(model.granteeRows.count), 6) * row + 8
+    }
+
+    private var addRoleMenu: some View {
         Menu {
             ForEach(availableGrantees, id: \.self) { grantee in
                 Button(grantee.displayName) { model.addGrantee(grantee) }
@@ -211,7 +242,8 @@ struct SchemaEditorSheet: View {
         } label: {
             Label(String(localized: "Add Role"), systemImage: "plus")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.accessoryBar)
         .fixedSize()
         .disabled(availableGrantees.isEmpty)
     }
@@ -225,15 +257,15 @@ struct SchemaEditorSheet: View {
         return candidates.filter { !present.contains($0) }
     }
 
-    private var previewSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(String(localized: "Statements"))
-                .font(.subheadline.weight(.medium))
+    // MARK: - Statements
+
+    private var statementsSection: some View {
+        SchemaEditorSection(title: String(localized: "Statements")) {
             if model.plannedStatements.isEmpty {
-                Text(String(localized: "No changes to apply."))
+                Text(emptyStatementsMessage)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 SQLStatementPreview(
                     prepared: SQLReviewSheet.build(
@@ -242,18 +274,38 @@ struct SchemaEditorSheet: View {
                     ),
                     databaseType: model.databaseType
                 )
-                .frame(minHeight: 100)
+                .frame(height: 132)
             }
         }
     }
+
+    /// "No changes to apply" is edit-mode language. A create with nothing typed has not failed to
+    /// change anything, it has not been told what to make yet.
+    private var emptyStatementsMessage: String {
+        switch model.mode {
+        case .create:
+            String(format: String(localized: "Name the %@ to see the statements."), entityName.lowercased())
+        case .edit:
+            String(localized: "No changes to apply.")
+        }
+    }
+
+    // MARK: - Footer
 
     private var footer: some View {
         VStack(spacing: 8) {
             if let failure = model.failure {
                 InlineErrorBanner(message: failure)
             }
-            HStack {
+            HStack(spacing: 12) {
+                if let count = statementCount {
+                    Text(count)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Spacer()
+
                 if model.isApplying {
                     ProgressView().controlSize(.small)
                 }
@@ -268,6 +320,14 @@ struct SchemaEditorSheet: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    private var statementCount: String? {
+        let count = model.plannedStatements.count
+        guard count > 0 else { return nil }
+        return count == 1
+            ? String(localized: "1 statement")
+            : String(format: String(localized: "%lld statements"), Int64(count))
     }
 
     private var primaryTitle: String {
@@ -289,5 +349,39 @@ struct SchemaEditorSheet: View {
             guard outcome.succeeded else { return }
             dismiss()
         }
+    }
+}
+
+/// One titled group in the schema sheet.
+///
+/// A heading over its content rather than a `GroupBox`, because the sheet stacks three of these and
+/// nested boxes inside a sheet inside a window reads as three levels of chrome for one form.
+private struct SchemaEditorSection<Content: View, Accessory: View>: View {
+    let title: String
+    @ViewBuilder var accessory: () -> Accessory
+    @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() },
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.accessory = accessory
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                accessory()
+            }
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
