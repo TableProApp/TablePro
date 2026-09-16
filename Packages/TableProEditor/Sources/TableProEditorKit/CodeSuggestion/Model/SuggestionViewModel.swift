@@ -21,6 +21,20 @@ final class SuggestionViewModel: ObservableObject {
     weak var activeTextView: TextViewController?
     private(set) var isApplyingCompletion = false
 
+    /// Whether a suggestion window is on screen for ``activeTextView``.
+    ///
+    /// `activeTextView` answers a different question: who a request is *for*. It is assigned
+    /// before the delegate is awaited, so it stays set for the whole of a request that may end
+    /// without presenting anything. Reading it as "a window is open" is what let
+    /// ``cursorsUpdated(textView:delegate:position:close:)`` file new items into a panel nobody
+    /// could see and never ask for a session again.
+    var isPresented = false
+
+    /// Fenced so a superseded request cannot write into the session that replaced it. A cancelled
+    /// `Task` resumes after its successor's handle is already stored, and an unguarded cleanup
+    /// there clears the live request instead of its own.
+    private var requestGeneration = 0
+
     weak var delegate: CodeSuggestionDelegate?
 
     /// Invoked after a successful apply so the owning controller can dismiss the
@@ -93,6 +107,7 @@ final class SuggestionViewModel: ObservableObject {
 
         self.activeTextView = nil
         self.delegate = nil
+        self.isPresented = false
         itemsRequestTask?.cancel()
 
         guard textView.view.window != nil else {
@@ -102,8 +117,14 @@ final class SuggestionViewModel: ObservableObject {
 
         self.activeTextView = textView
         self.delegate = delegate
+        requestGeneration &+= 1
+        let generation = requestGeneration
         itemsRequestTask = Task {
-            defer { itemsRequestTask = nil }
+            defer {
+                if self.requestGeneration == generation {
+                    self.itemsRequestTask = nil
+                }
+            }
 
             do {
                 guard let completionItems = await delegate.completionSuggestionsRequested(
@@ -112,6 +133,7 @@ final class SuggestionViewModel: ObservableObject {
                     isManualTrigger: isManualTrigger
                 ) else {
                     Self.logger.debug("showCompletions: delegate returned nil items")
+                    self.endSession(generation: generation)
                     return
                 }
 
@@ -126,6 +148,7 @@ final class SuggestionViewModel: ObservableObject {
                           let responder = window.firstResponder as? NSView,
                           responder.isDescendant(of: textView.view) else {
                         Self.logger.debug("showCompletions: editor lost focus while completions were loading")
+                        self.endSession(generation: generation)
                         return
                     }
 
@@ -134,6 +157,7 @@ final class SuggestionViewModel: ObservableObject {
                             cursorPosition.range.location
                           ) else {
                         Self.logger.warning("showCompletions: cursor rect resolution failed")
+                        self.endSession(generation: generation)
                         return
                     }
 
@@ -145,11 +169,39 @@ final class SuggestionViewModel: ObservableObject {
                     self.selectedIndex = 0
                     self.syntaxHighlightedCache = [:]
                     self.notifySelection()
+
+                    guard self.requestGeneration == generation, self.activeTextView === textView else {
+                        return
+                    }
+
                     showWindowOnParent(window, screenCursorRect)
+                    self.isPresented = true
                 }
             } catch {
+                self.endSession(generation: generation)
                 return
             }
+        }
+    }
+
+    /// Ends the session this request owns, so nothing is left claiming a window that was never
+    /// shown. Superseded requests end nothing: their successor already owns the session.
+    private func endSession(generation: Int) {
+        guard requestGeneration == generation else { return }
+        endSession()
+    }
+
+    /// The single terminal transition, idempotent so it can run from a request that presented
+    /// nothing and again from the window's own close.
+    private func endSession() {
+        isPresented = false
+        items.removeAll()
+        selectedIndex = 0
+        syntaxHighlightedCache = [:]
+        activeTextView = nil
+        if let delegate {
+            self.delegate = nil
+            delegate.completionWindowDidClose()
         }
     }
 
@@ -168,7 +220,7 @@ final class SuggestionViewModel: ObservableObject {
             return
         }
 
-        if let newItems = delegate.completionOnCursorMove(
+        if isPresented, let newItems = delegate.completionOnCursorMove(
             textView: textView,
             cursorPosition: position
         ), !newItems.isEmpty {
@@ -205,11 +257,7 @@ final class SuggestionViewModel: ObservableObject {
     func willClose() {
         itemsRequestTask?.cancel()
         itemsRequestTask = nil
-        items.removeAll()
-        selectedIndex = 0
-        activeTextView = nil
-        delegate?.completionWindowDidClose()
-        delegate = nil
+        endSession()
     }
 
     func syntaxHighlights(forIndex index: Int) -> NSAttributedString? {

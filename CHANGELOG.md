@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Autocomplete popup never opening again after a completion request came back with nothing. (#2915)
+- Completion popup opening by itself over an editor whose popup had already been dismissed.
+- Escape and `Ctrl+Space` doing nothing after a completion request came back with nothing.
 - PostgreSQL `box[]` cell split into fragments by the element editor, which read it with a comma.
 - Empty PostgreSQL `jsonb` object copied to another engine as an empty array. (Copy Objects)
 - Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.

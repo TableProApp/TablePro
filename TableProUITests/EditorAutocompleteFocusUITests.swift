@@ -75,6 +75,41 @@ final class EditorAutocompleteFocusUITests: UITestCase {
         }
     }
 
+    /// #2915: a request that came back with nothing used to leave the model claiming the editor,
+    /// and every later prefix the stale candidates could still rank updated a panel that was no
+    /// longer on screen. Measured before the fix: after `zqxj`, typing `sel` on an emptied editor
+    /// made no request and showed no popup, so Return committed nothing.
+    func testPopupReturnsAfterARequestWithNoMatches() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+
+        let editor = editorTextView(in: app)
+        XCTAssertTrue(editor.waitToExist(timeout: 10))
+        XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "New tab editor should start empty")
+
+        app.typeText("zqxj")
+        XCTAssertTrue(
+            waitForValue("zqxj", in: editor, timeout: 5),
+            "Editor should hold the no-match prefix; got '\(editor.value as? String ?? "nil")'"
+        )
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0))
+
+        app.typeKey("a", modifierFlags: .command)
+        app.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(waitForValue("", in: editor, timeout: 5), "Editor should be empty again")
+
+        app.typeText("sel")
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0))
+        app.typeKey(.return, modifierFlags: [])
+
+        XCTAssertTrue(
+            waitForValue("select", in: editor, timeout: 5),
+            "A no-match prefix must not leave the popup dead; got "
+                + "'\(editor.value as? String ?? "nil")'"
+        )
+    }
+
     private func waitForValue(
         in element: XCUIElement,
         timeout: TimeInterval,

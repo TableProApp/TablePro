@@ -12,6 +12,7 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
 
         model.activeTextView = textViewController
         model.delegate = delegate
+        model.isPresented = true
         model.items = [FilterStubEntry(label: "SELECT")]
         model.itemsRequestTask = Task { try? await Task.sleep(for: .seconds(10)) }
         defer { model.itemsRequestTask?.cancel() }
@@ -36,6 +37,7 @@ final class SuggestionCursorsUpdatedTests: XCTestCase {
 
         model.activeTextView = textViewController
         model.delegate = delegate
+        model.isPresented = true
         model.items = [FilterStubEntry(label: "stale")]
         model.selectedIndex = 0
 

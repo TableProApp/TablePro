@@ -26,6 +26,7 @@ final class TextViewControllerSuggestionsTests: XCTestCase {
         defer { resetSharedSuggestions() }
 
         SuggestionController.shared.model.activeTextView = owner
+        SuggestionController.shared.model.isPresented = true
         SuggestionController.shared.window?.orderFrontRegardless()
 
         XCTAssertTrue(owner.isShowingCompletions)
@@ -38,6 +39,7 @@ final class TextViewControllerSuggestionsTests: XCTestCase {
         defer { resetSharedSuggestions() }
 
         SuggestionController.shared.model.activeTextView = owner
+        SuggestionController.shared.model.isPresented = true
         SuggestionController.shared.window?.orderFrontRegardless()
         XCTAssertTrue(owner.isShowingCompletions)
 
