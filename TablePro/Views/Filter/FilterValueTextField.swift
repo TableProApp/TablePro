@@ -56,8 +56,11 @@ struct FilterValueTextField: NSViewRepresentable {
         guard nsText.length > 0 else { return false }
         let clamped = min(max(cursor, 0), nsText.length)
         guard clamped > 0 else { return false }
-        guard let scalar = Unicode.Scalar(nsText.character(at: clamped - 1)) else { return true }
-        return !CharacterSet.whitespaces.contains(scalar)
+        let lastCharacter = nsText.character(at: clamped - 1)
+        // Completing a value must not open next-token suggestions that intercept Return.
+        // Use the editor's token boundaries to preserve quoted and Unicode column names.
+        if lastCharacter == 0x2E { return true } // Qualified column names after a dot.
+        return SQLTokenBoundary.segmentStart(in: nsText, endingAt: clamped) < clamped
     }
 
     nonisolated static func splice(

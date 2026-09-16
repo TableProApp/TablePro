@@ -100,7 +100,7 @@ A new row starts in raw SQL, unless **Default Column** in the settings says othe
 created_at > NOW() - INTERVAL 7 DAY
 ```
 
-Autocomplete offers the table's columns and SQL keywords at every position, after AND and OR included. Arrow keys pick a suggestion, `Tab` or `Return` inserts it, `Escape` dismisses the list without closing the filter bar. On a database that does not speak SQL the row is labeled **Raw Filter** and takes that database's own syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
+Autocomplete offers the table's columns and SQL keywords as you type a token, after AND and OR included. Closing a single-quoted string or parenthesis leaves the list closed so `Return` applies the filter; start typing the next token to see suggestions again. Arrow keys pick a suggestion, `Tab` or `Return` inserts it, `Escape` dismisses the list without closing the filter bar. On a database that does not speak SQL the row is labeled **Raw Filter** and takes that database's own syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
 
 <Warning>
 The text goes into the WHERE clause as written. A condition whose syntax does not match the database fails the query.

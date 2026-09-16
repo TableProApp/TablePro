@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raw SQL filter autocomplete opening after a closing quote or parenthesis and intercepting Return instead of applying the filter.
 - No autocomplete after an opening backtick or double quote, in the editor and the grid filter field.
 - No type list after a PostgreSQL `::` cast until a character was typed.
 - Autocomplete popup never opening again after a completion request came back with nothing. (#2915)
