@@ -169,7 +169,7 @@ struct CompletionEngineFilterTests {
             tableName: "users"
         )
         let labels = result?.items.map(\.label) ?? []
-        #expect(labels.contains("LIKE"))
+        #expect(labels.contains { $0.caseInsensitiveCompare("LIKE") == .orderedSame })
     }
 
     @Test("No completion inside a string literal")

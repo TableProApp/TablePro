@@ -23,7 +23,11 @@ struct EditorSettingsView: View {
                     Text("4 spaces").tag(4)
                     Text("8 spaces").tag(8)
                 }
-                Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
+                Picker("Keyword case:", selection: $settings.keywordCase) {
+                    ForEach(SQLKeywordCase.allCases, id: \.self) { keywordCase in
+                        Text(keywordCase.displayName).tag(keywordCase)
+                    }
+                }
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
                     .accessibilityIdentifier("vim-mode-toggle")
