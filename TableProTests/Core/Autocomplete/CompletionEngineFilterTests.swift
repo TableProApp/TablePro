@@ -119,6 +119,62 @@ struct CompletionEngineFilterTests {
         #expect(labels.contains("created_at"))
     }
 
+    /// The shared trigger rule exempts a qualified name whatever clause it sits in, and the filter
+    /// path has to reach that exemption too: a dot is the user asking for a closed list.
+    @Test("A qualified name on the filter path is exempt from the empty-prefix rule")
+    func qualifiedNameIsExemptFromTheEmptyPrefixRule() async {
+        let engine = await makeEngine()
+        let fragment = "users."
+        let result = await engine.filterCompletions(
+            fragment: fragment,
+            cursorPosition: (fragment as NSString).length,
+            tableName: "users"
+        )
+
+        #expect(result?.sqlContext.dotPrefix == "users")
+        #expect(
+            result.map {
+                SQLCompletionTriggerPolicy.suppressesEmptyPrefix($0.sqlContext, isManualTrigger: false)
+            } == false
+        )
+    }
+
+    /// An opening backtick is typed input, not an untouched position. The analyzer keeps it inside
+    /// `prefixRange` so an accepted completion overwrites it and strips it from `prefix` so the
+    /// matcher can work, so a trigger rule reading `prefix` alone shuts the list the quote opened.
+    @Test("An opening backtick still opens the list", arguments: ["`", "id = 1 AND `"])
+    func openingBacktickIsTypedInput(fragment: String) async {
+        let engine = await makeEngine()
+        let result = await engine.filterCompletions(
+            fragment: fragment,
+            cursorPosition: (fragment as NSString).length,
+            tableName: "users"
+        )
+
+        #expect(result?.sqlContext.prefix.isEmpty == true)
+        #expect(result?.sqlContext.prefixRange.isEmpty == false)
+        #expect(
+            result.map {
+                SQLCompletionTriggerPolicy.suppressesEmptyPrefix($0.sqlContext, isManualTrigger: false)
+            } == false
+        )
+        #expect(result?.items.contains { $0.label == "created_at" } == true)
+    }
+
+    /// A lone double quote opens a string literal on MySQL, and the analyzer reads it that way, so
+    /// nothing is offered there whatever the trigger rule says.
+    @Test("A lone double quote offers nothing, because it opens a string", arguments: ["\"", "id = 1 AND \""])
+    func loneDoubleQuoteOffersNothing(fragment: String) async {
+        let engine = await makeEngine()
+        let result = await engine.filterCompletions(
+            fragment: fragment,
+            cursorPosition: (fragment as NSString).length,
+            tableName: "users"
+        )
+
+        #expect(result == nil)
+    }
+
     @Test("Replacement range covers the current token, not the whole field")
     func replacementRangeCoversToken() async {
         let engine = await makeEngine()

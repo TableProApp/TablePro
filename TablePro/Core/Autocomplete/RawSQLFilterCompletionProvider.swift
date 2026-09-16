@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct RawSQLFilterCompletionItem: Equatable {
     let label: String
@@ -24,9 +25,15 @@ final class RawSQLFilterCompletionProvider {
     private let engine: CompletionEngine
     private let tableName: String
 
-    init(schemaProvider: SQLSchemaProvider, databaseType: DatabaseType, tableName: String) {
-        let dialect = PluginManager.shared.sqlDialect(for: databaseType)
-        let statementCompletions = PluginManager.shared.statementCompletions(for: databaseType)
+    init(
+        schemaProvider: SQLSchemaProvider,
+        databaseType: DatabaseType,
+        tableName: String,
+        profile: QueryCompletionProfile? = nil
+    ) {
+        let dialect = profile?.resolvedDialect ?? PluginManager.shared.sqlDialect(for: databaseType)
+        let statementCompletions = profile?.statementCompletions
+            ?? PluginManager.shared.statementCompletions(for: databaseType)
         self.engine = CompletionEngine(
             schemaProvider: schemaProvider,
             databaseType: databaseType,
@@ -45,6 +52,10 @@ final class RawSQLFilterCompletionProvider {
         ) else {
             return nil
         }
+        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
+            context.sqlContext,
+            isManualTrigger: false
+        ) else { return nil }
 
         let items = context.items.map { item in
             let resolution = SQLCompletionInsertion.resolve(for: item)

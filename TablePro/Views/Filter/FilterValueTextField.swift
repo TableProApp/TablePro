@@ -51,18 +51,6 @@ struct FilterValueTextField: NSViewRepresentable {
         return matches
     }
 
-    nonisolated static func shouldOfferTokenCompletion(fieldText: String, cursor: Int) -> Bool {
-        let nsText = fieldText as NSString
-        guard nsText.length > 0 else { return false }
-        let clamped = min(max(cursor, 0), nsText.length)
-        guard clamped > 0 else { return false }
-        let lastCharacter = nsText.character(at: clamped - 1)
-        // Completing a value must not open next-token suggestions that intercept Return.
-        // Use the editor's token boundaries to preserve quoted and Unicode column names.
-        if lastCharacter == 0x2E { return true } // Qualified column names after a dot.
-        return SQLTokenBoundary.segmentStart(in: nsText, endingAt: clamped) < clamped
-    }
-
     nonisolated static func splice(
         into current: String,
         range: NSRange,
@@ -82,17 +70,42 @@ struct FilterValueTextField: NSViewRepresentable {
         case passThrough
     }
 
+    /// The popup owns a key only once the user has picked a row in it.
+    ///
+    /// An auto-triggered list that preselects its first row owns `Return` from the moment it
+    /// appears, and in a filter field `Return` already means "apply this filter": the user had to
+    /// press `Escape` first to get their own key back. AppKit spells the alternative `-1`, "no
+    /// initial selection", on the `indexOfSelectedItem` its own completion delegate hands a text
+    /// field, and Finder's search field is the shipping shape: the suggestion menu opens with
+    /// nothing highlighted, one `Return` commits what was typed, and `Down` is what reaches the
+    /// first row.
     nonisolated static func suggestionCommandOutcome(
         for commandSelector: Selector,
+        hasSelection: Bool,
         submitsOnAccept: Bool
     ) -> SuggestionCommandOutcome {
         switch commandSelector {
         case #selector(NSResponder.moveDown(_:)): return .moveSelection(1)
         case #selector(NSResponder.moveUp(_:)): return .moveSelection(-1)
-        case #selector(NSResponder.insertNewline(_:)): return .accept(submitting: submitsOnAccept)
-        case #selector(NSResponder.insertTab(_:)): return .accept(submitting: false)
+        case #selector(NSResponder.insertNewline(_:)):
+            return hasSelection ? .accept(submitting: submitsOnAccept) : .passThrough
+        case #selector(NSResponder.insertTab(_:)):
+            return hasSelection ? .accept(submitting: false) : .passThrough
         default: return .passThrough
         }
+    }
+
+    /// Arrowing into an unselected list enters it from the end the arrow points away from, so
+    /// `Down` reaches the first row and `Up` the last. Within the list both clamp, matching the
+    /// query editor's panel.
+    nonisolated static func selection(
+        movedBy delta: Int,
+        from current: Int?,
+        count: Int
+    ) -> Int? {
+        guard count > 0 else { return nil }
+        guard let current else { return delta > 0 ? 0 : count - 1 }
+        return max(0, min(count - 1, current + delta))
     }
 
     enum EscapeOutcome: Equatable {
@@ -284,6 +297,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 return true
             }
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                dismissSuggestions()
                 onSubmit()
                 return true
             }
@@ -298,6 +312,7 @@ struct FilterValueTextField: NSViewRepresentable {
         private func handleSuggestionCommand(_ commandSelector: Selector) -> Bool {
             switch FilterValueTextField.suggestionCommandOutcome(
                 for: commandSelector,
+                hasSelection: suggestionState.selectedIndex != nil,
                 submitsOnAccept: submitsOnAccept
             ) {
             case .moveSelection(let delta):
@@ -368,12 +383,9 @@ struct FilterValueTextField: NSViewRepresentable {
             let nsText = fieldText as NSString
             let editor = textField.currentEditor() as? NSTextView
             let cursor = min(editor?.selectedRange().location ?? nsText.length, nsText.length)
-            guard FilterValueTextField.shouldOfferTokenCompletion(fieldText: fieldText, cursor: cursor) else {
-                dismissSuggestions()
-                return
-            }
 
             completionGeneration &+= 1
+            suggestionState.selectedIndex = nil
             let generation = completionGeneration
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: Self.completionDebounce)
@@ -399,7 +411,7 @@ struct FilterValueTextField: NSViewRepresentable {
             latestReplacementRange = replacementRange
             if suggestionPopover != nil {
                 suggestionState.items = items
-                suggestionState.selectedIndex = 0
+                suggestionState.selectedIndex = nil
                 return
             }
             showPopover(for: textField, items: items)
@@ -407,7 +419,7 @@ struct FilterValueTextField: NSViewRepresentable {
 
         private func showPopover(for textField: NSTextField, items: [SuggestionItem]) {
             suggestionState.items = items
-            suggestionState.selectedIndex = 0
+            suggestionState.selectedIndex = nil
             announceSuggestions(count: items.count, on: textField)
 
             let bounds = textField.bounds
@@ -432,7 +444,9 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         /// The completion list never takes focus, so nothing in it is ever the accessibility
-        /// focus. Without an announcement on the field there is no signal that it opened at all.
+        /// focus. Without an announcement on the field there is no signal that it opened at all,
+        /// and the announcement names the arrow because nothing in the list is selected until one
+        /// is pressed.
         private func announceSuggestions(count: Int, on textField: NSTextField) {
             guard count > 0 else { return }
             NSAccessibility.post(
@@ -440,7 +454,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 notification: .announcementRequested,
                 userInfo: [
                     .announcement: String(
-                        format: String(localized: "%lld suggestions available"),
+                        format: String(localized: "%lld suggestions available, press Down Arrow to browse"),
                         Int64(count)
                     ),
                     .priority: NSAccessibilityPriorityLevel.medium.rawValue
@@ -449,16 +463,16 @@ struct FilterValueTextField: NSViewRepresentable {
         }
 
         private func moveSelection(by delta: Int) {
-            let count = suggestionState.items.count
-            guard count > 0 else { return }
-            let next = suggestionState.selectedIndex + delta
-            suggestionState.selectedIndex = max(0, min(count - 1, next))
+            suggestionState.selectedIndex = FilterValueTextField.selection(
+                movedBy: delta,
+                from: suggestionState.selectedIndex,
+                count: suggestionState.items.count
+            )
         }
 
         private func acceptCurrentSelection(submitting: Bool) {
             let items = suggestionState.items
-            let index = suggestionState.selectedIndex
-            guard index >= 0, index < items.count else {
+            guard let index = suggestionState.selectedIndex, index >= 0, index < items.count else {
                 dismissSuggestions()
                 if submitting { onSubmit() }
                 return
@@ -555,7 +569,7 @@ struct FilterValueTextField: NSViewRepresentable {
     @MainActor
     private final class SuggestionState: ObservableObject {
         @Published var items: [SuggestionItem] = []
-        @Published var selectedIndex: Int = 0
+        @Published var selectedIndex: Int?
     }
 
     private struct SuggestionDropdownView: View {
@@ -598,6 +612,7 @@ struct FilterValueTextField: NSViewRepresentable {
                 }
                 .focusable(false)
                 .onChange(of: state.selectedIndex) { newIndex in
+                    guard let newIndex else { return }
                     withMotion(.easeOut(duration: 0.1)) {
                         proxy.scrollTo(newIndex, anchor: .center)
                     }

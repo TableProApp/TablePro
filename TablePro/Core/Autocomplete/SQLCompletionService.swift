@@ -83,7 +83,10 @@ final class SQLCompletionService: QueryCompletionService {
         ) else {
             return nil
         }
-        guard !isSuppressedEmptyPrefix(context.sqlContext, isManualTrigger: isManualTrigger) else { return nil }
+        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
+            context.sqlContext,
+            isManualTrigger: isManualTrigger
+        ) else { return nil }
 
         lastContext = context.sqlContext
         return QueryCompletionSession(
@@ -106,19 +109,5 @@ final class SQLCompletionService: QueryCompletionService {
         guard offset < text.length else { return true }
 
         return text.substring(from: offset).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func isSuppressedEmptyPrefix(_ context: SQLContext, isManualTrigger: Bool) -> Bool {
-        guard !isManualTrigger, context.prefix.isEmpty, context.dotPrefix == nil else { return false }
-
-        switch context.clauseType {
-        case .from, .join, .into, .set, .insertColumns, .on,
-             .alterTableColumn, .returning, .using, .dropObject, .createIndex, .castTarget:
-            return false
-        case .select where !context.isAfterComma:
-            return false
-        default:
-            return true
-        }
     }
 }
