@@ -60,6 +60,8 @@ Right-click a schema to drop it. The statement is `DROP SCHEMA … CASCADE`, so 
 
 **Owner** lists the roles on the server; leave it at **Database default** to let the connecting role own it. Changing it needs you to be a member of the new owning role, and the server's own refusal appears under the form.
 
+A grant to `PUBLIC` is a grant to every user on the server. A role literally named `public` is a different grantee and the grid keeps the two apart.
+
 Rename from the same sheet, or in place: select the row and press Return.
 
 `pg_catalog`, `information_schema` and `pg_toast` are refused for rename, edit and drop.

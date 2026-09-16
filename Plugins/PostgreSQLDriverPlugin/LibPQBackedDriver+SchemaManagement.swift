@@ -43,21 +43,36 @@ extension LibPQBackedDriver {
             name: name,
             owner: row[safe: 0]?.asText,
             comment: row[safe: 1]?.asText,
-            grants: try await fetchSchemaACL(name: name)
+            grants: try await fetchSchemaACL(name: name),
+            currentRole: row[safe: 2]?.asText
         )
     }
 
+    /// The grantee's kind comes from its id rather than its name: id zero is the all-users group,
+    /// and a role can be named `public` without being it. The grantor comes back too, because
+    /// `REVOKE` only removes what the executing role granted.
     private func fetchSchemaACL(name: String) async throws -> [PluginSchemaGrant] {
         guard supportsSchemaACLIntrospection else { return [] }
         let result = try await execute(query: PostgreSQLSchemaManagementQueries.grants(schema: name))
         return result.rows.compactMap { row -> PluginSchemaGrant? in
-            guard let grantee = row[safe: 0]?.asText,
-                  let privilege = row[safe: 1]?.asText else { return nil }
+            guard let privilege = row[safe: 2]?.asText else { return nil }
+            let granteeId = row[safe: 0]?.asText.flatMap(Int.init)
+            let granteeName = row[safe: 1]?.asText ?? ""
+            let grantee: PluginSchemaGrantee = (granteeId == 0 || granteeName.isEmpty)
+                ? .publicGroup
+                : .role(granteeName)
             return PluginSchemaGrant(
                 grantee: grantee,
                 privilege: privilege,
-                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 2]?.asText)
+                isGrantable: PostgreSQLCatalogBoolean.isTrue(row[safe: 3]?.asText),
+                grantor: row[safe: 4]?.asText?.nilIfBlank
             )
         }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        isEmpty ? nil : self
     }
 }

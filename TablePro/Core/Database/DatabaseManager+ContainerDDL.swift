@@ -117,9 +117,16 @@ extension DatabaseManager {
         )
 
         let route = schemaChangeRoute(for: scope)
+        /// A transaction only where the connection is this operation's alone. PostgreSQL has no
+        /// nested transaction, so a `BEGIN` on the session driver joins whatever a query tab left
+        /// open and the `COMMIT` takes that tab's uncommitted writes with it; a rollback throws
+        /// them away. An engine that cannot be pooled, PGlite among them, always lands on the
+        /// session driver, so the plan runs unwrapped there and a partial apply is reported rather
+        /// than risking work the user did not offer.
+        let isIsolated = route.isPooled
         do {
             try await withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
-                try await Self.execute(statements, on: driver)
+                try await Self.execute(statements, on: driver, useTransaction: isIsolated)
             }
         } catch {
             /// Reported on failure too, because an engine that cannot roll DDL back keeps every
@@ -164,8 +171,12 @@ extension DatabaseManager {
         }
     }
 
-    private static func execute(_ statements: [SchemaStatement], on driver: any DatabaseDriver) async throws {
-        let useTransaction = driver.supportsTransactions && driver.supportsTransactionalDDL
+    private static func execute(
+        _ statements: [SchemaStatement],
+        on driver: any DatabaseDriver,
+        useTransaction isolated: Bool
+    ) async throws {
+        let useTransaction = isolated && driver.supportsTransactions && driver.supportsTransactionalDDL
         if useTransaction {
             try await driver.beginTransaction(mode: .readWrite)
         }

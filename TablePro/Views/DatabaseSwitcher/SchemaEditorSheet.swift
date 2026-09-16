@@ -205,8 +205,8 @@ struct SchemaEditorSheet: View {
 
     private var addGranteeControl: some View {
         Menu {
-            ForEach(availableGrantees, id: \.self) { role in
-                Button(role) { model.addGrantee(role) }
+            ForEach(availableGrantees, id: \.self) { grantee in
+                Button(grantee.displayName) { model.addGrantee(grantee) }
             }
         } label: {
             Label(String(localized: "Add Role"), systemImage: "plus")
@@ -216,11 +216,13 @@ struct SchemaEditorSheet: View {
         .disabled(availableGrantees.isEmpty)
     }
 
-    /// PUBLIC is offered alongside the real roles because a schema ACL can name it and users
-    /// reach for it constantly: it is how you open a schema to everyone.
-    private var availableGrantees: [String] {
+    /// The all-users group is offered alongside the real roles because a schema ACL can name it
+    /// and users reach for it constantly: it is how you open a schema to everyone. It is a
+    /// separate case rather than a role called PUBLIC, because a real role can be named that.
+    private var availableGrantees: [PluginSchemaGrantee] {
         let present = Set(model.granteeRows.map(\.grantee))
-        return (["PUBLIC"] + model.ownerCandidates).filter { !present.contains($0) }
+        let candidates: [PluginSchemaGrantee] = [.publicGroup] + model.ownerCandidates.map { .role($0) }
+        return candidates.filter { !present.contains($0) }
     }
 
     private var previewSection: some View {

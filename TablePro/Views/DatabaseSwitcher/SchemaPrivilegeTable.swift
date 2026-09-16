@@ -48,7 +48,7 @@ struct SchemaPrivilegeTable: View {
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                     ForEach(model.granteeRows) { row in
                         GridRow {
-                            Text(row.grantee)
+                            Text(row.displayName)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .frame(width: roleColumnWidth, alignment: .leading)
@@ -88,6 +88,9 @@ struct SchemaPrivilegeTable: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// A cell another role granted is shown checked and dimmed. `REVOKE` removes only what the
+    /// executing role granted, so offering it would run a statement that succeeds, changes nothing,
+    /// and reports the access as gone while it is still there.
     private func checkbox(_ privilege: PluginPrivilegeDescriptor, row: SchemaGranteeRow) -> some View {
         Toggle(
             privilege.label,
@@ -98,13 +101,17 @@ struct SchemaPrivilegeTable: View {
         )
         .toggleStyle(.checkbox)
         .labelsHidden()
+        .disabled(!row.canEdit(privilege.name))
         .frame(width: privilegeColumnWidth, alignment: .center)
+        .help(row.canEdit(privilege.name) ? "" : String(localized: "Granted by another role"))
         .accessibilityLabel(
             Text(
                 String(
-                    format: String(localized: "%1$@ for %2$@"),
+                    format: row.canEdit(privilege.name)
+                        ? String(localized: "%1$@ for %2$@")
+                        : String(localized: "%1$@ for %2$@, granted by another role"),
                     privilege.label,
-                    row.grantee
+                    row.displayName
                 )
             )
         )

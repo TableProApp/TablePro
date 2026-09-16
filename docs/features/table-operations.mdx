@@ -146,4 +146,6 @@ A schema on Oracle is a user, so it is created in [Users & Roles](/features/tabl
 
 Only the boxes you change produce SQL: a role you never touch generates neither a `GRANT` nor a `REVOKE`. The grid is re-read against the server at the moment you press **Save**, so a grant another session added while the sheet was open survives.
 
+A checked box is dimmed when another role granted that privilege. `REVOKE` removes only what the role you are connected as granted, so clearing such a box would run a statement that succeeds and leaves the access in place. Connect as the granting role, or as a member of it, to change those.
+
 System schemas are refused for create, edit, rename and drop.

@@ -34,7 +34,7 @@ final class SchemaEditorViewModel {
         case failed(String)
     }
 
-    let mode: Mode
+    private(set) var mode: Mode
     let connectionId: UUID
     let databaseType: DatabaseType
     let database: String?
@@ -47,35 +47,17 @@ final class SchemaEditorViewModel {
     private(set) var isApplying = false
     private(set) var failure: String?
 
-    var name = "" {
-        didSet { touch(.name, changedFrom: oldValue, to: name) }
-    }
-
-    var owner = "" {
-        didSet { touch(.owner, changedFrom: oldValue, to: owner) }
-    }
-
-    var comment = "" {
-        didSet { touch(.comment, changedFrom: oldValue, to: comment) }
-    }
+    var name = ""
+    var owner = ""
+    var comment = ""
 
     private(set) var granteeRows: [SchemaGranteeRow] = []
 
-    /// Which facets the user actually edited.
-    ///
-    /// `apply()` re-reads the schema so the diff is against the server, and that re-read is only
-    /// worth doing if the untouched facets come from it rather than from the copy the sheet loaded.
-    /// Sending the whole form back reverts anything another session changed in the meantime, which
-    /// is the blanket-revoke defect this design exists to avoid.
-    private enum Facet: Hashable {
-        case name
-        case owner
-        case comment
-        case privilege(grantee: String, privilege: String)
-    }
-
-    private var touched: Set<Facet> = []
-    private var isLoadingForm = false
+    /// What the form held when it loaded. Dirtiness is this compared with the form now, never a
+    /// latch: a checkbox toggled on and straight off again is not an edit, and treating it as one
+    /// made `apply()` overwrite a concurrent grant with the stale value and run a REVOKE the
+    /// preview never showed.
+    private var baselineRows: [SchemaGranteeRow] = []
 
     private let services: AppServices
 
@@ -180,45 +162,72 @@ final class SchemaEditorViewModel {
         let details = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
             try await driver.fetchSchemaDetails(name: schema)
         }
-        let resolved = details ?? PluginSchemaDetails(name: schema)
-        isLoadingForm = true
+        /// A schema that is not there any more is an error rather than an empty baseline: treating
+        /// nil as "exists with nothing set" made a Save re-emit statements that had already run.
+        guard let resolved = details else { throw Self.missingSchema(schema) }
         current = resolved
         name = resolved.name
         owner = resolved.owner ?? ""
         comment = resolved.comment ?? ""
-        granteeRows = SchemaFormRules.rows(from: resolved.grants, privileges: privileges)
-        isLoadingForm = false
-        touched = []
+        granteeRows = SchemaFormRules.rows(from: resolved, privileges: privileges)
+        baselineRows = granteeRows
     }
 
-    private func touch(_ facet: Facet, changedFrom oldValue: String, to newValue: String) {
-        guard !isLoadingForm, oldValue != newValue else { return }
-        touched.insert(facet)
+    func addGrantee(_ grantee: PluginSchemaGrantee) {
+        guard !granteeRows.contains(where: { $0.grantee == grantee }) else { return }
+        granteeRows.append(
+            SchemaGranteeRow(grantee: grantee, granted: [], grantable: [], revocable: [])
+        )
+        granteeRows.sort { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
     }
 
-    func addGrantee(_ grantee: String) {
-        let trimmed = grantee.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !granteeRows.contains(where: { $0.grantee == trimmed }) else { return }
-        granteeRows.append(SchemaGranteeRow(grantee: trimmed, granted: [], grantable: []))
-        granteeRows.sort { $0.grantee.localizedStandardCompare($1.grantee) == .orderedAscending }
+    /// Which cells differ from what the form loaded. Derived, so restoring a value stops counting
+    /// as an edit.
+    private var editedCells: Set<String> {
+        var result: Set<String> = []
+        let baseline = Dictionary(uniqueKeysWithValues: baselineRows.map { ($0.grantee, $0) })
+        for row in granteeRows {
+            let before = baseline[row.grantee]
+            for privilege in row.granted.union(before?.granted ?? []) {
+                let held = row.granted.contains(privilege)
+                let wasHeld = before?.granted.contains(privilege) ?? false
+                if held != wasHeld { result.insert("\(row.id)\u{1}\(privilege)") }
+            }
+        }
+        for row in baselineRows where !granteeRows.contains(where: { $0.grantee == row.grantee }) {
+            for privilege in row.granted { result.insert("\(row.id)\u{1}\(privilege)") }
+        }
+        return result
     }
 
-    /// The target state to send: the freshly read schema with only the facets the user edited
+    /// The target state to send: the freshly read schema with only the cells the user edited
     /// overlaid. Every other facet is whatever the server says it is right now.
     private func merged(onto latest: PluginSchemaDetails) -> PluginSchemaDefinition {
         let intent = target
-        var grants = latest.grants.filter { grant in
-            !touched.contains(.privilege(grantee: grant.grantee, privilege: grant.privilege))
+        let edited = editedCells
+        let key = { (grant: PluginSchemaGrant) -> String in
+            let rowId: String
+            switch grant.grantee {
+            case .publicGroup: rowId = "\u{1}public"
+            case .role(let name): rowId = "role\u{1}\(name)"
+            }
+            return "\(rowId)\u{1}\(grant.privilege)"
         }
-        for grant in intent.grants
-            where touched.contains(.privilege(grantee: grant.grantee, privilege: grant.privilege)) {
-            grants.append(grant)
-        }
+        var grants = latest.grants.filter { !edited.contains(key($0)) }
+        grants += intent.grants.filter { edited.contains(key($0)) }
         return PluginSchemaDefinition(
-            name: touched.contains(.name) ? intent.name : latest.name,
-            owner: touched.contains(.owner) ? intent.owner : latest.owner,
-            comment: touched.contains(.comment) ? intent.comment : latest.comment,
+            name: name != (baselineName ?? "") ? intent.name : latest.name,
+            owner: owner != (current?.owner ?? "") ? intent.owner : latest.owner,
+            comment: comment != (current?.comment ?? "") ? intent.comment : latest.comment,
             grants: supportsPrivileges ? grants : []
+        )
+    }
+
+    private var baselineName: String? { current?.name }
+
+    private static func missingSchema(_ name: String) -> DatabaseError {
+        .queryFailed(
+            String(format: String(localized: "Schema \"%@\" no longer exists."), name)
         )
     }
 
@@ -227,24 +236,25 @@ final class SchemaEditorViewModel {
     /// The grant option has no control of its own in this sheet, so clearing it along with the
     /// privilege made a re-checked box look untouched while Save emitted `REVOKE GRANT OPTION`.
     /// The bit is restored from the server's own state whenever the privilege ends up enabled.
-    func setPrivilege(_ privilege: String, granted: Bool, for grantee: String) {
-        guard let index = granteeRows.firstIndex(where: { $0.grantee == grantee }) else { return }
+    func setPrivilege(_ privilege: String, granted: Bool, for grantee: PluginSchemaGrantee) {
+        guard let index = granteeRows.firstIndex(where: { $0.grantee == grantee }),
+              granteeRows[index].canEdit(privilege) else { return }
         if granted {
             granteeRows[index].granted.insert(privilege)
-            if wasGrantable(privilege, for: grantee) {
+            /// Restored from the baseline rather than dropped, because this sheet has no
+            /// grant-option control: clearing it on the way through made a re-checked box look
+            /// untouched while Save emitted `REVOKE GRANT OPTION`.
+            if baselineGrantable(privilege, for: grantee) {
                 granteeRows[index].grantable.insert(privilege)
             }
         } else {
             granteeRows[index].granted.remove(privilege)
             granteeRows[index].grantable.remove(privilege)
         }
-        touched.insert(.privilege(grantee: grantee, privilege: privilege))
     }
 
-    private func wasGrantable(_ privilege: String, for grantee: String) -> Bool {
-        current?.grants.contains {
-            $0.grantee == grantee && $0.privilege == privilege && $0.isGrantable
-        } ?? false
+    private func baselineGrantable(_ privilege: String, for grantee: PluginSchemaGrantee) -> Bool {
+        baselineRows.first { $0.grantee == grantee }?.grantable.contains(privilege) ?? false
     }
 
     /// What the apply actually did, for the caller that has to reconcile the window with it.
@@ -302,17 +312,40 @@ final class SchemaEditorViewModel {
             )
         } catch let error as ContainerDDLPartialFailure {
             failure = error.underlying.localizedDescription
-            /// The rename is always the first statement the planner emits, so one committed
-            /// statement is exactly the case where the schema now answers to its new name.
+            /// Whatever committed before the failure is now the server's truth, so the editor is
+            /// rebased onto it: without this a retry reissued the `CREATE` against a schema that
+            /// already existed, or looked the old name up, found nothing, and emitted the
+            /// already-committed rename a second time.
+            let committedFirst = error.committedCount >= 1
+            if committedFirst {
+                await rebase(onto: plan.name, scope: scope)
+            }
             return ApplyOutcome(
                 succeeded: false,
                 committedName: plan.name,
-                renameCommitted: plan.renamesFirst && error.committedCount >= 1
+                renameCommitted: plan.renamesFirst && committedFirst
             )
         } catch {
             failure = error.localizedDescription
             return ApplyOutcome(
                 succeeded: false, committedName: originalName ?? "", renameCommitted: false
+            )
+        }
+    }
+
+    /// Re-reads the schema under the name that committed and switches the editor to editing it.
+    ///
+    /// A create whose first statement landed is no longer a create, and a rename that landed has
+    /// moved the object the rest of the plan names. Reloading leaves the remaining user intent in
+    /// the form, so pressing Save again emits only what has not run.
+    private func rebase(onto committedName: String, scope: DatabaseScope) async {
+        mode = .edit(committedName)
+        existingSchemas = browsedSchemaNames()
+        do {
+            try await loadCurrent(named: committedName)
+        } catch {
+            Self.logger.error(
+                "Rebase after a partial schema apply failed: \(error.localizedDescription, privacy: .public)"
             )
         }
     }
@@ -339,9 +372,10 @@ final class SchemaEditorViewModel {
                 renamesFirst: false
             )
         case .edit(let existing):
-            let latest = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
+            let fetched = try await services.databaseManager.withMetadataDriver(scope: scope) { driver in
                 try await driver.fetchSchemaDetails(name: existing)
-            } ?? PluginSchemaDetails(name: existing)
+            }
+            guard let latest = fetched else { throw Self.missingSchema(existing) }
             let intent = merged(onto: latest)
             guard let sql = driver.alterSchemaStatements(from: latest, to: intent) else {
                 throw DatabaseError.unsupportedOperation

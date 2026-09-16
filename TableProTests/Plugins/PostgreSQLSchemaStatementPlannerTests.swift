@@ -33,8 +33,8 @@ struct PostgreSQLSchemaStatementPlannerTests {
                 owner: "app_user",
                 comment: "Application tables",
                 grants: [
-                    PluginSchemaGrant(grantee: "reporting", privilege: "USAGE"),
-                    PluginSchemaGrant(grantee: "reporting", privilege: "CREATE")
+                    PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE"),
+                    PluginSchemaGrant(grantee: .role("reporting"), privilege: "CREATE")
                 ]
             )
         )
@@ -66,7 +66,7 @@ struct PostgreSQLSchemaStatementPlannerTests {
         let statements = PostgreSQLSchemaStatementPlanner.create(
             PluginSchemaDefinition(
                 name: "app_data",
-                grants: [PluginSchemaGrant(grantee: "PUBLIC", privilege: "USAGE")]
+                grants: [PluginSchemaGrant(grantee: .publicGroup, privilege: "USAGE")]
             )
         )
         #expect(statements == [
@@ -81,7 +81,7 @@ struct PostgreSQLSchemaStatementPlannerTests {
             name: "app_data",
             owner: "app_user",
             comment: "Application tables",
-            grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE")]
+            grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE")]
         )
         #expect(PostgreSQLSchemaStatementPlanner.alter(from: current, to: current.definition).isEmpty)
     }
@@ -115,8 +115,8 @@ struct PostgreSQLSchemaStatementPlannerTests {
         let current = PluginSchemaDetails(
             name: "app_data",
             grants: [
-                PluginSchemaGrant(grantee: "untouched", privilege: "USAGE"),
-                PluginSchemaGrant(grantee: "reporting", privilege: "USAGE")
+                PluginSchemaGrant(grantee: .role("untouched"), privilege: "USAGE"),
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE")
             ]
         )
         let statements = PostgreSQLSchemaStatementPlanner.alter(
@@ -124,9 +124,9 @@ struct PostgreSQLSchemaStatementPlannerTests {
             to: PluginSchemaDefinition(
                 name: "app_data",
                 grants: [
-                    PluginSchemaGrant(grantee: "untouched", privilege: "USAGE"),
-                    PluginSchemaGrant(grantee: "reporting", privilege: "USAGE"),
-                    PluginSchemaGrant(grantee: "reporting", privilege: "CREATE")
+                    PluginSchemaGrant(grantee: .role("untouched"), privilege: "USAGE"),
+                    PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE"),
+                    PluginSchemaGrant(grantee: .role("reporting"), privilege: "CREATE")
                 ]
             )
         )
@@ -139,15 +139,16 @@ struct PostgreSQLSchemaStatementPlannerTests {
         let current = PluginSchemaDetails(
             name: "app_data",
             grants: [
-                PluginSchemaGrant(grantee: "reporting", privilege: "USAGE"),
-                PluginSchemaGrant(grantee: "reporting", privilege: "CREATE")
-            ]
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", grantor: "admin"),
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "CREATE", grantor: "admin")
+            ],
+            currentRole: "admin"
         )
         let statements = PostgreSQLSchemaStatementPlanner.alter(
             from: current,
             to: PluginSchemaDefinition(
                 name: "app_data",
-                grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE")]
+                grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE")]
             )
         )
         #expect(statements == ["REVOKE CREATE ON SCHEMA \"app_data\" FROM \"reporting\""])
@@ -157,13 +158,13 @@ struct PostgreSQLSchemaStatementPlannerTests {
     func addingTheGrantOption() {
         let current = PluginSchemaDetails(
             name: "app_data",
-            grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE")]
+            grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE")]
         )
         let statements = PostgreSQLSchemaStatementPlanner.alter(
             from: current,
             to: PluginSchemaDefinition(
                 name: "app_data",
-                grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE", isGrantable: true)]
+                grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", isGrantable: true)]
             )
         )
         #expect(statements == ["GRANT USAGE ON SCHEMA \"app_data\" TO \"reporting\" WITH GRANT OPTION"])
@@ -175,13 +176,18 @@ struct PostgreSQLSchemaStatementPlannerTests {
     func droppingTheGrantOptionKeepsThePrivilege() {
         let current = PluginSchemaDetails(
             name: "app_data",
-            grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE", isGrantable: true)]
+            grants: [
+                PluginSchemaGrant(
+                    grantee: .role("reporting"), privilege: "USAGE", isGrantable: true, grantor: "admin"
+                )
+            ],
+            currentRole: "admin"
         )
         let statements = PostgreSQLSchemaStatementPlanner.alter(
             from: current,
             to: PluginSchemaDefinition(
                 name: "app_data",
-                grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE")]
+                grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE")]
             )
         )
         #expect(statements == [
@@ -198,7 +204,7 @@ struct PostgreSQLSchemaStatementPlannerTests {
         let latest = PluginSchemaDetails(
             name: "app_data",
             comment: "old",
-            grants: [PluginSchemaGrant(grantee: "added_elsewhere", privilege: "USAGE")]
+            grants: [PluginSchemaGrant(grantee: .role("added_elsewhere"), privilege: "USAGE")]
         )
         let statements = PostgreSQLSchemaStatementPlanner.alter(
             from: latest,
@@ -223,12 +229,64 @@ struct PostgreSQLSchemaStatementPlannerTests {
         #expect(statements.isEmpty)
     }
 
+    /// `REVOKE` removes only what the executing role granted. Emitting one for another role's
+    /// grant produces a statement that succeeds, changes nothing, and reports the access as gone.
+    @Test("No revoke is emitted for a grant another role made")
+    func noRevokeForAForeignGrant() {
+        let current = PluginSchemaDetails(
+            name: "app_data",
+            grants: [
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", grantor: "someone_else")
+            ],
+            currentRole: "admin"
+        )
+        let statements = PostgreSQLSchemaStatementPlanner.alter(
+            from: current,
+            to: PluginSchemaDefinition(name: "app_data")
+        )
+        #expect(statements.isEmpty)
+    }
+
+    @Test("No revoke is emitted when two roles granted the same privilege")
+    func noRevokeForATwoGrantorGrant() {
+        let current = PluginSchemaDetails(
+            name: "app_data",
+            grants: [
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", grantor: "admin"),
+                PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE", grantor: "someone_else")
+            ],
+            currentRole: "admin"
+        )
+        let statements = PostgreSQLSchemaStatementPlanner.alter(
+            from: current,
+            to: PluginSchemaDefinition(name: "app_data")
+        )
+        #expect(statements.isEmpty)
+    }
+
+    /// A grant to a role named `public` is a grant to that role, not to everyone. Rendering it as
+    /// bare `PUBLIC` handed the privilege to every user on the server.
+    @Test("A real role named public is quoted, and the group is not")
+    func realPublicRoleIsQuoted() {
+        let statements = PostgreSQLSchemaStatementPlanner.create(
+            PluginSchemaDefinition(
+                name: "app_data",
+                grants: [
+                    PluginSchemaGrant(grantee: .role("public"), privilege: "USAGE"),
+                    PluginSchemaGrant(grantee: .publicGroup, privilege: "CREATE")
+                ]
+            )
+        )
+        #expect(statements.contains("GRANT USAGE ON SCHEMA \"app_data\" TO \"public\""))
+        #expect(statements.contains("GRANT CREATE ON SCHEMA \"app_data\" TO PUBLIC"))
+    }
+
     @Test("A privilege name the sanitizer rejects never reaches a statement")
     func rejectsAnInjectedPrivilegeName() {
         let statements = PostgreSQLSchemaStatementPlanner.create(
             PluginSchemaDefinition(
                 name: "app_data",
-                grants: [PluginSchemaGrant(grantee: "reporting", privilege: "USAGE; DROP SCHEMA public")]
+                grants: [PluginSchemaGrant(grantee: .role("reporting"), privilege: "USAGE; DROP SCHEMA public")]
             )
         )
         #expect(statements == ["CREATE SCHEMA \"app_data\""])
