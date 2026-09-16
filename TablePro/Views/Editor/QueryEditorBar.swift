@@ -129,6 +129,11 @@ struct QueryEditorBar: View {
     /// and not a `Menu(primaryAction:)`. Clear Query leaves the results standing and makes Run
     /// unavailable, and disabling one control for both would have taken Clear Results down with it
     /// at exactly the moment the reader wanted it.
+    ///
+    /// The menu half carries an empty label because the segment draws its own disclosure chevron.
+    /// A label of any kind lands beside that chevron rather than replacing it: `systemImage:` puts
+    /// a second one there, and a title survives `.labelStyle(.iconOnly)` and widens the segment
+    /// from 47pt to 115pt. The name reaches VoiceOver through `accessibilityLabel` instead.
     @ViewBuilder
     private var runControl: some View {
         if isExecuting {
@@ -146,7 +151,7 @@ struct QueryEditorBar: View {
                     .help(commands.runHint)
                     .accessibilityIdentifier("query-run")
 
-                Menu(String(localized: "Run Options"), systemImage: "chevron.down") {
+                Menu {
                     Button(String(localized: "Run All Statements"), action: onRunAllStatements)
                         .disabled(!commands.canRun)
                     Button(String(localized: "Run Without Limit"), action: onRunWithoutLimit)
@@ -156,9 +161,13 @@ struct QueryEditorBar: View {
                         .disabled(!commands.canClearQuery)
                     Button(String(localized: "Clear Results"), action: onClearResults)
                         .disabled(!commands.canClearResults)
+                } label: {
+                    EmptyView()
                 }
-                .labelStyle(.iconOnly)
+                .menuIndicator(.visible)
                 .disabled(!commands.canOpenRunMenu)
+                .help(String(localized: "Run Options"))
+                .accessibilityLabel(String(localized: "Run Options"))
                 .accessibilityIdentifier("query-run-menu")
                 .historyTipAnchor(isEnabled: showsHistoryTip)
             }

@@ -34,10 +34,7 @@ struct ConnectionTagEditor: View {
 
     @ViewBuilder
     private var selectionView: some View {
-        if selectedTags.isEmpty {
-            Text("Add tags")
-                .foregroundStyle(.secondary)
-        } else {
+        if !selectedTags.isEmpty {
             HStack(spacing: 4) {
                 ForEach(selectedTags) { tag in
                     tagChip(tag)
@@ -115,16 +112,29 @@ struct ConnectionTagEditor: View {
                 }
             }
         } label: {
-            Image(systemName: "chevron.down")
-                .imageScale(.small)
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+            menuLabel
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
+        .menuIndicator(.visible)
         .fixedSize()
         .help(Text("Add tags"))
         .accessibilityLabel(Text("Add tags"))
+        .accessibilityIdentifier("connection-form-tags")
+    }
+
+    /// The placeholder is the pull-down's own title, the way every macOS pull-down names itself,
+    /// so the words open the menu instead of sitting beside it as unclickable text. Once a tag is
+    /// picked the chips say what is selected and the label goes empty, leaving the button's own
+    /// disclosure chevron. A chevron drawn here would land beside that one, not replace it.
+    @ViewBuilder
+    private var menuLabel: some View {
+        if selectedTags.isEmpty {
+            Text("Add tags")
+                .foregroundStyle(.secondary)
+        } else {
+            EmptyView()
+        }
     }
 
     private func toggle(_ tag: ConnectionTag) {

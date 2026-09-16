@@ -319,8 +319,6 @@ struct AIChatPanelView: View {
                 Image(systemName: settingsManager.ai.chatMode.symbolName)
                 Text(settingsManager.ai.chatMode.displayName)
                     .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -386,8 +384,6 @@ struct AIChatPanelView: View {
                     Text(label)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

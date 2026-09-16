@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- System disclosure chevron on the row inspector's value and default menus.
 - Minimum macOS lowered to 13.0 (Ventura).
 - Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
 - The editor's find panel keeps the mode it was left in instead of reverting to Find each time it opens.
@@ -76,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Two disclosure chevrons on the connection form's Tags row.
+- **Add tags** not opening the tag menu when the words themselves are clicked.
 - `Esc` no longer leaving Vim's Insert mode in the SQL editor, with `Ctrl+[` still working. (#2914)
 - Vim mode inert until the editor is refocused when it is turned on while the editor already has focus.
 - A find bar open in one window swallowing `Esc` in every other window.

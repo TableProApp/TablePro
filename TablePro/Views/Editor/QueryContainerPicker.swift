@@ -68,9 +68,6 @@ struct QueryContainerPicker: View {
                 Text(scopeLabel)
                     .font(.callout)
                     .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
             .foregroundStyle(.secondary)
         }

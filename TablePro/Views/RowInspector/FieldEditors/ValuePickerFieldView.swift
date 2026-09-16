@@ -25,12 +25,10 @@ internal struct ValuePickerFieldView: View {
                     menuEntry(option)
                 }
             } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                EmptyView()
             }
             .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .menuIndicator(.visible)
             .fixedSize()
             .disabled(context.isReadOnly)
             .accessibilityLabel(String(localized: "Choose Value"))

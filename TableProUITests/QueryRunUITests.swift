@@ -62,22 +62,25 @@ final class QueryRunUITests: UITestCase {
         )
     }
 
-    /// The toolbar item is a split button: its body runs the query and only its trailing chevron
-    /// opens the menu, so a plain `click()` would execute instead of opening.
+    /// The control is a split button: its body runs the query and only its trailing half opens the
+    /// menu, so the two halves are addressed separately. The menu half carries its own identifier,
+    /// which is what this resolves. Reaching it as a fraction of the Run half's width used to work
+    /// and no longer can: the menu half is the part whose width the label decides, and it went from
+    /// 115pt to 47pt when the duplicate chevron came out of that label.
     ///
     /// The opened menu is scoped to the window rather than matched by identifier, because the CI
     /// runner's macOS build exposes a just-opened menu without one.
     @discardableResult
     private func openRunMenu(in app: XCUIApplication) -> XCUIElement {
         let window = app.windows.firstMatch
-        let run = window.descendants(matching: .any)
-            .matching(identifier: "query-run")
+        let runMenu = window.descendants(matching: .any)
+            .matching(identifier: "query-run-menu")
             .firstMatch
         XCTAssertTrue(
-            waitUntilHittable(run, timeout: 10),
-            "The query tab's command bar must expose the Run split button"
+            waitUntilHittable(runMenu, timeout: 10),
+            "The query tab's command bar must expose the Run split button's menu half"
         )
-        run.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
+        runMenu.click()
         return window.menus.firstMatch
     }
 }
