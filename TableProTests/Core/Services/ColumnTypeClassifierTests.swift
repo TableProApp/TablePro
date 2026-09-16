@@ -1079,6 +1079,13 @@ struct ColumnTypeClassifierTests {
             #expect(classifier.classify(rawTypeName: "Array(String)") == .json(rawType: "Array(String)"))
             #expect(classifier.classify(rawTypeName: "boolean[]").arrayElement == .boolean(rawType: "boolean"))
         }
+
+        @Test("Elasticsearch structured types classify as JSON")
+        func elasticsearchStructuredTypes() {
+            #expect(classifier.classify(rawTypeName: "nested") == .json(rawType: "nested"))
+            #expect(classifier.classify(rawTypeName: "flattened") == .json(rawType: "flattened"))
+            #expect(classifier.classify(rawTypeName: "object") == .json(rawType: "object"))
+        }
     }
 
     // MARK: - Spatial
