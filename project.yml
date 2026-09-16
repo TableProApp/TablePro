@@ -655,7 +655,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProConnectionLibrary, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -1129,6 +1129,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProDocumentPath
 
   EtcdDriverPlugin:
     templates: [DriverPlugin]
@@ -1280,6 +1282,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProDocumentPath
 
   WeaviateDriverPlugin:
     templates: [DriverPlugin]

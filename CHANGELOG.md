@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Nested Elasticsearch fields showing as null in the grid, and filters on those leaves matching nothing.
+- Typesense object array columns misaligning when an element omitted the field.
 - `Esc` no longer leaving Vim's Insert mode in the SQL editor, with `Ctrl+[` still working. (#2914)
 - Vim mode inert until the editor is refocused when it is turned on while the editor already has focus.
 - A find bar open in one window swallowing `Esc` in every other window.

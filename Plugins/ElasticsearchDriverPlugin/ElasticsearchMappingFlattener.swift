@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProDocumentPath
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -100,10 +101,28 @@ enum ElasticsearchMappingFlattener {
         }
     }
 
+    /// An alias or a wildcard resolves to several indices and the response is keyed by each real
+    /// index name, so the name asked for is often absent. Taking any one of them gives that index's
+    /// columns for every index behind the alias; the union gives the columns the alias can actually
+    /// return, and the first index to declare a field wins so the result does not depend on
+    /// dictionary order.
     static func properties(fromMappingResponse response: [String: Any], index: String) -> [String: Any] {
-        let indexMapping = (response[index] as? [String: Any]) ?? response.values.first as? [String: Any]
-        let mappings = indexMapping?["mappings"] as? [String: Any]
-        return mappings?["properties"] as? [String: Any] ?? [:]
+        if let exact = properties(ofIndexMapping: response[index]) { return exact }
+        var merged: [String: Any] = [:]
+        for key in response.keys.sorted() {
+            guard let properties = properties(ofIndexMapping: response[key]) else { continue }
+            for (name, field) in properties where merged[name] == nil {
+                merged[name] = field
+            }
+        }
+        return merged
+    }
+
+    private static func properties(ofIndexMapping mapping: Any?) -> [String: Any]? {
+        guard let indexMapping = mapping as? [String: Any],
+              let mappings = indexMapping["mappings"] as? [String: Any]
+        else { return nil }
+        return mappings["properties"] as? [String: Any]
     }
 
     static func fieldInfo(from columns: [ElasticsearchColumn]) -> [String: ElasticsearchFieldInfo] {
@@ -163,30 +182,10 @@ enum ElasticsearchMappingFlattener {
                     return cell(hit["_score"])
                 default:
                     if let value = flat[column] { return value }
-                    return cell(rawValue(in: source, atPath: column))
+                    return cell(DocumentPath.value(in: source, atPath: column))
                 }
             }
         }
-    }
-
-    static func rawValue(in source: [String: Any], atPath path: String) -> Any? {
-        value(in: source, keys: path.split(separator: ".").map(String.init)[...])
-    }
-
-    /// An array is a container rather than a level of the path, so the remaining keys are resolved
-    /// against every element. An element that lacks the key keeps its place as null: dropping it
-    /// would leave two sibling columns of different lengths, and the third issuer would read as
-    /// belonging to the first identifier.
-    private static func value(in current: Any, keys: ArraySlice<String>) -> Any? {
-        guard let key = keys.first else { return current }
-        if let dictionary = current as? [String: Any] {
-            guard let next = dictionary[key] else { return nil }
-            return value(in: next, keys: keys.dropFirst())
-        }
-        guard let array = current as? [Any] else { return nil }
-        let collected = array.map { value(in: $0, keys: keys) }
-        guard collected.contains(where: { $0 != nil }) else { return nil }
-        return collected.map { $0 ?? NSNull() }
     }
 
     static func flattenSource(

@@ -26,6 +26,7 @@ let package = Package(
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
+        .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
     ],
@@ -34,6 +35,11 @@ let package = Package(
             name: "TableProNumberFormatting",
             dependencies: [],
             path: "Sources/TableProNumberFormatting"
+        ),
+        .target(
+            name: "TableProDocumentPath",
+            dependencies: [],
+            path: "Sources/TableProDocumentPath"
         ),
         .target(
             name: "TableProCoreTypes",
@@ -139,6 +145,11 @@ let package = Package(
             name: "TableProNumberFormattingTests",
             dependencies: ["TableProNumberFormatting"],
             path: "Tests/TableProNumberFormattingTests"
+        ),
+        .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
         ),
         .testTarget(
             name: "TableProModelsTests",

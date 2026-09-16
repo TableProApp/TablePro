@@ -269,6 +269,14 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return columns
     }
 
+    /// A mapping is cached for the life of the connection, so anything that can change one has to
+    /// say so or the grid keeps the old columns and a filter on a new field silently matches
+    /// nothing. The whole cache goes rather than one index: a console request can name a list, a
+    /// wildcard or an alias, and refilling it costs one `GET /<index>/_mapping` per index reopened.
+    func invalidateMappingCache() {
+        lock.withLock { _mappingCache.removeAll() }
+    }
+
     private func columnTypeNames(for columns: [String], index: String) -> [String] {
         let cached = lock.withLock { _mappingCache[index] } ?? []
         var lookup: [String: String] = [:]
