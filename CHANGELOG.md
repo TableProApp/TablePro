@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No type list after a PostgreSQL `::` cast until a character was typed.
 - Autocomplete popup never opening again after a completion request came back with nothing. (#2915)
 - Completion popup opening by itself over an editor whose popup had already been dismissed.
 - Escape and `Ctrl+Space` doing nothing after a completion request came back with nothing.

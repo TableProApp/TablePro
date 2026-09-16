@@ -101,7 +101,7 @@ final class SQLCompletionService: QueryCompletionService {
 
         switch context.clauseType {
         case .from, .join, .into, .set, .insertColumns, .on,
-             .alterTableColumn, .returning, .using, .dropObject, .createIndex:
+             .alterTableColumn, .returning, .using, .dropObject, .createIndex, .castTarget:
             return false
         case .select where !context.isAfterComma:
             return false
