@@ -143,6 +143,30 @@ struct SQLContext {
         )
     }
 
+    /// The same context with its prefix range moved into another coordinate space, which is what a
+    /// caller that analysed a window of a larger document needs on the way back out.
+    ///
+    /// Rebuilding the struct by hand at the call site is how `comparisonColumn` came to be dropped
+    /// from every context the engine returned: a field added later was carried by the analyzer and
+    /// by ``replacingTableReferences(_:)`` and silently missed by the copy in between.
+    func replacingPrefixRange(_ range: Range<Int>) -> SQLContext {
+        SQLContext(
+            clauseType: clauseType,
+            prefix: prefix,
+            prefixRange: range,
+            dotPrefix: dotPrefix,
+            tableReferences: tableReferences,
+            isInsideString: isInsideString,
+            isInsideComment: isInsideComment,
+            cteNames: cteNames,
+            nestingLevel: nestingLevel,
+            currentFunction: currentFunction,
+            isAfterComma: isAfterComma,
+            expectsObjectName: expectsObjectName,
+            comparisonColumn: comparisonColumn
+        )
+    }
+
     /// The context to rank against before the analyzer has produced one, which is the window
     /// between the popup seeding itself with statement-start keywords and the first analyzed
     /// request completing. It carries no clause and no tables, so ranking falls back to the

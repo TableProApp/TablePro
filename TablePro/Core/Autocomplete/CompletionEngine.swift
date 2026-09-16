@@ -167,27 +167,11 @@ final class CompletionEngine {
             location: replaceStart, length: replaceEnd - replaceStart
         )
 
-        // Build a context with prefixRange adjusted back to original positions
-        let adjustedContext = SQLContext(
-            clauseType: context.clauseType,
-            prefix: context.prefix,
-            prefixRange: replaceStart..<replaceEnd,
-            dotPrefix: context.dotPrefix,
-            tableReferences: context.tableReferences,
-            isInsideString: context.isInsideString,
-            isInsideComment: context.isInsideComment,
-            cteNames: context.cteNames,
-            nestingLevel: context.nestingLevel,
-            currentFunction: context.currentFunction,
-            isAfterComma: context.isAfterComma,
-            expectsObjectName: context.expectsObjectName
-        )
-
         return CompletionContext(
             items: SQLCompletionCasing.applied(to: items, typedPrefix: context.prefix, policy: keywordCase),
             candidates: candidates,
             replacementRange: replacementRange,
-            sqlContext: adjustedContext
+            sqlContext: context.replacingPrefixRange(replaceStart..<replaceEnd)
         )
     }
 

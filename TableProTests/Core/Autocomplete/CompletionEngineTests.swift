@@ -140,6 +140,18 @@ struct CompletionEngineTests {
         #expect(result?.items.contains { $0.label == "category" } == true)
     }
 
+    /// The engine rebuilt the analyzer's context by hand to move `prefixRange` into document
+    /// coordinates, and the hand-written copy listed every field but this one, so every context the
+    /// engine returned reported no compared column at all.
+    @Test("The returned context keeps the column the cursor is comparing against")
+    func comparisonColumnSurvivesTheReturnedContext() async {
+        await schemaProvider.updateTables([TestFixtures.makeTableInfo(name: "users")])
+        let text = "SELECT * FROM users WHERE status = "
+        let result = await engine.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(result?.sqlContext.comparisonColumn == "status")
+    }
+
     @Test("WHERE clause returns items")
     func testWhereClause() async {
         let text = "SELECT * FROM users WHERE "
