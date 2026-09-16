@@ -12,21 +12,21 @@ import Testing
 struct SelectionAwareTintTests {
     @Test("A prominent selection background takes the selected-content colour")
     func prominentBackgroundUsesSelectedContentColor() {
-        let resolved = SelectionAwareTintResolver.color(standard: .accentColor, prominence: .increased)
+        let resolved = SelectionAwareTintResolver.color(standard: .accentColor, isProminent: true)
 
         #expect(resolved == .emphasizedSelectionLabel)
     }
 
     @Test("A standard background keeps the tint")
     func standardBackgroundKeepsTint() {
-        let resolved = SelectionAwareTintResolver.color(standard: .accentColor, prominence: .standard)
+        let resolved = SelectionAwareTintResolver.color(standard: .accentColor, isProminent: false)
 
         #expect(resolved == .accentColor)
     }
 
     @Test("A secondary tint follows the same rule, so it never sits grey on the fill")
     func secondaryTintAlsoFlips() {
-        #expect(SelectionAwareTintResolver.color(standard: .secondary, prominence: .increased) == .emphasizedSelectionLabel)
-        #expect(SelectionAwareTintResolver.color(standard: .secondary, prominence: .standard) == .secondary)
+        #expect(SelectionAwareTintResolver.color(standard: .secondary, isProminent: true) == .emphasizedSelectionLabel)
+        #expect(SelectionAwareTintResolver.color(standard: .secondary, isProminent: false) == .secondary)
     }
 }

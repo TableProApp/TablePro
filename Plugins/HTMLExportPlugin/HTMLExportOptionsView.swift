@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct HTMLExportOptionsView: View {
-    @Bindable var plugin: HTMLExportPlugin
+    @ObservedObject var plugin: HTMLExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

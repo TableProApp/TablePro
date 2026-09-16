@@ -3,13 +3,13 @@
 //  XMLExportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class XMLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class XMLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XML Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to XML"
@@ -21,7 +21,7 @@ final class XMLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = XMLExportOptions
     static let settingsStorageId = "xml"
 
-    var settings = XMLExportOptions() {
+    @Published var settings = XMLExportOptions() {
         didSet { saveSettings() }
     }
 

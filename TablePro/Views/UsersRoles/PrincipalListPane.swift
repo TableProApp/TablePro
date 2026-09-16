@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrincipalListPane: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     @State private var sortOrder = [KeyPathComparator(\PrincipalRow.sortName)]
 
@@ -64,7 +64,7 @@ struct PrincipalListPane: View {
                 action: { Task { await viewModel.load(forceReload: true) } }
             )
         } else if rows.isEmpty, !viewModel.principalFilter.isEmpty {
-            ContentUnavailableView.search(text: viewModel.principalFilter)
+            UnavailableStateView.search(text: viewModel.principalFilter)
         } else if rows.isEmpty {
             EmptyStateView(
                 icon: "person.2",
@@ -81,7 +81,7 @@ struct PrincipalListPane: View {
     private var table: some View {
         principalTable
             .tableStyle(.inset)
-            .alternatingRowBackgrounds(.enabled)
+            .alternatingRowBackgroundsCompat()
             .accessibilityIdentifier("usersroles-principal-list")
             .contextMenu(forSelectionType: PluginPrincipalRef.self) { refs in
                 rowMenu(refs)
@@ -89,7 +89,7 @@ struct PrincipalListPane: View {
             .onDeleteCommand {
                 Task { await viewModel.requestDrop(viewModel.selectedRefs) }
             }
-            .onChange(of: viewModel.selectedRefs) { _, refs in
+            .onChange(of: viewModel.selectedRefs) { refs in
                 viewModel.selection = refs.count == 1 ? refs.first : nil
             }
             .task(id: viewModel.selection) {

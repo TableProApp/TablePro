@@ -71,9 +71,9 @@ struct QueryPlanResultView: View {
 
     @AppStorage(PreferenceKeys.queryPlanRawFontSize.name) private var fontSize: Double = 13
     @AppStorage(PreferenceKeys.queryPlanBarMetric.name) private var storedBarMetric: String = ""
-    @Bindable var tabState: QueryPlanTabState
-    @Bindable var planState: QueryPlanViewState
-    @Bindable private var comparison: QueryPlanComparisonModel
+    @ObservedObject var tabState: QueryPlanTabState
+    @ObservedObject var planState: QueryPlanViewState
+    @ObservedObject private var comparison: QueryPlanComparisonModel
 
     @State private var showCopyConfirmation = false
     @State private var copyResetTask: Task<Void, Never>?
@@ -101,7 +101,7 @@ struct QueryPlanResultView: View {
         self.planContext = planContext
         self.tabState = tabState
         self.planState = planState
-        _comparison = Bindable(tabState.comparison)
+        _comparison = ObservedObject(wrappedValue: tabState.comparison)
     }
 
     /// Compare is offered only when there is something to compare: a plan the app could read, and a
@@ -125,7 +125,7 @@ struct QueryPlanResultView: View {
         .task(id: plan?.rootNode.id) {
             availableMetrics = plan.map(QueryPlanMetricIndex.availableMetrics) ?? []
         }
-        .onChange(of: availableModes) { _, modes in
+        .onChange(of: availableModes) { modes in
             guard !modes.contains(tabState.viewMode) else { return }
             tabState.viewMode = .diagram
         }

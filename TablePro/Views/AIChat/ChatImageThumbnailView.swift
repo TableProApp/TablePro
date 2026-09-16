@@ -39,6 +39,6 @@ struct ChatImageThumbnailView: View {
         Image(systemName: "photo")
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .quaternarySystemFill))
+            .background(Color(nsColor: .quaternaryFill))
     }
 }

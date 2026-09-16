@@ -5,13 +5,12 @@
 
 import Combine
 import Foundation
-import Observation
 import os
 
 /// Manager for query tabs
-@MainActor @Observable
-final class QueryTabManager {
-    var tabs: [QueryTab] = [] {
+@MainActor
+final class QueryTabManager: ObservableObject {
+    @Published var tabs: [QueryTab] = [] {
         didSet {
             _tabIndexMapDirty = true
             if oldValue.map(\.id) != tabs.map(\.id) {
@@ -22,17 +21,17 @@ final class QueryTabManager {
         }
     }
 
-    var selectedTabId: UUID?
+    @Published var selectedTabId: UUID?
 
-    var tabStructureVersion: Int = 0
+    @Published var tabStructureVersion: Int = 0
 
-    @ObservationIgnored var pendingFocusTabId: UUID?
+    var pendingFocusTabId: UUID?
 
-    @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
-    @ObservationIgnored private var _tabIndexMapDirty = true
+    private var _tabIndexMap: [UUID: Int] = [:]
+    private var _tabIndexMapDirty = true
 
-    @ObservationIgnored private let globalTabsProvider: () -> [QueryTab]
-    @ObservationIgnored private weak var tabSessionRegistry: TabSessionRegistry?
+    private let globalTabsProvider: () -> [QueryTab]
+    private weak var tabSessionRegistry: TabSessionRegistry?
 
     init(
         globalTabsProvider: @escaping () -> [QueryTab] = { [] },
@@ -257,14 +256,14 @@ final class QueryTabManager {
         }
     }
 
-    var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
+    @Published var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
 
     /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
     /// listens here rather than at the navigation call sites, because a retarget that forgets to
     /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
-    var onTabRetargeted: ((UUID) -> Void)?
+    @Published var onTabRetargeted: ((UUID) -> Void)?
 
-    var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
+    @Published var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
 
     private func notifyTableOpened(
         tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool

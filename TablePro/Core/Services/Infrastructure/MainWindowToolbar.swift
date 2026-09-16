@@ -5,11 +5,11 @@
 
 import AppKit
 import Combine
-import Observation
 import os
 
 @MainActor
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
+    private var itemStateObservation: AnyCancellable?
     nonisolated internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// The autosave name. Bumping it discards every saved arrangement, so it moves only when the
@@ -228,21 +228,16 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private func observeItemState() {
         let generation = itemStateObservationGeneration
         let coordinatorIdentifier = coordinator.map { ObjectIdentifier($0) }
-        withObservationTracking { [weak self] in
-            _ = self?.coordinator?.toolbarState.hasPendingChanges
-            _ = self?.coordinator?.toolbarState.hasDataPendingChanges
-            _ = self?.coordinator?.toolbarState.safeModeLevel
-            _ = self?.coordinator?.toolbarState.currentDatabase
-            _ = self?.coordinator?.toolbarState.isQueryTab
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self,
-                      generation == self.itemStateObservationGeneration,
-                      coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
-                else { return }
-                self.observeItemState()
-                self.managedToolbar.validateVisibleItems()
-            }
+        /// Wakes for any change on the toolbar state rather than only the four properties the
+        /// tracked closure read. `validateVisibleItems()` is idempotent, so the wider wake set
+        /// costs a revalidation pass and nothing else.
+        guard let toolbarState = coordinator?.toolbarState else { return }
+        itemStateObservation = toolbarState.onMainActorChange { [weak self] in
+            guard let self,
+                  generation == self.itemStateObservationGeneration,
+                  coordinatorIdentifier == self.coordinator.map({ ObjectIdentifier($0) })
+            else { return }
+            self.managedToolbar.validateVisibleItems()
         }
     }
 
@@ -304,7 +299,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     static let newTab = NSToolbarItem.Identifier("com.TablePro.toolbar.newTab")
     static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
     static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
-    static let inspector = NSToolbarItem.Identifier.toggleInspector
+    /// `.toggleInspector` is macOS 14. The identifier only has to be stable and unique, and
+    /// AppKit's own inspector behaviour is not used here, so 13 gets an app-owned one.
+    static let inspector: NSToolbarItem.Identifier = {
+        if #available(macOS 14.0, *) {
+            return .toggleInspector
+        }
+        return NSToolbarItem.Identifier("com.TablePro.toolbar.inspector")
+    }()
     static let assistant = NSToolbarItem.Identifier("com.TablePro.toolbar.assistant")
     static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
     static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
@@ -346,22 +348,27 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// compress a group it draws itself and can only drop a view it does not.
     ///
     /// Nothing here repeats the window title, which names the tab rather than the connection.
-    internal static let defaultItemIdentifiers: [NSToolbarItem.Identifier] = [
-        sidebarToggle,
-        .sidebarTrackingSeparator,
-        backForwardGroup,
-        .flexibleSpace,
-        connectionGroup,
-        TransportRateToolbarItem.identifier,
-        .flexibleSpace,
-        refreshSaveGroup,
-        editorGroup,
-        safeMode,
-        .inspectorTrackingSeparator,
-        .flexibleSpace,
-        assistant,
-        inspector,
-    ]
+    /// `.inspectorTrackingSeparator` is macOS 14. Without it the divider does not track the
+    /// inspector's edge; the items around it are unchanged.
+    internal static var defaultItemIdentifiers: [NSToolbarItem.Identifier] {
+        var items: [NSToolbarItem.Identifier] = [
+            sidebarToggle,
+            .sidebarTrackingSeparator,
+            backForwardGroup,
+            .flexibleSpace,
+            connectionGroup,
+            TransportRateToolbarItem.identifier,
+            .flexibleSpace,
+            refreshSaveGroup,
+            editorGroup,
+            safeMode,
+        ]
+        if #available(macOS 14.0, *) {
+            items.append(.inspectorTrackingSeparator)
+        }
+        items.append(contentsOf: [.flexibleSpace, assistant, inspector])
+        return items
+    }
 
     /// `addRow`, `restorePreviousValues`, `quickSwitcher` and `newTab` are absent on purpose: they
     /// ride a group as subitems and the delegate vends no standalone item for any of them, so

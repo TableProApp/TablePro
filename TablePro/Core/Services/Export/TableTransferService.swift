@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -57,8 +57,7 @@ struct TableTransferState {
 /// crosses engines is a different problem from copying rows and getting it half right would create
 /// tables whose types quietly do not match.
 @MainActor
-@Observable
-final class TableTransferService {
+final class TableTransferService: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TableTransfer")
 
     /// What a transfer holds before it hands rows to the sink, bounded in bytes as well as rows: a
@@ -72,7 +71,7 @@ final class TableTransferService {
     /// into one per row.
     static let batchBudget = SQLWriteBatchBudget(maxRows: 500, maxBytes: 64 * 1_048_576)
 
-    var state = TableTransferState()
+    @Published var state = TableTransferState()
 
     /// The same stop, in a form a `@Sendable` closure may read. `isCancelled` is main-actor
     /// isolated, and the sink splits one hand-off into many statements off that actor, so it needs

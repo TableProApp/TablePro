@@ -4,7 +4,7 @@ import SwiftUI
 struct ThemeEditorFontsSection: View {
     var onThemeDuplicated: ((ThemeDefinition) -> Void)?
 
-    private var engine: ThemeEngine { ThemeEngine.shared }
+    @ObservedObject private var engine = ThemeEngine.shared
 
     @State private var editingTheme: ThemeDefinition?
 
@@ -22,7 +22,7 @@ struct ThemeEditorFontsSection: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .onChange(of: engine.activeTheme.id) {
+        .onChange(of: engine.activeTheme.id) { _ in
             editingTheme = nil
         }
     }

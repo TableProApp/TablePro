@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -60,11 +60,11 @@ struct ExportState {
 
 // MARK: - Export Service
 
-@MainActor @Observable
-final class ExportService {
+@MainActor
+final class ExportService: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
 
-    var state = ExportState()
+    @Published var state = ExportState()
 
     private let driver: DatabaseDriver?
     private let databaseType: DatabaseType
@@ -109,7 +109,7 @@ final class ExportService {
         currentProgress?.cancel()
     }
 
-    private var currentProgress: PluginExportProgress?
+    @Published private var currentProgress: PluginExportProgress?
 
     /// The status line a plugin writes with `PluginExportProgress.setStatus`. Nothing observed it,
     /// so "Compressing..." never reached a user in any export. The empty guard sits outside the hop

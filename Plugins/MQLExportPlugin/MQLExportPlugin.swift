@@ -3,12 +3,12 @@
 //  MQLExportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "MQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to MongoDB Query Language format"
@@ -27,7 +27,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = MQLExportOptions
     static let settingsStorageId = "mql"
 
-    var settings = MQLExportOptions() {
+    @Published var settings = MQLExportOptions() {
         didSet { saveSettings() }
     }
 

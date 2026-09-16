@@ -66,7 +66,7 @@ internal struct BlobHexEditorView: View {
                     .lineLimit(3...8)
                     .autocorrectionDisabled(true)
                     .focused($isFocused)
-                    .onChange(of: isFocused) {
+                    .onChange(of: isFocused) { _ in
                         if !isFocused {
                             commitHexEdit()
                         }
@@ -76,7 +76,7 @@ internal struct BlobHexEditorView: View {
             statusLine
         }
         .onAppear { loadDraft() }
-        .onChange(of: context.value.wrappedValue) {
+        .onChange(of: context.value.wrappedValue) { _ in
             if !isFocused {
                 loadDraft()
             }

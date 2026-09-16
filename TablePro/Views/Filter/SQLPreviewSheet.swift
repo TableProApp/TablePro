@@ -63,7 +63,7 @@ struct SQLPreviewSheet: View {
     private func copyToClipboard() {
         ClipboardService.shared.writeText(sql)
         copied = true
-        AccessibilityNotification.Announcement(String(localized: "Copied to clipboard")).post()
+        AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
 
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))

@@ -3,12 +3,12 @@
 //  XLSXExportPlugin
 //
 
+import Combine
 import Foundation
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class XLSXExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to Excel format"
@@ -20,7 +20,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sen
     typealias Settings = XLSXExportOptions
     static let settingsStorageId = "xlsx"
 
-    var settings = XLSXExportOptions() {
+    @Published var settings = XLSXExportOptions() {
         didSet { saveSettings() }
     }
 

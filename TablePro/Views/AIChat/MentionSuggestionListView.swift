@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct MentionSuggestionListView: View {
-    @Bindable var state: MentionPopoverState
+    @ObservedObject var state: MentionPopoverState
     let onSelect: (Int) -> Void
 
     /// Hover is its own state rather than a write into `selectedIndex`. Driving the selection from
@@ -79,6 +79,6 @@ private struct MentionRowView: View {
 
     private var rowBackground: Color {
         if isSelected { return Color(nsColor: .selectedContentBackgroundColor) }
-        return isHovered ? Color(nsColor: .quaternarySystemFill) : .clear
+        return isHovered ? Color(nsColor: .quaternaryFill) : .clear
     }
 }

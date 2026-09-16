@@ -12,7 +12,7 @@
 import SwiftUI
 
 internal struct CompareDetailView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let onCompare: () -> Void
     internal let onGenerateScript: () -> Void
 
@@ -55,7 +55,7 @@ internal struct CompareDetailView: View {
 }
 
 internal struct CompareDefinitionsPane: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     internal var body: some View {
         if let result = session.selectedResult {
@@ -63,13 +63,13 @@ internal struct CompareDefinitionsPane: View {
                 definitionBody(result)
             }
         } else if session.mode == .data {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Definitions Compare Structure", systemImage: "doc.text.magnifyingglass")
             } description: {
                 Text("Switch the comparison to Structure to see definitions.")
             }
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("No Object Selected", systemImage: "doc.text")
             } description: {
                 Text("Select an object to see its definition on both sides.")

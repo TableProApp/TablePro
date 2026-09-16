@@ -194,9 +194,10 @@ final class VimCursorManager {
         DispatchQueue.main.async(execute: workItem)
     }
 
-    /// Hide the system I-beam cursor (NSTextInsertionIndicator on macOS 14+)
+    /// Hide the system I-beam cursor. `NSTextInsertionIndicator` is macOS 14; before it the
+    /// text view drew the caret itself and there is no indicator subview to hide.
     private func hideSystemCursor() {
-        guard let textView else { return }
+        guard #available(macOS 14.0, *), let textView else { return }
         for subview in textView.subviews {
             if let indicator = subview as? NSTextInsertionIndicator {
                 indicator.displayMode = .hidden
@@ -206,7 +207,7 @@ final class VimCursorManager {
 
     /// Restore the system I-beam cursor to automatic display
     private func showSystemCursor() {
-        guard let textView else { return }
+        guard #available(macOS 14.0, *), let textView else { return }
         for subview in textView.subviews {
             if let indicator = subview as? NSTextInsertionIndicator {
                 indicator.displayMode = .automatic

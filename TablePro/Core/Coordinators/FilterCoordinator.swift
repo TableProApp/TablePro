@@ -3,12 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import SwiftUI
 
-@MainActor @Observable
-final class FilterCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class FilterCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     init(parent: MainContentCoordinator) {
         self.parent = parent

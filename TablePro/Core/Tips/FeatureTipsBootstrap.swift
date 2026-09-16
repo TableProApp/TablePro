@@ -7,6 +7,7 @@ import Foundation
 import os
 import TipKit
 
+@available(macOS 14.0, *)
 @MainActor
 internal enum FeatureTipsBootstrap {
     private static let logger = Logger(subsystem: "com.TablePro", category: "FeatureTips")
@@ -50,6 +51,7 @@ internal enum FeatureTipsBootstrap {
     }
 }
 
+@available(macOS 14.0, *)
 @MainActor
 internal enum FeatureTipSignals {
     static func sidebarTableOpened() {

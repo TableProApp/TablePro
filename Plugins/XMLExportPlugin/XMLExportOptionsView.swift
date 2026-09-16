@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct XMLExportOptionsView: View {
-    @Bindable var plugin: XMLExportPlugin
+    @ObservedObject var plugin: XMLExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

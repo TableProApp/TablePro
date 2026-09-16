@@ -25,8 +25,6 @@ import SwiftUI
 final class FindPanelHostingView: NSHostingView<FindPanelView> {
     private weak var viewModel: FindPanelViewModel?
 
-    private var eventMonitor: Any?
-
     init(viewModel: FindPanelViewModel) {
         self.viewModel = viewModel
         super.init(rootView: FindPanelView(viewModel: viewModel))
@@ -47,31 +45,16 @@ final class FindPanelHostingView: NSHostingView<FindPanelView> {
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        removeEventMonitor()
-    }
+    // MARK: - Key Handling
 
-    // MARK: - Event Monitor Management
-
-    func addEventMonitor() {
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event -> NSEvent? in
-            guard let self else { return event }
-            return self.handleKeyDown(event)
-        }
-    }
-
+    /// Called by ``TextViewController/dispatchKeyDown(_:)`` while this panel is showing. It must not
+    /// install a monitor of its own: a monitor is app-wide, and this claims Escape on the key code
+    /// alone, which would take it from every other window.
     internal func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard Int(event.keyCode) == kVK_Escape else { return event }
         let firstResponder = event.window?.firstResponder as? NSTextInputClient
         guard firstResponder?.hasMarkedText() != true else { return event }
         viewModel?.dismiss?()
         return nil
-    }
-
-    func removeEventMonitor() {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
-        }
     }
 }

@@ -25,15 +25,15 @@ struct AIProviderDetailSheet: View {
     @State private var testResult: TestResult?
     @State private var testTask: Task<Void, Never>?
 
-    @State private var copilotService = CopilotService.shared
+    @ObservedObject private var copilotService = CopilotService.shared
     @State private var copilotErrorMessage: String?
 
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
 
-    @State private var cursorAgentService = CursorAgentService.shared
-    @State private var claudeAgentService = ClaudeAgentService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var claudeAgentService = ClaudeAgentService.shared
 
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var xaiService = XAIService.shared
 
     @State private var showRemoveConfirmation = false
 
@@ -223,7 +223,7 @@ struct AIProviderDetailSheet: View {
     private var apiKeyAuthSection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) {
+                .onChange(of: apiKey) { _ in
                     testResult = nil
                 }
             HStack {
@@ -264,7 +264,7 @@ struct AIProviderDetailSheet: View {
     private var cursorAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in testResult = nil }
             HStack {
                 Spacer()
                 Button {
@@ -395,7 +395,7 @@ struct AIProviderDetailSheet: View {
     private var xaiAPIKeySection: some View {
         Section {
             SecureField(String(localized: "API Key"), text: $apiKey)
-                .onChange(of: apiKey) { testResult = nil }
+                .onChange(of: apiKey) { _ in testResult = nil }
             HStack {
                 Spacer()
                 Button {
@@ -665,7 +665,7 @@ struct AIProviderDetailSheet: View {
                 }
                 if allowsEndpointField {
                     TextField(String(localized: "Endpoint"), text: $draft.endpoint)
-                        .onChange(of: draft.endpoint) {
+                        .onChange(of: draft.endpoint) { _ in
                             scheduleFetchModels()
                             testResult = nil
                         }

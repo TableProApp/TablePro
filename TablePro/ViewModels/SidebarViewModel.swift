@@ -3,12 +3,13 @@
 //  TablePro
 //
 
-import Observation
+import Combine
 import os
 import SwiftUI
 
-@MainActor @Observable
-final class SidebarViewModel {
+@MainActor
+final class SidebarViewModel: ObservableObject {
+    private var searchTextObservation: AnyCancellable?
     private static let logger = Logger(subsystem: "com.TablePro", category: "SidebarViewModel")
     private static var registry: [UUID: SidebarViewModel] = [:]
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
@@ -95,27 +96,22 @@ final class SidebarViewModel {
     /// meant a keystroke reached the filter only while a SwiftUI body was evaluating, and the view
     /// that carried it also re-seeded the debounce on every rebuild.
     private func observeSearchText() {
-        withObservationTracking { [weak self] in
-            _ = self?.sharedState.searchText
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
-                self.observeSearchText()
-            }
+        searchTextObservation = sharedState.onMainActorChange { [weak self] in
+            guard let self else { return }
+            self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
         }
     }
 
-    private(set) var filterQuery = "" {
+    @Published private(set) var filterQuery = "" {
         didSet { invalidateFilterCaches() }
     }
 
-    @ObservationIgnored private var filterDebounceTask: Task<Void, Never>?
+    private var filterDebounceTask: Task<Void, Never>?
 
-    var expanded: ExpansionState {
+    @Published var expanded: ExpansionState {
         didSet { persistExpansion(oldValue: oldValue) }
     }
-    var isRedisKeysExpanded: Bool {
+    @Published var isRedisKeysExpanded: Bool {
         didSet {
             AppStorageEnvironment.shared.defaults.set(
                 isRedisKeysExpanded,
@@ -123,7 +119,7 @@ final class SidebarViewModel {
             )
         }
     }
-    var isRecentsExpanded: Bool {
+    @Published var isRecentsExpanded: Bool {
         didSet {
             AppStorageEnvironment.shared.defaults.set(
                 isRecentsExpanded,
@@ -135,16 +131,16 @@ final class SidebarViewModel {
         get { sharedState.redisKeyTreeViewModel }
         set { sharedState.redisKeyTreeViewModel = newValue }
     }
-    var showOperationDialog = false
-    var pendingOperationType: TableOperationType?
-    var pendingOperationTables: [DatabaseTreeTableRef] = []
+    @Published var showOperationDialog = false
+    @Published var pendingOperationType: TableOperationType?
+    @Published var pendingOperationTables: [DatabaseTreeTableRef] = []
 
     // MARK: - Binding Storage
 
-    private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>>
-    private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
-    private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
-    private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
+    @Published private var selectedTablesBinding: Binding<Set<DatabaseTreeTableRef>>
+    @Published private var pendingTruncatesBinding: Binding<Set<DatabaseTreeTableRef>>
+    @Published private var pendingDeletesBinding: Binding<Set<DatabaseTreeTableRef>>
+    @Published private var tableOperationOptionsBinding: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     let databaseType: DatabaseType
 
     // MARK: - Dependencies
@@ -153,7 +149,7 @@ final class SidebarViewModel {
 
     /// The single connection-scoped state holder. Search text and the Redis key
     /// tree live here so this view model and the sidebar views share one source.
-    @ObservationIgnored let sharedState: SharedSidebarState
+    let sharedState: SharedSidebarState
 
     // MARK: - Convenience Accessors
 
@@ -386,18 +382,18 @@ final class SidebarViewModel {
 
     // MARK: - Filtering
 
-    @ObservationIgnored private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedKindFingerprint: (count: Int, generation: Int)?
+    private var cachedKindBuckets: [SidebarObjectKind: [TableInfo]] = [:]
+    private var cachedKindFingerprint: (count: Int, generation: Int)?
 
-    @ObservationIgnored private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredByKind: [SidebarObjectKind: [TableInfo]] = [:]
+    private var cachedFilteredByKindFingerprint: (count: Int, generation: Int, query: String)?
 
-    @ObservationIgnored private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
-    @ObservationIgnored private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
-    @ObservationIgnored private var cachedFilteredTriggers: [TriggerInfo] = []
-    @ObservationIgnored private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
-    @ObservationIgnored private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
-    @ObservationIgnored private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredRoutines: [SidebarObjectKind: [RoutineInfo]] = [:]
+    private var cachedFilteredRoutinesFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredTriggers: [TriggerInfo] = []
+    private var cachedFilteredTriggersFingerprint: (count: Int, generation: Int, query: String)?
+    private var cachedFilteredUserTypes: [UserDefinedTypeInfo] = []
+    private var cachedFilteredUserTypesFingerprint: (count: Int, generation: Int, query: String)?
 
     private var schemaGeneration: Int {
         SchemaService.shared.generationToken(for: connectionId)

@@ -9,16 +9,16 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
-@Observable
-final class DiagramViewportController {
-    private(set) var magnification: CGFloat = 1.0
+final class DiagramViewportController: ObservableObject {
+    @Published private(set) var magnification: CGFloat = 1.0
 
-    @ObservationIgnored private weak var scrollView: DiagramScrollView?
-    @ObservationIgnored private var magnificationObservation: NSKeyValueObservation?
-    @ObservationIgnored private var savedDocumentOrigin: CGPoint?
+    private weak var scrollView: DiagramScrollView?
+    private var magnificationObservation: NSKeyValueObservation?
+    private var savedDocumentOrigin: CGPoint?
 
     var visibleDocumentRect: CGRect {
         scrollView?.documentVisibleRect ?? .zero

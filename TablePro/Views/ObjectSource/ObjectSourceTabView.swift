@@ -5,12 +5,12 @@
 //  Tab showing the source of one stored procedure, function, trigger, user-defined type or view.
 //
 
+import Combine
 import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class ObjectSourceLoader {
+final class ObjectSourceLoader: ObservableObject {
     enum State {
         case loading
         case loaded(source: String, attributes: [ObjectAttribute], enumLabels: [String])
@@ -24,11 +24,11 @@ final class ObjectSourceLoader {
         let userType: UserDefinedTypeInfo?
     }
 
-    private(set) var state: State = .loading
+    @Published private(set) var state: State = .loading
 
     /// The type as the server last described it, so an edit addresses the object on screen rather
     /// than whatever the sidebar listed when the tab was opened.
-    private(set) var userType: UserDefinedTypeInfo?
+    @Published private(set) var userType: UserDefinedTypeInfo?
 
     private let connectionId: UUID
     private let objectRef: DatabaseObjectRef
@@ -125,7 +125,7 @@ struct ObjectSourceTabView: View {
     let objectRef: DatabaseObjectRef
     let onOpenInEditor: (String) -> Void
 
-    @State private var loader: ObjectSourceLoader
+    @StateObject private var loader: ObjectSourceLoader
 
     init(
         connectionId: UUID,
@@ -137,7 +137,7 @@ struct ObjectSourceTabView: View {
         self.databaseType = databaseType
         self.objectRef = objectRef
         self.onOpenInEditor = onOpenInEditor
-        _loader = State(wrappedValue: ObjectSourceLoader(connectionId: connectionId, objectRef: objectRef))
+        _loader = StateObject(wrappedValue: ObjectSourceLoader(connectionId: connectionId, objectRef: objectRef))
     }
 
     var body: some View {
@@ -201,7 +201,7 @@ struct ObjectSourceTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .textBackgroundColor))
         case .failed(let message):
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Source Unavailable", systemImage: "exclamationmark.triangle")
             } description: {
                 RevealedTextView(message)

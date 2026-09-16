@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct MarkdownExportOptionsView: View {
-    @Bindable var plugin: MarkdownExportPlugin
+    @ObservedObject var plugin: MarkdownExportPlugin
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

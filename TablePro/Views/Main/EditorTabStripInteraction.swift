@@ -4,8 +4,8 @@
 //
 
 import AppKit
+import Combine
 import Foundation
-import Observation
 
 /// What a press on the strip turned out to be.
 internal enum EditorTabGesture: Equatable {
@@ -28,22 +28,21 @@ internal enum EditorTabGesture: Equatable {
 /// the tab the pointer hits and the tab a drag targets are one rectangle out of
 /// `EditorTabRunLayout`, so they cannot disagree.
 @MainActor
-@Observable
-internal final class EditorTabStripInteraction {
+internal final class EditorTabStripInteraction: ObservableObject {
     /// The run the strip draws, measured by the view that owns the pointer.
-    internal private(set) var run: EditorTabRunLayout = .empty
+    @Published internal private(set) var run: EditorTabRunLayout = .empty
     /// How far the track has scrolled, in points. Always zero when the run wraps, because a
     /// wrapped run never overflows.
-    internal private(set) var contentOffset: CGFloat = 0
-    internal private(set) var hoveredTabId: UUID?
+    @Published internal private(set) var contentOffset: CGFloat = 0
+    @Published internal private(set) var hoveredTabId: UUID?
     /// Set while the pointer is over a tab's close button, because the button no longer receives
     /// the mouse and cannot light itself.
-    internal private(set) var hoveredCloseTabId: UUID?
+    @Published internal private(set) var hoveredCloseTabId: UUID?
     /// The reorder in flight, holding both the order the strip draws and the order it came from.
     /// The manager is not written until the pointer comes up, so an abandoned drag leaves nothing
     /// behind and Escape is just dropping this value.
-    internal private(set) var reorder: EditorTabReorder?
-    internal private(set) var tearingOffTabId: UUID?
+    @Published internal private(set) var reorder: EditorTabReorder?
+    @Published internal private(set) var tearingOffTabId: UUID?
     /// The track's visible width, measured by the view that owns the pointer. SwiftUI reads it so
     /// a reveal and a clamp use the same number the pointer does.
     internal private(set) var viewportWidth: CGFloat = 0
@@ -61,15 +60,15 @@ internal final class EditorTabStripInteraction {
 
     /// Rebuilt on every render, because the closures reach through the workspace to a coordinator
     /// that only exists once the detail pane has appeared.
-    internal var commands: EditorTabCommands?
+    @Published internal var commands: EditorTabCommands?
 
-    internal var tabIds: [UUID] = []
+    @Published internal var tabIds: [UUID] = []
 
     /// Raised whenever a rebuild changes how many rows the run takes, from any path. The band's
     /// height follows it, and a tab opened or closed while the strip is wrapped can cross a row
     /// boundary without any layout pass having run.
-    internal var onRowCountChanged: ((Int) -> Void)?
-    private var reportedRowCount = 1
+    @Published internal var onRowCountChanged: ((Int) -> Void)?
+    @Published private var reportedRowCount = 1
 
     /// The order the strip draws: the reorder's while one is in flight, the manager's otherwise.
     internal var displayedIds: [UUID] {
@@ -159,6 +158,18 @@ internal final class EditorTabStripInteraction {
     internal func clearReorder() {
         reorder = nil
         tearingOffTabId = nil
+    }
+
+    /// Takes the tab list and the overflow style from the model that owns them.
+    ///
+    /// The run `EditorTabInteractionView.layout()` measures is built from `tabIds`, so the list has
+    /// to arrive from whoever builds the strip rather than from one of its view modifiers: a band
+    /// is installed hidden and has no appearance to wait for, and a run measured against a list
+    /// that is still empty divides the whole track among the tabs it knew about, leaving the rest
+    /// without a placement. A tab with no placement is drawn nowhere.
+    internal func adopt(tabIds ids: [UUID], overflow style: EditorTabStripOverflow) {
+        overflow = style
+        dropClosedTabs(keeping: ids)
     }
 
     /// A tab that closed under the pointer leaves both orders, and the drag ends outright when the

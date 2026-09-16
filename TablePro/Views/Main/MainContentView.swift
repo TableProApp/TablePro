@@ -31,12 +31,12 @@ struct MainContentView: View {
     // Shared state from parent
     @Binding var windowTitle: String
     @Binding var windowSubtitle: String
-    @Bindable var schemaService = SchemaService.shared
-    var sidebarState: SharedSidebarState
+    @ObservedObject var schemaService = SchemaService.shared
+    @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     @Binding var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions]
-    var trailingPaneState: TrailingPaneState
+    @ObservedObject var trailingPaneState: TrailingPaneState
 
     var tables: [TableInfo] {
         schemaService.tables(for: connection.id)
@@ -44,10 +44,10 @@ struct MainContentView: View {
 
     // MARK: - State Objects
 
-    let tabManager: QueryTabManager
-    let changeManager: DataChangeManager
-    let toolbarState: ConnectionToolbarState
-    let coordinator: MainContentCoordinator
+    @ObservedObject var tabManager: QueryTabManager
+    @ObservedObject var changeManager: DataChangeManager
+    @ObservedObject var toolbarState: ConnectionToolbarState
+    @ObservedObject var coordinator: MainContentCoordinator
 
     // MARK: - Local State
 
@@ -100,7 +100,7 @@ struct MainContentView: View {
 
     var body: some View {
         bodyContent
-            .sheet(item: Bindable(coordinator).activeSheet) { sheet in
+            .sheet(item: $coordinator.activeSheet) { sheet in
                 sheetContent(for: sheet)
             }
             .confirmationDialog(
@@ -202,6 +202,32 @@ struct MainContentView: View {
                 viewModel: viewModel,
                 onCreated: { newDatabaseName in
                     Task { await coordinator.switchContainer(to: newDatabaseName) }
+                }
+            )
+        case .createSchema(let database):
+            SchemaEditorSheet(
+                model: SchemaEditorViewModel(
+                    mode: .create,
+                    connectionId: connection.id,
+                    databaseType: connection.type,
+                    database: database ?? coordinator.browseDatabaseName,
+                    services: coordinator.services
+                ),
+                onCompleted: { newSchemaName in
+                    Task { await coordinator.switchSchemaAfterCreate(in: database, to: newSchemaName) }
+                }
+            )
+        case .editSchema(let container):
+            SchemaEditorSheet(
+                model: SchemaEditorViewModel(
+                    mode: .edit(container.schema ?? container.name),
+                    connectionId: connection.id,
+                    databaseType: connection.type,
+                    database: container.database ?? coordinator.browseDatabaseName,
+                    services: coordinator.services
+                ),
+                onCompleted: { editedSchemaName in
+                    Task { await coordinator.adoptSchemaEdit(container, renamedTo: editedSchemaName) }
                 }
             )
         case .copyObjects(let launch):
@@ -307,20 +333,20 @@ struct MainContentView: View {
             .task(id: coordinator.toolbarState.connectionState) {
                 await coordinator.loadSessionContexts()
             }
-            .onChange(of: inspectorTrigger) {
+            .onChange(of: inspectorTrigger) { _ in
                 scheduleInspectorUpdate()
             }
             /// The JSON rendering draws the snapshot the context carries, and an edit made in the
             /// fields rendering changes the row under it without moving anything `InspectorTrigger`
             /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
             /// together, so the stale snapshot is only ever reached by switching to it.
-            .onChange(of: trailingPaneState.inspector.viewMode) {
+            .onChange(of: trailingPaneState.inspector.viewMode) { _ in
                 updateInspectorContext()
             }
             /// A value window detached from a field goes on writing while the JSON rendering is the
             /// one on screen, and it moves nothing the trigger above watches. Debounced, because it
             /// commits per keystroke and rebuilding the JSON tree cancels the reader's fetches.
-            .onChange(of: coordinator.inspectorRowContentRevision) {
+            .onChange(of: coordinator.inspectorRowContentRevision) { _ in
                 scheduleInspectorContextRefresh()
             }
             .onAppear {
@@ -338,10 +364,10 @@ struct MainContentView: View {
                     "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
                 )
             }
-            .onChange(of: trailingPaneState.assistant.isActivated) {
+            .onChange(of: trailingPaneState.assistant.isActivated) { _ in
                 updateAssistantContext()
             }
-            .onChange(of: pendingChangeTrigger) {
+            .onChange(of: pendingChangeTrigger) { _ in
                 updateToolbarPendingState()
             }
     }
@@ -358,7 +384,7 @@ struct MainContentView: View {
                     "[open] bodyContentCore.task initializeAndRestoreTabs done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
                 )
             }
-            .onChange(of: tabManager.selectedTabId) { oldTabId, newTabId in
+            .onValueChange(of: tabManager.selectedTabId) { oldTabId, newTabId in
                 guard !coordinator.isTearingDown else {
                     Self.lifecycleLogger.debug("[switch] selectedTabId SKIPPED (tearingDown) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)")
                     return
@@ -374,10 +400,10 @@ struct MainContentView: View {
                 (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
                 handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
-            .onChange(of: tabManager.tabStructureVersion) { _, _ in
+            .onChange(of: tabManager.tabStructureVersion) { _ in
                 handleStructureChange()
             }
-            .onChange(of: currentTab?.schemaVersion) { _, _ in
+            .onChange(of: currentTab?.schemaVersion) { _ in
                 let columns = currentTab.map { coordinator.tabSessionRegistry.tableRows(for: $0.id).columns }
                 handleColumnsChange(newColumns: columns)
             }
@@ -389,7 +415,7 @@ struct MainContentView: View {
                 handleConnectionStatusChange()
             }
 
-            .onChange(of: coordinator.windowSidebarState.selectedTables) { oldTables, newTables in
+            .onValueChange(of: coordinator.windowSidebarState.selectedTables) { oldTables, newTables in
                 guard !coordinator.isTearingDown else {
                     Self.lifecycleLogger.debug("[switch] windowSidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
@@ -400,7 +426,7 @@ struct MainContentView: View {
             /// the user. Every other input re-asserts unconditionally: a container switch above all,
             /// because a selection made in the container being left is not one in the container
             /// arriving.
-            .onChange(of: tables) { _, _ in
+            .onChange(of: tables) { _ in
                 guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
                 coordinator.syncSidebarObjectSelection()
             }
@@ -413,6 +439,7 @@ struct MainContentView: View {
         MainEditorContentView(
             tabManager: tabManager,
             coordinator: coordinator,
+            historyState: HistoryPanelState.forConnection(connection.id),
             changeManager: changeManager,
             connection: connection,
             windowId: windowId,

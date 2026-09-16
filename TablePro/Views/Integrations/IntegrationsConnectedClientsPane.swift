@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct IntegrationsConnectedClientsPane: View {
-    @State private var manager = MCPServerManager.shared
+    @ObservedObject private var manager = MCPServerManager.shared
     @State private var selection: MCPServerManager.SessionSnapshot.ID?
     @State private var disconnectCandidate: MCPServerManager.SessionSnapshot?
     @State private var sortOrder: [KeyPathComparator<MCPServerManager.SessionSnapshot>] = [
@@ -16,7 +16,7 @@ struct IntegrationsConnectedClientsPane: View {
     var body: some View {
         Group {
             if manager.connectedClients.isEmpty {
-                ContentUnavailableView(
+                UnavailableStateView(
                     String(localized: "No clients connected"),
                     systemImage: "person.2.slash",
                     description: Text(String(localized: "Clients will appear here while they have an active MCP session."))

@@ -13,6 +13,20 @@ struct ElasticsearchColumn: Equatable {
     let name: String
     let type: String
     let hasKeywordSubfield: Bool
+
+    /// Ancestor paths declared `nested`, outermost first. A leaf of a mapping that nests twice
+    /// reports both, and a query has to enter each scope in that order to stay bound to one
+    /// element at every level.
+    let nestedPaths: [String]
+
+    var nestedPath: String? { nestedPaths.last }
+
+    init(name: String, type: String, hasKeywordSubfield: Bool, nestedPaths: [String] = []) {
+        self.name = name
+        self.type = type
+        self.hasKeywordSubfield = hasKeywordSubfield
+        self.nestedPaths = nestedPaths
+    }
 }
 
 enum ElasticsearchMappingFlattener {
@@ -29,6 +43,8 @@ enum ElasticsearchMappingFlattener {
         "polygon", "multipolygon", "geometrycollection", "envelope", "circle"
     ]
 
+    static let nestedTypeName = "nested"
+
     static let idColumn = "_id"
     static let indexColumn = "_index"
     static let scoreColumn = "_score"
@@ -38,25 +54,49 @@ enum ElasticsearchMappingFlattener {
 
     static func flattenMapping(properties: [String: Any]) -> [ElasticsearchColumn] {
         var columns: [ElasticsearchColumn] = []
-        collect(properties: properties, prefix: "", into: &columns)
+        collect(properties: properties, prefix: "", nestedPaths: [], into: &columns)
         return columns.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private static func collect(properties: [String: Any], prefix: String, into columns: inout [ElasticsearchColumn]) {
+    private static func collect(
+        properties: [String: Any],
+        prefix: String,
+        nestedPaths: [String],
+        into columns: inout [ElasticsearchColumn]
+    ) {
         for (key, raw) in properties {
             guard let field = raw as? [String: Any] else { continue }
             let path = prefix.isEmpty ? key : "\(prefix).\(key)"
+            let type = field["type"] as? String
+            let isNested = type == nestedTypeName
 
-            if let nested = field["properties"] as? [String: Any] {
-                collect(properties: nested, prefix: path, into: &columns)
+            guard let children = field["properties"] as? [String: Any] else {
+                let hasKeyword = (field["fields"] as? [String: Any]).map { subfields in
+                    subfields.values.contains { ($0 as? [String: Any])?["type"] as? String == "keyword" }
+                } ?? false
+                columns.append(ElasticsearchColumn(
+                    name: path,
+                    type: type ?? "object",
+                    hasKeywordSubfield: hasKeyword,
+                    nestedPaths: nestedPaths
+                ))
                 continue
             }
 
-            let type = field["type"] as? String ?? "object"
-            let hasKeyword = (field["fields"] as? [String: Any]).map { subfields in
-                subfields.values.contains { ($0 as? [String: Any])?["type"] as? String == "keyword" }
-            } ?? false
-            columns.append(ElasticsearchColumn(name: path, type: type, hasKeywordSubfield: hasKeyword))
+            if isNested {
+                columns.append(ElasticsearchColumn(
+                    name: path,
+                    type: nestedTypeName,
+                    hasKeywordSubfield: false,
+                    nestedPaths: nestedPaths
+                ))
+            }
+            collect(
+                properties: children,
+                prefix: path,
+                nestedPaths: isNested ? nestedPaths + [path] : nestedPaths,
+                into: &columns
+            )
         }
     }
 
@@ -69,9 +109,17 @@ enum ElasticsearchMappingFlattener {
     static func fieldInfo(from columns: [ElasticsearchColumn]) -> [String: ElasticsearchFieldInfo] {
         var result: [String: ElasticsearchFieldInfo] = [:]
         for column in columns {
-            result[column.name] = ElasticsearchFieldInfo(type: column.type, hasKeywordSubfield: column.hasKeywordSubfield)
+            result[column.name] = ElasticsearchFieldInfo(
+                type: column.type,
+                hasKeywordSubfield: column.hasKeywordSubfield,
+                nestedPaths: column.nestedPaths
+            )
         }
         return result
+    }
+
+    static func nestedParents(from columns: [ElasticsearchColumn]) -> Set<String> {
+        Set(columns.filter { $0.type == nestedTypeName }.map(\.name))
     }
 
     // MARK: - Columns From Hits
@@ -97,10 +145,14 @@ enum ElasticsearchMappingFlattener {
 
     // MARK: - Rows
 
-    static func rows(forHits hits: [[String: Any]], columns: [String]) -> [[PluginCellValue]] {
+    static func rows(
+        forHits hits: [[String: Any]],
+        columns: [String],
+        nestedParents: Set<String> = []
+    ) -> [[PluginCellValue]] {
         hits.map { hit in
             let source = hit["_source"] as? [String: Any] ?? [:]
-            let flat = flattenSource(source)
+            let flat = flattenSource(source, nestedParents: nestedParents)
             return columns.map { column in
                 switch column {
                 case idColumn:
@@ -118,29 +170,98 @@ enum ElasticsearchMappingFlattener {
     }
 
     static func rawValue(in source: [String: Any], atPath path: String) -> Any? {
-        var current: Any = source
-        for key in path.split(separator: ".") {
-            guard let dict = current as? [String: Any], let next = dict[String(key)] else { return nil }
-            current = next
-        }
-        return current
+        value(in: source, keys: path.split(separator: ".").map(String.init)[...])
     }
 
-    static func flattenSource(_ source: [String: Any]) -> [String: PluginCellValue] {
+    /// An array is a container rather than a level of the path, so the remaining keys are resolved
+    /// against every element. An element that lacks the key keeps its place as null: dropping it
+    /// would leave two sibling columns of different lengths, and the third issuer would read as
+    /// belonging to the first identifier.
+    private static func value(in current: Any, keys: ArraySlice<String>) -> Any? {
+        guard let key = keys.first else { return current }
+        if let dictionary = current as? [String: Any] {
+            guard let next = dictionary[key] else { return nil }
+            return value(in: next, keys: keys.dropFirst())
+        }
+        guard let array = current as? [Any] else { return nil }
+        let collected = array.map { value(in: $0, keys: keys) }
+        guard collected.contains(where: { $0 != nil }) else { return nil }
+        return collected.map { $0 ?? NSNull() }
+    }
+
+    static func flattenSource(
+        _ source: [String: Any],
+        nestedParents: Set<String> = []
+    ) -> [String: PluginCellValue] {
         var result: [String: PluginCellValue] = [:]
-        flatten(value: source, prefix: "", into: &result)
+        flatten(value: source, prefix: "", nestedParents: nestedParents, into: &result)
         return result
     }
 
-    private static func flatten(value: Any, prefix: String, into result: inout [String: PluginCellValue]) {
-        if let dict = value as? [String: Any] {
-            for (key, nested) in dict {
-                let path = prefix.isEmpty ? key : "\(prefix).\(key)"
-                flatten(value: nested, prefix: path, into: &result)
-            }
+    private static func flatten(
+        value: Any,
+        prefix: String,
+        nestedParents: Set<String>,
+        into result: inout [String: PluginCellValue]
+    ) {
+        if let elements = elementObjects(value, at: prefix, nestedParents: nestedParents) {
+            result[prefix] = cell(elements)
+            flattenElements(elements, prefix: prefix, into: &result)
             return
         }
-        result[prefix] = cell(value)
+        guard let dictionary = value as? [String: Any] else {
+            result[prefix] = cell(value)
+            return
+        }
+        for (key, nested) in dictionary {
+            let path = prefix.isEmpty ? key : "\(prefix).\(key)"
+            flatten(value: nested, prefix: path, nestedParents: nestedParents, into: &result)
+        }
+    }
+
+    /// Elasticsearch accepts one bare object wherever a `nested` field takes an array of them, and
+    /// both have to reach the grid as the same shape or one column holds a scalar on one row and a
+    /// JSON array on the next.
+    private static func elementObjects(_ value: Any, at prefix: String, nestedParents: Set<String>) -> [Any]? {
+        if let array = value as? [Any], array.contains(where: { $0 is [String: Any] }) { return array }
+        guard nestedParents.contains(prefix), value is [String: Any] else { return nil }
+        return [value]
+    }
+
+    private static func flattenElements(
+        _ elements: [Any],
+        prefix: String,
+        into result: inout [String: PluginCellValue]
+    ) {
+        let maps = elements.map { element -> [String: Any] in
+            var raw: [String: Any] = [:]
+            flattenRaw(value: element, prefix: prefix, into: &raw)
+            return raw
+        }
+
+        var seen = Set<String>()
+        var order: [String] = []
+        for map in maps {
+            for key in map.keys.sorted() {
+                guard key != prefix, !seen.contains(key) else { continue }
+                seen.insert(key)
+                order.append(key)
+            }
+        }
+
+        for key in order {
+            result[key] = cell(maps.map { $0[key] ?? NSNull() })
+        }
+    }
+
+    private static func flattenRaw(value: Any, prefix: String, into result: inout [String: Any]) {
+        guard let dictionary = value as? [String: Any] else {
+            result[prefix] = value
+            return
+        }
+        for (key, nested) in dictionary {
+            flattenRaw(value: nested, prefix: prefix.isEmpty ? key : "\(prefix).\(key)", into: &result)
+        }
     }
 
     // MARK: - Cell Conversion

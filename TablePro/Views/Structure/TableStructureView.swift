@@ -30,9 +30,9 @@ struct TableStructureView: View {
     let databaseName: String
     let schemaName: String?
 
-    let toolbarState: ConnectionToolbarState
+    @ObservedObject var toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) var services
 
@@ -47,7 +47,7 @@ struct TableStructureView: View {
 
     /// Everything the user has staged, plus the baseline it is staged against. Held outside this
     /// view because the view is destroyed whenever the tab is deselected or switched to Data.
-    let session: StructureEditingSession
+    @ObservedObject var session: StructureEditingSession
 
     /// What kind of object the tab is open on, which decides every edit it may offer.
     ///
@@ -182,20 +182,20 @@ struct TableStructureView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
-        .onChange(of: selectedRows) { _, newRows in
+        .onChange(of: selectedRows) { newRows in
             selectionState.indices = newRows
             publishFooterCapability()
         }
-        .onChange(of: selectedTab) { _, newValue in
+        .onChange(of: selectedTab) { newValue in
             onSelectedTabChanged(newValue)
             publishFooterCapability()
         }
-        .onChange(of: columns) { onColumnsChanged() }
-        .onChange(of: indexes) { onIndexesChanged() }
-        .onChange(of: foreignKeys) { onForeignKeysChanged() }
-        .onChange(of: checkConstraints) { onCheckConstraintsChanged() }
-        .onChange(of: searchText) { displayVersion += 1 }
-        .onChange(of: displayVersion) { updateGridDelegate() }
+        .onChange(of: columns) { _ in onColumnsChanged() }
+        .onChange(of: indexes) { _ in onIndexesChanged() }
+        .onChange(of: foreignKeys) { _ in onForeignKeysChanged() }
+        .onChange(of: checkConstraints) { _ in onCheckConstraintsChanged() }
+        .onChange(of: searchText) { _ in displayVersion += 1 }
+        .onChange(of: displayVersion) { _ in updateGridDelegate() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
@@ -256,14 +256,14 @@ struct TableStructureView: View {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: structureChangeManager.hasChanges) { _, newValue in
+        .onChange(of: structureChangeManager.hasChanges) { newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
         }
-        .onChange(of: session.appliedVersion) { _, _ in
+        .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
         }
-        .onChange(of: structureChangeManager.reloadVersion) { _, _ in
+        .onChange(of: structureChangeManager.reloadVersion) { _ in
             // Any mutation that does not toggle hasChanges (add row when changes
             // already exist, undo to a still-dirty state) only bumps reloadVersion.
             // Bump displayVersion so SwiftUI re-evaluates structureGrid with a fresh
@@ -311,8 +311,7 @@ struct TableStructureView: View {
     }
 
     private var toolbar: some View {
-        @Bindable var session = session
-        return HStack {
+        HStack {
             Spacer()
 
             Picker("Structure", selection: $session.selectedTab) {
@@ -467,7 +466,6 @@ struct TableStructureView: View {
     }
 
     private var structureGrid: some View {
-        @Bindable var session = session
         let provider = makeCurrentProvider()
         let canEdit = editGate.allowsAnyEdit
         let customOptions = provider.customDropdownOptions

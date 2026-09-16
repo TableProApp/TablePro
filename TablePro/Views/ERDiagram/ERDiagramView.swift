@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ERDiagramView: View {
-    @Bindable var viewModel: ERDiagramViewModel
+    @ObservedObject var viewModel: ERDiagramViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.colorScheme) private var colorScheme
 

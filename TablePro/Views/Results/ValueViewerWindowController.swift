@@ -36,6 +36,7 @@ internal class ValueViewerWindowController {
             defer: false
         )
         window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        window.keepsKeyViewLoopCurrent()
         window.title = title
         window.isReleasedWhenClosed = false
         window.minSize = ValueViewerWindowController.minSize

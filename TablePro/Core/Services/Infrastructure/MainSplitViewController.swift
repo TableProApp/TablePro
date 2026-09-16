@@ -110,6 +110,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     var tabStripObservationIsArmed = false
     var tabStripObservedManager: ObjectIdentifier?
+    var tabStripObservation: AnyCancellable?
 
     // MARK: - Panel Layout State
 
@@ -356,7 +357,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
         installObservers()
         recomputeWindowMinSize()
-        window.recalculateKeyViewLoop()
         startActivationConnectIfNeeded()
     }
 
@@ -1147,10 +1147,27 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     }
 
     func focusSidebarSearch() {
-        if sidebarSplitItem?.isCollapsed == true {
-            sidebarSplitItem?.animator().isCollapsed = false
-        }
+        expandSidebarIfCollapsed()
         navigationSidebar.objectBrowser.focusSearchField()
+    }
+
+    /// The list under the filter field, whichever list that currently is. Reveals the sidebar first
+    /// for the same reason the filter command does: focusing a pane the user cannot see puts the
+    /// keyboard somewhere invisible, and `makeFirstResponder` accepts a hidden view without
+    /// complaint.
+    @discardableResult
+    func focusSidebarObjectList() -> Bool {
+        expandSidebarIfCollapsed()
+        return navigationSidebar.objectBrowser.focusObjectList()
+    }
+
+    var canFocusObjectList: Bool {
+        navigationSidebar.objectBrowser.hasObjectList
+    }
+
+    private func expandSidebarIfCollapsed() {
+        guard sidebarSplitItem?.isCollapsed == true else { return }
+        sidebarSplitItem?.animator().isCollapsed = false
     }
 
     func presentDatabaseFilter() {

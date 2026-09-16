@@ -27,6 +27,13 @@ open class LineFragmentView: NSView {
 
     override public init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        /// `NSView.clipsToBounds` defaults to YES before macOS 14 and NO from 14 on (NSView.h), and
+        /// the whole renderer is written against the later default: a fragment's ink reaches past
+        /// its own width, and `LineFragmentRenderer` reads the context's clip to decide how much of
+        /// a line to draw. Left at the earlier default, a fragment is clipped to itself and a
+        /// fragment whose frame is briefly wrong draws nothing at all rather than overflowing.
+        /// `API_AVAILABLE(macos(10.9))` on the property means no availability check can see this.
+        clipsToBounds = false
     }
 
     public required init?(coder: NSCoder) {

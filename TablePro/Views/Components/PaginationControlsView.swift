@@ -66,7 +66,7 @@ struct PaginationControlsView: View {
                 navigationCluster
             }
         }
-        .onChange(of: tabId) { _, _ in
+        .onChange(of: tabId) { _ in
             showJumpPopover = false
             showCustomPopover = false
             jumpPage = nil

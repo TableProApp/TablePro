@@ -2,7 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrincipalDetailPane: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,7 +11,7 @@ struct PrincipalDetailPane: View {
                 Divider()
                 content(principal)
             } else {
-                ContentUnavailableView(
+                UnavailableStateView(
                     String(localized: "No Selection"),
                     systemImage: "person.2",
                     description: Text("Select a user or role to view its privileges.")
@@ -65,7 +65,7 @@ struct PrincipalDetailPane: View {
 }
 
 struct PendingChangesBar: View {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     var body: some View {
         HStack(spacing: 12) {

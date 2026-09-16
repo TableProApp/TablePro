@@ -26,7 +26,13 @@ extension TextViewController {
     }
 
     override public func loadView() { // swiftlint:disable:this prohibited_super_call
-        super.loadView()
+        /// macOS 13 raises out of `super.loadView()` for a controller with no nib. See
+        /// `PlainControllerView`, which is what `super` builds on 14.
+        if #available(macOS 14.0, *) {
+            super.loadView()
+        } else {
+            view = PlainControllerView.make()
+        }
 
         scrollView = SourceEditorScrollView()
         scrollView.documentView = textView
@@ -164,16 +170,55 @@ extension TextViewController {
         eventMonitor = NSEvent.addLocalMonitorForEvents(
             matching: [.keyDown]
         ) { [weak self] event -> NSEvent? in
-            guard let self = self else { return event }
-
-            // Check if this window is key and if the text view is the first responder
-            let isKeyWindow = self.view.window?.isKeyWindow ?? false
-            let isFirstResponder = self.view.window?.firstResponder === self.textView
-
-            // Only handle commands if this is the key window and text view is first responder
-            guard isKeyWindow && isFirstResponder else { return event }
-            return handleEvent(event: event)
+            guard let self else { return event }
+            return self.dispatchKeyDown(event)
         }
+    }
+
+    /// The editor's only key-down entry point.
+    ///
+    /// `NSEvent.addLocalMonitorForEvents` gives same-mask monitors no defined order, so anything
+    /// that wants a key in this editor is consulted from here in a fixed order rather than
+    /// installing a monitor of its own.
+    func dispatchKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard view.window?.isKeyWindow == true else { return event }
+        return claimKeyDown(
+            event,
+            textViewHasFocus: view.window?.firstResponder === textView,
+            findPanelHasFocus: findPanelHoldsFocus
+        )
+    }
+
+    /// The chain, with the two focus questions answered by the caller so a test can drive the order
+    /// without a key window. Links, in order: the app's coordinators, the completion list, the find
+    /// panel, and the editor's own commands.
+    func claimKeyDown(_ event: NSEvent, textViewHasFocus: Bool, findPanelHasFocus: Bool) -> NSEvent? {
+        if textViewHasFocus {
+            for coordinator in textCoordinators.values()
+            where coordinator.textViewShouldClaimKeyDown(controller: self, event: event) == nil {
+                return nil
+            }
+            if isShowingCompletions, SuggestionController.shared.handleKeyDown(event) == nil { return nil }
+        }
+
+        if let findViewController, findViewController.viewModel.isShowingFindPanel,
+           textViewHasFocus || findPanelHasFocus,
+           findViewController.findPanel.handleKeyDown(event) == nil {
+            return nil
+        }
+
+        guard textViewHasFocus else { return event }
+        return handleEvent(event: event)
+    }
+
+    /// Whether the find panel's own search field holds focus. A focused `NSTextField` puts the
+    /// window's shared field editor in the responder chain, and that editor is a descendant of the
+    /// field, so the view test covers both. Only the find panel reads this; every other link stays
+    /// behind `textViewHasFocus` so a chord typed into the search field cannot edit the document.
+    private var findPanelHoldsFocus: Bool {
+        guard let panel = findViewController?.findPanel,
+              let responder = view.window?.firstResponder as? NSView else { return false }
+        return responder.isDescendant(of: panel)
     }
 
     func handleEvent(event: NSEvent) -> NSEvent? {
@@ -230,12 +275,10 @@ extension TextViewController {
         return nil
     }
 
+    /// Escape reaching here means no earlier link in ``claimKeyDown(_:textViewHasFocus:findPanelHasFocus:)``
+    /// claimed it. Xcode opens code completion on Escape and this editor follows it.
     private func handleEscape(_ event: NSEvent) -> NSEvent? {
-        guard let findViewController, findViewController.viewModel.isShowingFindPanel else {
-            return handleShowCompletions(event)
-        }
-        findViewController.hideFindPanel()
-        return nil
+        handleShowCompletions(event)
     }
 
     /// Handles the tab key event.

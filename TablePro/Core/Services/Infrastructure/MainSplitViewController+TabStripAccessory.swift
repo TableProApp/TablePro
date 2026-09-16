@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 internal extension MainSplitViewController {
@@ -64,16 +65,18 @@ internal extension MainSplitViewController {
         tabStripObservedManager = identity
         let generation = tabStripObservationGeneration
 
-        withObservationTracking { [weak self] in
-            _ = self?.workspaces.selected?.sessionState?.tabManager.tabs.count
-        } onChange: { [weak self] in
-            /// Observation reports the change before it lands, so the count is read on the next
-            /// turn of the main actor rather than in the callback.
-            Task { @MainActor [weak self] in
-                guard let self, generation == self.tabStripObservationGeneration else { return }
-                self.tabStripObservationIsArmed = false
-                self.applyTabStripVisibility()
-            }
+        /// `onMainActorChange` already delivers a turn late, which is what the count needs:
+        /// the publisher fires before the change lands. It also wakes for any tab mutation
+        /// rather than only a count change, so the count is compared here.
+        guard let manager = workspaces.selected?.sessionState?.tabManager else { return }
+        var lastCount = manager.tabs.count
+        tabStripObservation = manager.onMainActorChange { [weak self] in
+            guard let self, generation == self.tabStripObservationGeneration else { return }
+            let current = manager.tabs.count
+            guard current != lastCount else { return }
+            lastCount = current
+            self.tabStripObservationIsArmed = false
+            self.applyTabStripVisibility()
         }
     }
 
@@ -114,7 +117,9 @@ internal extension MainSplitViewController {
             activate: { [weak manager] id in manager?.selectedTabId = id },
             keepOpen: { [weak manager] id in
                 manager?.promotePreviewTab(id: id)
-                FeatureTipSignals.tableKeptOpen()
+                if #available(macOS 14.0, *) {
+                    FeatureTipSignals.tableKeptOpen()
+                }
             },
             canKeepOpen: { [weak manager] id in manager?.canPromotePreviewTab(id: id) ?? false },
             close: { [weak workspace] id in
@@ -168,6 +173,13 @@ internal extension MainSplitViewController {
                     description
                 )
             }
+        )
+        /// Seeded here, where the strip is built, rather than from one of its view modifiers. See
+        /// `EditorTabStripInteraction.adopt(tabIds:overflow:)`; the strip's own `onChange` carries
+        /// every later change.
+        interaction.adopt(
+            tabIds: manager.tabs.map(\.id),
+            overflow: AppSettingsManager.shared.tabs.overflow
         )
     }
 }

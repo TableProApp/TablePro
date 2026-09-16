@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// One scope's invalidation counter, as its own observable object.
@@ -15,9 +15,8 @@ import TableProPluginKit
 /// A non-observable container holding observable leaves gives real per-scope granularity, which is
 /// the shape `SchemaProviderRegistry` already uses for its providers.
 @MainActor
-@Observable
-final class QueryCompletionRevisionBox {
-    private(set) var revision = 0
+final class QueryCompletionRevisionBox: ObservableObject {
+    @Published private(set) var revision = 0
 
     func bump() {
         revision &+= 1
@@ -29,7 +28,7 @@ final class QueryCompletionRevisionBox {
 /// Deliberately not `@Observable`: everything a view observes here is a `QueryCompletionRevisionBox`,
 /// for the reason written on that type.
 @MainActor
-final class QueryCompletionProfileRegistry: CatalogChangeTarget {
+final class QueryCompletionProfileRegistry: ObservableObject, CatalogChangeTarget {
     struct CacheKey: Hashable {
         let scope: DatabaseScope
         let databaseType: DatabaseType
@@ -37,10 +36,10 @@ final class QueryCompletionProfileRegistry: CatalogChangeTarget {
 
     static let shared = QueryCompletionProfileRegistry()
 
-    private var profiles: [CacheKey: QueryCompletionProfile] = [:]
-    private var inFlight: [CacheKey: Task<QueryCompletionProfile?, Never>] = [:]
-    private var generations: [CacheKey: Int] = [:]
-    private var revisionBoxes: [DatabaseScope: QueryCompletionRevisionBox] = [:]
+    @Published private var profiles: [CacheKey: QueryCompletionProfile] = [:]
+    @Published private var inFlight: [CacheKey: Task<QueryCompletionProfile?, Never>] = [:]
+    @Published private var generations: [CacheKey: Int] = [:]
+    @Published private var revisionBoxes: [DatabaseScope: QueryCompletionRevisionBox] = [:]
 
     #if DEBUG
     /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.

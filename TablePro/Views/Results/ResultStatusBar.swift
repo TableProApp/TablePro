@@ -64,15 +64,15 @@ struct ResultStatusBar: View {
             row(.narrow)
         }
         .statusBarChrome()
-        .onChange(of: snapshot.tabId) { _, _ in
+        .onChange(of: snapshot.tabId) { _ in
             showColumnPopover = false
             showHighlightPopover = false
         }
-        .onChange(of: showHighlightPopover) { _, isShown in
+        .onChange(of: showHighlightPopover) { isShown in
             guard !isShown else { return }
             highlightState.onDismiss()
         }
-        .onChange(of: highlightPresentation) { previous, current in
+        .onValueChange(of: highlightPresentation) { previous, current in
             guard previous.tabId == current.tabId, model.controls.showsHighlightRules else { return }
             showHighlightPopover = true
         }
@@ -165,14 +165,14 @@ struct ResultStatusBar: View {
                     String(localized: "Count Exactly"),
                     action: paginationCallbacks.onRequestExactCount
                 )
-                .buttonStyle(.accessoryBarAction)
+                .accessoryBarActionStyle()
                 .help(String(localized: "Replace the estimate with an exact row count."))
                 .accessibilityIdentifier("result-status-count-exactly")
             }
 
             if model.controls.showsFetchAll, let onFetchAll {
                 Button(String(localized: "Fetch All"), action: onFetchAll)
-                    .buttonStyle(.accessoryBarAction)
+                    .accessoryBarActionStyle()
                     .help(String(localized: "Load the rows the row cap left behind."))
                     .accessibilityIdentifier("result-status-fetch-all")
             }

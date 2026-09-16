@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 
@@ -11,15 +12,16 @@ import os
 /// This is the owner, not a third concern. The inspector knows nothing about the assistant and the
 /// assistant nothing about the row, which is the whole point of the split; something still has to
 /// say which of them the pane is currently drawing and to persist that per connection.
-@MainActor @Observable internal final class TrailingPaneState {
-    @ObservationIgnored private let _didTeardown = OSAllocatedUnfairLock(initialState: false)
-    @ObservationIgnored private let connectionId: UUID?
-    @ObservationIgnored private let defaults: UserDefaults
+@MainActor
+internal final class TrailingPaneState: ObservableObject {
+    private let _didTeardown = OSAllocatedUnfairLock(initialState: false)
+    private let connectionId: UUID?
+    private let defaults: UserDefaults
 
     /// Which surface the pane draws when it is revealed. Revealing is a separate question, owned by
     /// the split view controller: the pane can be collapsed with a surface still remembered here,
     /// which is what lets a reveal put back what the user was last looking at.
-    internal var surface: TrailingPaneSurface {
+    @Published internal var surface: TrailingPaneSurface {
         didSet {
             guard let connectionId else { return }
             defaults.set(surface.rawValue, forKey: Self.surfaceKey(connectionId))

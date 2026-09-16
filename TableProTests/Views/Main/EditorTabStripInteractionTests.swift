@@ -49,6 +49,40 @@ struct EditorTabStripInteractionTests {
         return (interaction, ids, recorder)
     }
 
+    /// `EditorTabStrip` draws a tab only where the run has a placement for its index, so a run
+    /// measured against a shorter list than the strip draws leaves the last tabs nowhere while the
+    /// rest share the whole track between them. The list used to arrive from the view's own
+    /// lifecycle, after the first layout pass had already measured a run for no tabs at all.
+    @Test("Adopting the model's tabs completes the run measured before any tab was known")
+    func adoptingAfterAnEmptyMeasurementCompletesTheRun() {
+        let ids = (0 ..< 5).map { _ in UUID() }
+        let interaction = EditorTabStripInteraction()
+
+        interaction.updateRun(trackWidth: Self.trackWidth, count: 0)
+        #expect(interaction.run.placements.isEmpty)
+
+        interaction.adopt(tabIds: ids, overflow: .scroll)
+
+        #expect(interaction.displayedIds == ids)
+        #expect(interaction.run.placements.count == ids.count)
+        #expect(ids.indices.allSatisfy { interaction.run.placement(at: $0) != nil })
+    }
+
+    /// The style has to be in place for the same measurement, or a user who wraps their tabs gets
+    /// one paint of the scrolling geometry and a band sized for a row count the run never had.
+    @Test("Adopting carries the overflow style into the same run")
+    func adoptingCarriesTheOverflowStyle() {
+        let ids = (0 ..< 12).map { _ in UUID() }
+        let interaction = EditorTabStripInteraction()
+
+        interaction.updateRun(trackWidth: Self.trackWidth, count: 0)
+        interaction.adopt(tabIds: ids, overflow: .rows)
+
+        #expect(interaction.overflow == .rows)
+        #expect(interaction.run.rowCount > 1)
+        #expect(interaction.run.contentSize.width <= Self.trackWidth)
+    }
+
     @Test("A reorder draws from its own order and leaves the manager alone until release")
     func reorderIsNotCommittedUntilRelease() {
         let (interaction, ids, recorder) = makeInteraction(tabCount: 4)

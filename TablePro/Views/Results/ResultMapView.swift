@@ -73,7 +73,7 @@ struct ResultMapView: View {
         .task(id: projectionKey) {
             await rebuild(for: projectionKey)
         }
-        .onChange(of: projectionKey) {
+        .onChange(of: projectionKey) { _ in
             fitToken &+= 1
         }
     }
@@ -81,13 +81,13 @@ struct ResultMapView: View {
     @ViewBuilder
     private var content: some View {
         if tableRows.rows.isEmpty {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Data"),
                 systemImage: "map",
                 description: Text(String(localized: "Execute a query to map its loaded rows."))
             )
         } else if resolved == nil {
-            ContentUnavailableView(
+            UnavailableStateView(
                 String(localized: "No Spatial Column"),
                 systemImage: "map",
                 description: Text(String(localized: "A map needs a geometry or geography column. This result has none."))
@@ -99,7 +99,7 @@ struct ResultMapView: View {
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Building map"))
             case .loaded(let projection) where projection.isEmpty:
-                ContentUnavailableView {
+                UnavailableStateView {
                     Label(String(localized: "Nothing to Draw"), systemImage: "map")
                 } description: {
                     Text(emptyProjectionReason(projection))

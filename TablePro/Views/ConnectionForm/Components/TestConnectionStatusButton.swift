@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct TestConnectionStatusButton: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Button {

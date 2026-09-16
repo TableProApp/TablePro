@@ -112,6 +112,20 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
         return result
     }
 
+    /// The mapping already names every path and every `nested` ancestor, so nothing is sampled.
+    /// Reporting them is what offers the same-element choice on a filter row: without it two
+    /// filters on one array are two independent questions, each answered by a different element.
+    func sampleFieldPaths(table: String, schema: String?, limit: Int) async throws -> [PluginFieldPath] {
+        try await cachedMappingColumns(table).map { column in
+            PluginFieldPath(
+                path: column.name,
+                typeName: column.type,
+                depth: column.name.split(separator: ".").count,
+                arrayPrefixes: column.nestedPaths
+            )
+        }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         [PluginIndexInfo(name: "_id", columns: ["_id"], isUnique: true, isPrimary: true, type: "PRIMARY KEY")]
     }

@@ -12,7 +12,7 @@ struct RestoreDatabaseFlow: View {
     let initialDatabase: String
     let sourceURL: URL
 
-    @State private var service = NativeDumpService(kind: .restore)
+    @StateObject private var service = NativeDumpService(kind: .restore)
     @State private var phase: Phase = .resolvingTarget
     @State private var hostWindow: NSWindow?
 
@@ -69,7 +69,7 @@ struct RestoreDatabaseFlow: View {
         .background {
             WindowAccessor { window in hostWindow = window }
         }
-        .onChange(of: serviceState) { _, newState in
+        .onChange(of: serviceState) { newState in
             handleServiceStateChange(newState)
         }
         .task { await resolveTarget() }

@@ -160,10 +160,7 @@ struct QueryEditorBar: View {
                 .labelStyle(.iconOnly)
                 .disabled(!commands.canOpenRunMenu)
                 .accessibilityIdentifier("query-run-menu")
-                .modifier(FeatureTipPopoverAnchor(
-                    tip: FindPastQueriesTip(shortcut: FeatureTipShortcut.display(for: .toggleHistory)),
-                    isEnabled: showsHistoryTip
-                ))
+                .historyTipAnchor(isEnabled: showsHistoryTip)
             }
             .controlSize(.small)
             .fixedSize()

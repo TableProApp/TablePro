@@ -503,7 +503,7 @@ extension TableViewCoordinator {
     ) -> NSMenuItem {
         switch option {
         case .sectionHeader(let title):
-            return NSMenuItem.sectionHeader(title: title)
+            return NSMenuItem.sectionHeaderCompat(title: title)
         case .value(let title, let sql):
             let item = NSMenuItem(title: title, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
             item.target = self

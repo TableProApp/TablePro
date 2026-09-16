@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 import os
 
@@ -19,26 +20,25 @@ typealias JSONForeignKeyRowFetch = @MainActor (
 ) async throws -> ForeignKeyRowFetcher.FetchedRow?
 
 @MainActor
-@Observable
-final class JSONRowInspectorViewModel {
-    private(set) var root: JSONRowNode?
-    private(set) var states = JSONForeignKeyStates()
+final class JSONRowInspectorViewModel: ObservableObject {
+    @Published private(set) var root: JSONRowNode?
+    @Published private(set) var states = JSONForeignKeyStates()
     /// Session state, not a setting. Following a key costs a query per key, so the tab opens with
     /// them closed however the reader left it last time, and turning it on is a deliberate act.
-    private(set) var alwaysExpandForeignKeys = false
+    @Published private(set) var alwaysExpandForeignKeys = false
 
-    var filterText: String = ""
+    @Published var filterText: String = ""
 
-    private var expanded: Set<JSONNodePath> = []
-    private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
-    private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
-    private var lastSnapshot: JSONRowSnapshot?
+    @Published private var expanded: Set<JSONNodePath> = []
+    @Published private var chains: [JSONNodePath: [JSONForeignKeyVisit]] = [:]
+    @Published private var fetches: [JSONNodePath: Task<Void, Never>] = [:]
+    @Published private var lastSnapshot: JSONRowSnapshot?
     /// Bumped by every rebuild and every reset. A fetch that returns after one discards itself,
     /// because `Task.cancel()` cannot interrupt a query already in flight.
-    private var generation = 0
-    private var scope: DatabaseScope?
-    private var databaseType: DatabaseType?
-    @ObservationIgnored private let fetchRow: JSONForeignKeyRowFetch
+    @Published private var generation = 0
+    @Published private var scope: DatabaseScope?
+    @Published private var databaseType: DatabaseType?
+    private let fetchRow: JSONForeignKeyRowFetch
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "JSONRowInspector")
 

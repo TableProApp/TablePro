@@ -3,13 +3,13 @@
 //  XLSXImportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "XLSX Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from Excel workbooks"
@@ -28,7 +28,7 @@ final class XLSXImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sen
     /// already in memory by then, so this only bounds the inference work.
     private static let detectionSampleRows = 200
 
-    var settings = XLSXImportOptions() {
+    @Published var settings = XLSXImportOptions() {
         didSet { saveSettings() }
     }
 

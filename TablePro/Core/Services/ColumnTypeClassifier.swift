@@ -51,7 +51,7 @@ struct ColumnTypeClassifier {
             return factory(rawTypeName)
         }
 
-        if params == nil, ["VARIANT", "OBJECT", "ARRAY"].contains(upper) {
+        if params == nil, Self.structuredTypeNames.contains(upper) {
             return .json(rawType: rawTypeName)
         }
 
@@ -59,6 +59,10 @@ struct ColumnTypeClassifier {
     }
 
     private static let caseSensitiveBytesTypeName = "BYTES"
+
+    /// Elasticsearch names an object array `nested` and a flat key-value object `flattened`, and
+    /// both hold JSON the grid should offer its viewer for.
+    private static let structuredTypeNames: Set<String> = ["VARIANT", "OBJECT", "ARRAY", "NESTED", "FLATTENED"]
 
     private static func isAngleBracketCompositeType(_ value: String) -> Bool {
         let upper = value.uppercased()

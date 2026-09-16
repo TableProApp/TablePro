@@ -3,13 +3,13 @@
 //  SQLImportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugin, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
 
     static let pluginName = "SQL Import"
@@ -23,7 +23,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = SQLImportOptions
     static let settingsStorageId = "sql-import"
 
-    var settings = SQLImportOptions() {
+    @Published var settings = SQLImportOptions() {
         didSet { saveSettings() }
     }
 

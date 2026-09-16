@@ -72,10 +72,10 @@ struct TriggerEditorView: View {
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
-        .onChange(of: fontSize) { _, newSize in
+        .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
         }
     }

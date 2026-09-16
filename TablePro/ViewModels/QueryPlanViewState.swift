@@ -7,26 +7,24 @@
 //  and the selected step, zoom and scroll per plan.
 //
 
+import Combine
 import Foundation
-import Observation
 
 /// Belongs to the editor tab rather than to one plan in it, so running the statement again replaces
 /// the plan and keeps the pane in Compare with the baseline that was chosen.
 @MainActor
-@Observable
-final class QueryPlanTabState {
-    var viewMode: QueryPlanViewMode = .diagram
+final class QueryPlanTabState: ObservableObject {
+    @Published var viewMode: QueryPlanViewMode = .diagram
 
-    @ObservationIgnored let comparison = QueryPlanComparisonModel()
+    let comparison = QueryPlanComparisonModel()
 }
 
 @MainActor
-@Observable
-final class QueryPlanViewState {
+final class QueryPlanViewState: ObservableObject {
     /// Shared by the diagram and the outline, so switching view mode keeps the selected step.
-    var selectedNodeId: UUID?
+    @Published var selectedNodeId: UUID?
 
-    @ObservationIgnored let viewport = DiagramViewportController()
+    let viewport = DiagramViewportController()
 }
 
 /// A re-run replaces a plan's result set with a new one, which drops the old plan's state the next

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SessionsTableView: View {
-    @Bindable var viewModel: ServerDashboardViewModel
+    @ObservedObject var viewModel: ServerDashboardViewModel
     @State private var selection: Set<String> = []
 
     var body: some View {
@@ -78,7 +78,7 @@ struct SessionsTableView: View {
                 }
                 .width(60)
             }
-            .onChange(of: viewModel.sessionSortOrder) { _, newOrder in
+            .onChange(of: viewModel.sessionSortOrder) { newOrder in
                 viewModel.sessions.sort(using: newOrder)
             }
         }

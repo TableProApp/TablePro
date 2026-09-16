@@ -41,7 +41,7 @@ final class SettingsWindowTitleTests: XCTestCase {
 
     func testEveryPaneIsReachableAndCarriesItsOwnTitle() {
         let (panes, _) = makePanes()
-        panes.loadViewIfNeeded()
+        _ = panes.view
 
         XCTAssertEqual(SettingsPaneTabViewController.paneOrder, SettingsPane.allCases)
         XCTAssertEqual(panes.tabViewItems.count, SettingsPane.allCases.count)

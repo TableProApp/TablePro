@@ -81,6 +81,7 @@ internal final class ToolbarSwitcherPresenter {
             /// The SwiftUI popover this replaces closed on any outside interaction.
             let shown = PopoverPresenter.show(
                 relativeTo: item,
+                in: window,
                 contentSize: contentSize,
                 behavior: .transient,
                 content: content
@@ -133,6 +134,11 @@ internal final class ToolbarSwitcherPresenter {
         in window: NSWindow?,
         _ identifier: NSToolbarItem.Identifier
     ) -> NSToolbarItem? {
+        /// Anchoring a popover on a toolbar item is macOS 14, and an item whose view AppKit
+        /// generates reports `view` as nil, so there is nothing to anchor on below it. Answering
+        /// nil sends the caller to the floating panel, which is the same route an overflowed
+        /// toolbar already takes.
+        guard #available(macOS 14.0, *) else { return nil }
         guard let toolbar = window?.toolbar, toolbar.isVisible else { return nil }
         return anchor(identifier, in: toolbar.items, visible: toolbar.visibleItems ?? [])
     }

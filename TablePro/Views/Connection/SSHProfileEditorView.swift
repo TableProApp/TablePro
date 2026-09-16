@@ -96,18 +96,18 @@ struct SSHProfileEditorView: View {
             let entries = await Task.detached { SSHConfigParser.parse() }.value
             sshConfigEntries = entries
         }
-        .onChange(of: host) { _, _ in testSucceeded = false }
-        .onChange(of: port) { _, _ in testSucceeded = false }
-        .onChange(of: username) { _, _ in testSucceeded = false }
-        .onChange(of: authMethod) { _, _ in testSucceeded = false }
-        .onChange(of: sshPassword) { _, _ in testSucceeded = false }
-        .onChange(of: privateKeyPath) { _, _ in testSucceeded = false }
-        .onChange(of: keyPassphrase) { _, _ in testSucceeded = false }
-        .onChange(of: agentSocketOption) { _, _ in testSucceeded = false }
-        .onChange(of: customAgentSocketPath) { _, _ in testSucceeded = false }
-        .onChange(of: totpMode) { _, _ in testSucceeded = false }
-        .onChange(of: totpSecret) { _, _ in testSucceeded = false }
-        .onChange(of: jumpHosts) { _, _ in testSucceeded = false }
+        .onChange(of: host) { _ in testSucceeded = false }
+        .onChange(of: port) { _ in testSucceeded = false }
+        .onChange(of: username) { _ in testSucceeded = false }
+        .onChange(of: authMethod) { _ in testSucceeded = false }
+        .onChange(of: sshPassword) { _ in testSucceeded = false }
+        .onChange(of: privateKeyPath) { _ in testSucceeded = false }
+        .onChange(of: keyPassphrase) { _ in testSucceeded = false }
+        .onChange(of: agentSocketOption) { _ in testSucceeded = false }
+        .onChange(of: customAgentSocketPath) { _ in testSucceeded = false }
+        .onChange(of: totpMode) { _ in testSucceeded = false }
+        .onChange(of: totpSecret) { _ in testSucceeded = false }
+        .onChange(of: jumpHosts) { _ in testSucceeded = false }
         .onDisappear {
             testTask?.cancel()
         }
@@ -124,7 +124,7 @@ struct SSHProfileEditorView: View {
                         Text(entry.displayName).tag(entry.host)
                     }
                 }
-                .onChange(of: selectedSSHConfigHost) {
+                .onChange(of: selectedSSHConfigHost) { _ in
                     applySSHConfigEntry(selectedSSHConfigHost)
                 }
             }

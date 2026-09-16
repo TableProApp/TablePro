@@ -3,7 +3,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct PrivilegeScopeOutlineView: NSViewRepresentable {
-    @Bindable var viewModel: UsersRolesViewModel
+    @ObservedObject var viewModel: UsersRolesViewModel
 
     let structureVersion: Int
     let grantVersion: Int

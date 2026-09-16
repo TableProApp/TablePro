@@ -136,7 +136,7 @@ internal struct PhpViewerView: View {
     }
 
     private func errorPlaceholder(title: String, detail: String, systemImage: String) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(title, systemImage: systemImage)
         } description: {
             Text(detail)

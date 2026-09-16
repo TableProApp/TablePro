@@ -68,7 +68,7 @@ struct ResultSetMenu: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(.accessoryBar)
+        .accessoryBarStyle()
         .controlSize(.small)
         .fixedSize()
         .help(String(localized: "Choose which result this pane shows"))

@@ -2,17 +2,17 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarTreeView: View {
-    @Bindable private var schemaService = SchemaService.shared
+    @ObservedObject private var schemaService = SchemaService.shared
 
     let connectionId: UUID
-    let viewModel: SidebarViewModel
-    let windowState: WindowSidebarState
-    var sidebarState: SharedSidebarState
+    @ObservedObject var viewModel: SidebarViewModel
+    @ObservedObject var windowState: WindowSidebarState
+    @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     weak var coordinator: MainContentCoordinator?
 
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var searchLoadTask: Task<Void, Never>?
 
     private var activeDatabase: String? {
@@ -56,7 +56,7 @@ struct SidebarTreeView: View {
                 treeList
             }
         }
-        .onChange(of: searchText) { _, newValue in
+        .onChange(of: searchText) { newValue in
             scheduleSearchLoad(searchText: newValue)
         }
     }
@@ -86,7 +86,7 @@ struct SidebarTreeView: View {
 
     private var emptySchemasState: some View {
         let entityName = PluginManager.shared.schemaEntityNamePlural(for: viewModel.databaseType)
-        return ContentUnavailableView(
+        return UnavailableStateView(
             String(format: String(localized: "No %@"), entityName),
             systemImage: "folder",
             description: Text(String(
@@ -98,7 +98,7 @@ struct SidebarTreeView: View {
     }
 
     private var noMatchState: some View {
-        ContentUnavailableView.search(text: searchText)
+        UnavailableStateView.search(text: searchText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

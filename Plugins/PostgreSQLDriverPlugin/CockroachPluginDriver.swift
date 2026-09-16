@@ -16,6 +16,10 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private var cachedServerVersion: String?
 
+    /// CockroachDB's `pg_catalog` is a compatibility shim and `aclexplode` only became a builtin in
+    /// v22.2, so the schema ACL is not read here. The owner and the comment still are.
+    var supportsSchemaACLIntrospection: Bool { false }
+
     var capabilities: PluginCapabilities {
         [
             .parameterizedQueries,

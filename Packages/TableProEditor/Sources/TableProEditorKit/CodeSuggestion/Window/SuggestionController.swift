@@ -44,7 +44,6 @@ public final class SuggestionController: NSWindowController {
     private var windowResignObserver: NSObjectProtocol?
     /// Closes autocomplete when first responder changes away from the active text view
     private var firstResponderKVO: NSKeyValueObservation?
-    private var localEventMonitor: Any?
     private var mouseEventMonitor: Any?
     /// Whether `willCloseNotification` already drove the teardown for the close in progress, so
     /// the explicit call behind it runs only when AppKit posted nothing.
@@ -284,12 +283,12 @@ public final class SuggestionController: NSWindowController {
             self.close()
             return event
         }
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            return self.handleKeyDown(event)
-        }
     }
 
+    /// Called by ``TextViewController/dispatchKeyDown(_:)`` while this panel is showing for that
+    /// controller. It must not install a monitor of its own: this is a singleton, so one would be
+    /// app-wide, and `NSWindow.close()` on an already-closed window posts no `willCloseNotification`
+    /// to run ``performCleanup()`` and take it back down.
     internal func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         guard let activeTextView = model.activeTextView, activeTextView.view.window != nil else {
             close()
@@ -319,10 +318,6 @@ public final class SuggestionController: NSWindowController {
     }
 
     private func removeEventMonitors() {
-        if let monitor = localEventMonitor {
-            NSEvent.removeMonitor(monitor)
-            localEventMonitor = nil
-        }
         if let monitor = mouseEventMonitor {
             NSEvent.removeMonitor(monitor)
             mouseEventMonitor = nil
