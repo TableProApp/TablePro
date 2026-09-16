@@ -19,7 +19,7 @@
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
-# Options:
+# Options, accepted before or after the step:
 #   --run <dir>     run directory for logs (default: <repo>/.analysis/<branch>)
 #   --root <dir>    repository root (default: the checkout this script lives in)
 #   --no-wait       do not wait for a concurrent xcodebuild to finish
@@ -50,6 +50,11 @@ need_value() {
     [ "$1" -ge 2 ] || { echo "$2 needs a value" >&2; usage; }
 }
 
+# Options are read wherever they appear, not only before the step. The loop used to stop at the
+# first non-option, so everything after the step name reached the step as an argument: `verify.sh
+# build --offline` built a scheme named `--offline` and reported FAIL rather than a usage error,
+# which reads like the change broke the build.
+POSITIONAL=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --run) need_value $# "--run"; RUN_DIR="$2"; shift 2 ;;
@@ -65,9 +70,11 @@ while [ $# -gt 0 ]; do
         --offline) OFFLINE=1; shift ;;
         -h | --help) usage 0 ;;
         --*) echo "unknown option: $1" >&2; usage ;;
-        *) break ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+# bash 3.2 treats an unset array as unbound under `set -u`, so an options-only run needs the guard.
+set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 
 [ $# -ge 1 ] || usage
 STEP="$1"; shift

@@ -73,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Empty PostgreSQL `jsonb` object copied to another engine as an empty array. (Copy Objects)
+- Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.
+- Two chevrons on the row inspector's `SET` field.
 - Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
 - Stale error banner over a pinned result after clearing the results of a failed query.
 - `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
@@ -188,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
 - AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
 - AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
+- Autocomplete committing a different column between launches when two scored the same.
 - MongoDB autocomplete inserting `$MATCH` and `DB`, which the server rejects.
 - ClickHouse autocomplete offering 18 function names the server rejects, `TOSTRING` and `UNIQ` among them.
 - Completion inserted beside a non-ASCII prefix instead of replacing it: `SELECT 名` became `SELECT 名名前`.
