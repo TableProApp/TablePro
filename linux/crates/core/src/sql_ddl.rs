@@ -195,11 +195,24 @@ impl DraftColumn {
     /// as different. Used by the diff path to decide whether the
     /// column needs an `AlterColumn` op.
     pub fn differs_from_original(&self) -> bool {
+        self.renamed() || self.differs_beyond_name()
+    }
+
+    /// True when the column kept its identity and changed its name.
+    pub fn renamed(&self) -> bool {
+        match &self.original {
+            None => false,
+            Some(orig) => orig.name != self.name && !self.name.trim().is_empty(),
+        }
+    }
+
+    /// True when something other than the name differs, which is what
+    /// decides whether there is anything for an `AlterColumn` to do.
+    pub fn differs_beyond_name(&self) -> bool {
         match &self.original {
             None => true,
             Some(orig) => {
-                orig.name != self.name
-                    || orig.column_type.name().as_sql() != self.data_type
+                orig.column_type.name().as_sql() != self.data_type
                     || orig.nullable != self.nullable
                     || orig.primary_key != self.primary_key
                     || orig.is_auto_increment != self.auto_increment
@@ -241,6 +254,16 @@ pub enum StructureOp {
         schema: Option<String>,
         table: String,
         column_name: String,
+    },
+    /// A column that kept its identity and changed its name. Separate
+    /// from `AlterColumn` because it has to run first: every other
+    /// statement addresses the column by its new name, which does not
+    /// exist until the rename has run.
+    RenameColumn {
+        schema: Option<String>,
+        table: String,
+        old_name: String,
+        new_name: String,
     },
     /// Single op for any combination of name / type / nullable /
     /// default / pk / auto-increment changes on one column. Driver
@@ -998,10 +1021,25 @@ pub fn diff_to_ops(
         }
     }
 
-    // Alter columns: drafts whose original is Some and attributes
-    // differ.
+    // Rename columns: the draft kept its original and changed its
+    // name. This goes before the alter because every alter addresses
+    // the column by its new name.
     for col in current_columns {
-        if col.original.is_some() && col.differs_from_original() {
+        if let Some(orig) = col.original.as_ref().filter(|_| col.renamed()) {
+            ops.push(StructureOp::RenameColumn {
+                schema: schema_owned.clone(),
+                table: table.clone(),
+                old_name: orig.name.clone(),
+                new_name: col.name.clone(),
+            });
+        }
+    }
+
+    // Alter columns: drafts whose original is Some and something
+    // other than the name differs. A column that only changed name
+    // has nothing left for an alter to do.
+    for col in current_columns {
+        if col.original.is_some() && col.differs_beyond_name() {
             ops.push(StructureOp::AlterColumn {
                 schema: schema_owned.clone(),
                 table: table.clone(),
@@ -1051,7 +1089,8 @@ pub fn diff_to_ops(
 
 /// Walk a `StructureOp` list and emit the SQL statements in the
 /// canonical phased order (rename table → drop FK → drop index →
-/// drop column → alter column → add column → add index → add FK).
+/// drop column → rename column → alter column → add column →
+/// add index → add FK).
 /// Splitting between diff (intent) and materialize (SQL emission)
 /// keeps the diff side pure and the SQL side driver-aware.
 ///
@@ -1104,6 +1143,23 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
         } = op
         {
             out.push(build_drop_column(driver_id, schema.as_deref(), table, column_name)?);
+        }
+    }
+    for op in ops {
+        if let StructureOp::RenameColumn {
+            schema,
+            table,
+            old_name,
+            new_name,
+        } = op
+        {
+            out.push(build_rename_column(
+                driver_id,
+                schema.as_deref(),
+                table,
+                old_name,
+                new_name,
+            )?);
         }
     }
     for op in ops {
@@ -1183,6 +1239,97 @@ mod tests {
     fn def(mut col: DraftColumn, default: &str) -> DraftColumn {
         col.default_value = Some(default.into());
         col
+    }
+
+    /// A draft carrying an original, for diffing an edit against the
+    /// loaded column.
+    fn edited(original_name: &str, ty: &str) -> DraftColumn {
+        DraftColumn {
+            original: Some(ColumnInfo {
+                name: original_name.into(),
+                column_type: test_column_type(ty),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default: crate::column::ColumnDefault::None,
+                is_generated: false,
+            }),
+            name: original_name.into(),
+            data_type: ty.into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        }
+    }
+
+    #[test]
+    fn renaming_a_column_emits_a_rename() {
+        let mut draft = edited("old_name", "text");
+        draft.name = "new_name".into();
+
+        let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
+
+        assert_eq!(
+            ops,
+            vec![StructureOp::RenameColumn {
+                schema: None,
+                table: "t".into(),
+                old_name: "old_name".into(),
+                new_name: "new_name".into(),
+            }],
+            "a rename produced no rename op"
+        );
+    }
+
+    #[test]
+    fn a_rename_reaches_the_server_on_every_engine_that_has_one() {
+        let mut draft = edited("old_name", "text");
+        draft.name = "new_name".into();
+        let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
+
+        for driver in ["postgres", "mysql", "sqlite"] {
+            let sql = materialize_ops(&ops, driver).expect("the rename builds");
+            assert_eq!(sql.len(), 1, "{driver} emitted {sql:?}");
+            assert!(
+                sql[0].contains("RENAME COLUMN") && sql[0].contains("new_name"),
+                "{driver} emitted {:?}",
+                sql[0]
+            );
+        }
+
+        let mssql = materialize_ops(&ops, "mssql").expect("the rename builds");
+        assert!(mssql[0].starts_with("EXEC sp_rename"), "{:?}", mssql[0]);
+    }
+
+    #[test]
+    fn a_rename_lands_before_the_alter_that_addresses_the_new_name() {
+        // Renaming and retyping at once: the ALTER names the column
+        // its new name, so it can only run once the rename has.
+        let mut draft = edited("old_name", "text");
+        draft.name = "new_name".into();
+        draft.data_type = "varchar(20)".into();
+
+        let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
+        let sql = materialize_ops(&ops, "postgres").expect("the change builds");
+
+        let rename = sql.iter().position(|s| s.contains("RENAME COLUMN"));
+        let alter = sql.iter().position(|s| s.contains("TYPE varchar(20)"));
+        assert!(rename.is_some() && alter.is_some(), "got {sql:?}");
+        assert!(rename < alter, "the alter ran before the rename: {sql:?}");
+    }
+
+    #[test]
+    fn a_column_whose_name_alone_changed_is_not_also_altered() {
+        let mut draft = edited("old_name", "text");
+        draft.name = "new_name".into();
+
+        let ops = diff_to_ops(None, "t", "t", &[], &[draft], &[], &[], &[], &[]);
+
+        assert!(
+            !ops.iter().any(|op| matches!(op, StructureOp::AlterColumn { .. })),
+            "a pure rename asked for an alter with nothing to alter: {ops:?}"
+        );
     }
 
     #[test]
