@@ -218,7 +218,18 @@ internal struct CompareApplySheetView: View {
                 Spacer(minLength: 0)
             }
 
-            if result.rolledBack {
+            if result.rollbackLeftWritesInPlace {
+                noticeLabel(
+                    String(
+                        format: String(
+                            localized: "The run was rolled back, but %1$@ cannot roll back, so rows already written there stay in %2$@. Compare again to see where it stands."
+                        ),
+                        ListFormatter.localizedString(byJoining: result.nonTransactionalObjects),
+                        targetName
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+            } else if result.rolledBack {
                 noticeLabel(
                     String(format: String(localized: "The run was rolled back. %@ is unchanged."), targetName),
                     systemImage: "arrow.uturn.backward.circle.fill"

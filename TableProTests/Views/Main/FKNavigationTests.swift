@@ -966,9 +966,9 @@ struct FKNavigationTests {
         #expect(tabManager.selectedTab?.restoredPageSize == 500)
     }
 
-    @Test("A pending row anchor belongs to one tab and no other tab can take it")
+    @Test("A restored row anchor belongs to its tab and lasts until the rows it names are installed")
     @MainActor
-    func rowAnchorIsKeyedByTab() throws {
+    func restoredRowAnchorLastsUntilRowsInstall() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
         let coordinator = MainContentCoordinator(
@@ -979,13 +979,64 @@ struct FKNavigationTests {
         )
         defer { coordinator.teardown() }
 
-        let owning = UUID()
-        let other = UUID()
-        coordinator.pendingRowAnchors[owning] = ["id": "4021"]
+        try tabManager.addTableTab(tableName: "orders", databaseType: connection.type, databaseName: "db_a")
+        try tabManager.addTableTab(tableName: "users", databaseType: connection.type, databaseName: "db_a")
+        let owning = tabManager.tabs[0].id
+        let other = tabManager.tabs[1].id
+        tabManager.mutate(tabId: owning) { $0.restoredRowAnchor = ["id": "4021"] }
 
-        #expect(coordinator.pendingRowAnchors[other] == nil)
-        #expect(coordinator.pendingRowAnchors.removeValue(forKey: owning) == ["id": "4021"])
-        #expect(coordinator.pendingRowAnchors[owning] == nil)
+        #expect(coordinator.restoredRowAnchor(forTab: other) == nil)
+        #expect(coordinator.restoredRowAnchor(forTab: owning) == ["id": "4021"])
+        #expect(coordinator.restoredRowAnchor(forTab: owning) == ["id": "4021"])
+
+        coordinator.setActiveTableRows(
+            TableRows.from(queryRows: [[.text("4021")]], columns: ["id"], columnTypes: [.text(rawType: nil)]),
+            for: owning,
+            viewport: .restoreRow(["id": "4021"])
+        )
+
+        #expect(coordinator.restoredRowAnchor(forTab: owning) == nil)
+    }
+
+    @Test("Rows landing for any other reason spend a restored row anchor, so it cannot replay later")
+    @MainActor
+    func restoredRowAnchorIsSpentByAnyLanding() throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(tableName: "orders", databaseType: connection.type, databaseName: "db_a")
+        let tabId = try #require(tabManager.selectedTabId)
+        tabManager.mutate(tabId: tabId) { $0.restoredRowAnchor = ["id": "4021"] }
+
+        coordinator.setActiveTableRows(TableRows(), for: tabId)
+        #expect(coordinator.restoredRowAnchor(forTab: tabId) == ["id": "4021"])
+
+        coordinator.setActiveTableRows(
+            TableRows.from(queryRows: [[.text("1")]], columns: ["id"], columnTypes: [.text(rawType: nil)]),
+            for: tabId,
+            viewport: .keepPlace
+        )
+        #expect(coordinator.restoredRowAnchor(forTab: tabId) == nil)
+    }
+
+    @Test("Retargeting a tab drops a restored row anchor its load never took")
+    @MainActor
+    func retargetDropsRestoredRowAnchor() throws {
+        let tabManager = QueryTabManager()
+        try tabManager.addTableTab(tableName: "orders", databaseType: .mysql, databaseName: "db_a")
+        let tabId = try #require(tabManager.selectedTabId)
+        tabManager.mutate(tabId: tabId) { $0.restoredRowAnchor = ["id": "4021"] }
+
+        _ = try tabManager.replaceTabContent(tableName: "users", databaseType: .mysql, databaseName: "db_a")
+
+        #expect(tabManager.tabs.first?.restoredRowAnchor == nil)
     }
 
     @Test("Metadata is not cached until foreign keys were fetched")

@@ -45,6 +45,8 @@ final class TabSession: Identifiable {
     /// edit leaves the rows where they are and the grid goes on showing them there.
     var rowSetRevision: Int
 
+    @ObservationIgnored var viewportStage: GridViewportStage?
+
     init(id: UUID = UUID()) {
         self.id = id
         self.tableRows = TableRows()

@@ -23,9 +23,24 @@ extension MainContentCoordinator {
         return delta
     }
 
-    func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
+    func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID, viewport intent: GridReloadIntent = .firstRow) {
+        let keyColumns = viewportKeyColumns(forTab: tabId)
+        let gridIsMounted = isGridMounted(forTab: tabId)
+        let snapshot = gridIsMounted ? viewportSnapshot(forTab: tabId, intent: intent, keyColumns: keyColumns) : .top
         installTableRows(tableRows, for: tabId)
         resetSelectionForNewResult(tabId: tabId)
+        if gridIsMounted {
+            let placement = GridViewportResolver.placement(
+                for: intent,
+                from: snapshot,
+                in: tableRows,
+                keyColumns: keyColumns
+            )
+            tabSessionRegistry.stageViewportPlacement(placement, for: tabId)
+        }
+        if !tableRows.rows.isEmpty {
+            clearRestoredRowAnchor(forTab: tabId)
+        }
         notifyFullReplaceIfActive(tabId: tabId)
     }
 
@@ -229,17 +244,5 @@ extension MainContentCoordinator {
         }
         dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
         if let token { tracer.stage(.gridReloadEnd, token: token) }
-
-        if pendingScrollToTopAfterReplace.remove(tabId) != nil {
-            dataTabDelegate?.tableViewCoordinator?.scrollToTop()
-        }
-
-        /// Only once there are rows to find it in. The retarget that starts a navigation replaces
-        /// the buffer with an empty one first, and consuming the anchor there would spend it before
-        /// the rows it names have arrived.
-        if !tabSessionRegistry.tableRows(for: tabId).rows.isEmpty,
-           let anchor = pendingRowAnchors.removeValue(forKey: tabId) {
-            dataTabDelegate?.tableViewCoordinator?.selectRow(matchingKey: anchor)
-        }
     }
 }

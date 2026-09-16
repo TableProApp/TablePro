@@ -111,6 +111,9 @@ extension UserDefinedTypeInfo.Kind {
         case .composite:   self = .composite
         case .domain:      self = .domain
         case .range:       self = .range
+        case .aliasType:   self = .aliasType
+        case .tableType:   self = .tableType
+        case .clrType:     self = .clrType
         @unknown default:  self = .other
         }
     }
@@ -121,6 +124,9 @@ extension UserDefinedTypeInfo.Kind {
         case .composite:   return .composite
         case .domain:      return .domain
         case .range:       return .range
+        case .aliasType:   return .aliasType
+        case .tableType:   return .tableType
+        case .clrType:     return .clrType
         case .other:       return nil
         }
     }

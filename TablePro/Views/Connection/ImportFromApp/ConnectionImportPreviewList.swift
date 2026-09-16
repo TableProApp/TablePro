@@ -8,6 +8,9 @@ import TableProImport
 
 struct ConnectionImportPreviewList: View {
     let items: [ImportItem]
+    /// Replace rebuilds the saved connection from the incoming one, so a source that carries only
+    /// part of a connection (AWS discovery has no SSH, SSL, group or tag) does not offer it.
+    var allowsReplace = true
     @Binding var selectedIds: Set<UUID>
     @Binding var duplicateResolutions: [UUID: ImportResolution]
 
@@ -74,7 +77,7 @@ struct ConnectionImportPreviewList: View {
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {
                     Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
-                    if case .duplicate(let existingId, _) = item.status {
+                    if allowsReplace, case .duplicate(let existingId, _) = item.status {
                         Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existingId))
                     }
                     Text(String(localized: "Skip")).tag(ImportResolution.skip)

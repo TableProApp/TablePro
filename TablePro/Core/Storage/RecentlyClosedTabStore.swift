@@ -81,18 +81,29 @@ internal final class RecentlyClosedTabStore {
         entries.first
     }
 
-    /// Removes the entry and returns it with any overflow text folded back into the tab, so the
-    /// caller holds everything needed to rebuild the tab without touching disk again.
-    internal func consume(id: UUID) -> RecentlyClosedTabEntry? {
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
-        var entry = entries.remove(at: index)
+    /// The entry with any overflow text folded back into the tab, so the caller holds everything
+    /// needed to rebuild the tab without touching disk again.
+    ///
+    /// Reading removes nothing. Opening the tab can still fail or wait on a connect, and an entry
+    /// taken out before the tab is on screen is a closed tab lost for good; `discard(id:)` is the
+    /// caller's to call once it is shown.
+    internal func restorableEntry(id: UUID) -> RecentlyClosedTabEntry? {
+        guard var entry = entries.first(where: { $0.id == id }) else { return nil }
         if let overflow = overflowText(for: entry) {
             entry.tab.query = overflow
         }
-        removeOverflowFile(for: entry)
         entry.overflowFileName = nil
-        persist()
         return entry
+    }
+
+    internal func containsEntry(id: UUID) -> Bool {
+        entries.contains { $0.id == id }
+    }
+
+    internal func discard(id: UUID) {
+        guard containsEntry(id: id) else { return }
+        discardEntries { $0.id == id }
+        persist()
     }
 
     // MARK: - Connection Removal

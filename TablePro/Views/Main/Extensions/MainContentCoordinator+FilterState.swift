@@ -92,8 +92,8 @@ extension MainContentCoordinator {
         filterCoordinator.saveLastFiltersForActiveTable()
     }
 
-    func saveLastFilters(for tableName: String) {
-        filterCoordinator.saveLastFilters(for: tableName)
+    func saveLastFilters(of tab: QueryTab) {
+        filterCoordinator.saveLastFilters(of: tab)
     }
 
     func restoreLastFilters(for tableName: String) {

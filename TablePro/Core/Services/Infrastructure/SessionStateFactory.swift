@@ -67,6 +67,11 @@ enum SessionStateFactory {
                 database: databaseName, schema: schemaName, name: tableName, isView: isView, isPreview: isPreview
             )
         }
+        tabMgr.onTableSchemaResolved = { tableName, databaseName, schemaName in
+            SharedSidebarState.forConnection(connectionId).resolveRecentSchema(
+                database: databaseName, name: tableName, to: schemaName
+            )
+        }
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
         let toolbarSt = ConnectionToolbarState(connection: connection)

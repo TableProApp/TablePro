@@ -51,7 +51,7 @@ final class ConnectionCoordinator {
 
     var supportsDatabaseSwitching: Bool {
         connection.type == .mysql || connection.type == .mariadb ||
-        connection.type == .tidb ||
+        connection.type == .tidb || connection.type == .oceanbase ||
         connection.type == .postgresql || connection.type == .redshift ||
         connection.type == .mssql
     }
@@ -139,6 +139,7 @@ final class ConnectionCoordinator {
                 await loadSchemas()
                 guard attemptToken == token else { return }
                 phase = .connected
+                appState.libraryPreferences.recordConnected(connection.id)
                 return
             } catch {
                 guard attemptToken == token else { return }
@@ -166,6 +167,7 @@ final class ConnectionCoordinator {
             await loadSchemas()
             guard attemptToken == token else { return }
             phase = .connected
+            appState.libraryPreferences.recordConnected(connection.id)
             IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
         } catch {

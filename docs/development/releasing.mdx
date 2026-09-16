@@ -92,7 +92,9 @@ fails from the other side: 299 MB published with no baseline behind it, and the 
 
 `.github/workflows/build.yml` fires on a `v*` tag push, and otherwise only on a manual dispatch. Bump
 `Configs/Version.xcconfig` first: the release job compares the tag against `MARKETING_VERSION` and
-fails with `tag v… does not match MARKETING_VERSION …` when they disagree.
+fails with `tag v… does not match MARKETING_VERSION …` when they disagree. It also fails when
+`CURRENT_PROJECT_VERSION` is not above the newest published release's. That number is what Sparkle
+compares as `<sparkle:version>`, so a flat build number ships a release no installed app is offered.
 
 Four jobs gate the release: SwiftLint, macOS Tests, Build (a matrix over `arm64` and `x86_64`) and
 Registry Readiness. A red suite or a registry with no plugin binary compatible with the shipping
@@ -101,6 +103,46 @@ app blocks the tag.
 The release job then verifies the artifacts, signs both update archives with the Sparkle key,
 extracts the release notes from `CHANGELOG.md`, publishes the GitHub release, and only afterwards
 commits `appcast.xml`. A tag containing `-alpha`, `-beta` or `-rc` publishes as a prerelease.
+
+`generate_appcast` sees only the release being published, never the existing feed, and
+`scripts/ci/merge-appcast.py` splices its two items into `appcast.xml` afterwards. Items already
+published are moved byte for byte rather than regenerated, because Sparkle rewrites the download URL
+and drops the release notes of any existing item a staged archive happens to match.
+
+## Staged rollout and critical releases
+
+Every release carries `<sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>`. Sparkle
+spreads a release over seven cohorts keyed on a per-install random identifier, so six intervals is
+the tail: the last cohort is offered the build 36 hours after the first. A user who runs **Check for
+Updates…** is never phased and always gets the newest build.
+
+`.github/release-flags.json` decides whether a release may interrupt anyone:
+
+```json
+{ "criticalUpdate": false }
+```
+
+Setting it `true` passes `--critical-update-version ""` to `generate_appcast`, which writes
+`<sparkle:criticalUpdate/>` with no version attribute, making the item critical for every host.
+Sparkle then bypasses phasing, hides Skip and Remind Me Later, retitles the alert, and shows the
+update even under automatic downloads.
+
+The bar is data loss, an exposed security issue, a crash or hang on a common path, or a regression
+with no workaround. Set it in the release commit and set it back in the next one. The release job
+fails when the flag is `true` and the file has not changed since the previous tag, which is what a
+leftover flag looks like.
+
+## Withdrawing a release
+
+Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.
+
+```bash
+python3 scripts/ci/pull-release.py 0.75.0 --dry-run   # reports what it would remove
+python3 scripts/ci/pull-release.py 0.75.0             # edits, commits and pushes
+```
+
+The GitHub release stays up, so a direct download link still resolves. Anyone already on the bad
+build is reached by shipping the fix, not by the withdrawal.
 
 ## Plugins
 

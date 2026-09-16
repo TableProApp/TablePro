@@ -95,7 +95,7 @@ struct ConnectionStoragePersistenceTests {
     }
 
     @Test("duplicating a connection carries tunnel modes and their secrets")
-    func duplicateCarriesTunnelModesAndSecrets() {
+    func duplicateCarriesTunnelModesAndSecrets() throws {
         var connection = DatabaseConnection(name: "Tunnels", type: .postgresql)
         connection.cloudflareTunnelMode = .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
         connection.cloudSQLProxyMode = .inline(CloudSQLProxyConfiguration(instanceConnectionName: "p:r:i"))
@@ -109,7 +109,7 @@ struct ConnectionStoragePersistenceTests {
         storage.saveCloudSQLProxyServiceAccountKey("{\"type\":\"service_account\"}", for: connection.id)
         storage.saveSOCKSProxyPassword("proxy-pw", for: connection.id)
 
-        let duplicate = storage.duplicateConnection(connection)
+        let duplicate = try #require(storage.duplicateConnection(connection))
 
         #expect(duplicate.cloudflareTunnelMode == connection.cloudflareTunnelMode)
         #expect(duplicate.cloudSQLProxyMode == connection.cloudSQLProxyMode)
@@ -137,12 +137,12 @@ struct ConnectionStoragePersistenceTests {
     }
 
     @Test("duplicating a connection preserves its password source")
-    func duplicatePreservesPasswordSource() {
+    func duplicatePreservesPasswordSource() throws {
         var connection = DatabaseConnection(name: "Source", type: .postgresql)
         connection.passwordSource = .file(path: "~/.config/tablepro/db.pw")
         storage.addConnection(connection)
 
-        let duplicate = storage.duplicateConnection(connection)
+        let duplicate = try #require(storage.duplicateConnection(connection))
         #expect(duplicate.id != connection.id)
         #expect(duplicate.passwordSource == .file(path: "~/.config/tablepro/db.pw"))
 

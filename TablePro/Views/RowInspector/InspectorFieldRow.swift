@@ -218,8 +218,8 @@ internal struct InspectorFieldRow: View {
         switch kind {
         case .json, .phpSerialized, .image:
             return nil
-        case .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker, .schemaText,
-             .multiLine, .singleLine:
+        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+             .schemaText, .multiLine, .singleLine:
             return ThemeEngine.shared.valueFontSwiftUI
         }
     }

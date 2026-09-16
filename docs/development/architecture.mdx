@@ -108,10 +108,11 @@ A cancelled connect is the hard case here, because `Task.cancel()` cannot interr
 
 | Package | Source | Purpose |
 |---------|--------|---------|
-| CodeEditSourceEditor | Vendored in `LocalPackages/`, with CodeEditTextView and CodeEditLanguages | Tree-sitter code editor |
+| TableProEditor | Local package in `Packages/`, a heavily modified fork of CodeEditSourceEditor and CodeEditTextView | The SQL editor: text engine, layout, highlighting, folding |
+| TableProGrammars | Local package in `Packages/` | The four tree-sitter grammars the editor highlights |
 | TableProCore | Local package in `Packages/` | SwiftPM modules the macOS and iOS apps share |
 | TableProOracle | Local package in `Packages/`, wraps a pinned TablePro fork of OracleNIO | Oracle wire protocol for OracleDriverPlugin |
-| Sparkle | SPM, 2.9.5+ | Auto-update with EdDSA signing |
+| Sparkle | SPM, 2.10.0+ | Auto-update with EdDSA signing |
 | swift-certificates | SPM, 1.19.0+ | X.509 types, linked by the app target |
 | Yams | SPM, 5.1.0+ | YAML parsing for project folder import |
 

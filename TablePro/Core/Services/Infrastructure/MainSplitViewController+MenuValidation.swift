@@ -34,6 +34,8 @@ struct MenuValidationContext: Equatable {
     var canRestorePreviousValues = false
     var isQueryExecuting = false
     var hasQueryText = false
+    var canClearQuery = false
+    var canClearResults = false
     var hasPendingChanges = false
     var hasDataPendingChanges = false
     var hasRowSelection = false
@@ -44,6 +46,13 @@ struct MenuValidationContext: Equatable {
     /// Whether every selected object is one the engine can truncate. Separate from
     /// `hasTableSelection` because a view is a perfectly good selection and a hopeless truncate.
     var canTruncateSelectedTables = false
+    /// Whether every selected object is one the engine has a drop statement for. An engine with
+    /// no DDL for it must not be offered Delete, or the app invents SQL it cannot run.
+    var canDropSelectedTables = false
+    /// An editable tab only answers Delete when a row is selected. Without the row check the item
+    /// stayed enabled over a grid with no selection, fell through to the sidebar's drop path and
+    /// did nothing there.
+    var canDeleteSelectedRows: Bool { isCurrentTabEditable && hasRowSelection }
     /// Whether the window-level `paste:` fallback would actually paste. AppKit hands a disabled
     /// item its key equivalent regardless, so an item enabled over a handler that returns at its
     /// first guard swallows Command+V with no feedback.
@@ -78,6 +87,7 @@ struct MenuValidationContext: Equatable {
     var canUndo = false
     var canRedo = false
     var hasEditorForFind = false
+    var hasSelectionForFind = false
     var hasActiveGridFind = false
     var hasImportFormats = false
     var supportsContainerSwitching = false
@@ -106,6 +116,8 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// never reaches here. The Find commands rely on that: a focused editor claims and validates them
     /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
     static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        if let find = isFindCommandEnabled(selector, context: context) { return find }
+
         switch selector {
         case #selector(exportTables(_:)),
              #selector(refreshDatabase(_:)),
@@ -190,6 +202,10 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isQueryTab && context.isConnected && context.hasQueryText && !context.isQueryExecuting
         case #selector(cancelQuery(_:)):
             return context.isQueryExecuting
+        case #selector(clearQuery(_:)):
+            return context.canClearQuery
+        case #selector(clearResults(_:)):
+            return context.canClearResults
         case #selector(previewSQL(_:)):
             return context.isConnected && context.hasDataPendingChanges
         case #selector(saveAsFavorite(_:)):
@@ -202,10 +218,6 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canRestorePreviousValues && !context.isReadOnly
         case #selector(truncateTable(_:)):
             return context.isConnected && context.canTruncateSelectedTables && !context.isReadOnly
-        case #selector(performFind(_:)):
-            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
-        case #selector(findNext(_:)), #selector(findPrevious(_:)):
-            return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(jumpToColumn(_:)):
             return context.isConnected && context.canJumpToColumn
         case #selector(undo(_:)):
@@ -222,7 +234,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(paste(_:)):
             return context.isConnected && context.canPasteRows
         case #selector(delete(_:)):
-            return context.isConnected && (context.isCurrentTabEditable || context.hasTableSelection)
+            return context.isConnected && (context.canDeleteSelectedRows || context.canDropSelectedTables)
 
         case #selector(createNewTable(_:)), #selector(createNewView(_:)):
             return context.isConnected && !context.isReadOnly
@@ -290,6 +302,24 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
     }
 
+    /// The Edit menu's Find commands, which are the window's last-resort answer. A focused editor claims and
+    /// validates them itself, so what these decide is only what happens when nothing nearer took the selector:
+    /// Find falls back to the result grid's find bar, and the two editor-only commands dim.
+    private static func isFindCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
+        case #selector(performFind(_:)):
+            return context.hasEditorForFind || (context.isConnected && context.canUseGridFindCommands)
+        case #selector(findNext(_:)), #selector(findPrevious(_:)):
+            return context.hasEditorForFind || context.hasActiveGridFind
+        case #selector(performFindAndReplace(_:)):
+            return context.hasEditorForFind
+        case #selector(useSelectionForFind(_:)):
+            return context.hasSelectionForFind
+        default:
+            return nil
+        }
+    }
+
     /// The commands that act on the object selected in the sidebar. They answer on the same facts
     /// the sidebar's own contextual menu reads, so a command the sidebar omits is dimmed here rather
     /// than enabled over an object it cannot act on.
@@ -336,12 +366,15 @@ extension MainSplitViewController: NSMenuItemValidation {
             canRestorePreviousValues: actions.canRestorePreviousValues,
             isQueryExecuting: actions.isQueryExecuting,
             hasQueryText: actions.hasQueryText,
+            canClearQuery: actions.canClearQuery,
+            canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,
             hasDataGridRowSelection: actions.hasDataGridRowSelection,
             hasTableSelection: actions.hasTableSelection,
             canTruncateSelectedTables: actions.canTruncateSelectedTables,
+            canDropSelectedTables: actions.canDropSelectedTables,
             canPasteRows: actions.canPasteRows,
             canCloseOtherTabs: actions.canCloseOtherTabs,
             canCloseTabsForOtherDatabases: actions.canCloseTabsForOtherDatabases,
@@ -366,6 +399,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canUndo: actions.canUndo,
             canRedo: actions.canRedo,
             hasEditorForFind: EditorEventRouter.shared.keyWindowHasEditor,
+            hasSelectionForFind: EditorEventRouter.shared.keyWindowEditorHasSelectionForFind,
             hasActiveGridFind: actions.hasActiveGridFind,
             hasImportFormats: !actions.availableImportFormats.isEmpty,
             supportsContainerSwitching: actions.supportsContainerSwitching,

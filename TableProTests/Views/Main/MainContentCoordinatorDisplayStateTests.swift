@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import Foundation
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 import Testing
 

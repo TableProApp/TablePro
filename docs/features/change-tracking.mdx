@@ -28,6 +28,7 @@ Double-click a cell, or press `Enter` on it. `Enter` commits the edit to the que
 | `ENUM` | Searchable value list |
 | `SET` (MySQL/MariaDB) | Multi-select checkboxes |
 | Array of a simple type (PostgreSQL) | Ordered list, one row per element |
+| `jsonb[]`, `json[]` (PostgreSQL) | Ordered list, the selected element in the [JSON viewer](/features/json-viewer) |
 | `JSON`, `JSONB`, `BLOB`, binary | [Cell viewers](/features/json-viewer) |
 
 <Frame caption="Type-specific cell editor">
@@ -79,7 +80,7 @@ Press `Cmd+S`, or click the toolbar checkmark. Values go out as bound parameters
 
 A table without a primary key is matched on every original column value instead, with `IS NULL` for the nulls. On MySQL, MariaDB, TiDB and OceanBase a `FLOAT`, `DOUBLE` or `JSON` column is compared through `CONCAT()`, because the text those types read back as does not compare equal to the value it came from.
 
-On an engine with transactions, the statements run inside one, so a failure rolls the whole save back and the table is left as it was. Without them, the statements that ran before the failure stand. Either way a failed save reports **Save Failed** with the server's message and keeps the queue intact, so correct the value and save again. A save that succeeds clears the queue, clears undo, and reloads the grid.
+On an engine with transactions, the statements run inside one, so a failure rolls the whole save back and the table is left as it was. Without them, the statements that ran before the failure stand. Either way a failed save reports **Save Failed** with the server's message and keeps the queue intact, so correct the value and save again. A save that succeeds clears the queue, clears undo, and reloads the grid at the same place.
 
 Each statement is held to the number of rows it was written for. On a table with no primary key, two identical rows cannot be told apart, so a statement meant for one of them matches both; the save stops there and reports what happened instead of rewriting the other row.
 

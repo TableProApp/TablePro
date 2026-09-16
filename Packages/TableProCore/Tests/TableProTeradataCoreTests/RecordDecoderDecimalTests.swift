@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTeradataCore
+import XCTest
 
 final class RecordDecoderDecimalTests: XCTestCase {
     func testDecimalByteWidthByPrecision() {

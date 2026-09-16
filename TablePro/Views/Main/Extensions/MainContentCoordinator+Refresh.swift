@@ -33,7 +33,7 @@ extension MainContentCoordinator {
 
     private func fireRefresh(hasPendingTableOps: Bool, onDiscard: @escaping () -> Void) {
         handleRefresh(hasPendingTableOps: hasPendingTableOps, onDiscard: onDiscard)
-        Task { await refreshTables() }
+        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .everything)))
     }
 
     func handleRefresh(
@@ -56,6 +56,7 @@ extension MainContentCoordinator {
               tab.tabType == .table,
               tab.display.resultsViewMode != .structure else { return }
 
+        dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
         guard changeManager.hasChanges || hasPendingTableOps else {
             reloadTableTab(at: tabIndex)
             return
@@ -65,6 +66,7 @@ extension MainContentCoordinator {
             let confirmed = await confirmDiscardChanges(action: .refresh, window: contentWindow)
             guard confirmed else { return }
             onDiscard()
+            rowEditingCoordinator.restoreRowBufferToOriginals()
             changeManager.clearChangesAndUndoHistory()
             guard let (tab, tabIndex) = tabManager.selectedTabAndIndex,
                   tab.tabType == .table else { return }
@@ -80,6 +82,6 @@ extension MainContentCoordinator {
         /// count to an estimate.
         tabManager.mutate(at: tabIndex) { $0.pagination.retireDerivedRowCount() }
         rebuildTableQuery(at: tabIndex)
-        runQuery()
+        runQuery(viewport: .keepPlace)
     }
 }

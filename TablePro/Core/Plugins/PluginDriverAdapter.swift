@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -519,11 +520,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
+    /// The resolved schema is stamped on any type that came back without one, the same backfill
+    /// `fetchRoutines` does above. A driver that leaves it nil produces types whose qualified name
+    /// is bare, which the sidebar then files under no schema at all.
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         do {
             return try await pluginDriver.fetchUserDefinedTypes(schema: resolvedSchema)
-                .map(UserDefinedTypeInfo.init)
+                .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
                 .sorted { $0.name < $1.name }
         } catch {
             Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")
@@ -549,15 +553,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
-        return DatabaseMetadata(
-            id: pluginMeta.name,
-            name: pluginMeta.name,
-            tableCount: pluginMeta.tableCount,
-            sizeBytes: pluginMeta.sizeBytes,
-            lastAccessed: nil,
-            isSystemDatabase: pluginMeta.isSystemDatabase,
-            icon: pluginMeta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill"
-        )
+        return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? {
@@ -632,12 +628,32 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let pluginResult = try await pluginDriver.fetchAllDatabaseMetadata()
-        return pluginResult.map { meta in
-            DatabaseMetadata(id: meta.name, name: meta.name, tableCount: meta.tableCount,
-                             sizeBytes: meta.sizeBytes, lastAccessed: nil,
-                             isSystemDatabase: meta.isSystemDatabase,
-                             icon: meta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill")
-        }
+        let systemNames = systemDatabaseNames
+        return pluginResult.map { Self.databaseMetadata($0, systemDatabaseNames: systemNames) }
+    }
+
+    /// The connection type's own list, added to whatever the driver reports. SQL Server and ClickHouse
+    /// never set the flag, and MySQL leaves it off for a database with no readable tables, so trusting
+    /// the flag alone listed `master` and `msdb` as user databases once the switcher's metadata landed,
+    /// while the sidebar, classifying by the same list as here, kept them apart.
+    private var systemDatabaseNames: Set<String> {
+        Set(PluginMetadataRegistry.shared.snapshot(for: connection.type)?.schema.systemDatabaseNames ?? [])
+    }
+
+    nonisolated static func databaseMetadata(
+        _ pluginMeta: PluginDatabaseMetadata,
+        systemDatabaseNames: Set<String>
+    ) -> DatabaseMetadata {
+        let isSystem = pluginMeta.isSystemDatabase || systemDatabaseNames.contains(pluginMeta.name)
+        return DatabaseMetadata(
+            id: pluginMeta.name,
+            name: pluginMeta.name,
+            tableCount: pluginMeta.tableCount,
+            sizeBytes: pluginMeta.sizeBytes,
+            lastAccessed: nil,
+            isSystemDatabase: isSystem,
+            icon: isSystem ? "gearshape.fill" : "cylinder.fill"
+        )
     }
 
     // MARK: - Query Cancellation
@@ -779,22 +795,63 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Table Operations
 
-    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String] {
+    /// Nil where the engine has no way to say it. The driver's own answer wins; the app builds the
+    /// statement only for an engine whose DDL it can actually write, per `SQLDDLFallbackPolicy`.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
         if let stmts = pluginDriver.truncateTableStatements(table: table, schema: schema, cascade: cascade) {
             return stmts
         }
+        guard allowsGeneratedDDL else { return nil }
         let name = qualifiedName(table, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return ["TRUNCATE TABLE \(name)\(cascadeSuffix)"]
     }
 
-    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String {
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         if let stmt = pluginDriver.dropObjectStatement(name: name, objectType: objectType, schema: schema, cascade: cascade) {
             return stmt
         }
+        guard allowsGeneratedDDL else { return nil }
         let qualName = qualifiedName(name, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return "DROP \(objectType) \(qualName)\(cascadeSuffix)"
+    }
+
+    private var allowsGeneratedDDL: Bool {
+        SQLDDLFallbackPolicy.allowsGeneratedDDL(for: connection.type)
+    }
+
+    /// Which of these objects this connection has a drop or truncate statement for.
+    ///
+    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
+    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
+    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
+    /// answer and the statement it leads to come from one place.
+    func tableOperationEligibility(
+        for refs: some Collection<DatabaseTreeTableRef>,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard !isReadOnly else { return .unavailable }
+        var droppable: Set<DatabaseTreeTableRef> = []
+        var truncatable: Set<DatabaseTreeTableRef> = []
+        for ref in refs {
+            if dropObjectStatement(
+                name: ref.table.name,
+                objectType: TableObjectKeyword.forDDL(ref.table.type),
+                schema: ref.qualifyingSchema,
+                cascade: false
+            ) != nil {
+                droppable.insert(ref)
+            }
+            if truncateTableStatements(
+                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
+            ) != nil {
+                truncatable.insert(ref)
+            }
+        }
+        return TableOperationEligibility.Context(
+            droppable: droppable, truncatable: truncatable, isReadOnly: false
+        )
     }
 
     func foreignKeyDisableStatements() -> [String]? {

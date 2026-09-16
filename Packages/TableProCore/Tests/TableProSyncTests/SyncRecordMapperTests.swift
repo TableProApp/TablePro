@@ -15,7 +15,7 @@ struct SyncRecordMapperTests {
             name: "Test",
             type: .postgresql,
             host: "db.example.com",
-            port: 5432,
+            port: 5_432,
             username: "admin",
             database: "app",
             isReadOnly: isReadOnly,

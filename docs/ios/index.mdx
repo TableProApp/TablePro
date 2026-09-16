@@ -1,6 +1,6 @@
 ---
 title: iPhone and iPad
-description: Browse tables, run queries, and edit rows on nine database engines from a synced connection list
+description: Browse tables, run queries, and edit rows on ten database engines from a synced connection list
 ---
 
 You need iOS 18 or later. Builds ship on their own schedule, so a feature in a Mac release note may not be on your phone yet. Your version and build are under **Settings > About**. Connections saved on a Mac come over iCloud; the rest of your Mac setup stays on the Mac.
@@ -12,12 +12,13 @@ You need iOS 18 or later. Builds ship on their own schedule, so a feature in a M
 
 ## Supported databases
 
-Every driver is compiled in, so there is no plugin system and nothing to install. The type picker offers these nine:
+Every driver is compiled in, so there is no plugin system and nothing to install. The type picker offers these ten:
 
 | Type | Notes |
 | --- | --- |
 | **MySQL** / **MariaDB** | Port 3306 by default |
 | **TiDB** | Port 4000 by default. Sequences are not listed as tables |
+| **OceanBase** | Port 2881 by default. Sign in as `user@tenant` |
 | **PostgreSQL** | Port 5432 by default |
 | **SQL Server** | TDS, including Microsoft Entra ID sign-in on a connection synced from the Mac |
 | **Oracle** | Service name or SID |
@@ -31,9 +32,24 @@ Redshift is not in the picker, but the driver is present: a Redshift connection 
 
 MongoDB, ClickHouse, Cassandra, BigQuery, Spanner, Snowflake and the rest have no iOS driver. Those connections still sync and still appear in the list, but opening one fails.
 
+## The connection list
+
+Favorites come first, then **Recent** with the five connections opened last, then your groups, nested the way the Mac nests them. The **More** menu holds **Sort By** (**Manual**, **Name**, **Database Type**, **Last Connected**), **Filter by Tag**, group and tag management, and import and export. Typing a tag's name in the search field offers it as a filter.
+
+| To | Do this |
+| --- | --- |
+| Favorite a connection | Swipe right on it, or touch and hold and choose **Add to Favorites** |
+| Rename | Touch and hold, choose **Rename**, type the name, and tap **Done** |
+| Move into a group | Touch and hold and choose **Move to Group**, or drag the row onto a group |
+| Reorder | Tap **Edit** and drag the handles, with **Sort By** on **Manual** |
+| Change several at once | Tap **Edit**, select the rows, and tap **Move**, **Favorite** or **Delete** |
+| Delete | Swipe left, or touch and hold and choose **Delete** |
+
+**Duplicate** copies the saved password, SSH secrets, client certificates and file access along with the settings. Recent and the sort order stay on the device.
+
 ## What syncs over
 
-The same CloudKit container as the Mac, with iCloud Sync on by default here and off by default there. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
+The same CloudKit container as the Mac, with iCloud Sync on by default here and off by default there. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
 
 Three things a connection depends on are per device and never sync:
 

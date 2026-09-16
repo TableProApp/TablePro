@@ -78,7 +78,7 @@ public enum TrinoLiteral {
                 seenDot = true
                 continue
             }
-            if (character == "e" || character == "E"), seenDigit, !seenExponent {
+            if character == "e" || character == "E", seenDigit, !seenExponent {
                 seenExponent = true
                 seenDigit = false
                 if let next = iterator.next() {

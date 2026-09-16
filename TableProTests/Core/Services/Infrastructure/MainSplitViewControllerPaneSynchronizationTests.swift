@@ -131,6 +131,68 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(workspace.panes.renderedKey?.pane == .content)
     }
 
+    @Test("A closed tab reopened into a connected workspace joins its tabs and is selected")
+    func reopenedTabJoinsConnectedWorkspace() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let tabManager = try #require(harness.background.sessionState?.tabManager)
+        tabManager.addTab(initialQuery: "SELECT 1")
+        let restored = QueryTab(query: "SELECT restored")
+        var adoptions = 0
+
+        harness.background.adoptRestoredTab(restored, isStillClosed: { true }, onAdopted: { adoptions += 1 })
+
+        #expect(tabManager.tabs.count == 2)
+        #expect(tabManager.selectedTabId == restored.id)
+        #expect(adoptions == 1)
+    }
+
+    @Test("A closed tab reopened before the session exists lands once, when the session is adopted")
+    func reopenedTabWaitsForTheSession() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        let restored = QueryTab(query: "SELECT restored")
+        var adoptions = 0
+        harness.background.adoptRestoredTab(restored, isStillClosed: { true }, onAdopted: { adoptions += 1 })
+        #expect(harness.background.sessionState == nil)
+        #expect(adoptions == 0)
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        harness.controller.refreshFromActiveSessions()
+
+        let tabManager = try #require(harness.background.sessionState?.tabManager)
+        #expect(tabManager.tabs.map(\.id) == [restored.id])
+        #expect(tabManager.selectedTabId == restored.id)
+        #expect(adoptions == 1)
+    }
+
+    @Test("A queued closed tab that was reopened elsewhere while it waited is not opened again")
+    func queuedReopenSkipsATabNoLongerClosed() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        var isStillClosed = true
+        var adoptions = 0
+        harness.background.adoptRestoredTab(
+            QueryTab(query: "SELECT restored"),
+            isStillClosed: { isStillClosed },
+            onAdopted: { adoptions += 1 }
+        )
+        isStillClosed = false
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+
+        let tabManager = try #require(harness.background.sessionState?.tabManager)
+        #expect(tabManager.tabs.isEmpty)
+        #expect(adoptions == 0)
+    }
+
     /// One window hosting two connections, with the second one in the background. Every case here
     /// asks what that background workspace's panes hold, which is the state the window shows the
     /// moment the user switches to it.

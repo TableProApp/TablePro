@@ -7,12 +7,12 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import Combine
 import Foundation
 import Observation
 import os
 import SwiftUI
+import TableProEditorKit
 
 // MARK: - Font Caches
 
@@ -280,7 +280,7 @@ internal final class ThemeEngine {
         self.wordWrap = wordWrap
     }
 
-    // MARK: - CodeEditSourceEditor Theme
+    // MARK: - TableProEditorKit Theme
 
     func makeEditorTheme() -> EditorTheme {
         let c = colors.editor

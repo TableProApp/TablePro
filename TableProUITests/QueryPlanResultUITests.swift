@@ -25,10 +25,12 @@ final class QueryPlanResultUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
-        let resultTab = app.buttons["result-tab"].firstMatch
+        let chooser = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
         XCTAssertTrue(
-            resultTab.waitToExist(timeout: 20),
-            "A plan must arrive as a result tab, not as a takeover of the results pane"
+            chooser.waitToExist(timeout: 20),
+            "A plan must arrive as a result set, not as a takeover of the results pane"
         )
 
         let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
@@ -48,18 +50,22 @@ final class QueryPlanResultUITests: UITestCase {
         let detail = app.descendants(matching: .any).matching(identifier: "query-plan-detail-pane").firstMatch
         XCTAssertTrue(detail.waitToExist(timeout: 10), "Selecting a step must fill the detail pane")
 
-        resultTab.rightClick()
+        /// A plan keeps the status bar so it stays choosable and pinnable. It gives up the row
+        /// readout there and nothing else, which is what makes the bar under a plan a footer rather
+        /// than a claim about rows the plan does not have.
+        XCTAssertTrue(waitUntilHittable(chooser, timeout: 10))
+        chooser.click()
 
-        /// A contextual menu opens inside the window; the menu-bar menus hang off `MenuBar`, so
-        /// scoping to the window isolates the one that just opened. Matching on the menu's
-        /// accessibility identifier instead worked here but not on the CI runner, whose macOS
-        /// build exposes the menu without it.
-        let contextMenu = app.windows.firstMatch.menus.firstMatch
+        /// The pull-down opens inside the window; the menu-bar menus hang off `MenuBar`, so scoping
+        /// to the window isolates the one that just opened. Matching on the menu's accessibility
+        /// identifier instead worked here but not on the CI runner, whose macOS build exposes a
+        /// just-opened menu without one.
+        let chooserMenu = app.windows.firstMatch.menus.firstMatch
         XCTAssertTrue(
-            contextMenu.menuItems["Pin Result"].waitToExist(timeout: 5),
+            chooserMenu.menuItems["Pin Result"].waitToExist(timeout: 5),
             "A plan is a result set, so it must offer Pin Result"
         )
-        contextMenu.menuItems["Pin Result"].click()
+        chooserMenu.menuItems["Pin Result"].click()
 
         let menuBar = app.menuBars.firstMatch
         menuBar.menuBarItems["View"].click()
@@ -170,6 +176,59 @@ final class QueryPlanResultUITests: UITestCase {
         // this Mac does, so reading the column set through XCUITest tested the tree, not the rule.
     }
 
+
+    func testEachPlanKeepsItsOwnZoom() throws {
+        let app = try launchWithSampleDatabase()
+        runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track JOIN Album ON Track.AlbumId = Album.AlbumId;", in: app)
+
+        let window = app.windows.firstMatch
+        let modePicker = window.radioGroups["query-plan-mode-picker"].firstMatch
+        XCTAssertTrue(modePicker.waitToExist(timeout: 20), "A parsed plan must offer its view modes")
+        let zoomLevel = window.buttons["Reset Zoom"].firstMatch
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Diagram mode must show the zoom level")
+        zoomLevel.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "100%" })
+        window.buttons["Zoom Out"].firstMatch.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" })
+
+        modePicker.radioButtons["Tree"].click()
+        XCTAssertTrue(window.outlines["query-plan-outline"].firstMatch.waitToExist(timeout: 10))
+        modePicker.radioButtons["Diagram"].click()
+
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Diagram mode must come back with its zoom level")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" },
+            "Leaving Diagram mode and coming back must keep the zoom the plan was left on"
+        )
+
+        app.typeKey("t", modifierFlags: .command)
+        XCTAssertTrue(editorTextView(in: app).waitToExist(timeout: 10), "A new query tab must open")
+        app.typeKey("[", modifierFlags: [.command, .shift])
+        XCTAssertTrue(zoomLevel.waitToExist(timeout: 10), "Show Previous Tab must return to the plan")
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { (zoomLevel.value as? String) == "75%" },
+            "Returning to the editor tab must keep the plan's zoom"
+        )
+
+        editorTextView(in: app).click()
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) { (zoomLevel.value as? String) == "100%" },
+            "Running the statement again makes a new plan, which must not inherit the old plan's zoom"
+        )
+
+        let compareMode = modePicker.radioButtons["Compare"]
+        XCTAssertTrue(waitUntilHittable(compareMode, timeout: 10), "A re-run plan must offer Compare")
+        compareMode.click()
+        XCTAssertTrue(waitForPredicate(timeout: 5) { (compareMode.value as? Int) == 1 })
+        editorTextView(in: app).click()
+        app.typeKey(.return, modifierFlags: [.command, .shift])
+        XCTAssertFalse(
+            waitForPredicate(timeout: 5) { (modePicker.radioButtons["Diagram"].value as? Int) == 1 },
+            "Compare follows a statement that is run again, so a re-run must not drop the pane back to Diagram"
+        )
+        XCTAssertEqual(compareMode.value as? Int, 1)
+    }
 
     // MARK: - Helpers
 

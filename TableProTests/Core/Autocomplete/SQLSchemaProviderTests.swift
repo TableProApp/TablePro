@@ -108,12 +108,31 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
         QueryResult(columns: [], columnTypes: [], rows: [], rowsAffected: 0, executionTime: 0, error: nil)
     }
 
+    /// Holds the next `fetchTables()` after it has read `tablesToReturn`, the way a real fetch has
+    /// already read the server when it stalls on the wire.
+    var pausesNextFetchTables = false
+    var onFetchTablesPaused: (@Sendable () -> Void)?
+    private var fetchTablesGate: CheckedContinuation<Void, Never>?
+
+    func resumeFetchTables() {
+        fetchTablesGate?.resume()
+        fetchTablesGate = nil
+    }
+
     func fetchTables() async throws -> [TableInfo] {
         fetchTablesCallCount += 1
         if let fetchTablesError {
             throw fetchTablesError
         }
-        return tablesToReturn
+        let snapshot = tablesToReturn
+        if pausesNextFetchTables {
+            pausesNextFetchTables = false
+            await withCheckedContinuation { continuation in
+                fetchTablesGate = continuation
+                onFetchTablesPaused?()
+            }
+        }
+        return snapshot
     }
 
     func fetchTables(schema: String?) async throws -> [TableInfo] {
@@ -724,6 +743,52 @@ struct SQLSchemaProviderTests {
         #expect(sales.first?.name == "sales_col")
         #expect(hr.first?.name == "hr_col")
         #expect(recorder.calls == ["sales.orders", "hr.orders"])
+    }
+
+    /// PostgreSQL tags every table with its schema, so the AI context asks for `public.orders`.
+    /// The preload filed the same columns under `orders`, and the lookup missed it.
+    @Test("the eager preload answers a lookup that names the current schema")
+    func eagerPreloadAnswersLookupNamingCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.allColumnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "eager_column")]]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "public")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+
+        let columns = await provider.getColumns(for: "orders", schema: "public")
+
+        #expect(driver.fetchColumnsCallCount == 0)
+        #expect(columns.first?.name == "eager_column")
+    }
+
+    @Test("allowed values are found for a table outside the current schema")
+    func allowedValuesForTableOutsideCurrentSchema() async {
+        let driver = MockDatabaseDriver()
+        driver.currentSchema = "public"
+        driver.columnsToReturn = [
+            "orders": [
+                ColumnInfo(
+                    name: "status",
+                    dataType: "order_status",
+                    isNullable: false,
+                    isPrimaryKey: false,
+                    allowedValues: ["open", "closed"]
+                )
+            ]
+        ]
+        let provider = SQLSchemaProvider()
+        await provider.resetForDatabase(
+            "db", tables: [TestFixtures.makeTableInfo(name: "orders", schema: "hr")], driver: driver
+        )
+        await provider.waitForEagerColumnLoad()
+        _ = await provider.getColumns(for: "orders", schema: "hr")
+
+        let values = await provider.allowedValues(forColumn: "status", in: [])
+
+        #expect(values == ["open", "closed"])
     }
 }
 

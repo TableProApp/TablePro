@@ -264,10 +264,22 @@ final class QueryTabManager {
     /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
     var onTabRetargeted: ((UUID) -> Void)?
 
+    var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
+
     private func notifyTableOpened(
         tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
     ) {
         onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
+    }
+
+    /// A table tab opened before its schema was known was reported without one, so whoever recorded
+    /// that open learns the schema when the tab does. Otherwise the record keeps naming the table in
+    /// whichever schema is browsed when it is next used.
+    func adoptResolvedSchema(_ schemaName: String, at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].tableContext.schemaName = schemaName
+        guard let tableName = tabs[index].tableContext.tableName else { return }
+        onTableSchemaResolved?(tableName, tabs[index].tableContext.databaseName, schemaName)
     }
 
     /// The tab already showing this table, preferring the selected one.
@@ -500,6 +512,7 @@ final class QueryTabManager {
         tab.pendingRestoredSort = nil
         tab.restoredPage = nil
         tab.restoredPageSize = nil
+        tab.restoredRowAnchor = nil
         tab.tableContext.databaseName = databaseName
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview

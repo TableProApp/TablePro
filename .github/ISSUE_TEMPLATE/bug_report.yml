@@ -53,9 +53,10 @@ body:
     id: version
     attributes:
       label: TablePro version
-      placeholder: "0.16.0"
+      description: TablePro > About TablePro. Updates install in the background, so this is often not the newest.
+      placeholder: "0.74.0"
     validations:
-      required: false
+      required: true
 
   - type: input
     id: macos

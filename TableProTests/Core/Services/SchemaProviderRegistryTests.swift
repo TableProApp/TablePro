@@ -191,7 +191,7 @@ struct SchemaProviderRegistryTests {
 
     /// `SchemaRefreshService` owns the browse scope and fills it with the union of every expanded
     /// schema. Repopulating it here too gave one provider two writers and two different answers.
-    @Test("refresh leaves the browse scope to its owner")
+    @Test("a catalog change leaves the browse scope to its owner")
     func refreshSkipsTheBrowseScope() async {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
@@ -203,11 +203,31 @@ struct SchemaProviderRegistryTests {
         _ = registry.getOrCreate(for: browse)
         _ = registry.getOrCreate(for: tab)
 
-        registry.refresh(request: DataRefreshRequest(connectionId: connectionId))
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        await registry.refreshCatalog(for: CatalogChange(connectionId: connectionId, kinds: .tables))
 
+        #expect(!metadata.requestedScopes.isEmpty)
         #expect(metadata.requestedScopes.allSatisfy { $0 == tab })
+    }
+
+    @Test("a catalog change reaches only providers in the database it names")
+    func catalogChangeReachesItsDatabaseOnly() async {
+        let driver = MockDatabaseDriver()
+        driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "orders")]
+        let connectionId = UUID()
+        let browse = scope(connectionId, database: "shop")
+        let warehouse = scope(connectionId, database: "warehouse")
+        let archive = scope(connectionId, database: "archive")
+        let metadata = CountingScopedMetadataProvider(driver: driver, browseScope: browse)
+        let registry = SchemaProviderRegistry(metadataDriverProvider: metadata)
+        _ = registry.getOrCreate(for: warehouse)
+        _ = registry.getOrCreate(for: archive)
+
+        await registry.refreshCatalog(
+            for: CatalogChange(connectionId: connectionId, database: "warehouse", kinds: .tables)
+        )
+
+        #expect(metadata.requestedScopes.contains(warehouse))
+        #expect(!metadata.requestedScopes.contains(archive))
     }
 
     /// A tab can sit on the browse scope, whose provider `SchemaRefreshService` fills with the

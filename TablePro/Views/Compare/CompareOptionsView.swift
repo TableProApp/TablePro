@@ -27,14 +27,16 @@ internal struct CompareOptionsView: View {
             savedComparisonsSection
         }
         .formStyle(.grouped)
+        .disabled(!session.canChangeSetup)
         .onAppear {
             savedProfiles = session.savedProfiles
         }
         .onChange(of: session.includedKinds) {
-            session.resetComparison()
+            guard session.mode == .structure else { return }
+            session.resetComparison(keepingTableScopes: true)
         }
         .onChange(of: session.structureOptions) {
-            session.resetComparison()
+            session.resetComparison(keepingTableScopes: true)
         }
         .onChange(of: session.dataOptions) { previous, current in
             applyDataOptionChange(from: previous, to: current)
@@ -47,8 +49,6 @@ internal struct CompareOptionsView: View {
     private func applyDataOptionChange(from previous: DataCompareOptions, to current: DataCompareOptions) {
         let comparisonChanged = previous.floatTolerance != current.floatTolerance
             || previous.timestampFractionalDigits != current.timestampFractionalDigits
-            || previous.excludedFromComparison != current.excludedFromComparison
-            || previous.keyColumns != current.keyColumns
         if comparisonChanged {
             session.clearDataSummaries()
         } else {
@@ -72,8 +72,13 @@ internal struct CompareOptionsView: View {
         } header: {
             Text("Objects to Compare")
         } footer: {
-            Text("Tables always take part.")
+            if session.mode == .data {
+                Text("A data comparison reads tables only.")
+            } else {
+                Text("Tables always take part.")
+            }
         }
+        .disabled(session.mode == .data)
     }
 
     private func kindBinding(_ kind: CompareObjectKind) -> Binding<Bool> {

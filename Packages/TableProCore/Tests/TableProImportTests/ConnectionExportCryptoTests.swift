@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProImport
+import XCTest
 
 final class ConnectionExportCryptoTests: XCTestCase {
     func testEncryptDecryptRoundTripRecoversOriginal() throws {

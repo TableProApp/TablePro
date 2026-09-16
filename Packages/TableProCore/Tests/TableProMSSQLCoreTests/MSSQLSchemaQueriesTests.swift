@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProMSSQLCore
+import XCTest
 
 final class MSSQLSchemaQueriesTests: XCTestCase {
     func testEscapeHandlesSingleQuote() {
@@ -14,6 +14,31 @@ final class MSSQLSchemaQueriesTests: XCTestCase {
     func testBracketedComposesIdentifier() {
         XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "dbo", table: "Users"), "[dbo].[Users]")
         XCTAssertEqual(MSSQLSchemaQueries.bracketed(schema: "weird]", table: "x"), "[weird]]].[x]")
+    }
+
+    /// Unqualified, both views describe the database the connection is using, so every name got that database's
+    /// numbers. Measured on SQL Server 2022 connected to AppDb: msdb reported 16 MB and 2 tables instead of 145.
+    func testDatabaseMetadataReadsTheNamedDatabasesCatalog() {
+        let sql = MSSQLSchemaQueries.databaseMetadata(database: "msdb")
+
+        XCTAssertTrue(sql.contains("FROM [msdb].sys.database_files"))
+        XCTAssertTrue(sql.contains("FROM [msdb].sys.tables"))
+        XCTAssertFalse(sql.contains(" sys.database_files"))
+        XCTAssertFalse(sql.contains(" sys.tables"))
+    }
+
+    func testDatabaseMetadataEscapesAClosingBracketInTheName() {
+        let sql = MSSQLSchemaQueries.databaseMetadata(database: "we]ird")
+
+        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.database_files"))
+        XCTAssertTrue(sql.contains("FROM [we]]ird].sys.tables"))
+    }
+
+    /// The session runs with ANSI_WARNINGS off, so an int sum over a 2 GB database overflowed to NULL.
+    func testSizesAreSummedAsBigintBytes() {
+        XCTAssertTrue(MSSQLSchemaQueries.databaseMetadata(database: "AppDb").contains("SUM(CAST(size AS bigint)) * 8192"))
+        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("SUM(CAST(mf.size AS bigint)) * 8192"))
+        XCTAssertTrue(MSSQLSchemaQueries.allDatabaseSizes.contains("LEFT JOIN sys.master_files"))
     }
 
     func testTablesQueryEscapesSchema() {

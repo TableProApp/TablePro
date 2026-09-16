@@ -467,6 +467,7 @@ struct MainWindowToolbarValidationTests {
             toolbarState: ConnectionToolbarState()
         )
     }
+
 }
 
 @MainActor

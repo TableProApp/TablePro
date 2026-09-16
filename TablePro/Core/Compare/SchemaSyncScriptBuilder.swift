@@ -186,6 +186,11 @@ internal enum CompareSyncError: LocalizedError {
     case incompatibleEngines(String)
     case noComparisonKey(String)
     case streamOutOfOrder(String)
+    case duplicateKey(String)
+    case invalidFilter(String)
+    case readFailed(String)
+    case rowsChangedSinceComparison(String)
+    case objectsChangedSinceComparison(String)
 
     internal var errorDescription: String? {
         switch self {
@@ -193,6 +198,11 @@ internal enum CompareSyncError: LocalizedError {
         case .incompatibleEngines(let message): return message
         case .noComparisonKey(let message): return message
         case .streamOutOfOrder(let message): return message
+        case .duplicateKey(let message): return message
+        case .invalidFilter(let message): return message
+        case .readFailed(let message): return message
+        case .rowsChangedSinceComparison(let message): return message
+        case .objectsChangedSinceComparison(let message): return message
         }
     }
 }

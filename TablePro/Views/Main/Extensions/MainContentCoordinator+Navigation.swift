@@ -70,7 +70,9 @@ extension MainContentCoordinator {
             currentDatabase = database?.nilIfEmpty ?? browseDatabaseName
         }
 
-        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
+        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(
+            schema, inDatabase: currentDatabase, for: connectionId
+        )
         let createAsPreview = !forceNonPreview && !forceNewTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
@@ -116,8 +118,8 @@ extension MainContentCoordinator {
         /// database (`selectRedisDatabaseAndQuery`), which a restore does not do, so a Back would
         /// put the table back while leaving the connection on another database index.
         if navigationModel == .inPlace {
-            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
-                saveLastFilters(for: oldTableName)
+            if let oldTab = tabManager.selectedTab {
+                saveLastFilters(of: oldTab)
             }
             if let tabId = tabManager.selectedTabId {
                 let token = TableLoadTracer.shared.begin(
@@ -300,8 +302,8 @@ extension MainContentCoordinator {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
         let replacesPreviewTab = tabManager.selectedTab?.isPreview == true
         let departing = captureNavigationEntry()
-        if let previousTableName {
-            saveLastFilters(for: previousTableName)
+        if let departingTab = tabManager.selectedTab {
+            saveLastFilters(of: departingTab)
         }
 
         var token: TableLoadTraceToken?
@@ -437,14 +439,14 @@ extension MainContentCoordinator {
                 initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
                 databaseName: browseDatabaseName
             )
-            runQuery()
+            runQuery(viewport: .firstRow)
             return nil
         } else if editorLang == .bash {
             tabManager.addTab(
                 initialQuery: "SCAN 0 MATCH * COUNT 100",
                 databaseName: browseDatabaseName
             )
-            runQuery()
+            runQuery(viewport: .firstRow)
             return nil
         }
 
@@ -622,6 +624,14 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
             syncSidebarObjectSelection()
         } catch {
+            /// A switch that waited for the driver is dropped when the connection was closed and
+            /// opened again before its turn. The toolbar now belongs to that new session, so it is
+            /// read back from it rather than restored to what the old one showed, and nothing failed
+            /// that the user needs telling about.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+                return
+            }
             toolbarState.currentSchema = previousSchema
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
@@ -656,23 +666,13 @@ extension MainContentCoordinator {
         for target in request.targets {
             do {
                 try await dropContainer(target)
+                services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
                     "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
-        }
-
-        await DatabaseTreeMetadataService.shared.refreshDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
-            await DatabaseTreeMetadataService.shared.refreshSchemas(
-                connectionId: connectionId,
-                database: database
-            )
         }
 
         guard !failures.isEmpty else { return }
@@ -724,24 +724,18 @@ extension MainContentCoordinator {
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
-                if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {
-                    try await adapter.switchDatabase(to: String(dbIndex))
-                }
+                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
-                if !Task.isCancelled {
-                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
-                }
+                guard !Task.isCancelled else { return }
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
                 if let tabId = tabManager.selectedTab?.id {
                     declineTableLoad(for: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
-            DatabaseManager.shared.updateSession(connId) { session in
-                session.browseDatabase = database
-            }
             toolbarState.currentDatabase = database
-            executeTableTabQueryDirectly()
+            executeTableTabQueryDirectly(viewport: .firstRow)
 
             let separator = connection.additionalFields["redisSeparator"] ?? ":"
             if sidebarViewModel?.redisKeyTreeViewModel == nil {
@@ -801,6 +795,6 @@ extension MainContentCoordinator {
             query = "GET \"\(escapedKey)\""
         }
         tabManager.addTab(initialQuery: query, title: keyName)
-        runQuery()
+        runQuery(viewport: .firstRow)
     }
 }

@@ -285,6 +285,9 @@ final class AppSettingsManager {
         await queryHistoryManager.applySettingsChange()
     }
 
+    /// The update preferences belong to Sparkle rather than to the structs reassigned above, so
+    /// they are cleared here and not by the caller: the alert promises every section, and a second
+    /// reset entry point would otherwise skip them silently.
     func resetToDefaults() {
         general = .default
         appearance = .default
@@ -297,5 +300,6 @@ final class AppSettingsManager {
         sync = .default
         mcp = .default
         storage.resetToDefaults()
+        SoftwareUpdater.shared.resetUpdatePreferences()
     }
 }

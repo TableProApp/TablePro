@@ -173,6 +173,9 @@ final class ConnectionFormCoordinator {
         )
         ssh.loadProfiles()
         ssh.loadSSHConfig()
+        /// A new connection has no stored record to load from, and its picker still has to offer
+        /// every profile.
+        auth.loadCredentialProfiles()
         if let id = connectionId,
            let existing = storage.loadConnections().first(where: { $0.id == id })
         {
@@ -286,7 +289,7 @@ final class ConnectionFormCoordinator {
             host: resolvedHost,
             port: resolvedPort,
             database: network.database,
-            username: auth.resolvedUsername,
+            username: auth.selectedCredentialProfile?.username ?? auth.resolvedUsername,
             type: network.type,
             sshConfig: ssh.state.buildSSHConfig(),
             sslConfig: ssl.buildConfig(),
@@ -295,6 +298,7 @@ final class ConnectionFormCoordinator {
             groupId: customization.groupId,
             sshProfileId: ssh.state.enabled ? ssh.state.profileId : nil,
             sshTunnelMode: ssh.state.buildTunnelMode(),
+            credentialMode: auth.credentialMode,
             cloudflareTunnelMode: cloudflareTunnel.state.buildTunnelMode(),
             cloudSQLProxyMode: cloudSQLProxy.state.buildTunnelMode(),
             socksProxyMode: socksProxy.state.buildTunnelMode(),
@@ -357,7 +361,7 @@ final class ConnectionFormCoordinator {
         guard let original = originalConnection, original.id == id else {
             return DatabaseConnection(id: id, name: "")
         }
-        return original
+        return storage.loadConnection(id: id) ?? original
     }
 
     private func saveConnection(connect: Bool) {
@@ -375,10 +379,27 @@ final class ConnectionFormCoordinator {
             edits.additionalFields.removeValue(forKey: field.id)
         }
 
-        let connectionToSave = edits.applied(to: baseConnection(id: finalId))
+        var connectionToSave = edits.applied(to: baseConnection(id: finalId))
 
-        if auth.effectivePromptForPassword {
-            storage.deletePassword(for: connectionToSave.id)
+        /// Removing a secret cannot be undone, so a clear waits until the connection record it
+        /// belongs to is on disk. Running it first and then failing the write leaves the old
+        /// connection in place with nothing left to authenticate it.
+        var clearedSecrets: [() -> Void] = []
+
+        /// A linked connection holds no secret of its own. That is the whole point: the password
+        /// exists once, under the profile, so rotating it is one edit rather than one per
+        /// connection. Any secret the connection had before the link goes with it, or an encrypted
+        /// export still carries it and a duplicate still copies it.
+        if auth.usesCredentialProfile {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
+            /// The secure-field loop above wrote the form's values back under the connection id.
+            /// Anything the profile owns has to go with the password, or the connection keeps a
+            /// second stale copy that a duplicate carries and the driver can fall back to.
+            for fieldId in auth.selectedCredentialProfile?.secureFieldIds ?? [] {
+                clearedSecrets.append { self.storage.deletePluginSecureField(fieldId: fieldId, for: finalId) }
+            }
+        } else if auth.effectivePromptForPassword || auth.clearsStoredPassword {
+            clearedSecrets.append { self.storage.deletePassword(for: finalId) }
         } else if !auth.password.isEmpty {
             storage.savePassword(auth.password, for: connectionToSave.id)
         }
@@ -388,9 +409,13 @@ final class ConnectionFormCoordinator {
                 && !ssh.state.password.isEmpty
             {
                 storage.saveSSHPassword(ssh.state.password, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredPassword {
+                clearedSecrets.append { self.storage.deleteSSHPassword(for: finalId) }
             }
             if ssh.state.authMethod == .privateKey && !ssh.state.keyPassphrase.isEmpty {
                 storage.saveKeyPassphrase(ssh.state.keyPassphrase, for: connectionToSave.id)
+            } else if ssh.state.clearsStoredKeyPassphrase {
+                clearedSecrets.append { self.storage.deleteKeyPassphrase(for: finalId) }
             }
             if ssh.state.totpMode == .autoGenerate && !ssh.state.totpSecret.isEmpty {
                 storage.saveTOTPSecret(ssh.state.totpSecret, for: connectionToSave.id)
@@ -415,11 +440,16 @@ final class ConnectionFormCoordinator {
 
         var savedConnections = storage.loadConnections()
         if isNew {
+            connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                in: savedConnections,
+                groupId: connectionToSave.groupId
+            )
             savedConnections.append(connectionToSave)
             guard storage.saveConnections(savedConnections) else {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -433,11 +463,18 @@ final class ConnectionFormCoordinator {
                 saveError = String(localized: "This connection was deleted on another device or window. Your changes were not saved.")
                 return
             }
+            if savedConnections[index].groupId != connectionToSave.groupId {
+                connectionToSave.sortOrder = ConnectionStorage.nextSortOrder(
+                    in: savedConnections,
+                    groupId: connectionToSave.groupId
+                )
+            }
             savedConnections[index] = connectionToSave
             guard storage.saveConnections(savedConnections) else {
                 saveError = String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
                 return
             }
+            clearedSecrets.forEach { $0() }
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -509,11 +546,18 @@ final class ConnectionFormCoordinator {
         let window = NSApp.keyWindow
 
         var testConn = buildEdits().applied(to: DatabaseConnection(id: UUID(), name: ""))
-        testConn.passwordSource = auth.password.isEmpty ? originalConnection?.passwordSource : nil
+        /// `credentialMode` rides along from the edits, so the resolver finds the linked profile
+        /// under its own id rather than the throwaway connection's. The connection's own password
+        /// source is only resurrected when nothing else supplies a password.
+        testConn.passwordSource = auth.password.isEmpty && !auth.usesCredentialProfile
+            ? originalConnection?.passwordSource
+            : nil
         temporaryTestIds.insert(testConn.id)
 
         let password = auth.password
-        let promptForPassword = auth.effectivePromptForPassword
+        /// A linked profile owns the decision, so a profile set to ask every time asks here
+        /// too instead of testing with an empty password.
+        let promptForPassword = ConnectionCredentialResolver.promptsForPassword(testConn)
         let connectionType = network.type
         let displayName = network.name.isEmpty ? network.host : network.name
         let sshState = ssh.state

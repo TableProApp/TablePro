@@ -174,4 +174,58 @@ struct TableViewCoordinatorRowIdentityTests {
         #expect(!manager.isRowDeleted(.existing(3)))
         #expect(manager.isRowDeleted(.existing(1)))
     }
+
+    /// A detached editor outlives a filter change, and the display row it was opened from then
+    /// names a different record.
+    @Test("A commit by row identity writes the record the editor was opened for")
+    func identityCommitWritesTheOpenedRecord() {
+        let manager = makeManager()
+        let (coordinator, store) = makeCoordinator(manager: manager)
+        let openedRowID = coordinator.displayRow(at: 1)?.id
+
+        filterToInactive(coordinator)
+        coordinator.commitCellEdit(rowID: openedRowID, fallbackDisplayRow: 1, columnIndex: 1, newValue: "archived")
+
+        #expect(openedRowID == .existing(1))
+        #expect(manager.isCellModified(rowID: .existing(1), columnIndex: 1))
+        #expect(!manager.isCellModified(rowID: .existing(3), columnIndex: 1))
+        #expect(store.tableRows.rows[1].values[1] == .text("archived"))
+        #expect(store.tableRows.rows[3].values[1] == .text("inactive"))
+    }
+
+    @Test("A commit by row identity still writes a record the filter is hiding")
+    func identityCommitWritesAHiddenRecord() {
+        let manager = makeManager()
+        let (coordinator, store) = makeCoordinator(manager: manager)
+        let openedRowID = coordinator.displayRow(at: 0)?.id
+
+        filterToInactive(coordinator)
+        coordinator.commitCellEdit(rowID: openedRowID, fallbackDisplayRow: 0, columnIndex: 1, newValue: "archived")
+
+        #expect(openedRowID == .existing(0))
+        #expect(manager.isCellModified(rowID: .existing(0), columnIndex: 1))
+        #expect(store.tableRows.rows[0].values[1] == .text("archived"))
+    }
+
+    @Test("A grid with no row identity to offer falls back to the display row")
+    func identityCommitFallsBackToTheDisplayRow() {
+        let manager = makeManager()
+        let (coordinator, store) = makeCoordinator(manager: manager)
+
+        coordinator.commitCellEdit(rowID: nil, fallbackDisplayRow: 2, columnIndex: 1, newValue: "archived")
+
+        #expect(manager.isCellModified(rowID: .existing(2), columnIndex: 1))
+        #expect(store.tableRows.rows[2].values[1] == .text("archived"))
+    }
+
+    @Test("A commit naming a record the result no longer holds writes nothing")
+    func identityCommitForAMissingRecordWritesNothing() {
+        let manager = makeManager()
+        let (coordinator, store) = makeCoordinator(manager: manager)
+
+        coordinator.commitCellEdit(rowID: .existing(99), columnIndex: 1, newValue: "archived")
+
+        #expect(!manager.hasChanges)
+        #expect(store.tableRows.rows[1].values[1] == .text("inactive"))
+    }
 }

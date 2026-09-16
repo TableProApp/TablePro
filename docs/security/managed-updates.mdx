@@ -1,0 +1,58 @@
+---
+title: Managed updates
+description: "Pinning update behavior across a fleet with a configuration profile"
+---
+
+TablePro reads its update preferences from the `com.TablePro` domain before falling back to the values inside the app. A managed preference written by MDM therefore wins over anything a person picks in **Settings > General**. The switch is not dimmed: it takes the click, and then reads back at the pinned value.
+
+Three keys decide the behavior.
+
+| Key | Type | Meaning | Shipped default |
+| --- | --- | --- | --- |
+| `SUEnableAutomaticChecks` | Boolean | Whether the app checks for updates at all. `false` leaves **Check for Updates…** as the only route. | `true` |
+| `SUAutomaticallyUpdate` | Boolean | Whether a new version downloads and installs on quit without being accepted first. | `true` |
+| `SUScheduledCheckInterval` | Integer | Seconds between checks. `86400` is daily, `604800` weekly. Sparkle clamps anything under one hour. | `86400` |
+
+Pinning `SUAutomaticallyUpdate` on its own does nothing while `SUEnableAutomaticChecks` is `false`. Sparkle derives the install setting from the check setting, so the install never runs and the switch stays dimmed.
+
+A profile that turns off background updating entirely:
+
+```xml
+<key>SUEnableAutomaticChecks</key>
+<false/>
+<key>SUAutomaticallyUpdate</key>
+<false/>
+```
+
+One that keeps updates flowing but checks weekly:
+
+```xml
+<key>SUEnableAutomaticChecks</key>
+<true/>
+<key>SUAutomaticallyUpdate</key>
+<true/>
+<key>SUScheduledCheckInterval</key>
+<integer>604800</integer>
+```
+
+Deploy either as a `com.TablePro` payload through whichever MDM the fleet runs.
+
+<Warning>
+Pinning `SUEnableAutomaticChecks` to `false` means security fixes never arrive on their own. Pair it with whatever process pushes the new build instead.
+</Warning>
+
+## What this does not change
+
+**Check for Updates…** still works and still reaches the feed. It is a person asking, not a background check, so no key here suppresses it.
+
+Signature checking is not configurable. Every build is verified against the EdDSA public key inside the app before anything installs, and there is no key that turns that off. [Privacy](/security/privacy#update-checks) covers what an update check sends.
+
+## Auditing what a Mac is set to
+
+```bash
+defaults read com.TablePro SUEnableAutomaticChecks
+defaults read com.TablePro SUAutomaticallyUpdate
+defaults read com.TablePro SUScheduledCheckInterval
+```
+
+A key that reads `does not exist` is unset, and the shipped default in the table above applies.

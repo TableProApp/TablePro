@@ -63,7 +63,7 @@ struct NetworkPaneView: View {
             EmptyView()
         case .ssh:
             SSHTransportSections(coordinator: coordinator)
-        case .remoteFile:
+        case .remoteFile, .remoteDatabaseSession:
             RemoteFileTransportSections(coordinator: coordinator)
         case .cloudflare:
             CloudflareTransportSections(coordinator: coordinator)

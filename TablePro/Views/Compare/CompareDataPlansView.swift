@@ -79,6 +79,14 @@ internal struct CompareDataPlansView: View {
                 keyCell(row)
             }
 
+            TableColumn("Scope") { row in
+                if let plan = row.plan {
+                    Text(Self.scopeDescription(plan.scope))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
             TableColumn("Insert") { row in
                 countCell(row.insertCount, kind: .insert)
             }
@@ -209,7 +217,7 @@ internal struct CompareDataPlansView: View {
             Toggle(String(localized: "Include this table in the comparison"), isOn: enabledBinding(plan))
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-                .disabled(!plan.isComparable)
+                .disabled(!plan.isComparable || !session.canChangeSetup)
                 .help(plan.unavailableReason ?? String(localized: "Include this table in the comparison"))
                 .accessibilityIdentifier("compare.plans.include.\(plan.id)")
         }
@@ -224,7 +232,7 @@ internal struct CompareDataPlansView: View {
 
     @ViewBuilder
     private func planKeyCell(_ plan: DataComparePlan) -> some View {
-        if let reason = plan.unavailableReason {
+        if let reason = plan.unavailableReason ?? plan.comparisonFailure {
             Label {
                 Text(reason)
                     .lineLimit(1)
@@ -256,6 +264,19 @@ internal struct CompareDataPlansView: View {
         guard value > 0 else { return .secondary }
         guard !differentiateWithoutColor else { return .primary }
         return CompareStatusStyle.tint(for: kind)
+    }
+
+    static func scopeDescription(_ scope: DataTableScope) -> String {
+        switch (scope.hasFilter, scope.rowLimit) {
+        case (false, nil):
+            return String(localized: "All Rows")
+        case (true, nil):
+            return String(localized: "Filtered")
+        case (false, let limit?):
+            return String(format: String(localized: "First %@"), limit.formatted())
+        case (true, let limit?):
+            return String(format: String(localized: "Filtered, first %@"), limit.formatted())
+        }
     }
 
     // MARK: - Inclusion

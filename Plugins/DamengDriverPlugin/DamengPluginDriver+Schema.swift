@@ -270,7 +270,7 @@ extension DamengPluginDriver {
         return PluginDatabaseMetadata(
             name: database,
             tableCount: result.rows.first?.first?.asText.flatMap(Int.init),
-            isSystemDatabase: DamengPlugin.systemSchemaNames.contains(database.uppercased())
+            isSystemDatabase: DamengSystemSchemas.listed.contains(database)
         )
     }
 

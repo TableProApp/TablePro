@@ -133,6 +133,7 @@ struct SidebarMenuBuilderTests {
         let fromContext = SidebarViewOptionsMenu.sections(
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
+            showSystemContainers: settings.showSystemContainers,
             rowSize: settings.sidebarRowSize
         )
 

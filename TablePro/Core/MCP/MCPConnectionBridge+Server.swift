@@ -390,6 +390,9 @@ extension MCPConnectionBridge {
                 )
             }
         }
+        if action == "commit" || action == "rollback" {
+            CatalogChangeService.post(.transactionEnded(connectionId: scope.connectionId))
+        }
         return .object(["status": .string(action), "connection_id": .string(scope.connectionId.uuidString)])
     }
 
@@ -510,6 +513,7 @@ extension MCPConnectionBridge {
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
         }
+        CatalogChangeService.post(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
         return .object(["status": .string("created"), "database": .string(name)])
     }
 
@@ -518,6 +522,7 @@ extension MCPConnectionBridge {
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.dropDatabase(name: name)
         }
+        CatalogChangeService.post(.containerDropped(.database(name), connectionId: connectionId))
         return .object(["status": .string("dropped"), "database": .string(name)])
     }
 
@@ -526,6 +531,7 @@ extension MCPConnectionBridge {
         try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
             try await driver.dropSchema(name: name)
         }
+        CatalogChangeService.post(.containerDropped(.schema(database: nil, schema: name), connectionId: connectionId))
         return .object(["status": .string("dropped"), "schema": .string(name)])
     }
 

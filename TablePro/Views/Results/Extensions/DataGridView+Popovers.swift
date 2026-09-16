@@ -138,6 +138,11 @@ extension TableViewCoordinator {
 
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
 
+        /// The editor is bound to the record, not to the position it was opened from: a sort, a
+        /// value filter or a page change moves another record under that position, and the detached
+        /// window outlives all three.
+        let rowID = displayRow(at: row)?.id
+
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
         dismissActiveCellEditorPopover()
         activeCellEditorPopover = PopoverPresenter.show(
@@ -149,22 +154,33 @@ extension TableViewCoordinator {
                 initialValue: currentValue,
                 columnName: columnName,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                    self?.commitCellEdit(rowID: rowID, fallbackDisplayRow: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss,
                 onPopOut: { currentText in
                     dismiss()
+                    self?.dismissPoppedOutCellEditor()
                     self?.activePoppedOutEditor = JSONViewerWindowController.open(
                         text: currentText,
                         columnName: columnName,
                         isEditable: true,
                         onCommit: { newValue in
-                            self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
+                            self?.commitCellEdit(rowID: rowID, fallbackDisplayRow: row, columnIndex: columnIndex, newValue: newValue)
                         }
                     )
                 }
             )
         }
+    }
+
+    /// A grid with no row identity to offer falls back to the display row it was opened from, which
+    /// is what every editor did before.
+    func commitCellEdit(rowID: RowID?, fallbackDisplayRow: Int, columnIndex: Int, newValue: String?) {
+        guard let rowID else {
+            commitCellEdit(row: fallbackDisplayRow, columnIndex: columnIndex, newValue: newValue)
+            return
+        }
+        commitCellEdit(rowID: rowID, columnIndex: columnIndex, newValue: newValue)
     }
 
     func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
@@ -351,23 +367,28 @@ extension TableViewCoordinator {
     func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
-        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        guard columnIndex >= 0,
+              columnIndex < tableRows.columns.count,
+              columnIndex < tableRows.columnTypes.count
+        else { return }
         let columnName = tableRows.columns[columnIndex]
 
         let typedValue = cellTypedValue(at: row, column: columnIndex)
-        let elements: [PostgresArrayElement]?
+        let literal: String?
         if typedValue.isNull {
-            elements = nil
+            literal = nil
         } else {
-            guard let parsed = PostgresArrayLiteralCodec.parse(typedValue.asText ?? "") else {
+            let stored = typedValue.asText ?? ""
+            guard PostgresArrayLiteralCodec.parse(stored) != nil else {
                 beginCellEdit(row: row, tableColumnIndex: column)
                 return
             }
-            elements = parsed
+            literal = stored
         }
 
         let allowedValues = tableRows.columnEnumValues[columnName] ?? []
         let isNullable = tableRows.columnNullable[columnName] ?? true
+        let elementEditor = tableRows.columnTypes[columnIndex].arrayElementEditor ?? .scalar
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
 
         dismissActiveCellEditorPopover()
@@ -377,9 +398,10 @@ extension TableViewCoordinator {
             behavior: .applicationDefined
         ) { [weak self] dismiss in
             ArrayValueEditorView(
-                initialElements: elements,
+                literal: literal,
                 allowedValues: allowedValues,
                 isNullable: isNullable,
+                elementEditor: elementEditor,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
@@ -400,8 +422,9 @@ extension TableViewCoordinator {
     }
 
     /// The popped-out JSON editor is a window rather than a popover, so it survives everything that
-    /// closes a popover while still committing through the display row it was opened from. Only a
-    /// replaced row set invalidates it, never the user opening a different cell's editor.
+    /// closes a popover. It commits by row identity, so a sort or a value filter leaves it writing
+    /// the record it was opened for; a replaced row set retires those ids, which is what invalidates
+    /// it.
     func dismissPoppedOutCellEditor() {
         guard let editor = activePoppedOutEditor else { return }
         activePoppedOutEditor = nil

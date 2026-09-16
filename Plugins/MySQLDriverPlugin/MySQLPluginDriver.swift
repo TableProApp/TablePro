@@ -777,7 +777,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let tableCount = Int(row?[safe: 0]?.asText ?? "0") ?? 0
         let sizeBytes = Int64(row?[safe: 1]?.asText ?? "0") ?? 0
 
-        let isSystem = flavor.systemDatabaseNames.contains(database)
+        let isSystem = systemDatabaseNamesForConnectionType.contains(database)
 
         return PluginDatabaseMetadata(
             name: database,
@@ -787,8 +787,14 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    /// Classified by the type the connection was saved as, the same list the app classifies the database list by,
+    /// rather than by the flavor the banner resolves: the two used to disagree for a TiDB server saved as MySQL.
+    private var systemDatabaseNamesForConnectionType: [String] {
+        MySQLSystemDatabases.names(forVariant: config.additionalFields["driverVariant"])
+    }
+
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let systemDatabases = flavor.systemDatabaseNames
+        let systemDatabases = systemDatabaseNamesForConnectionType
 
         let query = """
             SELECT TABLE_SCHEMA, COUNT(*), COALESCE(SUM(DATA_LENGTH + INDEX_LENGTH), 0)
@@ -812,7 +818,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let allDatabases = try await fetchDatabases()
         return allDatabases.map { dbName in
-            metadataByName[dbName] ?? PluginDatabaseMetadata(name: dbName)
+            metadataByName[dbName]
+                ?? PluginDatabaseMetadata(name: dbName, isSystemDatabase: systemDatabases.contains(dbName))
         }
     }
 
@@ -867,14 +874,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// back, so it is not the session's to lose.
     func applyQueryTimeout(_ seconds: Int) async throws {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
-        do {
-            _ = try await executeWithReconnect(
-                query: flavor.queryTimeoutStatement(seconds: seconds),
-                isRetry: false,
-                countsAsActivity: false
-            )
-        } catch {
-            Self.logger.warning("Failed to set query timeout: \(error.localizedDescription)")
+        for statement in flavor.queryTimeoutStatements(seconds: seconds) {
+            do {
+                _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
+            } catch {
+                Self.logger.warning(
+                    "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
+                )
+                return
+            }
         }
     }
 

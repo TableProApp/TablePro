@@ -10,11 +10,11 @@
 //  deterministically unit-testable; these tests cover the logic the fix relies on.
 //
 
-import CodeEditSourceEditor
-import CodeEditTextView
 import Foundation
 @testable import TablePro
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 import Testing
 
 @Suite("Query Completion Adapter Lifecycle")

@@ -103,11 +103,14 @@ internal struct RowInspectorView: View {
     /// no competitor ships an in-panel takeover and neither does this any more.
     private func popOut(field: FieldEditState, text: String, kind: FieldEditorKind) {
         let isEditable = context.isEditable && !context.isRowDeleted && !field.isServerOwned
-        let fieldID = field.id
+        /// Captured here rather than looked up on each keystroke: the field's id is reissued on
+        /// every selection change, so a window left open over a new selection used to fail its own
+        /// lookup and drop everything typed into it without a word.
+        let columnIndex = field.columnIndex
+        let rowIDs = state.editState.rowIDs
         let commit: ((String) -> Void)? = isEditable
             ? { [editState = state.editState] newValue in
-                guard let current = editState.fields.first(where: { $0.id == fieldID }) else { return }
-                editState.updateField(at: current.columnIndex, value: newValue)
+                editState.updateDetachedField(columnIndex: columnIndex, rowIDs: rowIDs, value: newValue)
             }
             : nil
 
@@ -122,7 +125,7 @@ internal struct RowInspectorView: View {
         case .phpSerialized:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .multiLine, .singleLine, .schemaText, .blobHex, .image, .boolean,
-             .enumPicker, .setPicker, .typePicker, .valuePicker:
+             .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker:
             TextViewerWindowController.open(
                 text: text,
                 columnName: field.columnName,

@@ -234,7 +234,7 @@ struct ResultPinningTests {
             let tab = try #require(coordinator.tabManager.selectedTab)
             #expect(
                 coordinator.canPinActiveResultSet
-                    == ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+                    == ResultSetPolicy.canPin(tabType: tab.tabType, display: tab.display)
             )
         }
     }

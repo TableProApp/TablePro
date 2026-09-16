@@ -27,6 +27,7 @@ internal struct DatabaseTreeMenuContext {
     internal let maintenanceOperations: [PluginMaintenanceOperation]
     internal let dropEligibility: ContainerDropEligibility.Context
     internal let renameEligibility: ObjectRenameEligibility.Context
+    internal let tableOperationEligibility: TableOperationEligibility.Context
     internal let containerEntityName: String
     internal let containerEntityNamePlural: String
     internal let schemaEntityName: String
@@ -38,6 +39,7 @@ internal struct DatabaseTreeMenuContext {
     internal var favoriteDatabaseEnvironments: [String: FavoriteDatabaseEnvironment] = [:]
     internal let showObjectIcons: Bool
     internal let showObjectComments: Bool
+    internal let showSystemContainers: Bool
     internal let rowSize: SidebarRowSizePreference
     internal var canFilterDatabases: Bool = false
     internal var hasDatabaseFilter: Bool = false

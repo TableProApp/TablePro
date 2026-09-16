@@ -13,6 +13,10 @@ import Foundation
 ///
 /// The body runs inline in the caller's own task rather than in a detached one, so
 /// cancellation still reaches the work.
+///
+/// A turn is owned by the ticket that took it, not by the connection. A drain ends the turn of a
+/// holder that may still be stuck in a driver call, and when that holder finally returns, its
+/// release must not free or hand off a turn a later session has taken since.
 @MainActor
 final class SessionDriverGate {
     private struct Waiter {
@@ -20,33 +24,41 @@ final class SessionDriverGate {
         let continuation: CheckedContinuation<Void, Error>
     }
 
-    private var holders: Set<UUID> = []
+    private var owners: [UUID: UUID] = [:]
     private var waiters: [UUID: [Waiter]] = [:]
 
     func withExclusiveAccess<T>(
         _ connectionId: UUID,
         _ body: () async throws -> T
     ) async throws -> T {
-        try await acquire(connectionId)
-        defer { release(connectionId) }
+        let ticket = try await acquire(connectionId)
+        defer { release(connectionId, ticket: ticket) }
         return try await body()
     }
 
+    #if DEBUG
+    /// How many callers are queued behind the holder, so a test can wait for one to reach the
+    /// gate instead of guessing how many scheduler turns that takes.
+    internal func waiterCount(for connectionId: UUID) -> Int {
+        waiters[connectionId]?.count ?? 0
+    }
+    #endif
+
     /// Releases a connection that is going away, failing everyone still queued for it.
     func drain(connectionId: UUID) {
-        holders.remove(connectionId)
+        owners.removeValue(forKey: connectionId)
         let pending = waiters.removeValue(forKey: connectionId) ?? []
         for waiter in pending {
             waiter.continuation.resume(throwing: CancellationError())
         }
     }
 
-    private func acquire(_ connectionId: UUID) async throws {
-        guard holders.contains(connectionId) else {
-            holders.insert(connectionId)
-            return
-        }
+    private func acquire(_ connectionId: UUID) async throws -> UUID {
         let ticket = UUID()
+        guard owners[connectionId] != nil else {
+            owners[connectionId] = ticket
+            return ticket
+        }
         try await withTaskCancellationHandler(
             operation: { try await enqueue(ticket: ticket, connectionId: connectionId) },
             onCancel: { [weak self] in
@@ -55,6 +67,12 @@ final class SessionDriverGate {
                 }
             }
         )
+        /// A hand-off resumes this caller before it runs, so a drain can land in between, and the
+        /// turn it was handed ended with that drain.
+        guard owners[connectionId] == ticket else {
+            throw CancellationError()
+        }
+        return ticket
     }
 
     private func enqueue(ticket: UUID, connectionId: UUID) async throws {
@@ -82,14 +100,16 @@ final class SessionDriverGate {
         waiter.continuation.resume(throwing: CancellationError())
     }
 
-    private func release(_ connectionId: UUID) {
+    private func release(_ connectionId: UUID, ticket: UUID) {
+        guard owners[connectionId] == ticket else { return }
         guard var pending = waiters[connectionId], !pending.isEmpty else {
-            holders.remove(connectionId)
+            owners.removeValue(forKey: connectionId)
             waiters.removeValue(forKey: connectionId)
             return
         }
         let next = pending.removeFirst()
         waiters[connectionId] = pending.isEmpty ? nil : pending
+        owners[connectionId] = next.ticket
         next.continuation.resume()
     }
 }

@@ -290,14 +290,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
-        let query = """
-            SELECT reltuples::bigint
-            FROM pg_class
-            WHERE relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
-              AND relnamespace = (
-                  SELECT oid FROM pg_namespace WHERE nspname = current_schema()
-              )
-            """
+        let query = PostgreSQLSchemaQueries.approximateRowCount(
+            schema: schema ?? core.currentSchema, table: table
+        )
         let result = try await execute(query: query)
         guard let firstRow = result.rows.first, let value = firstRow[0].asText, let count = Int(value) else { return nil }
         return count >= 0 ? count : nil

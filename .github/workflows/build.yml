@@ -204,6 +204,8 @@ jobs:
           ls -lh artifacts/
 
       - name: Verify the tag matches the declared version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
           XCCONFIG_VERSION=$(sed -n 's/^MARKETING_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
@@ -212,6 +214,40 @@ jobs:
             exit 1
           fi
           echo "tag and MARKETING_VERSION agree on $TAG_VERSION"
+
+          # CURRENT_PROJECT_VERSION is what Sparkle compares, as <sparkle:version>. A build number
+          # that did not increase means no installed app is offered the release, and until now only
+          # a sentence in the release runbook stopped that. Compared against the newest PUBLISHED
+          # release rather than the newest tag, because re-cutting a release that failed leaves a
+          # tag at the same build and that is a legitimate state to be in.
+          BUILD=$(sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' Configs/Version.xcconfig | tr -d ' ')
+          case "$BUILD" in
+            ''|*[!0-9]*)
+              echo "::error::CURRENT_PROJECT_VERSION '$BUILD' is not a plain integer"
+              exit 1
+              ;;
+          esac
+
+          # No `|| true`. A gh outage used to turn this gate into "no earlier published release"
+          # and exit 0, which is the same output a genuine first release produces.
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName')
+          if [ "$PREVIOUS_TAG" = "null" ]; then
+            PREVIOUS_TAG=""
+          fi
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "v$TAG_VERSION" ]; then
+            echo "no earlier published release to compare the build number against"
+            exit 0
+          fi
+
+          PREVIOUS_BUILD=$(git show "${PREVIOUS_TAG}:Configs/Version.xcconfig" \
+            | sed -n 's/^CURRENT_PROJECT_VERSION[[:space:]]*=[[:space:]]*//p' | tr -d ' ')
+          if [ -n "$PREVIOUS_BUILD" ] && [ "$BUILD" -le "$PREVIOUS_BUILD" ]; then
+            echo "::error::CURRENT_PROJECT_VERSION $BUILD is not above $PREVIOUS_BUILD from $PREVIOUS_TAG; no install would be offered this update"
+            exit 1
+          fi
+          echo "build $BUILD is above $PREVIOUS_BUILD from $PREVIOUS_TAG"
 
       - name: Verify and organize artifacts for release
         run: |
@@ -253,19 +289,46 @@ jobs:
       # so the key is always meant to be present, and gating on it meant a missing or rotated
       # secret published a release that no existing install could ever see. A signing key that
       # is not there is now a red job, not a silent skip.
-      # The tag's own appcast.xml is the feed as of that commit. Seeding from it drops every
-      # version published since, and generate_appcast keeps only what it is handed, so the
-      # committed feed would silently rewind and those releases would stop being offered.
-      - name: Seed the appcast from the published feed
+      # The tag's own appcast.xml is the feed as of that commit, which is missing every version
+      # published since. The merge base has to be the feed that is actually live.
+      - name: Fetch the published feed to merge into
         run: |
           git fetch origin main
           mkdir -p appcast
-          git show origin/main:appcast.xml > appcast/seed.xml
+          git show origin/main:appcast.xml > appcast/base.xml
+
+      # A flag left true from the previous release would mark an ordinary build critical and
+      # interrupt every user, so it has to have been touched in this release's own diff.
+      - name: Read the release flags
+        id: flags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CRITICAL=$(python3 -c "
+          import json
+          print('1' if json.load(open('.github/release-flags.json')).get('criticalUpdate') is True else '0')
+          ")
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          if [ "$CRITICAL" != "1" ]; then
+            echo "Ordinary release, staged over 36 hours"
+            exit 0
+          fi
+
+          PREVIOUS_TAG=$(gh release list --limit 100 --json tagName,isPrerelease,publishedAt \
+            -q '[.[] | select(.tagName|startswith("v")) | select(.isPrerelease==false)]
+                | sort_by(.publishedAt) | last | .tagName')
+          if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "null" ] \
+             && git diff --quiet "$PREVIOUS_TAG" HEAD -- .github/release-flags.json; then
+            echo "::error::criticalUpdate is true but .github/release-flags.json has not changed since $PREVIOUS_TAG, which is what a flag left over from the previous release looks like"
+            exit 1
+          fi
+          echo "::warning::This release is marked critical and will interrupt every user"
 
       - name: Sign update archives with Sparkle
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          SEED_APPCAST: appcast/seed.xml
+          BASE_APPCAST: appcast/base.xml
+          CRITICAL_UPDATE: ${{ steps.flags.outputs.critical }}
         run: scripts/ci/sign-and-appcast.sh "${GITHUB_REF#refs/tags/v}"
 
       - name: Upload appcast artifact
@@ -296,44 +359,75 @@ jobs:
       # still will not land fails the job.
       - name: Commit appcast.xml to repo
         run: |
-          if [ ! -f appcast/appcast.xml ]; then
-            echo "❌ ERROR: appcast/appcast.xml is missing, the Sparkle step produced no feed" >&2
+          VERSION="${GITHUB_REF#refs/tags/v}"
+
+          if [ ! -f appcast/items/arm64.xml ] || [ ! -f appcast/items/x86_64.xml ]; then
+            echo "❌ ERROR: the signed per-architecture items are missing, the Sparkle step produced no feed" >&2
             exit 1
           fi
+
+          # The merge below runs after the tree has been reset to main, so the scripts are taken
+          # from the tag first. Otherwise a release would publish its feed with whatever
+          # scripts/ci main happened to hold, rather than the code the tag was tested with.
+          TOOLS=$(mktemp -d)
+          cp -R scripts/ci "$TOOLS/"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
+          git checkout -B main
 
-          # Refuse to publish a feed that drops a version main already advertises. Sparkle serves
-          # this file to every install, so a rewind stops offering updates that were shipped.
-          missing=$(comm -23 \
-            <(git show origin/main:appcast.xml | grep -o '<sparkle:shortVersionString>[^<]*' | sed 's/.*>//' | sort -u) \
-            <(grep -o '<sparkle:shortVersionString>[^<]*' appcast/appcast.xml | sed 's/.*>//' | sort -u))
-          if [ -n "$missing" ]; then
-            echo "❌ ERROR: the generated feed drops versions already published on main: $missing" >&2
-            exit 1
-          fi
-
-          cp appcast/appcast.xml appcast.xml
-          git add appcast.xml
-
-          if git diff --cached --quiet; then
-            echo "appcast.xml is already up to date"
-            exit 0
-          fi
-
-          git commit -m "Update appcast.xml for v${GITHUB_REF#refs/tags/v}"
-
+          # The whole attempt is inside the retry, because the merge is what has to be redone when
+          # main moves. It used to run once against a snapshot taken before the build and then be
+          # copied over main, which reverted anything pushed in between: a pull-release.py
+          # withdrawal landing inside that window was undone and the withdrawn build went back on
+          # offer. The rewind guard could not see it, because a restoration adds versions rather
+          # than dropping them. Rebasing was no answer either, since the merge rewrites the file
+          # wholesale and every retry conflicted.
           for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+
+            python3 "$TOOLS/ci/merge-appcast.py" \
+              --base appcast.xml \
+              --version "$VERSION" \
+              --arm64 appcast/items/arm64.xml \
+              --x86-64 appcast/items/x86_64.xml \
+              --download-prefix "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/" \
+              --out appcast.xml
+
+            # The feed is pruned to the newest releases, so an old version leaving it is the policy
+            # working. What must never leave is the newest item, the only one any install can be
+            # offered, or the release being published.
+            # An empty newest_before is a feed with no items yet, which is a legitimate first
+            # release rather than something to refuse.
+            newest_before=$(git show origin/main:appcast.xml \
+              | grep -o '<sparkle:shortVersionString>[^<]*' | sed 's/.*>//' | head -1)
+            for required in "$newest_before" "$VERSION"; do
+              if [ -z "$required" ]; then
+                continue
+              fi
+              if ! grep -q "<sparkle:shortVersionString>${required}</sparkle:shortVersionString>" appcast.xml; then
+                echo "❌ ERROR: the generated feed no longer advertises $required" >&2
+                exit 1
+              fi
+            done
+            first=$(grep -o '<sparkle:shortVersionString>[^<]*' appcast.xml | sed 's/.*>//' | head -1)
+            if [ "$first" != "$VERSION" ]; then
+              echo "❌ ERROR: the feed leads with $first, not the release being published ($VERSION)" >&2
+              exit 1
+            fi
+
+            git add appcast.xml
+            if git diff --cached --quiet; then
+              echo "appcast.xml already advertises v${VERSION}"
+              exit 0
+            fi
+
+            git commit -m "Update appcast.xml for v${VERSION}"
             if git push origin main; then
               exit 0
             fi
-            echo "Push rejected, rebasing onto origin/main (attempt ${attempt})"
-            # A conflicting rebase leaves the repo mid-rebase with main still at the pre-rebase
-            # commit, so the next attempt pushed a stale ref and failed differently every time.
-            git pull --rebase origin main || git rebase --abort || true
+            echo "Push rejected, re-merging onto the current origin/main (attempt ${attempt})"
           done
 
           echo "❌ ERROR: could not push appcast.xml after 3 attempts" >&2

@@ -384,8 +384,14 @@ final class MainContentCommandActions {
             && sidebarLayout == .tree
     }
 
+    /// Asks the same question the sidebar banner does, so Show All Databases is never offered for a
+    /// filter that shows nothing on screen: one naming only system databases while they are hidden.
     var hasDatabaseFilter: Bool {
-        !SharedSidebarState.forConnection(connection.id).databaseFilterSelected.isEmpty
+        DatabaseTreeVisibility.isFiltering(
+            selected: SharedSidebarState.forConnection(connection.id).databaseFilterSelected,
+            databases: DatabaseTreeMetadataService.shared.databases(for: connection.id),
+            showsSystem: AppSettingsManager.shared.general.showSystemContainers
+        )
     }
 
     var sidebarLayout: SidebarLayout {
@@ -498,7 +504,25 @@ final class MainContentCommandActions {
     /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
     /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
     var canTruncateSelectedTables: Bool {
-        TableOperationEligibility.canTruncate(selectedTables.wrappedValue)
+        TableOperationEligibility.canTruncate(
+            selectedTables.wrappedValue, context: tableOperationEligibility
+        )
+    }
+
+    /// The same question the sidebar's own Delete item asks, so the two agree. Without it the menu
+    /// bar offered Delete on an engine with no statement for it and the sidebar did not.
+    var canDropSelectedTables: Bool {
+        TableOperationEligibility.canDrop(selectedTables.wrappedValue, context: tableOperationEligibility)
+    }
+
+    private var tableOperationEligibility: TableOperationEligibility.Context {
+        guard let coordinator,
+              let adapter = DatabaseManager.shared.driver(for: coordinator.connectionId) as? PluginDriverAdapter
+        else { return .unavailable }
+        return adapter.tableOperationEligibility(
+            for: selectedTables.wrappedValue,
+            isReadOnly: coordinator.safeModeLevel.blocksAllWrites
+        )
     }
 
     /// The one selected object with the database and schema it lives in, or nil when the selection
@@ -1195,11 +1219,11 @@ final class MainContentCommandActions {
     }
 
     func runQuery() {
-        coordinator?.runQuery()
+        coordinator?.runQuery(viewport: .keepPlace)
     }
 
     func runQueryWithoutLimit() {
-        coordinator?.runQuery(bypassRowLimit: true)
+        coordinator?.runQuery(viewport: .keepPlace, bypassRowLimit: true)
     }
 
     func runAllStatements() {
@@ -1212,6 +1236,39 @@ final class MainContentCommandActions {
 
     func formatQuery() {
         EditorEventRouter.shared.performFormatSQLForKeyWindow()
+    }
+
+    /// Emptying the editor and discarding the results are two commands, not one.
+    ///
+    /// They used to be a single trash button whose tooltip and accessibility label both said
+    /// "Clear Query" while it also cleared the results, the execution record and collapsed the
+    /// results pane. Neither half had a menu-bar command, so neither could be undone, reached by
+    /// keyboard, or announced for what it was.
+    func clearQuery() {
+        guard let coordinator,
+              let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
+              tab.tabType == .query else { return }
+        coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
+        coordinator.toolbarState.hasQueryText = false
+        coordinator.scheduleDraftSave()
+        /// The editor's own text binding recomputes this on every keystroke, and emptying the tab
+        /// from a command does not go through that binding. Without it a scratch tab keeps the
+        /// dirty dot it no longer deserves, and a file-backed tab that this command just emptied
+        /// is not marked modified until some other window event happens to recompute it.
+        coordinator.refreshUnsavedIndicator()
+    }
+
+    var canClearQuery: Bool {
+        guard let tab = coordinator?.tabManager.selectedTab, tab.tabType == .query else { return false }
+        return !tab.content.query.isEmpty
+    }
+
+    func clearResults() {
+        coordinator?.clearActiveQueryResults()
+    }
+
+    var canClearResults: Bool {
+        coordinator?.canClearActiveQueryResults ?? false
     }
 
     func removeInvisibleCharacters() {
@@ -1398,43 +1455,6 @@ final class MainContentCommandActions {
         }
     }
 
-    // MARK: - Undo/Redo (Group A — Called Directly)
-
-    /// A Create Table tab keeps its `resultsViewMode` at `.data`, so it needs its own arm. Without
-    /// one, Cmd+Z in the visual table editor reached the window's undo manager, which owns none of
-    /// the draft, and the grid's own undo had no caller at all.
-    func undoChange() {
-        if isUsersRolesTab {
-            coordinator?.usersRolesActions?.undo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.undo?()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.undo?()
-            return
-        }
-        coordinator?.contentWindow?.undoManager?.undo()
-    }
-
-    func redoChange() {
-        if isUsersRolesTab {
-            coordinator?.usersRolesActions?.redo()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.tabType == .createTable {
-            coordinator?.createTableActions?.redo?()
-            return
-        }
-        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
-            coordinator?.structureActions?.redo?()
-            return
-        }
-        coordinator?.contentWindow?.undoManager?.redo()
-    }
-
     // MARK: - Group B Broadcast Subscribers
 
     // MARK: Data Broadcasts
@@ -1468,9 +1488,6 @@ final class MainContentCommandActions {
                         onDiscard: { [weak self] in self?.clearPendingTableOps() }
                     )
                 }
-                if request.reachesBrowsedDatabase(coordinator.browseDatabaseName) {
-                    Task { await coordinator.refreshTables() }
-                }
             }
             .store(in: &eventCancellables)
 
@@ -1484,6 +1501,22 @@ final class MainContentCommandActions {
                     hasPendingTableOps: self.hasPendingTableOps,
                     onDiscard: { [weak self] in self?.clearPendingTableOps() }
                 )
+            }
+            .store(in: &eventCancellables)
+
+        AppCommands.shared.containerChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyContainerChange(change)
+            }
+            .store(in: &eventCancellables)
+
+        AppCommands.shared.catalogChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] change in
+                guard let self, change.connectionId == self.connection.id else { return }
+                self.coordinator?.applyCatalogChange(change)
             }
             .store(in: &eventCancellables)
     }

@@ -339,6 +339,7 @@ struct SidebarView: View {
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: settingsManager.general.showSystemContainers,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

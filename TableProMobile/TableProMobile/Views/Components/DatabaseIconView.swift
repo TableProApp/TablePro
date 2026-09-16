@@ -4,6 +4,7 @@ import TableProModels
 struct DatabaseIconView: View {
     let type: DatabaseType
     let size: CGFloat
+    var tint: Color?
 
     var body: some View {
         let name = type.iconName
@@ -22,7 +23,7 @@ struct DatabaseIconView: View {
     }
 
     var color: Color {
-        Self.color(for: type)
+        tint ?? Self.color(for: type)
     }
 
     static func color(for type: DatabaseType) -> Color {
@@ -30,6 +31,7 @@ struct DatabaseIconView: View {
         case .mysql, .mariadb: return .orange
         case .tidb: return .red
         case .databend: return .blue
+        case .oceanbase: return .blue
         case .postgresql, .redshift: return .blue
         case .sqlite: return .green
         case .redis: return .red

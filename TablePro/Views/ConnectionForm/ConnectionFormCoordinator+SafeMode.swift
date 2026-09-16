@@ -10,7 +10,7 @@ extension ConnectionFormCoordinator {
     var safeModeFloor: SafeModeFloor? {
         SafeModeFloor.resolve(
             isEngineReadOnly: services.pluginManager.isEngineReadOnly(for: network.type),
-            opensRemoteDatabaseFile: transport == .remoteFile,
+            opensRemoteDatabaseFile: transport == .remoteFile && ssh.state.remoteFileAccess == .readOnlyCopy,
             managedMinimum: ManagedPolicyResolver.minimumSafeModeLevel(policy: ManagedPolicyReader.shared)
         )
     }

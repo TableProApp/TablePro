@@ -75,5 +75,4 @@ public final class PluginExportProgress: @unchecked Sendable {
     public var totalRows: Int {
         Int(progress.totalUnitCount)
     }
-
 }

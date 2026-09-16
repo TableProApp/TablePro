@@ -22,6 +22,7 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
     case assumeRoleChainTooDeep(String)
     case assumeRoleFailed(role: String, message: String)
     case mfaUnsupported(String)
+    case webIdentityUnsupported(String)
     case credentialSourceUnsupported(profile: String, source: String)
     case missingConfiguration(String)
 
@@ -43,6 +44,7 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
             )
         case .rdsEndpointUnresolved(let host):
             return String(
+                // swiftlint:disable:next line_length
                 format: String(localized: "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion."),
                 host
             )
@@ -100,6 +102,11 @@ public enum AWSAuthError: Error, LocalizedError, Equatable {
         case .mfaUnsupported(let profile):
             return String(
                 format: String(localized: "Profile \"%@\" requires an MFA token code, which is not supported yet. Use a profile without mfa_serial."),
+                profile
+            )
+        case .webIdentityUnsupported(let profile):
+            return String(
+                format: String(localized: "Profile \"%@\" signs in with a web identity token, which is not supported yet."),
                 profile
             )
         case .credentialSourceUnsupported(let profile, let source):

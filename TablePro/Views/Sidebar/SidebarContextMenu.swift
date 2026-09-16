@@ -23,8 +23,11 @@ enum SidebarContextMenuLogic {
     /// Asked of every row the command would act on, not just the one under the pointer. Right
     /// clicking a table inside a selection that also held a view offered Truncate and staged it
     /// for the view as well.
-    static func truncateVisible(targets: some Collection<DatabaseTreeTableRef>) -> Bool {
-        TableOperationEligibility.canTruncate(targets)
+    static func truncateVisible(
+        targets: some Collection<DatabaseTreeTableRef>,
+        context: TableOperationEligibility.Context
+    ) -> Bool {
+        TableOperationEligibility.canTruncate(targets, context: context)
     }
 
     static func deleteLabel(for type: TableInfo.TableType?) -> String {

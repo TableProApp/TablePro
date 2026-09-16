@@ -14,7 +14,7 @@ import Foundation
 /// count `OracleNIO` carries on a finished stream.
 enum DataWriteRowCounts {
     private static let enginesReportingRealCounts: Set<DatabaseType> = [
-        .mysql, .mariadb, .tidb,
+        .mysql, .mariadb, .tidb, .oceanbase,
         .postgresql, .redshift, .cockroachdb, .pglite,
         .sqlite, .libsql, .turso, .duckdb,
         .mssql, .oracle,

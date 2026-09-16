@@ -237,5 +237,4 @@ public enum SQLiteTableDDL {
         default: nil
         }
     }
-
 }

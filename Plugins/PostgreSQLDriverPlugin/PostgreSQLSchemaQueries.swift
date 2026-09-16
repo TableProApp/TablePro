@@ -190,6 +190,16 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
+    static func approximateRowCount(schema: String, table: String) -> String {
+        """
+        SELECT c.reltuples::bigint
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
+          AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
+        """
+    }
+
     static func setSearchPath(toSchema schema: String) -> String {
         let quotedIdentifier = "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
         return "SET search_path TO \(quotedIdentifier)"

@@ -96,8 +96,7 @@ internal final class TabRouter {
         }
         try await runPreConnectScriptIfNeeded(connection)
         try await DatabaseManager.shared.ensureConnected(connection)
-        RecentlyClosedTabReopener.openWindowTab(for: entry)
-        AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
+        RecentlyClosedTabReopener.reopen(entry)
         WindowOpener.shared.closeWelcome()
     }
 

@@ -63,6 +63,15 @@ private func drainMainActor(_ times: Int = 8) async {
     }
 }
 
+/// Waits for callers to queue. The bound is there so a caller that never queues fails the
+/// assertions after it rather than hanging the suite.
+@MainActor
+private func waitForWaiters(_ count: Int, on gate: SessionDriverGate, _ connectionId: UUID) async {
+    for _ in 0..<10_000 where gate.waiterCount(for: connectionId) < count {
+        await Task.yield()
+    }
+}
+
 @Suite("SessionDriverGate")
 @MainActor
 struct SessionDriverGateTests {
@@ -217,6 +226,149 @@ struct SessionDriverGateTests {
 
         releaseHolder.signal()
         try await holder.value
+    }
+
+    /// A drain ends the turn of a holder that can still be stuck in a driver call. When that call
+    /// finally returns, its release belongs to a turn that is already over.
+    @Test("A drained holder's late release does not hand a later holder's turn to the next caller")
+    func drainedReleaseDoesNotHandOffALaterTurn() async throws {
+        let gate = SessionDriverGate()
+        let connectionId = UUID()
+        let log = EventLog()
+        let drainedEntered = TestSignal()
+        let releaseDrained = TestSignal()
+
+        let drained = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                drainedEntered.signal()
+                await releaseDrained.wait()
+            }
+        }
+        await drainedEntered.wait()
+        gate.drain(connectionId: connectionId)
+
+        let laterEntered = TestSignal()
+        let releaseLater = TestSignal()
+        let later = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("later-start")
+                laterEntered.signal()
+                await releaseLater.wait()
+                log.record("later-end")
+            }
+        }
+        await laterEntered.wait()
+
+        let queued = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("queued-start")
+            }
+        }
+        await waitForWaiters(1, on: gate, connectionId)
+        #expect(gate.waiterCount(for: connectionId) == 1)
+
+        releaseDrained.signal()
+        try await drained.value
+
+        #expect(gate.waiterCount(for: connectionId) == 1)
+        #expect(log.events == ["later-start"])
+
+        releaseLater.signal()
+        try await later.value
+        try await queued.value
+
+        #expect(log.events == ["later-start", "later-end", "queued-start"])
+    }
+
+    @Test("A drained holder's late release does not free a later holder's turn")
+    func drainedReleaseDoesNotFreeALaterTurn() async throws {
+        let gate = SessionDriverGate()
+        let connectionId = UUID()
+        let log = EventLog()
+        let drainedEntered = TestSignal()
+        let releaseDrained = TestSignal()
+
+        let drained = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                drainedEntered.signal()
+                await releaseDrained.wait()
+            }
+        }
+        await drainedEntered.wait()
+        gate.drain(connectionId: connectionId)
+
+        let laterEntered = TestSignal()
+        let releaseLater = TestSignal()
+        let later = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("later-start")
+                laterEntered.signal()
+                await releaseLater.wait()
+                log.record("later-end")
+            }
+        }
+        await laterEntered.wait()
+
+        releaseDrained.signal()
+        try await drained.value
+
+        let arriving = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("arriving-start")
+            }
+        }
+        await waitForWaiters(1, on: gate, connectionId)
+
+        #expect(gate.waiterCount(for: connectionId) == 1)
+        #expect(log.events == ["later-start"])
+
+        releaseLater.signal()
+        try await later.value
+        try await arriving.value
+
+        #expect(log.events == ["later-start", "later-end", "arriving-start"])
+    }
+
+    /// The holder drains in the same synchronous step as its own release, which is after the hand-off
+    /// resumed the next caller and before that caller has run.
+    @Test("A drain fails a caller that was handed the gate but has not started")
+    func drainFailsAHandedOffCallerThatHasNotStarted() async throws {
+        let gate = SessionDriverGate()
+        let connectionId = UUID()
+        let log = EventLog()
+        let holderEntered = TestSignal()
+        let releaseHolder = TestSignal()
+
+        let holder = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                holderEntered.signal()
+                await releaseHolder.wait()
+            }
+            gate.drain(connectionId: connectionId)
+        }
+        await holderEntered.wait()
+
+        let handedOff = Task { @MainActor in
+            try await gate.withExclusiveAccess(connectionId) {
+                log.record("handed-off-ran")
+            }
+        }
+        await waitForWaiters(1, on: gate, connectionId)
+        #expect(gate.waiterCount(for: connectionId) == 1)
+
+        releaseHolder.signal()
+        try await holder.value
+
+        await #expect(throws: CancellationError.self) {
+            try await handedOff.value
+        }
+        #expect(log.events.isEmpty)
+
+        let ran = BoolBox()
+        try await gate.withExclusiveAccess(connectionId) {
+            ran.value = true
+        }
+        #expect(ran.value)
     }
 
     @Test("The body observes its own task's cancellation")

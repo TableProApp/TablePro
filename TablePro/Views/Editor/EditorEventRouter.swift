@@ -7,7 +7,7 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditTextView
+import TableProTextEngine
 
 @MainActor
 internal final class EditorEventRouter {
@@ -90,6 +90,22 @@ internal final class EditorEventRouter {
     internal func showFindPanelForKeyWindow() {
         guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
         coordinator.showFindPanel()
+    }
+
+    internal func showFindAndReplacePanelForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.showFindAndReplacePanel()
+    }
+
+    /// Whether the key window's editor has a selection to search for, so the menu can disable
+    /// Use Selection for Find rather than offering a command that would do nothing.
+    internal var keyWindowEditorHasSelectionForFind: Bool {
+        editor(for: NSApp.keyWindow)?.0.hasSelectionForFind ?? false
+    }
+
+    internal func useSelectionForFindInKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.useSelectionForFind()
     }
 
     internal func findNext() {

@@ -111,6 +111,7 @@ struct QueryTab: Identifiable, Equatable {
     /// offset is recomputed as `(page - 1) * pageSize`, so reading the index in a different size
     /// lands the tab on rows it was never showing.
     var restoredPageSize: Int?
+    var restoredRowAnchor: [String: String]?
     var restoredCursorOffset: Int?
     var restoredCursorLength: Int?
 

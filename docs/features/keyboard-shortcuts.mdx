@@ -75,10 +75,16 @@ The grid meanings come back the moment you click into the grid, and `Delete` on 
 | Extend selection to next statement | `Option+Shift+Down` |
 | Show completions | `Ctrl+Space` |
 | Find | `Cmd+F` |
+| Find and Replace | `Cmd+Option+F` |
 | Find next | `Cmd+G` |
 | Find previous | `Cmd+Shift+G` |
+| Use selection for find | `Cmd+E` |
 
-Every row except Find, Find Next and Find Previous is built into the editor and cannot be rebound. Standard macOS text navigation and clipboard keys also apply.
+Find and Replace opens the same panel with a replacement field; the panel keeps whichever of the two
+modes you left it in. Use Selection for Find searches for the selected text without opening the panel,
+so `Cmd+G` moves straight to the next occurrence.
+
+Every row except the five find rows is built into the editor and cannot be rebound. Standard macOS text navigation and clipboard keys also apply.
 
 ## Data Grid
 
@@ -149,7 +155,7 @@ Truncate table opens a dialog with **Cascade** and **Ignore foreign key checks**
 | Next match | `Return` or `Cmd+G` |
 | Previous match | `Cmd+Shift+G` |
 | Close the find bar | `Escape` |
-| Toggle filter bar (table tab) | `Cmd+Option+F` |
+| Toggle filter bar (table tab) | `Cmd+Shift+F` |
 | Apply filters | `Cmd+Enter` |
 
 See [Filtering](/features/filtering) for the filter bar itself.
@@ -211,20 +217,20 @@ See [Filtering](/features/filtering) for the filter bar itself.
 | Toggle assistant | `Cmd+Option+A` |
 | Toggle results | `Cmd+Option+R` |
 | Toggle history | `Cmd+Y` |
-| Increase text size (editor font) | `Cmd+=` |
-| Decrease text size (editor font) | `Cmd+-` |
+| Zoom in: the focused diagram, otherwise the editor font | `Cmd+=` |
+| Zoom out: the focused diagram, otherwise the editor font | `Cmd+-` |
 | Toggle full screen | `Ctrl+Cmd+F` |
 
 With the sidebar focused, typing the first letters of an object's name jumps to it.
 
-### Result tabs
+### Results
 
 | Action | Shortcut |
 |--------|----------|
 | Previous result | `Cmd+Option+[` |
 | Next result | `Cmd+Option+]` |
 | Pin result | `Cmd+Option+P` |
-| Close result tab | `Cmd+Shift+W` |
+| Close result | `Cmd+Shift+W` |
 
 ### Query history drawer
 
@@ -246,15 +252,15 @@ With the drawer open (`Cmd+Y`) and its entry list focused, `Return` loads the se
 | Action | Shortcut |
 |--------|----------|
 | Focus connection search | `Cmd+F` |
+| Connect to the selected connections | `Return` |
 | Select all connections | `Cmd+A` |
-| Delete selected connections | `Cmd+Delete` |
+| Delete selected connections | `Delete` or `Cmd+Delete` |
 | Clear selection | `Escape` |
-| Next connection | `Ctrl+J` or `Ctrl+N` |
-| Previous connection | `Ctrl+K` or `Ctrl+P` |
-| Collapse group | `Ctrl+H` |
-| Expand group | `Ctrl+L` |
+| Next or previous connection | `Down` / `Up` |
+| Expand or collapse a group | `Right` / `Left` |
+| Jump to a connection by name | Type its first letters |
 
-`Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` also move the selection in [Open Quickly](/features/open-quickly), where `Cmd+Enter` and `Option+Enter` open the selected item in a new tab.
+In [Open Quickly](/features/open-quickly), `Ctrl+J`/`Ctrl+N` and `Ctrl+K`/`Ctrl+P` move the selection, and `Cmd+Enter` and `Option+Enter` open the selected item in a new tab.
 
 ## CSV inspector
 
@@ -291,7 +297,7 @@ A combination already taken by another action in the same context raises a dialo
 Menu actions need `Cmd` or `Ctrl`, with `Option` and `Shift` available alongside them but not on their own; function keys `F1` through `F12` work bare, as do grid actions that read the key directly, like Preview FK Reference (`Space`).
 
 <Info>
-Some shortcuts cannot be reassigned: editor built-ins such as `Cmd+/`, tab selection (`Cmd+1` through `Cmd+9`), text size (`Cmd+=`, `Cmd+-`), and macOS system shortcuts, which are read live from System Settings. The recorder warns if you try.
+Some shortcuts cannot be reassigned: editor built-ins such as `Cmd+/`, tab selection (`Cmd+1` through `Cmd+9`), zoom (`Cmd+=`, `Cmd+-`), and macOS system shortcuts, which are read live from System Settings. The recorder warns if you try.
 </Info>
 
 ## Outside the app

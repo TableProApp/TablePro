@@ -39,11 +39,11 @@ public enum SpatialProjection {
     /// 4269 is NAD83: its datum shift against WGS84 is under a metre, far below one tile pixel at
     /// any zoom a map offers. 4979 is WGS84 in three dimensions, whose horizontal components are
     /// identical to 4326.
-    public static let geographicSRIDs: Set<Int32> = [4326, 4269, 4979]
+    public static let geographicSRIDs: Set<Int32> = [4_326, 4_269, 4_979]
 
     /// The spherical Mercator aliases. 900913 is the original Google code, 102100 and 102113 are
     /// the Esri ones, 3785 the deprecated EPSG code, and 3857 the one that stuck.
-    public static let webMercatorSRIDs: Set<Int32> = [3857, 900_913, 102_100, 102_113, 3785]
+    public static let webMercatorSRIDs: Set<Int32> = [3_857, 900_913, 102_100, 102_113, 3_785]
 
     private static let earthRadius = 6_378_137.0
 

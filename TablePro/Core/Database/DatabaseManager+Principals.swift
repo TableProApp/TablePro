@@ -51,12 +51,23 @@ extension DatabaseManager {
                 )
             }
 
-            try await runPrincipalStatements(
-                statements,
-                driver: driver,
-                rollsBack: principalDriver.rollsBackPrincipalStatements,
-                connectionId: connectionId
+            /// Reported whether or not every statement ran: an engine that cannot roll principal
+            /// statements back keeps the ones before a failure, and `DROP OWNED` among them drops objects.
+            let ranStatements = CatalogEvent.statementsRan(
+                connectionId: connectionId, statements: statements.map(\.sql), databaseType: databaseType
             )
+            do {
+                try await runPrincipalStatements(
+                    statements,
+                    driver: driver,
+                    rollsBack: principalDriver.rollsBackPrincipalStatements,
+                    connectionId: connectionId
+                )
+            } catch {
+                CatalogChangeService.post(ranStatements)
+                throw error
+            }
+            CatalogChangeService.post(ranStatements)
         }
     }
 

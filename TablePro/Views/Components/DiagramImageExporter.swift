@@ -22,20 +22,6 @@ enum DiagramImageExporter {
         return renderer.nsImage
     }
 
-    /// Feeds the standard Edit > Copy command, so a diagram follows whatever shortcut the user
-    /// has bound instead of a hardcoded key handler.
-    @MainActor
-    static func copyItemProviders(of view: some View) -> [NSItemProvider] {
-        copyItemProviders(of: image(of: view))
-    }
-
-    /// The AppKit-drawn diagram renders its own bitmap, so it hands one over instead of a view.
-    @MainActor
-    static func copyItemProviders(of image: NSImage?) -> [NSItemProvider] {
-        guard let image else { return [] }
-        return [NSItemProvider(object: image)]
-    }
-
     @MainActor
     static func export(_ view: some View, defaultFileName: String, title: String) {
         export(image(of: view), defaultFileName: defaultFileName, title: title)

@@ -1,7 +1,7 @@
 import Foundation
 import TableProModels
-import Testing
 @testable import TableProQuery
+import Testing
 
 @Suite("SQLWriteClassifier")
 struct SQLWriteClassifierTests {

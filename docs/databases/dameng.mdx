@@ -32,7 +32,7 @@ Click **New Connection…**, choose **Dameng DM8**, fill in host, port, and cred
 | **Username** | - | DM username, such as `SYSDBA` |
 | **Password** | - | Stored in the macOS Keychain |
 
-One DM8 instance holds one database, so there is nothing to switch between; use the schema picker instead, which switches without reconnecting. `SYS`, `SYSDBA`, `SYSAUDITOR`, `SYSSSO`, and `CTISYS` are marked system schemas. An open tab stays on the schema it started with. See [Tabs](/features/tabs#where-a-tab-points).
+One DM8 instance holds one database, so there is nothing to switch between; use the schema picker instead, which switches without reconnecting. `SYS`, `SYSAUDITOR`, `SYSSSO`, `CTISYS`, `SYSJOB`, and `SYSGEO2` are system schemas: the schema picker lists them last, and the sidebar shows them only with [**Show system databases and schemas**](/customization/general-settings#tabs-and-sidebar) on, or when one is the schema in use. `SYSDBA`, the administrator's own schema, lists with your schemas, and like the system schemas it cannot be dropped. An open tab stays on the schema it started with. See [Tabs](/features/tabs#where-a-tab-points).
 
 ## Connection URL
 

@@ -201,13 +201,17 @@ internal enum DatabaseTreeMenuSpec {
         if ObjectRenameEligibility.canRename(table: ref.table, context: context.renameEligibility) {
             items.append(.command(String(localized: "Rename"), .beginRenameTable(ref: ref, isRecentRow: isRecentRow)))
         }
-        if SidebarContextMenuLogic.truncateVisible(targets: targets) {
+        if SidebarContextMenuLogic.truncateVisible(
+            targets: targets, context: context.tableOperationEligibility
+        ) {
             items.append(.command(String(localized: "Truncate"), .truncateTables(targets: targets, ref: ref)))
         }
-        items.append(.command(
-            SidebarContextMenuLogic.deleteLabel(for: ref.table.type),
-            .dropTables(targets: targets, ref: ref)
-        ))
+        if TableOperationEligibility.canDrop(targets, context: context.tableOperationEligibility) {
+            items.append(.command(
+                SidebarContextMenuLogic.deleteLabel(for: ref.table.type),
+                .dropTables(targets: targets, ref: ref)
+            ))
+        }
         return items
     }
 

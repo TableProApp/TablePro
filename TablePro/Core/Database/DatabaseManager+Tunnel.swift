@@ -101,6 +101,7 @@ extension DatabaseManager {
         case .socksProxy: return SOCKSProxyManager.shared
         case .tunnelCommand: return TunnelCommandManager.shared
         case .remoteFile: return RemoteFileTransportManager.shared
+        case .remoteDatabaseSession: return RemoteSQLiteTransportManager.shared
         case .none: return nil
         }
     }

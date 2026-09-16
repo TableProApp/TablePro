@@ -430,6 +430,10 @@ final class KeyHandlingTableView: NSTableView {
                 selectRowsIntersectingSelection()
                 return
             }
+            if modifiers.intersection([.command, .shift, .option, .control]).isEmpty,
+               coordinator?.toggleCheckboxesForSelection() == true {
+                return
+            }
         case .delete, .forwardDelete:
             if modifiers.isEmpty || matchesDeleteShortcut(event) {
                 deleteSelectedRowsIfPossible()

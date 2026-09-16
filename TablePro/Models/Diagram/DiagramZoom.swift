@@ -38,21 +38,31 @@ enum DiagramZoom {
     /// arithmetic from stepping onto itself.
     private static let rungTolerance: CGFloat = 0.001
 
+    /// A step only ever lands on a rung. Below the floor, where Fit or a pinch can leave a diagram,
+    /// there is no rung to step down to, so Zoom Out stops rather than dropping to `minimum`.
     static func stepUp(from value: CGFloat) -> CGFloat {
-        let current = clamped(value)
-        return ladder.first { $0 > current + rungTolerance } ?? maximum
+        rung(above: value) ?? clamped(value)
     }
 
     static func stepDown(from value: CGFloat) -> CGFloat {
-        let current = clamped(value)
-        return ladder.last { $0 < current - rungTolerance } ?? minimum
+        rung(below: value) ?? clamped(value)
     }
 
     static func canStepUp(from value: CGFloat) -> Bool {
-        clamped(value) < maximum - rungTolerance
+        rung(above: value) != nil
     }
 
     static func canStepDown(from value: CGFloat) -> Bool {
-        clamped(value) > minimum + rungTolerance
+        rung(below: value) != nil
+    }
+
+    private static func rung(above value: CGFloat) -> CGFloat? {
+        let current = clamped(value)
+        return ladder.first { $0 > current + rungTolerance }
+    }
+
+    private static func rung(below value: CGFloat) -> CGFloat? {
+        let current = clamped(value)
+        return ladder.last { $0 < current - rungTolerance }
     }
 }

@@ -3,8 +3,8 @@
 //  TablePro
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
 /// Chooses the fold provider for an editor's language.

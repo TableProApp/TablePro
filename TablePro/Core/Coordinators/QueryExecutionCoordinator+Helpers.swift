@@ -185,7 +185,8 @@ extension QueryExecutionCoordinator {
         queryParameterValues: [QueryParameter]? = nil,
         historySQL: String? = nil,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        viewport: GridReloadIntent = .firstRow
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -238,7 +239,7 @@ extension QueryExecutionCoordinator {
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
-        parent.setActiveTableRows(newTableRows, for: existingTabId)
+        parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport)
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1

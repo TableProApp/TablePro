@@ -135,7 +135,6 @@ final class PaginationCoordinator {
                 mutate(&tab.pagination)
                 tab.paginationVersion += 1
             }) else { return }
-            parent.pendingScrollToTopAfterReplace.insert(tabId)
             reloadCurrentPage()
         }
     }
@@ -145,7 +144,7 @@ final class PaginationCoordinator {
               tabIndex < parent.tabManager.tabs.count else { return }
 
         parent.rebuildTableQuery(at: tabIndex)
-        parent.runQuery()
+        parent.runQuery(viewport: .firstRow)
     }
 
     // MARK: - Cancel Current Query
@@ -303,8 +302,7 @@ final class PaginationCoordinator {
         /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
         /// the titlebar reporting it, and releases that on every exit including cancellation.
         let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
-
-        let route = DatabaseManager.shared.executionRoute(for: scope)
+        let isTableTab = parent.tabManager.tabs[idx].tabType == .table
 
         let startedAt = ContinuousClock.Instant.now
         let fetchAllTask = Task { [weak self, parent] in
@@ -314,11 +312,7 @@ final class PaginationCoordinator {
             do {
                 let start = CFAbsoluteTimeGetCurrent()
                 progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
-                let result = try await DatabaseManager.shared.withScopedDriver(
-                    scope: scope,
-                    route: route,
-                    cancellation: .cancellableRead
-                ) { driver in
+                let result = try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab) { driver in
                     try await driver.executeUserQuery(
                         query: baseQuery,
                         rowCap: nil,

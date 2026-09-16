@@ -42,7 +42,7 @@ internal struct WelcomePresentations: ViewModifier {
                     vm.pluginDiagnostic = nil
                 }
             }
-            .modifier(WelcomeGroupAlerts(vm: vm))
+            .modifier(WelcomeLibraryAlerts(vm: vm))
             .alert(
                 String(localized: "Connection Failed"),
                 isPresented: $vm.showConnectionError
@@ -79,9 +79,9 @@ internal struct WelcomePresentations: ViewModifier {
     @ViewBuilder
     private func activeSheetContent(_ sheet: WelcomeActiveSheet) -> some View {
         switch sheet {
-        case .newGroup(let parentId):
-            CreateGroupSheet(parentId: parentId) { name, color, pid in
-                try vm.createGroup(name: name, color: color, parentId: pid)
+        case .newGroup(let request):
+            CreateGroupSheet(parentId: request.parentId) { name, color, parentId in
+                try vm.createGroup(name: name, color: color, parentId: parentId, moving: request.movingConnectionIds)
             }
         case .activation:
             LicenseActivationSheet()
@@ -94,6 +94,11 @@ internal struct WelcomePresentations: ViewModifier {
             ConnectionExportOptionsSheet(connections: conns)
         case .importFromApp:
             ImportFromAppSheet { count in
+                vm.pendingImportResultCount = count
+                vm.activeSheet = nil
+            }
+        case .importFromAWS:
+            ImportFromAWSSheet { count in
                 vm.pendingImportResultCount = count
                 vm.activeSheet = nil
             }
@@ -155,7 +160,7 @@ private struct WelcomeDeletionAlerts: ViewModifier {
     }
 }
 
-private struct WelcomeGroupAlerts: ViewModifier {
+private struct WelcomeLibraryAlerts: ViewModifier {
     @Bindable var vm: WelcomeViewModel
 
     func body(content: Content) -> some View {
@@ -175,23 +180,16 @@ private struct WelcomeGroupAlerts: ViewModifier {
                     Text("Are you sure you want to delete the group \"\(group.name)\" and its subgroups? Their connections will be moved to the top level.")
                 }
             }
-            .alert(String(localized: "Rename Group"), isPresented: $vm.showRenameGroupAlert) {
-                TextField(String(localized: "Group name"), text: $vm.renameGroupName)
-                Button(String(localized: "Rename")) { vm.confirmRenameGroup() }
-                Button(String(localized: "Cancel"), role: .cancel) { vm.renameGroupTarget = nil }
-            } message: {
-                Text("Enter a new name for the group.")
-            }
             .alert(
-                String(localized: "Group Not Updated"),
+                String(localized: "Change Not Saved"),
                 isPresented: Binding(
-                    get: { vm.groupErrorMessage != nil },
-                    set: { if !$0 { vm.groupErrorMessage = nil } }
+                    get: { vm.libraryErrorMessage != nil },
+                    set: { if !$0 { vm.libraryErrorMessage = nil } }
                 )
             ) {
-                Button(String(localized: "OK")) { vm.groupErrorMessage = nil }
+                Button(String(localized: "OK")) { vm.libraryErrorMessage = nil }
             } message: {
-                if let message = vm.groupErrorMessage {
+                if let message = vm.libraryErrorMessage {
                     Text(message)
                 }
             }

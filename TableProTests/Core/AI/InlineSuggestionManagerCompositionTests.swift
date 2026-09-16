@@ -5,9 +5,9 @@
 
 import AppKit
 import Carbon.HIToolbox
-import CodeEditSourceEditor
-import CodeEditTextView
 @testable import TablePro
+import TableProEditorKit
+import TableProTextEngine
 import Testing
 
 @MainActor

@@ -50,18 +50,25 @@ final class CompareTableKindClassifierTests: XCTestCase {
 }
 
 final class DataComparePlanColumnTests: XCTestCase {
-    private func plan(generated: Set<String>, keys: [String] = ["id"]) -> DataComparePlan {
-        DataComparePlan(
+    private func plan(
+        generated: Set<String>,
+        keys: [String] = ["id"],
+        identity: [String: IdentityKind] = [:]
+    ) -> DataComparePlan {
+        let types = ["id": "bigint", "total": "numeric", "line_total": "numeric"]
+        return DataComparePlan(
             table: "orders",
             schema: "public",
-            columns: ["id", "total", "line_total"],
-            columnDescriptors: [
-                KeyColumnDescriptor(name: "id", dataType: "bigint"),
-                KeyColumnDescriptor(name: "total", dataType: "numeric"),
-                KeyColumnDescriptor(name: "line_total", dataType: "numeric")
-            ],
-            generatedColumns: generated,
-            keyColumns: keys,
+            columns: ["id", "total", "line_total"].map { name in
+                CompareColumn(
+                    name: name,
+                    sourceType: types[name],
+                    targetType: types[name],
+                    isGeneratedOnTarget: generated.contains(name),
+                    targetIdentity: identity[name]
+                )
+            },
+            scope: DataTableScope(keyColumns: keys),
             isEnabled: true
         )
     }
@@ -71,12 +78,31 @@ final class DataComparePlanColumnTests: XCTestCase {
     func testGeneratedColumnsAreReadButNotWritten() {
         let plan = plan(generated: ["line_total"])
 
-        XCTAssertEqual(plan.readColumns, ["id", "total", "line_total"])
+        XCTAssertEqual(plan.columnNames, ["id", "total", "line_total"])
         XCTAssertEqual(plan.writeColumns, ["id", "total"])
     }
 
-    func testGeneratedColumnMatchIsCaseInsensitive() {
-        XCTAssertEqual(plan(generated: ["LINE_TOTAL"]).writeColumns, ["id", "total"])
+    /// An identity column the target always generates takes its value on insert only through the
+    /// engine's override, and never through an UPDATE.
+    func testAnAlwaysIdentityColumnIsInsertedButNeverUpdated() {
+        let plan = plan(generated: [], identity: ["id": .always])
+
+        XCTAssertEqual(plan.writeColumns, ["id", "total", "line_total"])
+        XCTAssertEqual(plan.updatableColumns, ["total", "line_total"])
+        XCTAssertTrue(plan.insertsIntoIdentityColumn)
+    }
+
+    func testAByDefaultIdentityColumnNeedsNoOverride() {
+        XCTAssertFalse(plan(generated: [], identity: ["id": .byDefault]).insertsIntoIdentityColumn)
+    }
+
+    func testExcludedColumnsAreLeftOutOfTheComparisonOnlyForTheirOwnTable() {
+        var excluded = plan(generated: [])
+        excluded.scope.setExcluded(true, column: "TOTAL")
+
+        XCTAssertEqual(excluded.comparedColumns, ["line_total"])
+        XCTAssertEqual(plan(generated: []).comparedColumns, ["total", "line_total"])
+        XCTAssertEqual(excluded.writeColumns, ["id", "total", "line_total"])
     }
 
     func testATableWhoseSharedColumnsAreAllGeneratedIsNotComparable() {

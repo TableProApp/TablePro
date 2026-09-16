@@ -46,9 +46,17 @@ struct PluginManagerVariantAccessorTests {
         #expect(manager.systemDatabaseNames(for: .redshift) == ["padb_harvest"])
         #expect(manager.systemDatabaseNames(for: .cockroachdb) == ["system"])
         #expect(manager.systemDatabaseNames(for: .tidb) == [
-            "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys"
+            "INFORMATION_SCHEMA", "METRICS_SCHEMA", "PERFORMANCE_SCHEMA", "mysql", "sys",
+            "information_schema", "performance_schema"
+        ])
+        #expect(manager.systemDatabaseNames(for: .mysql) == [
+            "information_schema", "mysql", "performance_schema", "sys", "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"
         ])
         #expect(manager.systemDatabaseNames(for: .databend) == ["information_schema", "system"])
+        #expect(manager.systemDatabaseNames(for: .oceanbase) == [
+            "information_schema", "mysql", "oceanbase", "__recyclebin", "__public",
+            "SYS", "LBACSYS", "ORAAUDITOR"
+        ])
     }
 
     /// The reason the editor half of this was reported: Redshift has no non-ASCII ILIKE, so it

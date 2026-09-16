@@ -34,7 +34,7 @@ struct PluginMetadataRegistryTypeCountTests {
         "CockroachDB", "Dameng", "Databend", "DuckDB", "DynamoDB", "Elasticsearch", "etcd", "Kafka",
         "libSQL", "MariaDB", "MongoDB", "MySQL", "Oracle", "PGlite", "PostgreSQL", "Redis", "Redshift",
         "ScyllaDB", "Snowflake", "Spanner", "SQL Server", "SQLite", "SurrealDB", "Teradata", "TiDB", "Trino",
-        "Turso", "Typesense", "Weaviate"
+        "Turso", "Typesense", "Weaviate", "OceanBase"
     ]
 
     private static func builtInTypeIds() -> Set<String> {
@@ -43,10 +43,10 @@ struct PluginMetadataRegistryTypeCountTests {
         return Set(curated + registry)
     }
 
-    @Test("The app ships 35 database types before any plugin loads")
+    @Test("The app ships 36 database types before any plugin loads")
     func builtInDefaultsCoverTwentyNineTypes() {
         let ids = Self.builtInTypeIds()
-        #expect(ids.count == 35)
+        #expect(ids.count == 36)
         #expect(ids == Self.expectedTypeIds)
     }
 
@@ -64,6 +64,7 @@ struct PluginMetadataRegistryTypeCountTests {
         "MariaDB": "MySQL",
         "TiDB": "MySQL",
         "Databend": "MySQL",
+        "OceanBase": "MySQL",
         "Redshift": "PostgreSQL",
         "CockroachDB": "PostgreSQL",
         "PGlite": "PostgreSQL",

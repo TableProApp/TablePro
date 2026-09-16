@@ -19,6 +19,22 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
+    /// The same candidate set the outline coordinator resolves: the selection plus the clicked
+    /// row, because the spec aims at the clicked row when nothing is selected.
+    private func tableOperationEligibility(
+        clicked: DatabaseTreeNode.Kind?,
+        selectedTables: Set<DatabaseTreeTableRef>,
+        canExpress: Bool,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard canExpress else { return .unavailable }
+        var candidates = selectedTables
+        if case .table(let ref) = clicked { candidates.insert(ref) }
+        return TableOperationEligibility.Context(
+            droppable: candidates, truncatable: candidates, isReadOnly: isReadOnly
+        )
+    }
+
     private func context(
         clicked: DatabaseTreeNode.Kind?,
         selectedTables: Set<DatabaseTreeTableRef> = [],
@@ -35,6 +51,7 @@ struct DatabaseTreeMenuSpecTests {
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
+        canExpressTableOperations: Bool = true,
         objectToolSupport: DatabaseObjectToolEligibility.Support = .none
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
@@ -65,6 +82,12 @@ struct DatabaseTreeMenuSpecTests {
                 supportsRenameSchema: supportsRename,
                 isReadOnly: isReadOnly
             ),
+            tableOperationEligibility: tableOperationEligibility(
+                clicked: clicked,
+                selectedTables: selectedTables,
+                canExpress: canExpressTableOperations,
+                isReadOnly: isReadOnly
+            ),
             containerEntityName: "Database",
             containerEntityNamePlural: "Databases",
             schemaEntityName: "Schema",
@@ -74,6 +97,7 @@ struct DatabaseTreeMenuSpecTests {
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments,
             showObjectIcons: true,
             showObjectComments: false,
+            showSystemContainers: false,
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
@@ -215,12 +239,33 @@ struct DatabaseTreeMenuSpecTests {
     @Test("View Options reports the settings it is toggling")
     func viewOptionsCarryTheirState() {
         let items = SidebarViewOptionsMenu.sections(context(clicked: nil)).flatMap(\.items)
-        let icons = items.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
-            guard case .command(let entry) = item, entry.command == .toggleObjectIcons else { return nil }
-            return entry
+        func entry(for command: SidebarMenuCommand) -> SidebarMenuEntry<SidebarMenuCommand>? {
+            items.lazy.compactMap { item -> SidebarMenuEntry<SidebarMenuCommand>? in
+                guard case .command(let entry) = item, entry.command == command else { return nil }
+                return entry
+            }.first
         }
 
-        #expect(icons.first?.isOn == true)
+        #expect(entry(for: .toggleObjectIcons)?.isOn == true)
+        #expect(entry(for: .toggleSystemContainers)?.isOn == false)
+    }
+
+    @Test("View Options offers System Databases and Schemas beside Icons and Comments")
+    func viewOptionsOfferSystemContainers() {
+        let sections = SidebarViewOptionsMenu.sections(
+            showObjectIcons: true,
+            showObjectComments: true,
+            showSystemContainers: true,
+            rowSize: .matchSystem
+        )
+        let items = sections.first?.items ?? []
+        let toggles: [SidebarMenuCommand] = items.compactMap { item in
+            guard case .command(let entry) = item, entry.isOn == true else { return nil }
+            return entry.command
+        }
+        let expected: [SidebarMenuCommand] = [.toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers]
+
+        #expect(toggles == expected)
     }
 
     // MARK: - Tables
@@ -294,6 +339,28 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
+    }
+
+    /// #2884: Elasticsearch has no statement for either operation, and offering them anyway is
+    /// what let the app answer an index with `DROP TABLE "test_index"`.
+    @Test("Neither Delete nor Truncate is offered where the engine has no statement")
+    func tableOperationsHiddenWhenInexpressible() {
+        let clicked = tableRef("test_index")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(clicked), canExpressTableOperations: false)
+        ))
+
+        #expect(!issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
+    }
+
+    @Test("Delete and Truncate are offered where the engine has a statement")
+    func tableOperationsOfferedWhenExpressible() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(clicked))))
+
+        #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
     }
 
     @Test("A table row offers Rename where the engine can do it")

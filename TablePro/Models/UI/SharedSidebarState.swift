@@ -94,6 +94,15 @@ final class SharedSidebarState {
         ))
     }
 
+    /// A table opened before the session knew its schema is recorded without one, and clicking that
+    /// entry opens the same name in whichever schema is browsed by then. It takes the schema the tab
+    /// resolved, in place.
+    func resolveRecentSchema(database: String?, name: String, to schema: String) {
+        publish(RecentTablesStore.shared.resolveSchema(
+            connectionId: connectionId, database: normalizedDatabase(database), name: name, to: schema
+        ))
+    }
+
     private func publish(_ entries: [RecentTableEntry]) {
         guard AppSettingsManager.shared.general.showRecentTables else { return }
         recentTables = entries

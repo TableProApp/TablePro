@@ -151,6 +151,231 @@ private final class PoolBodyFlag: @unchecked Sendable {
     var value = false
 }
 
+/// Stands in for opening a pooled connection. Each open takes the next connect delay, and a delayed
+/// connect throws when its open is cancelled, the way libpq's cooperative connect does.
+@MainActor
+private final class RecordingOpener {
+    private var connectDelays: [Double]
+    private(set) var opened: [MockDatabaseDriver] = []
+
+    init(connectDelays: [Double] = []) {
+        self.connectDelays = connectDelays
+    }
+
+    func open(_ scope: DatabaseScope) async throws -> DatabaseDriver {
+        let driver = MockDatabaseDriver()
+        driver.connectDelaySeconds = connectDelays.isEmpty ? 0 : connectDelays.removeFirst()
+        opened.append(driver)
+        try await driver.connect()
+        return driver
+    }
+}
+
+/// A reconnect that rebuilds a connection's transport used to close every pooled entry and cancel
+/// every open in progress, so a table load dialing a pooled connection failed as a user cancel and
+/// showed nothing.
+@Suite("MetadataConnectionPool transport replacement", .serialized)
+@MainActor
+struct MetadataConnectionPoolTransportReplacementTests {
+    private func makeSession() -> (DatabaseConnection, DatabaseScope) {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return (connection, DatabaseScope(connectionId: connection.id, database: "shop", schema: nil))
+    }
+
+    /// Bounded, so a caller that never reaches the point being waited for fails the assertions after
+    /// it rather than hanging the suite.
+    private func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<2_000 where !condition() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    @Test("A lease waiting on an open the replacement withdrew takes a new connection once it ends")
+    func withdrawnOpenIsRetriedAfterTheReplacement() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener(connectDelays: [5, 0])
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { driver in ObjectIdentifier(driver) }
+        }
+        await waitUntil { opener.opened.count == 1 }
+        #expect(opener.opened.count == 1)
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+        #expect(opener.opened.count == 1)
+
+        pool.endTransportReplacement(connectionId: connection.id)
+        let ranOn = try await lease.value
+
+        #expect(opener.opened.count == 2)
+        #expect(ranOn == opener.opened.last.map { ObjectIdentifier($0) })
+    }
+
+    /// A new open during the replacement would read the effective connection before the reconnect
+    /// replaced it, and dial a tunnel port that is about to close.
+    @Test("A lease that arrives during a replacement opens nothing until it ends")
+    func leaseDuringAReplacementWaitsToOpen() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+        #expect(opener.opened.isEmpty)
+
+        pool.endTransportReplacement(connectionId: connection.id)
+        try await lease.value
+
+        #expect(opener.opened.count == 1)
+    }
+
+    @Test("Overlapping replacements hold pooled work until the last one ends")
+    func overlappingReplacementsHoldUntilTheLastEnds() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+
+        pool.endTransportReplacement(connectionId: connection.id)
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+        #expect(opener.opened.isEmpty)
+
+        pool.endTransportReplacement(connectionId: connection.id)
+        try await lease.value
+
+        #expect(opener.opened.count == 1)
+        #expect(!pool.isReplacingTransport(for: connection.id))
+    }
+
+    @Test("A lease cancelled while it waits for a replacement stops waiting at once")
+    func cancelledWaiterStopsWaiting() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        defer { pool.endTransportReplacement(connectionId: connection.id) }
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+
+        lease.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await lease.value
+        }
+        #expect(pool.transportWaiterCount(for: connection.id) == 0)
+        #expect(opener.opened.isEmpty)
+    }
+
+    /// A rename needs every backend on the database gone, and PostgreSQL refuses it while one is
+    /// attached, so an open withdrawn for it must never be dialed again.
+    @Test("Closing a database withdraws its open for good and fails the lease waiting on it")
+    func closingADatabaseFailsItsWaiter() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener(connectDelays: [5])
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { opener.opened.count == 1 }
+        #expect(opener.opened.count == 1)
+
+        pool.closeAll(connectionId: connection.id, database: "shop")
+
+        await #expect(throws: (any Error).self) {
+            try await lease.value
+        }
+        #expect(opener.opened.count == 1)
+    }
+
+    /// Ordered so that a parked lease the close failed to reach opens a connection once the
+    /// replacement ends, and fails the expectations, rather than hanging the suite.
+    @Test("Closing a connection fails the leases parked for its replacement at once")
+    func closingAConnectionFailsParkedLeases() async throws {
+        let (connection, scope) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let lease = Task { @MainActor in
+            try await pool.withDriver(scope: scope) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 1 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+
+        pool.closeAll(connectionId: connection.id)
+        #expect(pool.transportWaiterCount(for: connection.id) == 0)
+        pool.endTransportReplacement(connectionId: connection.id)
+
+        await #expect(throws: CancellationError.self) {
+            try await lease.value
+        }
+        #expect(opener.opened.isEmpty)
+    }
+
+    @Test("Closing one database fails only the leases parked for that database")
+    func closingADatabaseFailsOnlyItsParkedLeases() async throws {
+        let (connection, shop) = makeSession()
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let reports = DatabaseScope(connectionId: connection.id, database: "reports", schema: nil)
+        let opener = RecordingOpener()
+        let pool = MetadataConnectionPool.isolatedForTesting(openDriver: { try await opener.open($0) })
+        defer { pool.closeAll(connectionId: connection.id) }
+
+        pool.beginTransportReplacement(connectionId: connection.id)
+        let shopLease = Task { @MainActor in
+            try await pool.withDriver(scope: shop) { _ in }
+        }
+        let reportsLease = Task { @MainActor in
+            try await pool.withDriver(scope: reports) { _ in }
+        }
+        await waitUntil { pool.transportWaiterCount(for: connection.id) == 2 }
+        #expect(pool.transportWaiterCount(for: connection.id) == 2)
+
+        pool.closeAll(connectionId: connection.id, database: "shop")
+        #expect(pool.transportWaiterCount(for: connection.id) == 1)
+        pool.endTransportReplacement(connectionId: connection.id)
+
+        await #expect(throws: CancellationError.self) {
+            try await shopLease.value
+        }
+        try await reportsLease.value
+        #expect(opener.opened.count == 1)
+    }
+}
+
 @Suite("MetadataConnectionPool idle eviction", .serialized)
 @MainActor
 struct MetadataConnectionPoolIdleEvictionTests {

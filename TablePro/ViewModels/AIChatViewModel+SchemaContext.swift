@@ -11,9 +11,8 @@ extension AIChatViewModel {
     struct PromptContext: Sendable {
         let databaseType: DatabaseType
         let databaseName: String
-        let tables: [TableInfo]
-        let columnsByTable: [String: [ColumnInfo]]
-        let foreignKeys: [String: [ForeignKeyInfo]]
+        let tables: [AISchemaTable]
+        let defaultSchema: String?
         let currentQuery: String?
         let queryResults: String?
         let settings: AISettings
@@ -143,9 +142,8 @@ extension AIChatViewModel {
         return PromptContext(
             databaseType: connection.type,
             databaseName: services.databaseManager.browseDatabaseName(for: connection),
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            tables: schemaTables(),
+            defaultSchema: defaultSchema(for: connection),
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
@@ -176,12 +174,28 @@ extension AIChatViewModel {
             services.pluginManager.sqlDialect(for: $0.type)?.identifierQuote
         } ?? "\""
         let section = AISchemaContext.buildSchemaSection(
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: foreignKeysByTable,
+            tables: schemaTables(),
+            defaultSchema: connection.flatMap { defaultSchema(for: $0) },
             maxTables: settings.maxSchemaTables,
             identifierQuote: identifierQuote
         )
         return section.isEmpty ? nil : section
+    }
+
+    /// `tables` lists the one schema the session browses, where a table name is unique, so the
+    /// name-keyed column and foreign key maps join to it by name.
+    private func schemaTables() -> [AISchemaTable] {
+        tables.map { table in
+            AISchemaTable(
+                table: table,
+                columns: columnsByTable[table.name] ?? [],
+                foreignKeys: foreignKeysByTable[table.name] ?? []
+            )
+        }
+    }
+
+    private func defaultSchema(for connection: DatabaseConnection) -> String? {
+        connection.type.implicitSchemaName
+            ?? services.databaseManager.session(for: connection.id)?.browseSchema
     }
 }

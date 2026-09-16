@@ -5,7 +5,7 @@ description: View query execution plans as diagrams, trees, or raw output
 
 **EXPLAIN** estimates. **EXPLAIN ANALYZE** runs the query and reports what actually happened. Choose between them from the dropdown beside **Explain** in the query editor toolbar, or use **Query > Explain Query** (`Cmd+Option+E`); engines with a single variant show a plain button instead.
 
-The plan arrives as a result tab next to your query results, so going back to the data costs nothing, and pinning that tab keeps a plan while you try another query. Typing an `EXPLAIN` statement in the editor and running it opens the same viewer.
+The plan arrives as a result beside your query results, so going back to the data costs nothing, and pinning it keeps a plan while you try another query. Typing an `EXPLAIN` statement in the editor and running it opens the same viewer.
 
 <Frame caption="MySQL EXPLAIN ANALYZE diagram">
   <img
@@ -52,9 +52,11 @@ Then compare estimate against measurement. A node whose **Rows** estimate is ord
 
 The segmented control above the results switches between three views. A plan the parser cannot read as a tree has no control at all and shows the raw output under a banner saying so.
 
+The mode and the Compare baseline stay with the editor tab, so another plan in it opens in the same mode. Each plan keeps its own selected step, zoom and scroll position while its result is open. Running the statement again replaces an unpinned plan with a new one at 100%.
+
 ### Diagram
 
-Boxes joined by arrows, top to bottom. Zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll; the controls in the bottom-right corner zoom, reset to 100%, and fit the plan to the window. Right-click copies a step, and the export button saves the diagram as a PNG.
+Boxes joined by arrows, top to bottom. Zoom with a trackpad pinch, a two-finger double tap, or Cmd and scroll; the controls in the bottom-right corner zoom, reset to 100%, and fit the plan to the window. Click the plan to give it focus, and `Cmd+=`, `Cmd+-` and `Cmd+C` act on it instead of on the editor above. Right-click copies a step, and the export button saves the diagram as a PNG.
 
 <Frame caption="EXPLAIN tree view">
   <img

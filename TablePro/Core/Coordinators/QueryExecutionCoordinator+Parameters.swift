@@ -164,6 +164,9 @@ extension QueryExecutionCoordinator {
                         rowCap: rowCap
                     )
                 }
+                CatalogChangeService.post(
+                    .statementsRan(connectionId: conn.id, statements: [statement.sql], databaseType: conn.type)
+                )
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -212,6 +215,9 @@ extension QueryExecutionCoordinator {
                 }
             } catch {
                 schemaTask?.cancel()
+                CatalogChangeService.post(
+                    .statementsRan(connectionId: conn.id, statements: [statement.sql], databaseType: conn.type)
+                )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard parent.tabExecution.settle(claim) else { return }
@@ -300,6 +306,17 @@ extension QueryExecutionCoordinator {
                 scope: scope,
                 mode: transactionKind.declaresWrite ? .readWrite : .serverDefault,
                 claim: claim
+            )
+
+            let ranStatements: [String]
+            switch outcome {
+            case .completed(let results), .failed(let results, _, _):
+                ranStatements = prepared.prefix(results.count + 1).map(\.sentSQL)
+            case .cancelled:
+                ranStatements = prepared.map(\.sentSQL)
+            }
+            CatalogChangeService.post(
+                .statementsRan(connectionId: conn.id, statements: ranStatements, databaseType: conn.type)
             )
 
             switch outcome {

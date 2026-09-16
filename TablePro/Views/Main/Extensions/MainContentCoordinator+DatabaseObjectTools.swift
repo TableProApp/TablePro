@@ -149,9 +149,10 @@ extension MainContentCoordinator {
             if let selected, let tableName = selected.tableContext.tableName {
                 Task { await loadTableMetadata(tableName: tableName, for: selected) }
             }
-            if change.scope.database == browseDatabaseName {
-                Task { await refreshTables() }
-            }
+        case .dropped:
+            closeTabsForRemovedObjects(ids: showing.map(\.id))
+        case .renamed(let newName):
+            retitleTabs(ids: Set(showing.map(\.id)), to: newName)
         }
     }
 }

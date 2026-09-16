@@ -222,15 +222,6 @@ internal final class QuickSwitcherViewModel {
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let activeDatabase = services.databaseManager.session(for: connectionId)
             .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
-        let visibleDatabaseNames = switchTarget == .database
-            ? Set(
-                DatabaseTreeVisibility.visible(
-                    databases: DatabaseTreeMetadataService.shared.databases(for: connectionId),
-                    selected: databaseFilter,
-                    activeDatabase: activeDatabase
-                ).map(\.name)
-            )
-            : []
         /// A schema-only engine has no database to switch to, and its driver answers
         /// `fetchDatabases()` with its schema list, so listing them here showed every schema
         /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
@@ -242,14 +233,15 @@ internal final class QuickSwitcherViewModel {
                 let databaseSubtitle = switchTarget == .database
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Database")
-                for db in databases {
-                    if switchTarget == .database {
-                        if !visibleDatabaseNames.isEmpty {
-                            if !visibleDatabaseNames.contains(db) { continue }
-                        } else if !databaseFilter.isEmpty, db != activeDatabase, !databaseFilter.contains(db) {
-                            continue
-                        }
-                    }
+                let listed = switchTarget == .database
+                    ? DatabaseSwitchList.sections(
+                        names: databases,
+                        systemNames: Set(services.pluginManager.systemDatabaseNames(for: databaseType)),
+                        selected: databaseFilter,
+                        activeDatabase: activeDatabase
+                    ).all.map(\.name)
+                    : databases
+                for db in listed {
                     items.append(QuickSwitcherItem(
                         id: "db_\(db)",
                         name: db,

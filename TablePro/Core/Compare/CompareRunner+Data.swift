@@ -19,10 +19,6 @@ import TableProPluginKit
 internal extension CompareRunner {
     /// Lists the tables the two sides share, without reading a row.
     ///
-    /// Data mode used to spend its first Compare on this list, because plans arrive unticked and a
-    /// comparison of nothing reads nothing, so a data sync cost two Compares and paid the whole
-    /// metadata read twice.
-    ///
     /// The guard is `hasLoadedDataPlans` rather than an empty list, because two sides that share no
     /// table produce an empty list from a load that did happen, and a caller on a validation pass
     /// would reload it forever.
@@ -42,8 +38,6 @@ internal extension CompareRunner {
                     return
                 }
                 let read = try await buildPlans(context)
-                /// The pair may have moved while this was reading. Publishing now would put one
-                /// pair's tables, columns and snapshots behind another pair's Compare.
                 guard session.ownsAnswer(claim) else { return }
                 adopt(read)
             } catch is CancellationError {
@@ -60,49 +54,49 @@ internal extension CompareRunner {
         }
 
         /// The metadata is read again on every explicit Compare, never reused from the preload.
-        /// The list on screen can be minutes old, and a table's key can have been dropped since:
-        /// a stale key still merges the two row streams and still addresses the UPDATE and DELETE
-        /// it generates, so one reviewed row's statement can reach every row sharing that value.
-        /// `buildPlans` carries the user's ticks, keys and row exclusions onto the fresh list.
+        /// A table's key can have been dropped since, and a stale key still merges the two row
+        /// streams and still addresses the UPDATE and DELETE it generates.
         let read = try await buildPlans(context)
         guard session.ownsAnswer(claim) else { throw CancellationError() }
         adopt(read)
-        var plans = session.dataPlans
 
-        for index in plans.indices where plans[index].isEnabled && plans[index].isComparable {
+        var compared: [DataComparePlan] = []
+        for plan in session.dataPlans where plan.isEnabled && plan.isComparable {
             try Task.checkCancellation()
+            var result = plan
             do {
-                plans[index].summary = try await rowService.compare(
-                    plan: plans[index],
+                result.summary = try await rowService.compare(
+                    plan: plan,
                     source: context.source,
                     sourceConnection: context.sourceConnection,
                     target: context.target,
                     targetConnection: context.targetConnection,
                     options: session.dataOptions
                 )
+                result.comparisonFailure = nil
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                plans[index].unavailableReason = error.localizedDescription
+                result.summary = nil
+                result.comparisonFailure = error.localizedDescription
             }
+            compared.append(result)
         }
 
         try Task.checkCancellation()
         guard session.ownsAnswer(claim) else { throw CancellationError() }
-        session.applyComparedSummaries(from: plans)
+        session.applyComparedSummaries(from: compared)
         session.hasLoadedDataPlans = true
+        session.isStaleAfterApply = false
         session.detailPane = .rows
         session.invalidateScript()
 
-        /// Plans start unchecked so a Compare cannot stream every row of every table by accident,
-        /// which means a run with nothing ticked legitimately reads nothing. Recording that as
-        /// "0 differences" invited the reader to conclude the two databases matched.
-        let comparedAny = plans.contains { $0.isEnabled && $0.isComparable && $0.summary != nil }
+        let comparedAny = compared.contains { $0.summary != nil }
         guard comparedAny else {
             session.lastAction = .none
-            session.informationalMessage = String(
-                localized: "Nothing was compared. Tick the tables to compare, then press Compare."
-            )
+            session.informationalMessage = compared.isEmpty
+                ? String(localized: "Nothing was compared. Tick the tables to compare, then press Compare.")
+                : nil
             return
         }
         session.lastAction = .compared(Date(), differences: session.dataDifferenceTotal)
@@ -112,6 +106,8 @@ internal extension CompareRunner {
         var byTable: [(plan: DataComparePlan, statements: DataSyncStatements)] = []
 
         for plan in session.dataPlans where plan.isEnabled && plan.isComparable {
+            guard let summary = plan.summary,
+                  plan.scriptableRowCount(options: session.dataOptions) > 0 else { continue }
             try Task.checkCancellation()
             let statements = try await rowService.buildStatements(
                 plan: plan,
@@ -120,17 +116,13 @@ internal extension CompareRunner {
                 target: context.target,
                 targetConnection: context.targetConnection,
                 options: session.dataOptions,
-                excludedKeys: plan.excludedRowKeys
+                expectedDigest: summary.differenceDigest
             )
             guard !statements.isEmpty else { continue }
             byTable.append((plan, statements))
         }
         guard !byTable.isEmpty else { return [] }
 
-        /// `session.sourceSnapshots` is filled by the structure path only, so reading it here left
-        /// the graph empty and the ordering fell back to alphabetical: `order_items` before
-        /// `orders`, which is exactly the foreign key failure this ordering exists to prevent.
-        /// The data path records its own snapshots when it builds the plans.
         let foreignKeys = CompareRunner.foreignKeyMap(from: session.sourceSnapshots)
         let nodes = byTable.map { ForeignKeyTopologicalSort.Table(name: $0.plan.table, schema: $0.plan.schema) }
         let parentFirst = ForeignKeyTopologicalSort
@@ -154,9 +146,7 @@ internal extension CompareRunner {
     // MARK: - Plans
 
     /// Everything one read of the two sides produced, so the caller publishes all of it behind one
-    /// ownership check. Writing the snapshots here put one pair's foreign key graph and CREATE
-    /// TABLE source under another pair's Apply whenever the read outlived the pair it was started
-    /// for, which is the hazard the claim exists to close.
+    /// ownership check.
     struct DataPlanRead {
         let plans: [DataComparePlan]
         let sourceSnapshots: [String: TableStructureSnapshot]
@@ -171,13 +161,15 @@ internal extension CompareRunner {
 
     private func buildPlans(_ context: Context) async throws -> DataPlanRead {
         let (sourceReads, targetReads) = try await metadataService.bothSideTableReads(
-            context: context, includeViews: false, profile: .data
+            context: context,
+            includeViews: false,
+            profile: .data,
+            targetProfile: DataSyncTransactionality.needsStorageEngines(context.target.databaseType)
+                ? .dataWithStorageEngines
+                : .data
         )
         try Task.checkCancellation()
 
-        /// Keyed on schema and name, not name alone: two schemas of one database can hold the same
-        /// table, and pairing on the bare name took the shared column set from the wrong
-        /// counterpart while reading rows from the right one.
         let options = session.structureOptions
         let targetByKey = Dictionary(
             targetReads.map { (options.matchKey(name: $0.table.name, schema: $0.table.schema), $0) },
@@ -186,7 +178,6 @@ internal extension CompareRunner {
         let previous = Dictionary(
             session.dataPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }
         )
-
         let sourceSnapshots = Dictionary(
             sourceReads.compactMap { $0.snapshot }.map { ($0.qualifiedName, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -197,26 +188,12 @@ internal extension CompareRunner {
             guard read.failure == nil else { continue }
             let pairKey = options.matchKey(name: read.table.name, schema: read.table.schema)
             guard let counterpart = targetByKey[pairKey], counterpart.failure == nil else { continue }
-            let targetNames = Set(counterpart.columns.map { $0.name.lowercased() })
-            let shared = read.columns.filter { targetNames.contains($0.name.lowercased()) }
-            let schema = read.table.schema ?? context.source.schema
-            let identifier = schema.map { "\($0).\(read.table.name)" } ?? read.table.name
-            let carried = previous[identifier]
-
-            var plan = DataComparePlan(
-                table: read.table.name,
-                schema: schema,
-                targetSchema: counterpart.table.schema ?? context.target.schema,
-                columns: shared.map { $0.name },
-                columnDescriptors: shared.map {
-                    KeyColumnDescriptor(name: $0.name, dataType: $0.dataType, collation: $0.collation)
-                },
-                generatedColumns: Set(shared.filter { $0.isGenerated }.map { $0.name.lowercased() }),
-                keyColumns: carried?.keyColumns ?? shared.filter { $0.isPrimaryKey }.map { $0.name },
-                isEnabled: carried?.isEnabled ?? false,
-                excludedRowKeys: carried?.excludedRowKeys ?? []
+            let plan = makePlan(
+                read: read,
+                counterpart: counterpart,
+                context: context,
+                previous: previous
             )
-            plan.unavailableReason = DataComparePlan.unavailableReason(for: plan)
             plans.append(plan)
         }
         return DataPlanRead(
@@ -224,5 +201,51 @@ internal extension CompareRunner {
             sourceSnapshots: sourceSnapshots,
             unreadableTableCount: (sourceReads + targetReads).filter { $0.failure != nil }.count
         )
+    }
+
+    private func makePlan(
+        read: TableStructureRead,
+        counterpart: TableStructureRead,
+        context: Context,
+        previous: [String: DataComparePlan]
+    ) -> DataComparePlan {
+        let targetColumns = Dictionary(
+            counterpart.columns.map { ($0.name.lowercased(), $0) }, uniquingKeysWith: { first, _ in first }
+        )
+        let shared = read.columns.compactMap { column -> CompareColumn? in
+            guard let targetColumn = targetColumns[column.name.lowercased()] else { return nil }
+            return CompareColumn(
+                name: column.name,
+                sourceType: column.dataType,
+                targetType: targetColumn.dataType,
+                collation: column.collation,
+                isGeneratedOnTarget: targetColumn.isGenerated,
+                targetIdentity: targetColumn.identityKind
+            )
+        }
+        let primaryKey = read.columns
+            .filter { $0.isPrimaryKey && targetColumns[$0.name.lowercased()] != nil }
+            .map(\.name)
+        let schema = read.table.schema ?? context.source.schema
+        let identifier = schema.map { "\($0).\(read.table.name)" } ?? read.table.name
+        let carried = previous[identifier]
+
+        var plan = DataComparePlan(
+            table: read.table.name,
+            schema: schema,
+            targetSchema: counterpart.table.schema ?? context.target.schema,
+            columns: shared,
+            scope: carried?.scope ?? DataTableScope(keyColumns: primaryKey),
+            isEnabled: carried?.isEnabled ?? false,
+            targetStorageEngine: counterpart.metadata?.engine
+        )
+        plan.unavailableReason = DataComparePlan.unavailableReason(for: plan)
+        guard let carried else { return plan }
+        if carried.columns == plan.columns {
+            plan.summary = carried.summary
+            plan.comparisonFailure = carried.comparisonFailure
+            plan.excludedRowKeys = carried.excludedRowKeys
+        }
+        return plan
     }
 }

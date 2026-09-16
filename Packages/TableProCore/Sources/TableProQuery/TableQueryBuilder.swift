@@ -42,7 +42,7 @@ public struct TableQueryBuilder: Sendable {
         offset: Int
     ) -> String {
         if let builder = customQueryBuilder {
-            let sortColumns = sortState.columns.enumerated().map { (index, col) in
+            let sortColumns = sortState.columns.enumerated().map { index, col in
                 (columnIndex: index, ascending: col.ascending)
             }
             if let query = builder.buildBrowseQuery(
@@ -79,7 +79,7 @@ public struct TableQueryBuilder: Sendable {
             let filterTuples = filters.filter { $0.isEnabled && $0.isValid }.map { f in
                 (column: f.columnName, op: f.filterOperator.sqlSymbol, value: f.value)
             }
-            let sortColumns = sortState.columns.enumerated().map { (index, col) in
+            let sortColumns = sortState.columns.enumerated().map { index, col in
                 (columnIndex: index, ascending: col.ascending)
             }
             if let query = builder.buildFilteredQuery(

@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import Foundation
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
 import Testing
 
@@ -881,6 +881,98 @@ struct MainContentCoordinatorTabSwitchTests {
         )
         #expect(persisted.count == 2)
         #expect(persisted.contains { $0.columnName == "name" && !$0.isEnabled })
+    }
+
+    private func savedUsersFilters(_ coordinator: MainContentCoordinator) -> [TableFilter] {
+        FilterSettingsStorage.shared.loadLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+    }
+
+    private func clearSavedUsersFilters(_ coordinator: MainContentCoordinator) {
+        FilterSettingsStorage.shared.clearLastFilters(
+            for: "users",
+            connectionId: coordinator.connectionId,
+            databaseName: "",
+            schemaName: nil
+        )
+    }
+
+    @Test("Switching away from a table tab saves its unchecked filter rows")
+    func tabSwitchSavesUncheckedFilterRows() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tableId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tableId)
+        defer { clearSavedUsersFilters(coordinator) }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tableId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let checked = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let unchecked = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        tabManager.tabs[index].filterState.filters = [checked, unchecked]
+        tabManager.tabs[index].filterState.commit = .all
+
+        let queryId = addQueryTab(to: tabManager)
+        coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
+
+        let saved = savedUsersFilters(coordinator)
+        #expect(saved.map(\.id) == [checked.id, unchecked.id])
+        #expect(saved.map(\.isEnabled) == [true, false])
+    }
+
+    @Test("Switching away from a soloed table tab saves every row with its own enabled flag")
+    func tabSwitchSavesSoloedFilterWorkingSet() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tableId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tableId)
+        defer { clearSavedUsersFilters(coordinator) }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tableId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let other = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let soloed = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a", isEnabled: false)
+        tabManager.tabs[index].filterState.filters = [other, soloed]
+        tabManager.tabs[index].filterState.commit = .solo(soloed.id)
+
+        let queryId = addQueryTab(to: tabManager)
+        coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
+
+        let saved = savedUsersFilters(coordinator)
+        #expect(saved.map(\.id) == [other.id, soloed.id])
+        #expect(saved.map(\.isEnabled) == [true, false])
+    }
+
+    @Test("Switching away after Clear does not write the cleared filters back")
+    func tabSwitchAfterClearKeepsSavedFiltersCleared() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tableId = addTableTab(to: tabManager, tableName: "users")
+        seedRows(coordinator, for: tableId)
+        defer { clearSavedUsersFilters(coordinator) }
+
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tableId }) else {
+            Issue.record("Expected tab to exist")
+            return
+        }
+        let first = TestFixtures.makeTableFilter(column: "id", op: .equal, value: "1")
+        let second = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
+        tabManager.tabs[index].filterState.filters = [first, second]
+        coordinator.applyAllFilters()
+        coordinator.clearAppliedFilters()
+        coordinator.filterCoordinator.clearLastFilters(for: "users")
+        #expect(savedUsersFilters(coordinator).isEmpty)
+
+        let queryId = addQueryTab(to: tabManager)
+        coordinator.handleTabChange(from: tableId, to: queryId, tabs: tabManager.tabs)
+
+        #expect(savedUsersFilters(coordinator).isEmpty)
+        #expect(tabManager.tabs[index].filterState.filters.map(\.id) == [first.id, second.id])
     }
 
     @Test("DataChangeManager restoreState rehydrates table context and changes")

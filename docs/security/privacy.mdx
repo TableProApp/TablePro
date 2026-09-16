@@ -33,6 +33,8 @@ The JSON body holds these fields and no others:
 | `connection_count` | how many connections are open |
 | `has_license` | whether a license key is stored |
 | `connection_attempted_at`, `connection_succeeded_at` | when you first tried to connect on this Mac, and when a connection first succeeded |
+| `update_install_mode` | how updates install: `automatic`, `notify`, or `off` |
+| `update_check_interval` | seconds between update checks, absent when checks are off |
 
 No query text. No hostnames, ports, database names, or usernames. No email address, no file paths, no connection names.
 
@@ -102,11 +104,13 @@ Every call is written to the local activity log with the token behind it, statem
 
 ## Update checks
 
-Sparkle fetches `https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml`, one day apart by default. It is a plain `GET` with no query parameters: system profiling is off, so nothing about your Mac rides along. The user agent names the app and its version, and GitHub sees your IP address as it would for any web request.
+Sparkle fetches `https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml` once a day, and once for every **Check for Updates…** you press. It is a plain `GET` with no query parameters: system profiling is off, so nothing about your Mac rides along. The user agent names the app and its version, and GitHub sees your IP address as it would for any web request.
 
 Updates download from the GitHub release named in the feed, and Sparkle checks each build's EdDSA signature against the public key inside the app before it installs anything.
 
 **Automatically check for updates** in **Settings > General** is on by default. With it off, **Check for Updates…** in the same section is the only thing that reaches the feed.
+
+**Download and install updates automatically** is also on by default, so a new build downloads without being accepted first and installs when TablePro quits. The download is the same signed archive from the same GitHub release, and nothing is sent to fetch it. Turn it off to be asked each time.
 
 ## The plugin catalog
 

@@ -37,8 +37,18 @@ struct SSHTunnelFormState {
     var totpDigits: Int = 6
     var totpPeriod: Int = 30
 
+    /// What the keychain held for the inline namespace when the form opened, so an emptied field
+    /// can be told apart from a keychain that could not be read.
+    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+    private(set) var storedKeyPassphraseState: ConnectionStorage.StoredSecretState = .absent
+
     // Remote database file
     var remoteFilePath: String = ""
+
+    /// New connections default to running on the server, which is what a user reaching for a remote
+    /// SQLite database wants; loading an existing connection overwrites this with its saved value,
+    /// and a connection saved before the live mode existed decodes as the read-only copy.
+    var remoteFileAccess: RemoteFileAccess = .onServer
 
     // MARK: - Computed Properties
 
@@ -67,7 +77,8 @@ struct SSHTunnelFormState {
             totpAlgorithm: totpAlgorithm,
             totpDigits: totpDigits,
             totpPeriod: totpPeriod,
-            remoteFilePath: remoteFilePath
+            remoteFilePath: remoteFilePath,
+            remoteFileAccess: remoteFileAccess
         )
     }
 
@@ -80,6 +91,7 @@ struct SSHTunnelFormState {
         }
         var config = profile.toSSHConfiguration()
         config.remoteFilePath = remoteFilePath
+        config.remoteFileAccess = remoteFileAccess
         return config
     }
 
@@ -95,11 +107,13 @@ struct SSHTunnelFormState {
             profileId = nil
             populateFields(from: config)
             remoteFilePath = config.remoteFilePath
+            remoteFileAccess = config.remoteFileAccess
         case .profile(let id, let snapshot):
             enabled = true
             profileId = id
             populateFields(from: snapshot)
             remoteFilePath = connection.sshConfig.remoteFilePath
+            remoteFileAccess = connection.sshConfig.remoteFileAccess
         }
     }
 
@@ -112,10 +126,22 @@ struct SSHTunnelFormState {
             totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
         } else {
             // Inline/disabled: load from connection keychain namespace
+            storedPasswordState = storage.sshPasswordState(for: connectionId)
+            storedKeyPassphraseState = storage.keyPassphraseState(for: connectionId)
             password = storage.loadSSHPassword(for: connectionId) ?? ""
             keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
             totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
         }
+    }
+
+    /// The user emptied an inline SSH secret that had a value. Without this the old secret stays in
+    /// the keychain and the next connect still authenticates with it.
+    var clearsStoredPassword: Bool {
+        password.isEmpty && storedPasswordState == .stored
+    }
+
+    var clearsStoredKeyPassphrase: Bool {
+        keyPassphrase.isEmpty && storedKeyPassphraseState == .stored
     }
 
     /// Build the SSHTunnelMode for saving to the connection.
@@ -124,6 +150,7 @@ struct SSHTunnelFormState {
         if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
             var snapshot = profile.toSSHConfiguration()
             snapshot.remoteFilePath = remoteFilePath
+            snapshot.remoteFileAccess = remoteFileAccess
             return .profile(id: profileId, snapshot: snapshot)
         }
         return .inline(buildInlineConfig())

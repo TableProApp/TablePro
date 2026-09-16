@@ -1,12 +1,12 @@
-import XCTest
 @testable import TableProImport
+import XCTest
 
 final class ConnectionImportAnalyzerTests: XCTestCase {
     private let allTypes: Set<String> = ["MySQL", "PostgreSQL", "Redis"]
 
     func testMatchingHostPortDatabaseUserIsDuplicate() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3306,
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", redisDatabase: nil
         )
         let envelope = makeEnvelope(connections: [makeConnection()])
@@ -24,7 +24,7 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
 
     func testDifferentUsernameIsNotDuplicate() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3306,
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
             database: "test", username: "someoneelse", redisDatabase: nil
         )
         let preview = ConnectionImportAnalyzer.analyze(
@@ -48,7 +48,7 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
         XCTAssertEqual(typeId, "Vertica")
         XCTAssertFalse(preview.items[0].status.isSelectedByDefault)
         XCTAssertEqual(preview.items[0].connection.type, "Vertica")
-        XCTAssertTrue(preview.items[0].status.message?.contains("Vertica") == true)
+        XCTAssertEqual(preview.items[0].status.message?.contains("Vertica"), true)
     }
 
     func testTypeDifferingOnlyInCaseIsCanonicalized() {
@@ -73,7 +73,7 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
 
     func testDuplicateOfUnsupportedTypeStaysDuplicate() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3306,
+            id: UUID(), name: "Existing", host: "127.0.0.1", port: 3_306,
             database: "test", username: "root", redisDatabase: nil
         )
         let preview = ConnectionImportAnalyzer.analyze(
@@ -132,11 +132,11 @@ final class ConnectionImportAnalyzerTests: XCTestCase {
 
     func testRedisDatabaseDistinguishesDuplicates() {
         let existing = ConnectionDuplicateCandidate(
-            id: UUID(), name: "Redis 0", host: "127.0.0.1", port: 6379,
+            id: UUID(), name: "Redis 0", host: "127.0.0.1", port: 6_379,
             database: "", username: "", redisDatabase: 0
         )
         let connection = ExportableConnection(
-            name: "Redis 1", host: "127.0.0.1", port: 6379, database: "", username: "", type: "Redis",
+            name: "Redis 1", host: "127.0.0.1", port: 6_379, database: "", username: "", type: "Redis",
             sshConfig: nil, sslConfig: nil, color: nil, tagName: nil, groupName: nil, sshProfileId: nil,
             safeModeLevel: nil, aiPolicy: nil, additionalFields: nil,
             redisDatabase: 1, startupCommands: nil, localOnly: nil

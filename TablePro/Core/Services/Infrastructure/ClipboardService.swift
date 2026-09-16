@@ -4,8 +4,8 @@
 //
 
 import AppKit
-import CodeEditTextView
 import TableProPluginKit
+import TableProTextEngine
 import UniformTypeIdentifiers
 
 struct GridRowsClipboardPayload: Codable, Equatable {

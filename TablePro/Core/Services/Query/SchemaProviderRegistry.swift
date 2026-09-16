@@ -6,7 +6,6 @@
 //  Ref-counted per connection with grace period removal to avoid redundant schema loads.
 //
 
-import Combine
 import Foundation
 import os
 
@@ -23,7 +22,7 @@ protocol LiveScopeProviding: AnyObject {
 }
 
 @MainActor
-final class SchemaProviderRegistry {
+final class SchemaProviderRegistry: CatalogChangeTarget {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaProviderRegistry")
 
     /// How many providers one connection keeps before eviction looks for scopes nothing holds.
@@ -39,7 +38,6 @@ final class SchemaProviderRegistry {
     private var populationGenerations: [DatabaseScope: Int] = [:]
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
-    private var cancellables: Set<AnyCancellable> = []
     private let metadataDriverProvider: any ScopedMetadataProviding
     private weak var liveScopeProvider: (any LiveScopeProviding)?
 
@@ -51,25 +49,15 @@ final class SchemaProviderRegistry {
     ) {
         self.metadataDriverProvider = metadataDriverProvider
         self.liveScopeProvider = liveScopeProvider
-        subscribeToRefreshSignal()
     }
     #else
     private init(metadataDriverProvider: any ScopedMetadataProviding = DatabaseManager.shared) {
         self.metadataDriverProvider = metadataDriverProvider
-        subscribeToRefreshSignal()
     }
     #endif
 
     func setLiveScopeProvider(_ provider: any LiveScopeProviding) {
         liveScopeProvider = provider
-    }
-
-    private func subscribeToRefreshSignal() {
-        AppCommands.shared.refreshData
-            .sink { [weak self] request in
-                self?.refresh(request: request)
-            }
-            .store(in: &cancellables)
     }
 
     func provider(for scope: DatabaseScope) -> SQLSchemaProvider? {
@@ -134,26 +122,32 @@ final class SchemaProviderRegistry {
         return provider
     }
 
-    /// A data change repopulates every provider it reaches except the browse scope, which
+    /// A catalog change repopulates every provider it reaches except the browse scope, which
     /// `SchemaRefreshService.syncAutocompleteProvider` owns and fills with the union of every
     /// schema the sidebar has expanded. Repopulating it here as well would give one provider two
     /// writers with no ordering between them and two different table sets to write.
-    func refresh(request: DataRefreshRequest) {
-        let browseScope = metadataDriverProvider.browseScope(for: request.connectionId)
-        /// Most senders leave the scope nil, which reaches every provider of the connection.
-        /// Repopulating all of them would run a catalog fetch and a whole-schema column preload
-        /// per scope the session has ever visited, so only the scopes something still renders
-        /// are refreshed; the rest reload when a tab binds to them again.
-        let live = liveScopeProvider?.liveScopes(for: request.connectionId)
+    ///
+    /// Only the scopes something still renders are refreshed; the rest reload when a tab binds to
+    /// them again. Each one's generation moves and its population in flight is dropped before the
+    /// new one starts, so the repopulate cannot join a fetch that began before the change, and that
+    /// fetch's commit is refused when it lands.
+    func refreshCatalog(for change: CatalogChange) async {
+        guard !change.kinds.isEmpty else { return }
+        let browseScope = metadataDriverProvider.browseScope(for: change.connectionId)
+        let live = liveScopeProvider?.liveScopes(for: change.connectionId)
         let matching = providers.filter { scope, _ in
-            scope.connectionId == request.connectionId
+            scope.connectionId == change.connectionId
                 && scope != browseScope
-                && request.reaches(tabScope: scope)
+                && change.reaches(database: scope.database, schema: scope.schema)
                 && (live?.contains(scope) ?? true)
         }
-        for (scope, provider) in matching {
-            Task { [weak self] in
-                await self?.populate(scope: scope, provider: provider, connection: nil)
+        for scope in matching.keys {
+            populationGenerations[scope, default: 0] &+= 1
+            populationTasks.removeValue(forKey: scope)?.cancel()
+        }
+        await withTaskGroup(of: Void.self) { group in
+            for (scope, provider) in matching {
+                group.addTask { await self.populate(scope: scope, provider: provider, connection: nil) }
             }
         }
     }

@@ -86,6 +86,18 @@ actor KafkaCluster {
         return bootstrapConnection
     }
 
+    /// The connection to the broker that is currently the controller.
+    ///
+    /// Only the controller accepts an admin request such as DeleteTopics; any other broker answers
+    /// NOT_CONTROLLER. On a single-broker cluster this is the bootstrap connection. Under
+    /// `bootstrapOnly` it has to be, and a cluster whose controller is elsewhere will say so
+    /// rather than have the client dial an address it cannot reach.
+    func controllerConnection() async throws -> KafkaConnection {
+        let metadata = try await metadata()
+        guard metadata.controllerId >= 0 else { return try controlConnection() }
+        return try await connection(forLeader: metadata.controllerId)
+    }
+
     /// The connection to use for a partition whose leader is `nodeId`.
     ///
     /// Under `bootstrapOnly` this always returns the bootstrap connection. That can mean

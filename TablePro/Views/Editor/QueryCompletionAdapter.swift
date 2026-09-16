@@ -2,15 +2,15 @@
 //  QueryCompletionAdapter.swift
 //  TablePro
 //
-//  Bridges a per-language QueryCompletionService to CodeEditSourceEditor's
+//  Bridges a per-language QueryCompletionService to TableProEditorKit's
 //  CodeSuggestionDelegate.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 final class QueryCompletionAdapter: CodeSuggestionDelegate {
@@ -159,7 +159,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let length = offset - start
         guard length > 0, length <= maximumPrefixLength else { return nil }
 
-        let prefix = text.substring(with: NSRange(location: start, length: length)).lowercased()
+        let prefix = text.substring(with: NSRange(location: start, length: length))
         guard !prefix.isEmpty else { return nil }
 
         let ranked = service.rank(session.candidates, prefix: prefix)

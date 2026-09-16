@@ -108,6 +108,7 @@ struct CloudSQLProxyModelTests {
         #expect(!DatabaseType.mariadb.supportsCloudSQLProxy)
         #expect(!DatabaseType.tidb.supportsCloudSQLProxy)
         #expect(!DatabaseType.databend.supportsCloudSQLProxy)
+        #expect(!DatabaseType.oceanbase.supportsCloudSQLProxy)
         #expect(!DatabaseType.sqlite.supportsCloudSQLProxy)
         #expect(!DatabaseType.mongodb.supportsCloudSQLProxy)
     }

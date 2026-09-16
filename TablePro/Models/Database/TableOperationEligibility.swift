@@ -13,6 +13,25 @@ import TableProPluginKit
 /// `TRUNCATE` against a view. It sits beside the models because the menu-bar validator in `Core/`
 /// has to reach it and must not depend on a `Views/` file.
 enum TableOperationEligibility {
+    /// What the connection's engine can express, alongside what the object's kind allows.
+    ///
+    /// Kind alone was the whole test, so both items were offered on every engine and an
+    /// Elasticsearch index was handed `DROP TABLE "test_index"` (#2884). The driver is asked once
+    /// when the menu is built, the same way `maintenanceOperations` is, rather than curated per
+    /// engine in the metadata registry: the statement and the answer then come from one place and
+    /// cannot drift apart.
+    struct Context {
+        /// The refs the driver answered with a statement for, resolved per name because a plugin
+        /// may refuse one object and not another: Elasticsearch has no statement for an index
+        /// name carrying a wildcard, which would otherwise reach the cluster as `DELETE /*`.
+        let droppable: Set<DatabaseTreeTableRef>
+        let truncatable: Set<DatabaseTreeTableRef>
+        let isReadOnly: Bool
+
+        /// For callers with no driver to ask, such as a window whose session has gone.
+        static let unavailable = Context(droppable: [], truncatable: [], isReadOnly: true)
+    }
+
     /// A kind whose rows the engine will not let you replace or remove in place. A view holds no
     /// rows of its own, a foreign or external table proxies rows on another server, and a system
     /// table belongs to the catalog.
@@ -35,6 +54,22 @@ enum TableOperationEligibility {
     static func canTruncate(_ targets: some Collection<DatabaseTreeTableRef>) -> Bool {
         guard !targets.isEmpty else { return false }
         return targets.allSatisfy { canTruncate($0.table.type) }
+    }
+
+    static func canTruncate(_ targets: some Collection<DatabaseTreeTableRef>, context: Context) -> Bool {
+        guard !context.isReadOnly, canTruncate(targets) else { return false }
+        return targets.allSatisfy { context.truncatable.contains($0) }
+    }
+
+    /// Whether Delete may be offered.
+    ///
+    /// All or nothing over the selection, for the reason Truncate already gives: a command that
+    /// drops part of what the user selected is worse than one that declines. The menu never offers
+    /// what the driver would refuse, the rule the rename path states in
+    /// `PluginDriverUnsupportedOperation`.
+    static func canDrop(_ targets: some Collection<DatabaseTreeTableRef>, context: Context) -> Bool {
+        guard !context.isReadOnly, !targets.isEmpty else { return false }
+        return targets.allSatisfy { context.droppable.contains($0) }
     }
 
     /// The driver's vocabulary for the same kind. Spelled out rather than taken from `rawValue` so

@@ -32,6 +32,15 @@ final class AuthPaneViewModel {
     var additionalFieldValues: [String: String] = [:]
     var pgpassStatus: PgpassStatus = .notChecked
 
+    /// Which credentials this connection signs in with: its own, or a named profile shared with
+    /// every other connection pointing at the same one.
+    var credentialMode: CredentialMode = .inline
+    var credentialProfiles: [CredentialProfile] = []
+
+    /// What the keychain held when the form opened. An empty password field means the user cleared
+    /// it only if there was something to clear and the read succeeded.
+    private(set) var storedPasswordState: ConnectionStorage.StoredSecretState = .absent
+
     var coordinator: WeakCoordinatorRef?
 
     var authFields: [ConnectionField] {
@@ -71,6 +80,67 @@ final class AuthPaneViewModel {
         promptForPassword && !hidesPassword
     }
 
+    /// The user emptied a password field that had one in it. Saving then has to delete the stored
+    /// secret: leaving it behind means the next connect still authenticates with the old password,
+    /// an encrypted export still carries it, and a duplicate copies it.
+    var clearsStoredPassword: Bool {
+        !usesCredentialProfile && !effectivePromptForPassword && password.isEmpty && storedPasswordState == .stored
+    }
+
+    var usesCredentialProfile: Bool { credentialMode.profileId != nil }
+
+    /// Enough to make a profile out of. A password-only engine such as Redis has no username, so
+    /// requiring one hid the promotion exactly where it was most useful.
+    var hasPromotableCredentials: Bool {
+        !resolvedUsername.isEmpty || !password.isEmpty || effectivePromptForPassword
+    }
+
+    var selectedCredentialProfile: CredentialProfile? {
+        guard let id = credentialMode.profileId else { return nil }
+        return credentialProfiles.first { $0.id == id }
+    }
+
+    /// The connection points at a profile this Mac does not have, which an import or a sync that
+    /// has not caught up can both produce.
+    var credentialProfileIsMissing: Bool {
+        usesCredentialProfile && selectedCredentialProfile == nil
+    }
+
+    var isSavingCredentialsAsProfile = false
+
+    func loadCredentialProfiles() {
+        credentialProfiles = CredentialProfileStorage.shared.loadProfiles()
+    }
+
+    /// Re-reads the profiles after they changed elsewhere, and drops a selection whose profile is
+    /// gone. Storage has already given this connection those credentials inline, so keeping the
+    /// dead id would write it back on the next save and undo that.
+    func reconcileCredentialProfiles() {
+        let storage = CredentialProfileStorage.shared
+        credentialProfiles = storage.loadProfiles()
+        guard !storage.lastLoadFailed,
+              let id = credentialMode.profileId,
+              !credentialProfiles.contains(where: { $0.id == id })
+        else { return }
+        credentialMode = .inline
+        if let refreshed = coordinator?.value?.storage.loadConnection(id: coordinator?.value?.connectionId ?? UUID()) {
+            username = refreshed.username
+            promptForPassword = refreshed.promptForPassword
+            storedPasswordState = coordinator?.value?.storage.passwordState(for: refreshed.id) ?? .absent
+            password = coordinator?.value?.storage.loadPassword(for: refreshed.id) ?? ""
+        }
+    }
+
+    /// The credentials currently typed into the form, as an unsaved profile for the editor to open
+    /// with. Promoting what is already filled in beats making the user retype it.
+    func profileFromCurrentCredentials() -> CredentialProfile {
+        CredentialProfile(
+            name: "",
+            username: resolvedUsername,
+            passwordMode: effectivePromptForPassword ? .prompt : .stored
+        )
+    }
+
     var usePgpass: Bool {
         additionalFieldValues["usePgpass"] == "true"
     }
@@ -78,7 +148,11 @@ final class AuthPaneViewModel {
     var validationIssues: [String] {
         var issues: [String] = []
 
+        let profileFieldIds = Set(selectedCredentialProfile?.secureFieldIds ?? [])
         for field in authFields where field.isRequired && isFieldVisible(field) {
+            /// A linked profile hides its own fields and supplies them at connect, so requiring the
+            /// connection's empty copy leaves Save disabled with nothing on screen to fix.
+            if profileFieldIds.contains(field.id) { continue }
             let value = additionalFieldValues[field.id] ?? field.defaultValue ?? ""
             if value.trimmingCharacters(in: .whitespaces).isEmpty {
                 issues.append(String(format: String(localized: "%@ is required"), field.label))
@@ -110,6 +184,8 @@ final class AuthPaneViewModel {
     func load(from connection: DatabaseConnection, storage: ConnectionStorage) {
         username = connection.username
         promptForPassword = connection.promptForPassword
+        credentialMode = connection.credentialMode
+        loadCredentialProfiles()
 
         var values: [String: String] = [:]
         let allFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
@@ -133,6 +209,7 @@ final class AuthPaneViewModel {
 
         additionalFieldValues = values
 
+        storedPasswordState = storage.passwordState(for: connection.id)
         if let savedPassword = storage.loadPassword(for: connection.id) {
             password = savedPassword
         }

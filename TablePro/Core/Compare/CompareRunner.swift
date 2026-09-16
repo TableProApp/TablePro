@@ -127,6 +127,10 @@ internal struct CompareRunner {
 
         let runProgress = Progress(totalUnitCount: Int64(session.statements.count))
         session.progress = runProgress
+        let setupGeneration = session.setupGeneration
+        let nonTransactionalObjects = session.mode == .data
+            ? session.nonTransactionalTables(in: session.statements)
+            : []
 
         session.runTask = Task { [session] in
             session.activity = .applying
@@ -156,26 +160,55 @@ internal struct CompareRunner {
                         settings: settings,
                         target: target,
                         driver: plugin,
-                        progress: runProgress
+                        progress: runProgress,
+                        nonTransactionalObjects: nonTransactionalObjects
                     )
                 }
                 /// Set from the result, not before the run. Setting it up front meant a declined
                 /// authorization or a driver that could not run the script still flipped the status
                 /// strip to "written", next to text that still read "Nothing has been written."
-                session.hasWrittenToTarget = session.hasWrittenToTarget || result.executedCount > 0
+                session.hasWrittenToTarget = session.hasWrittenToTarget || result.writtenStatementCount > 0
+                /// The setup cannot change while a run applies, and this is the fence if it did:
+                /// the result describes the pair it ran against, so it is never published onto
+                /// another.
+                guard session.isCurrent(setupGeneration) else {
+                    Self.announceCatalogChange(in: target)
+                    return
+                }
                 session.runResult = result
                 session.lastAction = .applied(
                     Date(), target: target.qualifiedDescription, statements: result.executedCount
                 )
+                /// The Apply sheet closes before the run starts, so the result it would have shown
+                /// is reported on the window instead. A rollback that could not reach every table is
+                /// the case this exists for.
+                session.reportRunResult(result, target: target)
                 /// The script just ran, so it describes work the target has already had. Leaving it
                 /// armed left Apply enabled on a stale plan, one click from running the same
                 /// CREATE/ALTER/DELETE a second time.
                 session.markAppliedAndStale()
+                Self.announceCatalogChange(in: target)
             } catch is CancellationError {
+                Self.announceCatalogChange(in: target)
             } catch {
                 session.errorMessage = error.localizedDescription
+                Self.announceCatalogChange(in: target)
             }
         }
+    }
+
+    /// A sync script runs DDL against the target, and one that failed or was stopped part way may
+    /// already have changed it, so every way out of a run reports the target's catalog as changed.
+    private static func announceCatalogChange(in target: DatabaseEndpoint) {
+        CatalogChangeService.post(
+            .changed(
+                CatalogChange(
+                    connectionId: target.scope.connectionId,
+                    database: target.scope.database,
+                    kinds: .everything
+                )
+            )
+        )
     }
 
     // MARK: - Context
@@ -224,7 +257,36 @@ internal struct CompareRunner {
 
     // MARK: - Structure
 
+    internal struct StructureComparison {
+        internal let report: CompareReport
+        internal let sourceSnapshots: [String: TableStructureSnapshot]
+        internal let targetSnapshots: [String: TableStructureSnapshot]
+    }
+
     private func runStructureCompare(_ context: Context, claim: CompareSyncSession.RunClaim) async throws {
+        let comparison = try await readAndCompareStructure(context)
+
+        try Task.checkCancellation()
+        guard session.ownsAnswer(claim) else { throw CancellationError() }
+
+        /// Committed in one synchronous block. Writing the snapshots before the last await and the
+        /// report after it let a reset in between leave one pair's snapshots under another pair's
+        /// report, which a later script build then turned into DDL for the wrong target.
+        session.sourceSnapshots = comparison.sourceSnapshots
+        session.targetSnapshots = comparison.targetSnapshots
+        session.report = comparison.report
+        session.adoptActions(for: comparison.report)
+        session.invalidateScript()
+        session.selectedObjectId = session.visibleResults.first?.id
+        session.lastAction = .compared(Date(), differences: comparison.report.differenceCount)
+    }
+
+    /// The comparison itself, with nothing published. The script build runs it a second time so the
+    /// values it is about to generate from can be checked against the two databases as they stand,
+    /// and running the comparison rather than a narrower re-read is what keeps the two answers in
+    /// the same vocabulary: a verification that normalized differently would refuse honest scripts
+    /// and pass dangerous ones.
+    private func readAndCompareStructure(_ context: Context) async throws -> StructureComparison {
         let wantsViews = session.includedKinds.contains(.view)
             || session.includedKinds.contains(.materializedView)
 
@@ -242,9 +304,6 @@ internal struct CompareRunner {
         let engine = StructureDiffEngine(options: session.structureOptions)
         let tableReport = engine.compare(source: sourceSnapshots, target: targetSnapshots)
 
-        /// Built locally and committed once. Writing the snapshots here and the report after the
-        /// next await let a reset in between leave one pair's snapshots under another pair's
-        /// report, which a later script build then turned into DDL for the wrong target.
         let sourceByName = Dictionary(
             sourceSnapshots.map { ($0.qualifiedName, $0) }, uniquingKeysWith: { first, _ in first }
         )
@@ -262,17 +321,11 @@ internal struct CompareRunner {
         results += unreadableResults(sourceTables, targetTables)
         results += try await sourceDefinedResults(context, sourceReads: sourceReads, targetReads: targetReads)
 
-        try Task.checkCancellation()
-        guard session.ownsAnswer(claim) else { throw CancellationError() }
-
-        let report = CompareReport(results: results)
-        session.sourceSnapshots = sourceByName
-        session.targetSnapshots = targetByName
-        session.report = report
-        session.adoptActions(for: report)
-        session.invalidateScript()
-        session.selectedObjectId = session.visibleResults.first?.id
-        session.lastAction = .compared(Date(), differences: report.differenceCount)
+        return StructureComparison(
+            report: CompareReport(results: results),
+            sourceSnapshots: sourceByName,
+            targetSnapshots: targetByName
+        )
     }
 
     /// A table whose metadata could not be read is listed with its reason rather than aborting the
@@ -351,6 +404,7 @@ internal struct CompareRunner {
         guard let report = session.report else { return [] }
         let snapshots = session.sourceSnapshots
         let selected = report.comparable.filter { session.action(for: $0) != .skip }
+        try await refuseIfObjectsChanged(context, selected: selected, snapshots: snapshots)
         let tableOperations = selected.compactMap { result -> SchemaSyncOperation? in
             guard result.identity.kind == .table else { return nil }
             switch session.action(for: result) {
@@ -389,6 +443,34 @@ internal struct CompareRunner {
                 statements += sourceBuilder.build(for: entry.result, action: entry.action)
             }
             return statements
+        }
+    }
+
+    /// The DDL is written from what the comparison saw, and nothing looks at either database again
+    /// before it runs. A window left open while someone else works on the target is enough to
+    /// produce a CREATE TABLE without a column added since, or a DROP of a table that was recreated
+    /// with rows in it, both reported as success.
+    private func refuseIfObjectsChanged(
+        _ context: Context,
+        selected: [CompareObjectResult],
+        snapshots: [String: TableStructureSnapshot]
+    ) async throws {
+        let expected = StructureChangeGuard.inputs(
+            for: selected, actions: { session.action(for: $0) }, sourceSnapshots: snapshots
+        )
+        guard !expected.isEmpty else { return }
+
+        let verification = try await readAndCompareStructure(context)
+        let actions = Dictionary(
+            selected.map { ($0.id, session.action(for: $0)) }, uniquingKeysWith: { first, _ in first }
+        )
+        let actual = StructureChangeGuard.inputs(
+            for: verification.report.comparable,
+            actions: { actions[$0.id] ?? .skip },
+            sourceSnapshots: verification.sourceSnapshots
+        )
+        if let refusal = StructureChangeGuard.refusal(expected: expected, actual: actual) {
+            throw refusal
         }
     }
 

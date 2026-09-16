@@ -101,9 +101,41 @@ struct TableOperationSQLBuilderTests {
         return TableOperationSQLBuilder(adapterProvider: { adapter })
     }
 
+    private func makeNonSQLBuilder() -> TableOperationSQLBuilder {
+        let connection = DatabaseConnection(name: "Test", type: .elasticsearch)
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: StubDropDriver())
+        return TableOperationSQLBuilder(adapterProvider: { adapter })
+    }
+
+    /// Skipping it instead would run the rest of the plan while the coordinator still recorded
+    /// every staged object as done, so an object nothing touched was reported as deleted.
+    @Test("A drop the engine cannot express rejects the batch")
+    func rejectsInexpressibleDrop() {
+        #expect(throws: DataWriteError.objectOperationUnsupported("test_index")) {
+            try makeNonSQLBuilder().generate(truncates: [], deletes: [ref("test_index")], options: [:])
+        }
+    }
+
+    @Test("A truncate the engine cannot express rejects the batch")
+    func rejectsInexpressibleTruncate() {
+        #expect(throws: DataWriteError.objectOperationUnsupported("test_index")) {
+            try makeNonSQLBuilder().generate(truncates: [ref("test_index")], deletes: [], options: [:])
+        }
+    }
+
+    /// A rejection is all or nothing: the other staged object must not run either.
+    @Test("One inexpressible ref rejects the whole batch")
+    func oneInexpressibleRefRejectsEverything() {
+        #expect(throws: (any Error).self) {
+            try makeNonSQLBuilder().generate(
+                truncates: [], deletes: [ref("orders"), ref("test_index")], options: [:]
+            )
+        }
+    }
+
     @Test("Materialized view drops with DROP MATERIALIZED VIEW")
-    func dropsMaterializedView() {
-        let stmts = makeBuilder().generate(
+    func dropsMaterializedView() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("daily_sales", .materializedView, schema: "public")],
             options: [:], includeFKHandling: false
         )
@@ -111,40 +143,40 @@ struct TableOperationSQLBuilderTests {
     }
 
     @Test("View drops with DROP VIEW")
-    func dropsView() {
-        let stmts = makeBuilder().generate(
+    func dropsView() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("active_users", .view)], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP VIEW \"active_users\""])
     }
 
     @Test("Foreign table drops with DROP FOREIGN TABLE")
-    func dropsForeignTable() {
-        let stmts = makeBuilder().generate(
+    func dropsForeignTable() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("remote_orders", .foreignTable)], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP FOREIGN TABLE \"remote_orders\""])
     }
 
     @Test("External table drops with DROP TABLE")
-    func dropsExternalTable() {
-        let stmts = makeBuilder().generate(
+    func dropsExternalTable() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("customers", .externalTable)], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP TABLE \"customers\""])
     }
 
     @Test("Plain table drops with DROP TABLE")
-    func dropsTable() {
-        let stmts = makeBuilder().generate(
+    func dropsTable() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("orders")], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP TABLE \"orders\""])
     }
 
     @Test("System table drops with DROP TABLE")
-    func dropsSystemTable() {
-        let stmts = makeBuilder().generate(
+    func dropsSystemTable() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("pg_stats", .systemTable)], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP TABLE \"pg_stats\""])
@@ -156,8 +188,8 @@ struct TableOperationSQLBuilderTests {
     /// `DROP TABLE` and raised ORA-00942, and a table of the same name in the login schema was a
     /// live target.
     @Test("A row under a schema node drops qualified and typed with no table cache")
-    func hierarchicalRowKeepsTypeAndSchema() {
-        let stmts = makeBuilder().generate(
+    func hierarchicalRowKeepsTypeAndSchema() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [],
             deletes: [ref("EMP_VIEW", .view, rowSchema: "HR")],
             options: [:],
@@ -167,9 +199,9 @@ struct TableOperationSQLBuilderTests {
     }
 
     @Test("Cascade applies to materialized view drops")
-    func cascadeAppliesToMaterializedView() {
+    func cascadeAppliesToMaterializedView() throws {
         let target = ref("daily_sales", .materializedView)
-        let stmts = makeBuilder().generate(
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [target],
             options: [target: TableOperationOptions(cascade: true)], includeFKHandling: false
         )
@@ -177,16 +209,16 @@ struct TableOperationSQLBuilderTests {
     }
 
     @Test("Drop qualifies schema when TableInfo carries one")
-    func qualifiesSchema() {
-        let stmts = makeBuilder().generate(
+    func qualifiesSchema() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [], deletes: [ref("orders", schema: "sales")], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["DROP TABLE \"sales\".\"orders\""])
     }
 
     @Test("Truncate qualifies schema when TableInfo carries one")
-    func truncateQualifiesSchema() {
-        let stmts = makeBuilder().generate(
+    func truncateQualifiesSchema() throws {
+        let stmts = try makeBuilder().generate(
             truncates: [ref("orders", schema: "sales")], deletes: [], options: [:], includeFKHandling: false
         )
         #expect(stmts == ["TRUNCATE TABLE \"sales\".\"orders\""])
@@ -198,7 +230,7 @@ struct TableOperationSQLBuilderTests {
     /// used to be a built-in fallback here and a suite asserting it; the fallback was deleted and
     /// the suite went on asserting it, which is what put twelve cases in the quarantine file.
     @Test("Foreign key statements come from the driver")
-    func foreignKeyStatementsComeFromTheDriver() {
+    func foreignKeyStatementsComeFromTheDriver() throws {
         let builder = makeForeignKeyBuilder()
         #expect(builder.foreignKeyDisableStatements() == ["SET FOREIGN_KEY_CHECKS=0"])
         #expect(builder.foreignKeyEnableStatements() == ["SET FOREIGN_KEY_CHECKS=1"])
@@ -208,7 +240,7 @@ struct TableOperationSQLBuilderTests {
     /// is the contract: the builder has no way to know a database's syntax that the driver does not
     /// tell it.
     @Test("A driver with no foreign key support produces no statements")
-    func noForeignKeySupportProducesNothing() {
+    func noForeignKeySupportProducesNothing() throws {
         let builder = makeBuilder()
         #expect(builder.foreignKeyDisableStatements().isEmpty)
         #expect(builder.foreignKeyEnableStatements().isEmpty)
@@ -222,10 +254,10 @@ struct TableOperationSQLBuilderTests {
     /// other way round is what produced a suite of tests asserting MySQL backticks from a builder
     /// that has never known what MySQL is.
     @Test("Foreign key handling wraps the sorted truncates and drops")
-    func foreignKeyHandlingWrapsSortedWork() {
+    func foreignKeyHandlingWrapsSortedWork() throws {
         let apple = ref("apple")
         let zebra = ref("zebra")
-        let stmts = makeForeignKeyBuilder().generate(
+        let stmts = try makeForeignKeyBuilder().generate(
             truncates: [zebra, apple],
             deletes: [ref("yak"), ref("bee")],
             options: [

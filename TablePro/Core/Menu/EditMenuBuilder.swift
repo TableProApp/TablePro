@@ -123,6 +123,12 @@ enum EditMenuBuilder {
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
+                String(localized: "Find and Replace…"),
+                action: #selector(MainSplitViewController.performFindAndReplace(_:)),
+                shortcut: .findAndReplace,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
                 String(localized: "Find Next"),
                 action: #selector(MainSplitViewController.findNext(_:)),
                 shortcut: .findNext,
@@ -132,6 +138,12 @@ enum EditMenuBuilder {
                 String(localized: "Find Previous"),
                 action: #selector(MainSplitViewController.findPrevious(_:)),
                 shortcut: .findPrevious,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Use Selection for Find"),
+                action: #selector(MainSplitViewController.useSelectionForFind(_:)),
+                shortcut: .useSelectionForFind,
                 keyboard: keyboard
             ),
             MenuItemFactory.separator,

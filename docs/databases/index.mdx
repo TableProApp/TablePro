@@ -1,11 +1,11 @@
 ---
 title: Supported Databases
-description: All 35 engines TablePro connects to, their default ports, and which ones need a plugin
+description: All 36 engines TablePro connects to, their default ports, and which ones need a plugin
 ---
 
 import DriverCounts from "/snippets/driver-counts.mdx";
 
-Thirty-five engines, and every one of them is free to use. What differs between them is where the
+Thirty-six engines, and every one of them is free to use. What differs between them is where the
 driver comes from, not what the license covers.
 
 <DriverCounts />
@@ -34,6 +34,7 @@ driver comes from, not what the license covers.
 | [Microsoft SQL Server](/databases/mssql) | 1433 | Plugin |
 | [MongoDB](/databases/mongodb) | 27017 | Plugin |
 | [MySQL](/databases/mysql) | 3306 | Built-in |
+| [OceanBase](/databases/oceanbase) | 2881 | Built-in |
 | [Oracle Database](/databases/oracle) | 1521 | Plugin |
 | [PGlite](/databases/pglite) | 5432 | Built-in |
 | [PostgreSQL](/databases/postgresql) | 5432 | Built-in |
@@ -51,8 +52,8 @@ driver comes from, not what the license covers.
 | [Weaviate](/databases/weaviate) | 8080 | Plugin |
 
 Rows sharing a page share a driver. MariaDB reads as MySQL, ScyllaDB as Cassandra, Turso as libSQL,
-and Redshift, CockroachDB and PGlite all speak the PostgreSQL wire protocol. TiDB and Databend
-also run on the bundled MySQL driver.
+and Redshift, CockroachDB and PGlite all speak the PostgreSQL wire protocol. TiDB, Databend and
+OceanBase also run on the bundled MySQL driver.
 
 ## Built-in against plugin
 

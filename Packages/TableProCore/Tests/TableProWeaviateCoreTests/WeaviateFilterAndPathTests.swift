@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProWeaviateCore
+import Testing
 
 private let articleTypes = [
     "title": "text",

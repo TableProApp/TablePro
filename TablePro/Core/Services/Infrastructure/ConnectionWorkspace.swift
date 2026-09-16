@@ -190,10 +190,16 @@ internal final class ConnectionWorkspace {
         AppEvents.shared.connectionWindowsChanged.send()
     }
 
-    /// Payloads that arrived before this workspace had a session to open them in. A connect can
+    /// Opens that arrived before this workspace had a session to open them in. A connect can
     /// take seconds, and a table asked for in the meantime has to survive the wait rather than
-    /// be dropped.
-    private var pendingPayloads: [EditorTabPayload] = []
+    /// be dropped. Both kinds share one queue, so they land in the order they were asked for and
+    /// the last one is the tab left selected.
+    private var pendingOpens: [PendingOpen] = []
+
+    private enum PendingOpen {
+        case payload(EditorTabPayload)
+        case restoredTab(QueryTab, isStillClosed: () -> Bool, onAdopted: () -> Void)
+    }
 
     internal var connection: DatabaseConnection? {
         payloadConnection ?? session?.connection
@@ -224,7 +230,7 @@ internal final class ConnectionWorkspace {
     /// being established.
     internal func open(_ payload: EditorTabPayload) {
         guard let sessionState, let connection else {
-            pendingPayloads.append(payload)
+            pendingOpens.append(.payload(payload))
             return
         }
         EditorTabOpener.apply(
@@ -235,14 +241,40 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    /// Takes a tab rebuilt from the recently closed history. A payload cannot carry one: it names a
+    /// tab to build, and a restore payload names nothing, which is how a reopened tab used to open
+    /// nothing at all in a workspace that was already hosted.
+    ///
+    /// `onAdopted` runs only once the tab is in the list, so the caller lets the history entry go
+    /// then and not before. `isStillClosed` is asked first, because a tab queued behind a connect
+    /// can be reopened somewhere else while it waits, and adopting it here too would open it twice.
+    internal func adoptRestoredTab(
+        _ tab: QueryTab,
+        isStillClosed: @escaping () -> Bool,
+        onAdopted: @escaping () -> Void
+    ) {
+        guard let coordinator = sessionState?.coordinator else {
+            pendingOpens.append(.restoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted))
+            return
+        }
+        guard isStillClosed() else { return }
+        coordinator.adoptRestoredTab(tab)
+        onAdopted()
+    }
+
     /// Runs once a session has been adopted. The payload the workspace was created with is
-    /// already applied by `SessionStateFactory`, so only the ones that arrived after it are here.
+    /// already applied by `SessionStateFactory`, so only the opens that arrived after it are here.
     internal func drainPendingPayloads() {
-        guard !pendingPayloads.isEmpty else { return }
-        let queued = pendingPayloads
-        pendingPayloads.removeAll()
-        for payload in queued {
-            open(payload)
+        guard !pendingOpens.isEmpty else { return }
+        let queued = pendingOpens
+        pendingOpens.removeAll()
+        for pending in queued {
+            switch pending {
+            case .payload(let payload):
+                open(payload)
+            case .restoredTab(let tab, let isStillClosed, let onAdopted):
+                adoptRestoredTab(tab, isStillClosed: isStillClosed, onAdopted: onAdopted)
+            }
         }
     }
 

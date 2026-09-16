@@ -32,16 +32,27 @@ internal struct SidebarMenuEntry<Command: Equatable>: Equatable {
     internal let title: String
     internal let command: Command
     internal var isOn: Bool?
+    internal var indentationLevel: Int
+    internal var symbol: SidebarMenuSymbol?
 
     internal init(
         title: String,
         command: Command,
-        isOn: Bool? = nil
+        isOn: Bool? = nil,
+        indentationLevel: Int = 0,
+        symbol: SidebarMenuSymbol? = nil
     ) {
         self.title = title
         self.command = command
         self.isOn = isOn
+        self.indentationLevel = indentationLevel
+        self.symbol = symbol
     }
+}
+
+internal struct SidebarMenuSymbol: Equatable {
+    internal let systemName: String
+    internal let color: ConnectionColor
 }
 
 internal extension SidebarMenuItem {

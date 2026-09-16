@@ -30,6 +30,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingTruncates: Set<DatabaseTreeTableRef> = []
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
+    internal var showSystemContainers = false
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
@@ -173,6 +174,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || showSystemContainers != view.showSystemContainers
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -182,6 +184,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        showSystemContainers = view.showSystemContainers
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {

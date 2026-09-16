@@ -38,29 +38,31 @@ final class DatabaseSwitcherViewModel {
     @ObservationIgnored private var hasLoadedOnce = false
     @ObservationIgnored private var loadToken: UUID?
 
-    private var treeVisibleDatabases: [DatabaseMetadata] {
-        guard switchTarget == .database else { return databases }
-        return DatabaseTreeVisibility.visible(
+    /// The sidebar's database filter narrows a database list only. In schema mode these rows are
+    /// schemas, and the filter names databases.
+    private var listedSections: DatabaseSwitchSections {
+        let selected = switchTarget == .database ? sidebarState?.databaseFilterSelected ?? [] : []
+        return DatabaseSwitchList.sections(
             databases: databases,
-            selected: sidebarState?.databaseFilterSelected ?? [],
+            selected: selected,
             activeDatabase: currentDatabase
         )
     }
 
-    var filteredDatabases: [DatabaseMetadata] {
-        let visible = treeVisibleDatabases
+    /// A search ranks within each section rather than across them, so a system database never
+    /// outranks a user database on screen while the arrow keys walk the same order.
+    var visibleSections: DatabaseSwitchSections {
+        let listed = listedSections
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return visible }
-        return visible
-            .compactMap { database -> (DatabaseMetadata, Int)? in
-                guard let match = FuzzyMatcher.match(query: trimmed, candidate: database.name) else { return nil }
-                return (database, match.score)
-            }
-            .sorted { lhs, rhs in
-                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-                return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
-            }
-            .map(\.0)
+        guard !trimmed.isEmpty else { return listed }
+        return DatabaseSwitchSections(
+            user: Self.ranked(listed.user, matching: trimmed),
+            system: Self.ranked(listed.system, matching: trimmed)
+        )
+    }
+
+    var filteredDatabases: [DatabaseMetadata] {
+        visibleSections.all
     }
 
     init(
@@ -147,6 +149,7 @@ final class DatabaseSwitcherViewModel {
         }
         let request = CreateDatabaseRequest(name: name, values: values)
         try await driver.createDatabase(request)
+        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
     }
 
     /// The selected row the keyboard acts from, in the order the list shows them.
@@ -206,5 +209,18 @@ final class DatabaseSwitcherViewModel {
         case .database: services.pluginManager.systemDatabaseNames(for: databaseType).contains(name)
         case .schema: services.pluginManager.systemSchemaNames(for: databaseType).contains(name)
         }
+    }
+
+    private static func ranked(_ databases: [DatabaseMetadata], matching query: String) -> [DatabaseMetadata] {
+        databases
+            .compactMap { database -> (DatabaseMetadata, Int)? in
+                guard let match = FuzzyMatcher.match(query: query, candidate: database.name) else { return nil }
+                return (database, match.score)
+            }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+                return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
+            }
+            .map(\.0)
     }
 }

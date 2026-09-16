@@ -48,6 +48,10 @@ struct ResultStatusPresentation: Equatable {
     let showsEdgePageButtons: Bool
     /// Whether rows-per-page stands beside the page indicator or moves inside its menu.
     let pageSizeIsInline: Bool
+    /// Whether the result-set chooser spells its title out ("Result 2 of 4") or counts in figures
+    /// ("2/4"). It never leaves the bar: Pin and Close live in its menu and have no other one-click
+    /// route, which is the same reason nothing that opens a popover may leave.
+    let resultSetMenuIsSpelledOut: Bool
 
     init(tier: StatusBarTier) {
         switch tier {
@@ -56,16 +60,19 @@ struct ResultStatusPresentation: Equatable {
             modeSwitcherIsSegmented = true
             showsEdgePageButtons = true
             pageSizeIsInline = true
+            resultSetMenuIsSpelledOut = true
         case .compact:
             showsControlTitles = false
             modeSwitcherIsSegmented = true
             showsEdgePageButtons = false
             pageSizeIsInline = true
+            resultSetMenuIsSpelledOut = false
         case .narrow:
             showsControlTitles = false
             modeSwitcherIsSegmented = false
             showsEdgePageButtons = false
             pageSizeIsInline = false
+            resultSetMenuIsSpelledOut = false
         }
     }
 }

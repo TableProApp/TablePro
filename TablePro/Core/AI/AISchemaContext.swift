@@ -8,6 +8,20 @@
 import Foundation
 import TableProPluginKit
 
+/// One table as the schema context describes it. The producer joins each table to its own columns
+/// and foreign keys, because a lookup by name cannot tell two schemas' tables of the same name apart.
+struct AISchemaTable: Sendable {
+    let table: TableInfo
+    let columns: [ColumnInfo]
+    let foreignKeys: [ForeignKeyInfo]
+
+    init(table: TableInfo, columns: [ColumnInfo] = [], foreignKeys: [ForeignKeyInfo] = []) {
+        self.table = table
+        self.columns = columns
+        self.foreignKeys = foreignKeys
+    }
+}
+
 /// Builds schema context for AI system prompts
 struct AISchemaContext {
     // MARK: - Public
@@ -16,9 +30,8 @@ struct AISchemaContext {
     static func buildSystemPrompt(
         databaseType: DatabaseType,
         databaseName: String,
-        tables: [TableInfo],
-        columnsByTable: [String: [ColumnInfo]],
-        foreignKeys: [String: [ForeignKeyInfo]],
+        tables: [AISchemaTable],
+        defaultSchema: String?,
         currentQuery: String?,
         queryResults: String?,
         settings: AISettings,
@@ -40,8 +53,7 @@ struct AISchemaContext {
         if settings.includeSchema {
             let schemaContext = buildSchemaSection(
                 tables: tables,
-                columnsByTable: columnsByTable,
-                foreignKeys: foreignKeys,
+                defaultSchema: defaultSchema,
                 maxTables: settings.maxSchemaTables,
                 identifierQuote: identifierQuote
             )
@@ -99,45 +111,48 @@ struct AISchemaContext {
 
     // MARK: - Private
 
+    /// A table outside `defaultSchema` is named with its schema, so two tables that share a name
+    /// read as two tables rather than one listed twice.
     static func buildSchemaSection(
-        tables: [TableInfo],
-        columnsByTable: [String: [ColumnInfo]],
-        foreignKeys: [String: [ForeignKeyInfo]],
+        tables: [AISchemaTable],
+        defaultSchema: String?,
         maxTables: Int,
         identifierQuote: String
     ) -> String {
-        let selectedTables = Array(tables.prefix(maxTables))
+        let selectedTables = tables.prefix(maxTables)
         guard !selectedTables.isEmpty else { return "" }
 
         var lines: [String] = []
         let q = identifierQuote
 
-        for table in selectedTables {
-            var tableLine = "- \(q)\(table.name)\(q)"
-            if let rowCount = table.rowCount {
+        for entry in selectedTables {
+            let tableName = SchemaQualifiedName.render(
+                name: entry.table.name,
+                schema: entry.table.schema,
+                implicitSchemaName: defaultSchema,
+                quote: { "\(q)\($0)\(q)" }
+            )
+            var tableLine = "- \(tableName)"
+            if let rowCount = entry.table.rowCount {
                 tableLine += " (~\(rowCount) rows)"
             }
             lines.append(tableLine)
 
-            if let columns = columnsByTable[table.name] {
-                for column in columns {
-                    var colDesc = "  - \(column.name) \(column.dataType)"
-                    if column.isPrimaryKey { colDesc += " PK" }
-                    if !column.isNullable { colDesc += " NOT NULL" }
-                    if let def = column.defaultValue {
-                        colDesc += " DEFAULT \(def)"
-                    }
-                    lines.append(colDesc)
+            for column in entry.columns {
+                var colDesc = "  - \(column.name) \(column.dataType)"
+                if column.isPrimaryKey { colDesc += " PK" }
+                if !column.isNullable { colDesc += " NOT NULL" }
+                if let def = column.defaultValue {
+                    colDesc += " DEFAULT \(def)"
                 }
+                lines.append(colDesc)
             }
 
-            if let fks = foreignKeys[table.name], !fks.isEmpty {
-                for fk in fks {
-                    lines.append(
-                        "  FK: \(fk.column) -> "
-                        + "\(fk.referencedTable).\(fk.referencedColumn)"
-                    )
-                }
+            for fk in entry.foreignKeys {
+                lines.append(
+                    "  FK: \(fk.column) -> "
+                    + "\(fk.referencedTable).\(fk.referencedColumn)"
+                )
             }
         }
 
