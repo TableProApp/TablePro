@@ -92,7 +92,8 @@ final class CompletionEngine {
         fragment: String,
         cursorPosition: Int,
         tableName: String,
-        keywordCase: SQLKeywordCase = .default
+        keywordCase: SQLKeywordCase = .default,
+        trigger: SQLCompletionTrigger = .explicit
     ) async -> CompletionContext? {
         let clausePrefix = "WHERE "
         let prefixLength = (clausePrefix as NSString).length
@@ -103,6 +104,7 @@ final class CompletionEngine {
             text: analysisText,
             cursorPosition: cursorPosition + prefixLength,
             keywordCase: keywordCase,
+            trigger: trigger,
             forcedTableReferences: references
         ) else {
             return nil
@@ -126,6 +128,7 @@ final class CompletionEngine {
         text: String,
         cursorPosition: Int,
         keywordCase: SQLKeywordCase = .default,
+        trigger: SQLCompletionTrigger = .explicit,
         forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
         let nsText = text as NSString
@@ -149,11 +152,16 @@ final class CompletionEngine {
 
         let adjustedCursor = cursorPosition - windowOffset
 
-        let (items, candidates, context) = await provider.completionSession(
+        let context = provider.analyzedContext(
             text: analysisText,
             cursorPosition: adjustedCursor,
             forcedTableReferences: forcedTableReferences
         )
+        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context, trigger: trigger) else {
+            return nil
+        }
+
+        let (items, candidates) = await provider.completionSession(for: context)
 
         guard !items.isEmpty else {
             return nil

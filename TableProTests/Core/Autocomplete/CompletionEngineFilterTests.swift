@@ -113,7 +113,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
         let labels = result?.items.map(\.label) ?? []
         #expect(labels.contains("created_at"))
@@ -128,15 +129,12 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
 
         #expect(result?.sqlContext.dotPrefix == "users")
-        #expect(
-            result.map {
-                SQLCompletionTriggerPolicy.suppressesEmptyPrefix($0.sqlContext, isManualTrigger: false)
-            } == false
-        )
+        #expect(result != nil)
     }
 
     /// An opening backtick is typed input, not an untouched position. The analyzer keeps it inside
@@ -148,16 +146,12 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
 
         #expect(result?.sqlContext.prefix.isEmpty == true)
         #expect(result?.sqlContext.prefixRange.isEmpty == false)
-        #expect(
-            result.map {
-                SQLCompletionTriggerPolicy.suppressesEmptyPrefix($0.sqlContext, isManualTrigger: false)
-            } == false
-        )
         #expect(result?.items.contains { $0.label == "created_at" } == true)
     }
 
@@ -169,7 +163,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
 
         #expect(result == nil)
@@ -182,7 +177,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
         #expect(result?.replacementRange == NSRange(location: 11, length: 3))
     }
@@ -208,7 +204,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
         let labels = result?.items.map(\.label) ?? []
         #expect(labels.contains("title"))
@@ -222,7 +219,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
         let labels = result?.items.map(\.label) ?? []
         #expect(labels.contains { $0.caseInsensitiveCompare("LIKE") == .orderedSame })
@@ -235,7 +233,8 @@ struct CompletionEngineFilterTests {
         let result = await engine.filterCompletions(
             fragment: fragment,
             cursorPosition: (fragment as NSString).length,
-            tableName: "users"
+            tableName: "users",
+            trigger: .automatic
         )
         #expect(result == nil)
     }

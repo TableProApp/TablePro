@@ -48,14 +48,11 @@ final class RawSQLFilterCompletionProvider {
             fragment: fieldText,
             cursorPosition: cursor,
             tableName: tableName,
-            keywordCase: AppSettingsManager.shared.editor.keywordCase
+            keywordCase: AppSettingsManager.shared.editor.keywordCase,
+            trigger: .automatic
         ) else {
             return nil
         }
-        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
-            context.sqlContext,
-            isManualTrigger: false
-        ) else { return nil }
 
         let items = context.items.map { item in
             let resolution = SQLCompletionInsertion.resolve(for: item)

@@ -11,6 +11,14 @@
 
 import Foundation
 
+/// Why a completion request was made, which is what decides whether a position may decline it.
+enum SQLCompletionTrigger {
+    /// A keystroke. The clause rule decides whether the list is worth opening.
+    case automatic
+    /// `Ctrl+Space`, or a caller that is not a popup. Every position answers.
+    case explicit
+}
+
 enum SQLCompletionTriggerPolicy {
     /// A clause with a full column list behind it stays shut until the user types or asks for it.
     /// The clauses listed here answer with a short, closed list instead, so opening one costs the
@@ -21,8 +29,8 @@ enum SQLCompletionTriggerPolicy {
     /// keeps it inside `prefixRange` so an accepted completion overwrites it, and strips it from
     /// `prefix` so the matcher can work. Reading `prefix` alone reads that as an untouched
     /// position and shuts the list the user just asked for by typing the quote.
-    static func suppressesEmptyPrefix(_ context: SQLContext, isManualTrigger: Bool) -> Bool {
-        guard !isManualTrigger,
+    static func suppressesEmptyPrefix(_ context: SQLContext, trigger: SQLCompletionTrigger) -> Bool {
+        guard trigger == .automatic,
               context.prefix.isEmpty,
               context.prefixRange.isEmpty,
               context.dotPrefix == nil else { return false }

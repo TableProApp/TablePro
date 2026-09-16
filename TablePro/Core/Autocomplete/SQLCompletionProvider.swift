@@ -87,13 +87,35 @@ final class SQLCompletionProvider {
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
     ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem], context: SQLContext) {
-        var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
-        if let forcedTableReferences {
-            context = context.replacingTableReferences(forcedTableReferences)
-        }
+        let context = analyzedContext(
+            text: text,
+            cursorPosition: cursorPosition,
+            forcedTableReferences: forcedTableReferences
+        )
+        let session = await completionSession(for: context)
+        return (session.items, session.candidates, context)
+    }
 
+    /// Where the cursor sits, answered without building a single candidate.
+    ///
+    /// A caller that may decline the request reads this first: the analysis is synchronous and
+    /// cheap, while ``completionSession(for:)`` takes an actor hop for the schema and ranks several
+    /// hundred items, and every one of those was thrown away when the popup declined to open.
+    func analyzedContext(
+        text: String,
+        cursorPosition: Int,
+        forcedTableReferences: [TableReference]? = nil
+    ) -> SQLContext {
+        let context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition)
+        guard let forcedTableReferences else { return context }
+        return context.replacingTableReferences(forcedTableReferences)
+    }
+
+    func completionSession(
+        for context: SQLContext
+    ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem]) {
         if context.isInsideString || context.isInsideComment {
-            return ([], [], context)
+            return ([], [])
         }
 
         var candidates = await getCandidates(for: context)
@@ -106,7 +128,7 @@ final class SQLCompletionProvider {
 
         let limit = maxSuggestions(for: context.clauseType)
 
-        return (Array(candidates.prefix(limit)), Array(candidates.prefix(sessionPool(for: limit))), context)
+        return (Array(candidates.prefix(limit)), Array(candidates.prefix(sessionPool(for: limit))))
     }
 
     /// Filter, rank and cut a session's candidates down to what the popup shows.

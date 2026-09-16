@@ -33,14 +33,21 @@ struct RawSQLFilterCompletionTriggerTests {
         )
     }
 
+    /// Asked of the engine the surface calls, not of the rule by hand: the rule has its own suite,
+    /// and what this pins is that the filter path is wired to it.
+    ///
+    /// The explicit request separates a position the rule declined from one that simply had nothing
+    /// to offer, which a nil alone cannot.
     private static func suppresses(_ fragment: String, dataTypes: Set<String> = []) async -> Bool? {
-        let context = await engine(dataTypes: dataTypes).filterCompletions(
-            fragment: fragment,
-            cursorPosition: (fragment as NSString).length,
-            tableName: "regions"
-        )
-        guard let context else { return nil }
-        return SQLCompletionTriggerPolicy.suppressesEmptyPrefix(context.sqlContext, isManualTrigger: false)
+        let engine = engine(dataTypes: dataTypes)
+        let cursor = (fragment as NSString).length
+        guard await engine.filterCompletions(
+            fragment: fragment, cursorPosition: cursor, tableName: "regions", trigger: .explicit
+        ) != nil else { return nil }
+
+        return await engine.filterCompletions(
+            fragment: fragment, cursorPosition: cursor, tableName: "regions", trigger: .automatic
+        ) == nil
     }
 
     @Test(

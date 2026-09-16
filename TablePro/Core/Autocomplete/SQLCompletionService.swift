@@ -79,14 +79,11 @@ final class SQLCompletionService: QueryCompletionService {
         guard let context = await engine.getCompletions(
             text: window,
             cursorPosition: offset - windowStart,
-            keywordCase: keywordCase
+            keywordCase: keywordCase,
+            trigger: isManualTrigger ? .explicit : .automatic
         ) else {
             return nil
         }
-        guard !SQLCompletionTriggerPolicy.suppressesEmptyPrefix(
-            context.sqlContext,
-            isManualTrigger: isManualTrigger
-        ) else { return nil }
 
         lastContext = context.sqlContext
         return QueryCompletionSession(
