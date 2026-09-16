@@ -182,6 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
 - AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
 - AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
+- Auto-uppercase keywords leaving `ADD`, `MERGE`, `CALL`, `COMMENT` and 17 more in the case they were typed.
 
 ### Security
 
