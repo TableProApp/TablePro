@@ -72,9 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Result tab strip above the query results, and the "Query" heading above the editor.
 - Trash button that cleared the query and the results under one name.
 - **Auto-uppercase keywords** in Settings > Editor, replaced by **Keyword case**.
+- `Escape` shortcut for Clear Selection in Settings > Keyboard.
 
 ### Fixed
 
+- `Esc` no longer leaving Vim's Insert mode in the SQL editor, with `Ctrl+[` still working. (#2914)
+- Vim mode inert until the editor is refocused when it is turned on while the editor already has focus.
+- A find bar open in one window swallowing `Esc` in every other window.
+- `Tab` accepting an AI suggestion instead of the selected item in the autocomplete list.
 - Drop Schema and Drop Database skipping Safe Mode's confirmation and Touch ID, and writing no audit record.
 - New Database offered on a read-only connection, and running without Safe Mode's confirmation.
 - Drop Schema failing on Redshift, CockroachDB and PGlite, which offered it with nothing behind it.

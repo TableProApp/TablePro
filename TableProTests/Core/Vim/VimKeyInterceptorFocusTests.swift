@@ -2,90 +2,62 @@
 //  VimKeyInterceptorFocusTests.swift
 //  TableProTests
 //
-//  Regression tests for VimKeyInterceptor focus lifecycle
+//  Regression tests for how VimKeyInterceptor claims keys from the editor's key chain
 //
 
+import AppKit
+import Carbon.HIToolbox
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
-@Suite("VimKeyInterceptor Focus Lifecycle")
+@Suite("VimKeyInterceptor key claims")
 @MainActor
 struct VimKeyInterceptorFocusTests {
-    private func makeInterceptor() -> VimKeyInterceptor {
-        let buffer = VimTextBufferMock(text: "hello")
+    private func makeInterceptor(text: String = "SELECT * FROM users;") -> (VimEngine, VimKeyInterceptor) {
+        let buffer = VimTextBufferMock(text: text)
+        buffer.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
         let engine = VimEngine(buffer: buffer)
-        return VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        return (engine, VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil))
     }
 
-    @Test("Initial state: isEditorFocused is false")
-    func initialStateIsFalse() {
-        let interceptor = makeInterceptor()
-        #expect(interceptor.isEditorFocused == false)
+    private func keyDown(keyCode: Int, characters: String, modifiers: NSEvent.ModifierFlags = []) -> NSEvent? {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: UInt16(keyCode)
+        )
     }
 
-    @Test("After editorDidFocus: isEditorFocused is true")
-    func focusSetsTrue() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidFocus()
-        #expect(interceptor.isEditorFocused == true)
-    }
+    /// Without a controller the interceptor has no text view to ask about marked text, so it claims
+    /// nothing rather than acting on a keystroke an input method may own.
+    @Test("An interceptor with no controller claims nothing")
+    func uninstalledInterceptorClaimsNothing() throws {
+        let (engine, interceptor) = makeInterceptor()
+        _ = engine.process("i", shift: false)
+        let escape = try #require(keyDown(keyCode: kVK_Escape, characters: "\u{1b}"))
 
-    @Test("After editorDidBlur: isEditorFocused is false")
-    func blurSetsFalse() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidFocus()
-        interceptor.editorDidBlur()
-        #expect(interceptor.isEditorFocused == false)
-    }
-
-    @Test("After uninstall: isEditorFocused is false")
-    func uninstallResetsFocused() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidFocus()
-        interceptor.uninstall()
-        #expect(interceptor.isEditorFocused == false)
-    }
-
-    @Test("Focus/blur/focus cycle works correctly")
-    func focusBlurFocusCycle() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidFocus()
-        #expect(interceptor.isEditorFocused == true)
-        interceptor.editorDidBlur()
-        #expect(interceptor.isEditorFocused == false)
-        interceptor.editorDidFocus()
-        #expect(interceptor.isEditorFocused == true)
-    }
-
-    @Test("editorDidBlur when already blurred is a no-op")
-    func blurWhenAlreadyBlurred() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidBlur()
-        interceptor.editorDidBlur()
-        #expect(interceptor.isEditorFocused == false)
-    }
-
-    @Test("editorDidFocus when already focused is a no-op")
-    func focusWhenAlreadyFocused() {
-        let interceptor = makeInterceptor()
-        interceptor.editorDidFocus()
-        interceptor.editorDidFocus()
-        #expect(interceptor.isEditorFocused == true)
+        #expect(interceptor.handleKeyDown(escape) === escape)
+        #expect(engine.mode == .insert)
     }
 
     @Test("handleEscapeFromExternalSource returns false when engine already in normal mode")
     func externalEscapeNoopsInNormalMode() {
-        let buffer = VimTextBufferMock(text: "hello")
-        let engine = VimEngine(buffer: buffer)
-        let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        let (engine, interceptor) = makeInterceptor(text: "hello")
         #expect(engine.mode == .normal)
         #expect(interceptor.handleEscapeFromExternalSource() == false)
         #expect(engine.mode == .normal)
     }
 
-    @Test("handleEscapeFromExternalSource switches insert → normal and reports consumed")
+    @Test("handleEscapeFromExternalSource switches insert to normal and reports consumed")
     func externalEscapeSwitchesInsertToNormal() {
         let buffer = VimTextBufferMock(text: "SELECT * FROM users;")
         buffer.setSelectedRange(NSRange(location: 20, length: 0))
@@ -98,11 +70,9 @@ struct VimKeyInterceptorFocusTests {
         #expect(buffer.selectedRange().location == 19)
     }
 
-    @Test("handleEscapeFromExternalSource switches replace → normal")
+    @Test("handleEscapeFromExternalSource switches replace to normal")
     func externalEscapeSwitchesReplaceToNormal() {
-        let buffer = VimTextBufferMock(text: "hello")
-        let engine = VimEngine(buffer: buffer)
-        let interceptor = VimKeyInterceptor(engine: engine, inlineSuggestionManager: nil)
+        let (engine, interceptor) = makeInterceptor(text: "hello")
         _ = engine.process("R", shift: true)
         #expect(engine.mode == .replace)
         #expect(interceptor.handleEscapeFromExternalSource() == true)

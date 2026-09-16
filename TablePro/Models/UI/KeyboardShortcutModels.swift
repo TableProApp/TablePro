@@ -573,7 +573,6 @@ struct KeyboardSettings: Codable, Equatable {
         .paste: .character("v", command: true),
         .delete: .special(.delete, command: true),
         .selectAll: .character("a", command: true),
-        .clearSelection: .special(.escape),
         .addRow: .character("n", command: true, shift: true),
         .duplicateRow: .character("d", command: true, shift: true),
         .truncateTable: .special(.delete, option: true),

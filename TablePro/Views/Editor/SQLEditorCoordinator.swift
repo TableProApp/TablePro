@@ -275,6 +275,15 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
+    /// The app's answer for a key the editor is about to handle itself, called from the editor's
+    /// single key-down chain. Vim goes first because a mode change has to beat every editing
+    /// command; the inline suggestion follows it and yields to an open completion list.
+    func textViewShouldClaimKeyDown(controller: TextViewController, event: NSEvent) -> NSEvent? {
+        if let interceptor = vimKeyInterceptor, interceptor.handleKeyDown(event) == nil { return nil }
+        if inlineSuggestionManager?.consumesKeyDown(event) == true { return nil }
+        return event
+    }
+
     func textViewDidChangeHoveredFold(controller: TextViewController, hit: CollapsedFoldHit?) {
         foldPreview.hoverDidChange(to: hit)
     }
@@ -619,13 +628,12 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     // MARK: - Menu Escape Routing
 
-    /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection"
-    /// menu item's bare-Escape key equivalent fires. That key equivalent preempts the
-    /// editor's local event monitors, so the completion popup, Vim, and first-responder
-    /// handling that would normally run on Escape never do. Dismisses an open completion
-    /// popup, hands the keystroke to Vim when it is mid-command, and restores first
-    /// responder and the caret when this editor was the focused surface. Returns whether
-    /// the editor consumed the escape so the menu skips its cancelOperation fallback.
+    /// Called by `EditorEventRouter.handleEscapeFromMenu()` when the "Clear Selection" menu item is
+    /// chosen with the pointer, which is the only way that item fires: an unmodified Escape is
+    /// never dispatched as a key equivalent and reaches the editor's own key chain instead.
+    /// Dismisses an open completion popup, hands the keystroke to Vim when it is mid-command, and
+    /// restores first responder and the caret when this editor was the focused surface. Returns
+    /// whether the editor consumed the escape so the menu skips its cancelOperation fallback.
     @discardableResult
     func handleEscapeFromMenu() -> Bool {
         let wasFocused = wasEditorFocused
@@ -658,11 +666,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         wasEditorFocused = focused
 
         if focused {
-            vimKeyInterceptor?.editorDidFocus()
             inlineSuggestionManager?.editorDidFocus()
             vimCursorManager?.resumeBlink()
         } else {
-            vimKeyInterceptor?.editorDidBlur()
             inlineSuggestionManager?.editorDidBlur()
             vimCursorManager?.pauseBlink()
         }
