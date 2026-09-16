@@ -35,6 +35,7 @@ internal final class SettingsWindowController: NSWindowController {
         /// `window.title` directly.
         let window = NSWindow(contentViewController: panes)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
+        window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .resizable]
         window.toolbarStyle = .preference
         window.isRestorable = false

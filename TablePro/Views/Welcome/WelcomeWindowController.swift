@@ -40,6 +40,7 @@ internal final class WelcomeWindowController: NSWindowController, NSWindowDelega
         )
         window.title = String(localized: "Welcome to TablePro")
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.welcome)
+        window.keepsKeyViewLoopCurrent()
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
         window.isRestorable = false

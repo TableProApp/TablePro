@@ -21,6 +21,13 @@ struct MenuValidationContext: Equatable {
     var canUseGridFindCommands = false
     /// Jump to Column reads the mounted data grid, so it needs one on screen with columns to list.
     var canJumpToColumn = false
+    /// Each Focus command names a pane, so each needs that pane to exist and to hold a view that can
+    /// take the keyboard. A command that focuses nothing is a command that should be dimmed.
+    var canFocusObjectList = false
+    var canFocusEditor = false
+    var canFocusResults = false
+    var canFocusInspector = false
+    var canFocusAssistant = false
     var canPresentHighlightRules = false
     /// Save As writes the selected tab's SQL, so it needs a query tab and not merely a connection.
     var isQueryTab = false
@@ -115,7 +122,13 @@ extension MainSplitViewController: NSMenuItemValidation {
     /// selector, so a command a nearer responder implements is answered by that responder instead and
     /// never reaches here. The Find commands rely on that: a focused editor claims and validates them
     /// itself, so `hasEditorForFind` only ever decides the unfocused fallback.
-    static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+    /// What this window has to say about a command, or nil when the command is not its to decide.
+    ///
+    /// Nil is the whole point. A menu item whose selector this controller implements and that has no
+    /// arm here is a command that stays enabled over a window that cannot run it, and the suite is
+    /// green either way: that shipped as Clear Selection, lit on a window with nothing selected and
+    /// nothing to clear. `MenuValidationCoverageTests` reads the nil to say so.
+    static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         if let find = isFindCommandEnabled(selector, context: context) { return find }
 
         switch selector {
@@ -292,14 +305,46 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.canSwitchSidebarLayout
         case #selector(showTablesSidebarTab(_:)), #selector(showFavoritesSidebarTab(_:)):
             return context.isConnected
+        default:
+            return isWindowCommandEnabled(selector, context: context)
+        }
+    }
+
+    /// The commands the window answers for itself rather than on behalf of the connection it shows.
+    ///
+    /// Each Focus command follows the pane it names, so one that would focus nothing is dimmed
+    /// rather than silently doing nothing: `makeFirstResponder` accepts a view that cannot take the
+    /// keyboard and reports success.
+    private static func isWindowCommandEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool? {
+        switch selector {
         case #selector(toggleWorkspaceRail(_:)),
              #selector(showPreviousWorkspace(_:)),
              #selector(showNextWorkspace(_:)):
             return context.canToggleWorkspaceRail
 
-        default:
-            return true
+        case #selector(focusObjectList(_:)): return context.canFocusObjectList
+        case #selector(focusEditor(_:)): return context.canFocusEditor
+        case #selector(focusResults(_:)): return context.canFocusResults
+        case #selector(focusInspector(_:)): return context.canFocusInspector
+        case #selector(focusAssistant(_:)): return context.canFocusAssistant
+
+        /// Escape clears the selection wherever one is, so the command needs a window showing a
+        /// connection and something that can hold a selection, not merely a window.
+        case #selector(clearSelection(_:)): return context.isConnected
+
+        /// Unconditional on purpose, and stated rather than left to the fall-through. The window is
+        /// the last responder to answer these, and what it does with them is change the editor font
+        /// size, which is an app setting and needs no session. A focused diagram claims them first.
+        case #selector(zoomIn(_:)), #selector(zoomOut(_:)): return true
+
+        default: return nil
         }
+    }
+
+    /// What AppKit is told. A command this window does not own is left enabled, which is what keeps
+    /// `performClose:` and the rest of the system's own items working.
+    static func isEnabled(_ selector: Selector, context: MenuValidationContext) -> Bool {
+        resolvedEnablement(selector, context: context) ?? true
     }
 
     /// The Edit menu's Find commands, which are the window's last-resort answer. A focused editor claims and
@@ -358,6 +403,11 @@ extension MainSplitViewController: NSMenuItemValidation {
             canUseTableResultCommands: actions.canUseTableResultCommands,
             canUseGridFindCommands: actions.canUseGridFindCommands,
             canJumpToColumn: actions.canJumpToColumn,
+            canFocusObjectList: canFocusObjectList,
+            canFocusEditor: canFocusEditor,
+            canFocusResults: canFocusResults,
+            canFocusInspector: canFocusInspector,
+            canFocusAssistant: canFocusAssistant,
             canPresentHighlightRules: actions.canPresentHighlightRules,
             isQueryTab: actions.isQueryTab,
             hasResultRows: actions.hasResultRows,
@@ -427,9 +477,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(toggleInspector(_:)) { return canToggleTrailingPane }
         /// The assistant is the one surface a setting can take away, so its command goes with it
         /// rather than staying enabled over a pane that would refuse to open.
-        if action == #selector(toggleAssistant(_:)) {
-            return isAssistantVisible || (currentPane == .content && AppSettingsManager.shared.ai.enabled)
-        }
+        if action == #selector(toggleAssistant(_:)) { return canRevealAssistant }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
