@@ -48,7 +48,7 @@ struct MenuDisclosureIndicatorTests {
         #expect(inspected > 20, "Expected to find SwiftUI menus to check, found \(inspected)")
         #expect(
             offenders.isEmpty,
-            "These menus draw a chevron the control already draws. Give the menu an empty label, let it draw its own, and carry the name on .accessibilityLabel: \(offenders.sorted())"
+            "These menus draw a chevron the control already draws. Let it draw its own, and keep the name with `Label { Text(name) } icon: { EmptyView() }` plus .labelStyle(.iconOnly): \(offenders.sorted())"
         )
     }
 

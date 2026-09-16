@@ -119,21 +119,22 @@ struct ConnectionTagEditor: View {
         .menuIndicator(.visible)
         .fixedSize()
         .help(Text("Add tags"))
-        .accessibilityLabel(Text("Add tags"))
         .accessibilityIdentifier("connection-form-tags")
     }
 
     /// The placeholder is the pull-down's own title, the way every macOS pull-down names itself,
     /// so the words open the menu instead of sitting beside it as unclickable text. Once a tag is
-    /// picked the chips say what is selected and the label goes empty, leaving the button's own
-    /// disclosure chevron. A chevron drawn here would land beside that one, not replace it.
+    /// picked the chips say what is selected, and the title moves into an icon-less `Label` so the
+    /// control keeps its name while showing nothing but its own disclosure chevron. A chevron drawn
+    /// here would land beside that one, not replace it.
     @ViewBuilder
     private var menuLabel: some View {
         if selectedTags.isEmpty {
             Text("Add tags")
                 .foregroundStyle(.secondary)
         } else {
-            EmptyView()
+            Label { Text("Add tags") } icon: { EmptyView() }
+                .labelStyle(.iconOnly)
         }
     }
 
