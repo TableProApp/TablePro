@@ -33,6 +33,7 @@ internal final class WhatsNewWindowController: NSWindowController {
         let hosting = NSHostingController(rootView: content)
         let window = NSWindow(contentViewController: hosting)
         window.title = String(localized: "What's New")
+        window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isRestorable = false
         window.setContentSize(NSSize(width: 480, height: 380))

@@ -218,6 +218,11 @@ final class LibPQDriverCore: @unchecked Sendable {
 
 protocol LibPQBackedDriver: PluginDatabaseDriver {
     var core: LibPQDriverCore { get }
+
+    /// A requirement rather than an extension member alone, because the extension's own
+    /// `fetchSchemaDetails` reads it: a protocol-extension property is statically dispatched, so a
+    /// sibling class overriding it would never be asked.
+    var supportsSchemaACLIntrospection: Bool { get }
 }
 
 extension LibPQBackedDriver {

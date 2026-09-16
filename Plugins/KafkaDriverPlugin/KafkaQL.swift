@@ -42,6 +42,7 @@ enum KafkaStatement: Sendable {
     case describeGroup(String)
     case describeTopic(String)
     case showCluster
+    case dropTopic(String)
 }
 
 /// A small command language for the query editor.
@@ -70,12 +71,34 @@ enum KafkaQL {
             return try parseShow(&tokens)
         case "DESCRIBE", "DESC":
             return try parseDescribe(&tokens)
+        case "DROP":
+            return try parseDrop(&tokens)
         default:
             throw KafkaError.syntax(String(
-                format: String(localized: "%@ is not a Kafka command. Try CONSUME, PRODUCE, SHOW or DESCRIBE."),
+                format: String(localized: "%@ is not a Kafka command. Try CONSUME, PRODUCE, SHOW, DESCRIBE or DROP."),
                 head
             ))
         }
+    }
+
+    // MARK: - DROP
+
+    /// `DROP TOPIC <name>`, and deliberately not `DROP TABLE`.
+    ///
+    /// `SELECT` is accepted as sugar for CONSUME because the habit transfers harmlessly, but a
+    /// Kafka topic is not a table and `DROP TABLE` is the text the app used to invent for engines
+    /// with no SQL (#2884). Accepting it here would make that mistake look supported.
+    private static func parseDrop(_ tokens: inout Tokenizer) throws -> KafkaStatement {
+        guard let kind = tokens.next()?.uppercased(), kind == "TOPIC" else {
+            throw KafkaError.syntax(String(localized: "DROP needs TOPIC and a topic name."))
+        }
+        guard let topic = tokens.next() else {
+            throw KafkaError.syntax(String(localized: "DROP TOPIC needs a topic name."))
+        }
+        guard tokens.next() == nil else {
+            throw KafkaError.syntax(String(localized: "DROP TOPIC takes one topic name."))
+        }
+        return .dropTopic(unquote(topic))
     }
 
     // MARK: - CONSUME

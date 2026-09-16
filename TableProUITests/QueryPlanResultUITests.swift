@@ -25,10 +25,12 @@ final class QueryPlanResultUITests: UITestCase {
         let app = try launchWithSampleDatabase()
         runQuery("EXPLAIN QUERY PLAN SELECT * FROM Track;", in: app)
 
-        let resultTab = app.buttons["result-tab"].firstMatch
+        let chooser = app.windows.firstMatch.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
         XCTAssertTrue(
-            resultTab.waitToExist(timeout: 20),
-            "A plan must arrive as a result tab, not as a takeover of the results pane"
+            chooser.waitToExist(timeout: 20),
+            "A plan must arrive as a result set, not as a takeover of the results pane"
         )
 
         let modePicker = app.radioGroups["query-plan-mode-picker"].firstMatch
@@ -48,18 +50,22 @@ final class QueryPlanResultUITests: UITestCase {
         let detail = app.descendants(matching: .any).matching(identifier: "query-plan-detail-pane").firstMatch
         XCTAssertTrue(detail.waitToExist(timeout: 10), "Selecting a step must fill the detail pane")
 
-        resultTab.rightClick()
+        /// A plan keeps the status bar so it stays choosable and pinnable. It gives up the row
+        /// readout there and nothing else, which is what makes the bar under a plan a footer rather
+        /// than a claim about rows the plan does not have.
+        XCTAssertTrue(waitUntilHittable(chooser, timeout: 10))
+        chooser.click()
 
-        /// A contextual menu opens inside the window; the menu-bar menus hang off `MenuBar`, so
-        /// scoping to the window isolates the one that just opened. Matching on the menu's
-        /// accessibility identifier instead worked here but not on the CI runner, whose macOS
-        /// build exposes the menu without it.
-        let contextMenu = app.windows.firstMatch.menus.firstMatch
+        /// The pull-down opens inside the window; the menu-bar menus hang off `MenuBar`, so scoping
+        /// to the window isolates the one that just opened. Matching on the menu's accessibility
+        /// identifier instead worked here but not on the CI runner, whose macOS build exposes a
+        /// just-opened menu without one.
+        let chooserMenu = app.windows.firstMatch.menus.firstMatch
         XCTAssertTrue(
-            contextMenu.menuItems["Pin Result"].waitToExist(timeout: 5),
+            chooserMenu.menuItems["Pin Result"].waitToExist(timeout: 5),
             "A plan is a result set, so it must offer Pin Result"
         )
-        contextMenu.menuItems["Pin Result"].click()
+        chooserMenu.menuItems["Pin Result"].click()
 
         let menuBar = app.menuBars.firstMatch
         menuBar.menuBarItems["View"].click()

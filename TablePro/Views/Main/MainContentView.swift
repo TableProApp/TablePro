@@ -204,6 +204,32 @@ struct MainContentView: View {
                     Task { await coordinator.switchContainer(to: newDatabaseName) }
                 }
             )
+        case .createSchema(let database):
+            SchemaEditorSheet(
+                model: SchemaEditorViewModel(
+                    mode: .create,
+                    connectionId: connection.id,
+                    databaseType: connection.type,
+                    database: database ?? coordinator.browseDatabaseName,
+                    services: coordinator.services
+                ),
+                onCompleted: { newSchemaName in
+                    Task { await coordinator.switchSchemaAfterCreate(in: database, to: newSchemaName) }
+                }
+            )
+        case .editSchema(let container):
+            SchemaEditorSheet(
+                model: SchemaEditorViewModel(
+                    mode: .edit(container.schema ?? container.name),
+                    connectionId: connection.id,
+                    databaseType: connection.type,
+                    database: container.database ?? coordinator.browseDatabaseName,
+                    services: coordinator.services
+                ),
+                onCompleted: { editedSchemaName in
+                    Task { await coordinator.adoptSchemaEdit(container, renamedTo: editedSchemaName) }
+                }
+            )
         case .copyObjects(let launch):
             CopyObjectsSheet(launch: launch, connection: connection)
         case .editObjectComment(let target):

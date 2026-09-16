@@ -17,6 +17,9 @@ struct InspectorFieldLayoutTests {
         .typePicker,
         .enumPicker(values: ["a", "b"]),
         .setPicker(values: ["a", "b"]),
+        .arrayElements(element: .scalar, values: []),
+        .arrayElements(element: .json, values: []),
+        .valuePicker(options: []),
         .multiLine,
         .json,
         .phpSerialized,
@@ -47,6 +50,10 @@ struct InspectorFieldLayoutTests {
         #expect(InspectorFieldLayout.resolve(for: .typePicker, isSchemaField: true) == .inline)
         #expect(InspectorFieldLayout.resolve(for: .enumPicker(values: ["a"]), isSchemaField: true) == .inline)
         #expect(InspectorFieldLayout.resolve(for: .setPicker(values: ["a"]), isSchemaField: true) == .inline)
+        #expect(
+            InspectorFieldLayout.resolve(for: .arrayElements(element: .json, values: []), isSchemaField: true)
+                == .inline
+        )
     }
 
     /// The editors that need the pane's width still take it, on a schema row as on a data row.

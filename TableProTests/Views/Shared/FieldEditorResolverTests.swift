@@ -274,4 +274,106 @@ struct FieldEditorResolverImageTests {
         )
         #expect(kind == .json)
     }
+
+    private var jsonArrayType: ColumnType {
+        .array(rawType: "jsonb[]", element: .json(rawType: "jsonb"))
+    }
+
+    private var textArrayType: ColumnType {
+        .array(rawType: "text[]", element: .text(rawType: "text"))
+    }
+
+    @Test("A jsonb[] value resolves to the element editor, not the JSON editor")
+    func jsonArrayResolvesToElements() {
+        let kind = FieldEditorResolver.resolve(
+            for: jsonArrayType,
+            isLongText: false,
+            originalValue: #"{"{\"id\": 1}","{\"id\": 2}"}"#
+        )
+        #expect(kind == .arrayElements(element: .json, values: []))
+    }
+
+    @Test("A scalar array resolves to the element editor too")
+    func scalarArrayResolvesToElements() {
+        let kind = FieldEditorResolver.resolve(
+            for: textArrayType,
+            isLongText: false,
+            originalValue: "{a,b}"
+        )
+        #expect(kind == .arrayElements(element: .scalar, values: []))
+    }
+
+    /// `jsonb[]` and `jsonb[][]` are one type in PostgreSQL's catalog and any array column may
+    /// carry a dimension prefix, so the declared type cannot rule either out on a given row. The
+    /// text editor over the raw literal is the lossless fallback, as it is in the grid.
+    @Test("A literal the element list cannot represent falls back to the text editor")
+    func unrepresentableArrayFallsBackToText() {
+        #expect(
+            FieldEditorResolver.resolve(
+                for: jsonArrayType,
+                isLongText: false,
+                originalValue: #"{{"{\"id\": 1}"},{"{\"id\": 2}"}}"#
+            ) == .multiLine
+        )
+        #expect(
+            FieldEditorResolver.resolve(
+                for: textArrayType,
+                isLongText: false,
+                originalValue: "[0:2]={a,b,c}"
+            ) == .singleLine
+        )
+    }
+
+    /// An engine whose list literal is not PostgreSQL's reaches the same gate and fails it, so the
+    /// classifier's engine-blind `[]` rule cannot hand another driver's value to this editor.
+    @Test("A list literal from another engine does not reach the element editor")
+    func foreignListLiteralFallsBackToText() {
+        let kind = FieldEditorResolver.resolve(
+            for: textArrayType,
+            isLongText: false,
+            originalValue: "[a, b]"
+        )
+        #expect(kind == .singleLine)
+    }
+
+    /// The parse is also what scopes the editor to the engines whose arrays are written this way:
+    /// the classifier's `[]` rule takes no engine, and a document store's `object[]` classifies the
+    /// same, so a field with no literal to read must not be offered a list that commits `{…}`.
+    @Test("An array column with no value keeps the plain editor")
+    func absentArrayValueKeepsPlainEditor() {
+        #expect(
+            FieldEditorResolver.resolve(for: jsonArrayType, isLongText: false, originalValue: nil)
+                == .singleLine
+        )
+        #expect(
+            FieldEditorResolver.resolve(for: textArrayType, isLongText: false, originalValue: "")
+                == .singleLine
+        )
+    }
+
+    /// The labels arrive separately in `TableRows.columnEnumValues` and are injected into the type
+    /// before the inspector resolves it, so they have to reach the element inside the array.
+    @Test("An enum array carries its declared labels into the element editor")
+    func enumArrayCarriesItsLabels() {
+        let labels = ["sad", "ok", "happy"]
+        let type = ColumnType
+            .array(rawType: "ENUM[]", element: .enumType(rawType: "ENUM", values: nil))
+            .withAllowedValues(labels)
+        #expect(
+            FieldEditorResolver.resolve(for: type, isLongText: false, originalValue: "{happy}")
+                == .arrayElements(element: .scalar, values: labels)
+        )
+    }
+
+    /// An empty array literal is itself valid JSON, so resolving the array before the JSON branch
+    /// is what keeps `{}` out of the JSON editor.
+    @Test("An empty array opens the element editor rather than the JSON editor")
+    func emptyArrayResolvesToElements() {
+        let kind = FieldEditorResolver.resolve(
+            for: jsonArrayType,
+            isLongText: false,
+            originalValue: "{}"
+        )
+        #expect(kind == .arrayElements(element: .json, values: []))
+    }
 }

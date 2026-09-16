@@ -13,6 +13,13 @@ enum ScopedDriverRoute: Equatable {
     /// A pooled connection already sitting on the scope's database.
     case pooled
     case unavailable(String)
+
+    /// Whether the operation gets a connection of its own. Only a pooled lease does, which is what
+    /// decides whether app-owned DDL may open a transaction: a `BEGIN` on the shared session driver
+    /// joins whatever a query tab left open.
+    var isPooled: Bool {
+        self == .pooled
+    }
 }
 
 /// What a table read's turn on the session driver came to.

@@ -94,6 +94,18 @@ final class RecentTablesStore {
         return updated
     }
 
+    /// Drops the entries inside one schema, for a schema that no longer exists. Dropping the whole
+    /// database's entries would take the sibling schemas with it, and leaving them is what made a
+    /// Recent row open a tab whose query failed with "relation does not exist".
+    @discardableResult
+    func clear(connectionId: UUID, database: String?, schema: String) -> [RecentTableEntry] {
+        let updated = entries(connectionId: connectionId).filter {
+            !($0.database == database && $0.schema == schema)
+        }
+        persist(updated, connectionId: connectionId)
+        return updated
+    }
+
     /// A renamed table keeps its position rather than being dropped and re-added, which would look
     /// like the user had just opened it. Any stale entry already sitting on the new name is removed
     /// first: two entries with one id map to a single cached node and the outline draws neither.

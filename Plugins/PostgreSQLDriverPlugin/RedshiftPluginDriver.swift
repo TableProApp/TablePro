@@ -17,6 +17,10 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private var externalSchemaCache: Set<String>?
 
+    /// Redshift forked PostgreSQL at 8.0.2 and `aclexplode` arrived in 8.4, so the schema ACL is
+    /// the one thing the shared schema-management extension cannot read here.
+    var supportsSchemaACLIntrospection: Bool { false }
+
     private static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "RedshiftPluginDriver")
 
     var capabilities: PluginCapabilities {

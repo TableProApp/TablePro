@@ -145,6 +145,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.identifier = NSUserInterfaceItemIdentifier("main")
         window.minSize = NSSize(width: 720, height: 480)
         window.isRestorable = false
+        window.keepsKeyViewLoopCurrent()
         window.toolbarStyle = .unified
         window.titleVisibility = .visible
         applyTitlebarChrome(to: window)

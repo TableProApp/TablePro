@@ -657,6 +657,7 @@ extension MainContentCoordinator {
                 ? PluginManager.shared.schemaEntityNamePlural(for: connection.type)
                 : PluginManager.shared.containerEntityNamePlural(for: connection.type),
             dropsDependentObjects: isSchema
+                && PluginManager.shared.supportsCascadeDrop(for: connection.type)
         )
     }
 
@@ -685,22 +686,35 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Through the container DDL path, like every other write: a drop used to call the driver
+    /// directly, so Safe Mode's confirmation and Touch ID tiers never fired and no audit record
+    /// was written for the operation that destroys the most. The driver runs the drop itself, so
+    /// there is no statement to show and the description is what the gate presents.
     private func dropContainer(_ target: DatabaseContainerRef) async throws {
-        switch target.kind {
-        case .database:
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                throw DatabaseError.notConnected
-            }
-            try await driver.dropDatabase(name: target.name)
-        case .schema:
-            guard let scope = DatabaseManager.shared.resolvedScope(
-                database: target.database, schema: nil, for: connectionId
-            ) else {
-                throw DatabaseError.notConnected
-            }
-            let name = target.name
-            try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.dropSchema(name: name)
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: target.kind == .database ? nil : target.database, schema: nil, for: connectionId
+        ) else {
+            throw DatabaseError.notConnected
+        }
+        let entity = target.kind == .schema
+            ? PluginManager.shared.schemaEntityName(for: connection.type)
+            : PluginManager.shared.containerEntityName(for: connection.type)
+        let name = target.name
+        let kind = target.kind
+        try await DatabaseManager.shared.runContainerOperation(
+            description: String(format: String(localized: "Drop %1$@ \"%2$@\""), entity, name),
+            kind: .destructiveQuery,
+            scope: scope,
+            databaseType: connection.type,
+            event: nil,
+            /// The sidebar already presented the destructive confirmation, once for the whole
+            /// batch. Without this the gate presents its own on top, asking twice for one drop and
+            /// once per target for a multi-row selection. Touch ID and the audit record still apply.
+            isConfirmationPreCleared: true
+        ) { driver in
+            switch kind {
+            case .database: try await driver.dropDatabase(name: name)
+            case .schema: try await driver.dropSchema(name: name)
             }
         }
     }

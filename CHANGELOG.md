@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Delete for a Kafka topic, and `DROP TOPIC` in the Kafka query editor.
+- Delete for a DynamoDB table.
 - Credential profiles, one username and password shared by any number of connections. (#2853)
 - **Profiles** pane in Settings, listing credential profiles and SSH servers with how many connections use each.
 - **Credentials** picker on a connection's Authentication section, with **Save These as a Profile…**.
@@ -30,10 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row grid for data Compare & Sync with every column shown and each differing value marked. (#2537)
 - Acknowledgements entries for the four tree-sitter grammars the SQL editor ships.
 - **Edit > Find > Find and Replace…** (`Cmd+Option+F`) and **Use Selection for Find** (`Cmd+E`) in the SQL editor.
+- **Run** split button in the query editor, with Run All Statements, Run Without Limit, Clear Query and Clear Results on its menu.
+- **Stop** in the query editor while a query is running.
+- **Query > Clear Query** and **Query > Clear Results**.
+- Result chooser in the status bar, naming the result on screen and offering Pin, Unpin, Close and Close Others.
+- A reason on a dimmed Run, Explain, Format or Favorite saying why it cannot run.
+- Formatted JSON inspection and per-element editing for PostgreSQL `jsonb[]` and `json[]` columns. (#2897)
+- **New Schema…** and **Edit Schema…** for PostgreSQL, with owner, comment, `USAGE` and `CREATE` privileges and a statement preview. (#2908)
+- Array element editor in the row inspector.
+- **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
+- **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904)
 
 ### Changed
 
-- Minimum macOS lowered from 14.0 (Sonoma) to 13.0 (Ventura).
+- Minimum macOS lowered to 13.0 (Ventura).
 - Toggle Filters on `Cmd+Shift+F`, leaving `Cmd+Option+F` to Find and Replace.
 - The editor's find panel keeps the mode it was left in instead of reverting to Find each time it opens.
 - Duplicate Connection shares a linked credential profile instead of copying its password.
@@ -51,14 +63,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection rows without colored dots, on the Mac and on iOS.
 - SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
+- Query editor command bar with one control size, the container picker leading and the commands trailing.
 
 ### Removed
 
 - CodeEditSymbols, a dependency the editor linked and never called, from the app and from Acknowledgements.
 - `Ctrl+Cmd+J` from the editor's reserved shortcuts, so it can be bound in Settings > Keyboard.
+- Result tab strip above the query results, and the "Query" heading above the editor.
+- Trash button that cleared the query and the results under one name.
+- **Auto-uppercase keywords** in Settings > Editor, replaced by **Keyword case**.
 
 ### Fixed
 
+- Drop Schema and Drop Database skipping Safe Mode's confirmation and Touch ID, and writing no audit record.
+- New Database offered on a read-only connection, and running without Safe Mode's confirmation.
+- Drop Schema failing on Redshift, CockroachDB and PGlite, which offered it with nothing behind it.
+- Missing `CREATE SCHEMA` steps when duplicating a Redshift or CockroachDB database with more than one schema.
+- Drop Schema promising to delete dependent objects on engines with no `CASCADE`, such as SQL Server and BigQuery.
+- Recent Tables entries left pointing at tables in a dropped schema.
+- `Tab` reaching no further than the sidebar, leaving the editor, data grid, inspector and assistant unreachable from the keyboard. (#2904)
+- Clear Selection enabled on a window with nothing to clear.
+- PostgreSQL `box[]` cell split into fragments by the element editor, which read it with a comma.
+- Empty PostgreSQL `jsonb` object copied to another engine as an empty array. (Copy Objects)
+- Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.
+- Two chevrons on the row inspector's `SET` field.
+- Unicode whitespace dropped from a PostgreSQL array element when a sibling element was edited.
+- Stale error banner over a pinned result after clearing the results of a failed query.
+- `DROP TABLE` and `TRUNCATE TABLE` generated for Elasticsearch, Kafka, Weaviate and etcd, which have no SQL. (#2884)
+- Empty Elasticsearch and Weaviate exports, which asked the engine for `SELECT * FROM`.
+- Drop Table and Truncate Table offered on every iOS engine, including Redis keys.
+- Delete and Truncate offered on engines that have no statement for them.
+- Truncate on a Redis database emptying whichever database the connection was on.
+- Base64 text instead of the request in the Typesense drop and truncate confirmation.
 - Imported connections pointing at an SSH profile that is not on the importing Mac.
 - Syntax highlighting falling a second or two behind while typing quickly in the SQL editor.
 - Beep and a question-mark badge when pressing `Ctrl+Cmd+J` in the SQL editor.
@@ -166,6 +202,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An AWS profile backed by IAM Identity Center, or an assume-role chain rooted on one, failing to authenticate.
 - AWS SSO sign-in leaving the `aws` CLI unable to refresh its own token.
 - AWS SSO, STS and RDS unreachable in the China, GovCloud and secret partitions.
+- Auto-uppercase keywords leaving `ADD`, `MERGE`, `CALL`, `COMMENT` and 17 more in the case they were typed.
+- Autocomplete committing a different column between launches when two scored the same.
+- MongoDB autocomplete inserting `$MATCH` and `DB`, which the server rejects.
+- ClickHouse autocomplete offering 18 function names the server rejects, `TOSTRING` and `UNIQ` among them.
+- Completion inserted beside a non-ASCII prefix instead of replacing it: `SELECT 名` became `SELECT 名名前`.
+- Caret landing after the closing parenthesis when accepting a function in the filter panel's Raw SQL field.
 
 ### Security
 

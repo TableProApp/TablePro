@@ -34,9 +34,10 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
         let clicked = clickedNode()
         let clickedRef = clicked.flatMap(DatabaseTreeSelection.tableRef)
         let settings = AppSettingsManager.shared.general
+        let selected = Set(selectedRefs())
         return DatabaseTreeMenuContext(
             clicked: clicked?.kind,
-            selectedTables: Set(selectedRefs()),
+            selectedTables: selected,
             selectedContainers: selectedContainerRefs(),
             activeDatabase: activeDatabase,
             activeSchema: activeSchema,
@@ -62,10 +63,21 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
                 supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
                 isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
             ),
+            schemaEditEligibility: SchemaEditEligibility.Context(
+                supportsCreateSchema: PluginManager.shared.supportsCreateSchema(for: databaseType),
+                supportsSchemaOwner: PluginManager.shared.supportsSchemaOwner(for: databaseType),
+                supportsSchemaPrivileges: PluginManager.shared.supportsSchemaPrivileges(for: databaseType),
+                supportsRenameSchema: PluginManager.shared.supportsRenameSchema(for: databaseType),
+                isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
+            ),
+            tableOperationEligibility: tableOperationEligibility(
+                candidates: selected.union(clickedRef.map { [$0] } ?? [])
+            ),
             containerEntityName: PluginManager.shared.containerEntityName(for: databaseType),
             containerEntityNamePlural: PluginManager.shared.containerEntityNamePlural(for: databaseType),
             schemaEntityName: PluginManager.shared.schemaEntityName(for: databaseType),
             schemaEntityNamePlural: PluginManager.shared.schemaEntityNamePlural(for: databaseType),
+            supportsCascadeDrop: PluginManager.shared.supportsCascadeDrop(for: databaseType),
             objectKindTitles: objectKindTitles(),
             isFavorite: clickedRef.map { isFavorite($0) } ?? false,
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments(),
@@ -103,6 +115,17 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
         return NativeDumpRegistry.supports(
             connection,
             localFilePath: NativeDumpService.localFilePath(for: connection)
+        )
+    }
+
+    private func tableOperationEligibility(candidates: Set<DatabaseTreeTableRef>)
+        -> TableOperationEligibility.Context {
+        guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else {
+            return .unavailable
+        }
+        return adapter.tableOperationEligibility(
+            for: candidates,
+            isReadOnly: mainCoordinator?.safeModeLevel.blocksAllWrites ?? false
         )
     }
 

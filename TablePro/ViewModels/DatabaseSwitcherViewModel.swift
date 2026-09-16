@@ -143,13 +143,27 @@ final class DatabaseSwitcherViewModel: ObservableObject {
         return try await driver.createDatabaseFormSpec()
     }
 
+    /// Through the container DDL path, like every other write. It used to call the driver straight
+    /// from here, so a read-only connection still offered the row and Safe Mode's confirmation and
+    /// Touch ID tiers never fired. The driver creates the database itself on the engines whose
+    /// create is not a statement, so the gate is given the description rather than SQL.
     func createDatabase(name: String, values: [String: String]) async throws {
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
+        guard let scope = services.databaseManager.resolvedScope(
+            database: nil, schema: nil, for: connectionId
+        ) else {
             throw DatabaseError.notConnected
         }
         let request = CreateDatabaseRequest(name: name, values: values)
-        try await driver.createDatabase(request)
-        services.catalogChangeService.record(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
+        let entity = services.pluginManager.containerEntityName(for: databaseType)
+        try await services.databaseManager.runContainerOperation(
+            description: String(format: String(localized: "Create %1$@ \"%2$@\""), entity, name),
+            kind: .schemaMutation,
+            scope: scope,
+            databaseType: databaseType,
+            event: .changed(CatalogChange(connectionId: connectionId, kinds: .databases))
+        ) { driver in
+            try await driver.createDatabase(request)
+        }
     }
 
     /// The selected row the keyboard acts from, in the order the list shows them.

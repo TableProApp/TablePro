@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -585,6 +586,25 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.renameSchema(name: name, to: newName)
     }
 
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? {
+        pluginDriver.createSchemaStatements(definition)
+    }
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? {
+        pluginDriver.renameSchemaStatements(name: name, to: newName)
+    }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? {
+        pluginDriver.alterSchemaStatements(from: current, to: target)
+    }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? {
+        try await pluginDriver.fetchSchemaDetails(name: name)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }
@@ -794,22 +814,63 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Table Operations
 
-    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String] {
+    /// Nil where the engine has no way to say it. The driver's own answer wins; the app builds the
+    /// statement only for an engine whose DDL it can actually write, per `SQLDDLFallbackPolicy`.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
         if let stmts = pluginDriver.truncateTableStatements(table: table, schema: schema, cascade: cascade) {
             return stmts
         }
+        guard allowsGeneratedDDL else { return nil }
         let name = qualifiedName(table, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return ["TRUNCATE TABLE \(name)\(cascadeSuffix)"]
     }
 
-    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String {
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         if let stmt = pluginDriver.dropObjectStatement(name: name, objectType: objectType, schema: schema, cascade: cascade) {
             return stmt
         }
+        guard allowsGeneratedDDL else { return nil }
         let qualName = qualifiedName(name, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return "DROP \(objectType) \(qualName)\(cascadeSuffix)"
+    }
+
+    private var allowsGeneratedDDL: Bool {
+        SQLDDLFallbackPolicy.allowsGeneratedDDL(for: connection.type)
+    }
+
+    /// Which of these objects this connection has a drop or truncate statement for.
+    ///
+    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
+    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
+    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
+    /// answer and the statement it leads to come from one place.
+    func tableOperationEligibility(
+        for refs: some Collection<DatabaseTreeTableRef>,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard !isReadOnly else { return .unavailable }
+        var droppable: Set<DatabaseTreeTableRef> = []
+        var truncatable: Set<DatabaseTreeTableRef> = []
+        for ref in refs {
+            if dropObjectStatement(
+                name: ref.table.name,
+                objectType: TableObjectKeyword.forDDL(ref.table.type),
+                schema: ref.qualifyingSchema,
+                cascade: false
+            ) != nil {
+                droppable.insert(ref)
+            }
+            if truncateTableStatements(
+                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
+            ) != nil {
+                truncatable.insert(ref)
+            }
+        }
+        return TableOperationEligibility.Context(
+            droppable: droppable, truncatable: truncatable, isReadOnly: false
+        )
     }
 
     func foreignKeyDisableStatements() -> [String]? {

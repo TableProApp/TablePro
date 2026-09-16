@@ -15,7 +15,7 @@ extension MainContentCoordinator {
 
     var canPinActiveResultSet: Bool {
         guard let tab = tabManager.selectedTab else { return false }
-        return ResultTabBarPolicy.canPin(tabType: tab.tabType, display: tab.display)
+        return ResultSetPolicy.canPin(tabType: tab.tabType, display: tab.display)
     }
 
     var isActiveResultSetPinned: Bool {
@@ -62,7 +62,14 @@ extension MainContentCoordinator {
 
         if let lastPinned = tabManager.tabs[tabIdx].display.resultSets.last(where: \.isPinned) {
             applyResultSetSwitch(to: lastPinned.id, in: tabId)
-            tabManager.mutate(at: tabIdx) { $0.display.removeUnpinnedResults() }
+            tabManager.mutate(at: tabIdx) { tab in
+                tab.display.removeUnpinnedResults()
+                /// A failed execution records its message on the tab rather than on a result set,
+                /// so returning here without clearing it left the banner over the pinned result the
+                /// switch just revealed, and only the banner's own Dismiss could take it away.
+                tab.execution.errorMessage = nil
+                tab.execution.errorQuery = nil
+            }
             return
         }
 

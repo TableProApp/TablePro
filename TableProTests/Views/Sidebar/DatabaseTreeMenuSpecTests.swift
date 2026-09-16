@@ -19,6 +19,22 @@ struct DatabaseTreeMenuSpecTests {
         )
     }
 
+    /// The same candidate set the outline coordinator resolves: the selection plus the clicked
+    /// row, because the spec aims at the clicked row when nothing is selected.
+    private func tableOperationEligibility(
+        clicked: DatabaseTreeNode.Kind?,
+        selectedTables: Set<DatabaseTreeTableRef>,
+        canExpress: Bool,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard canExpress else { return .unavailable }
+        var candidates = selectedTables
+        if case .table(let ref) = clicked { candidates.insert(ref) }
+        return TableOperationEligibility.Context(
+            droppable: candidates, truncatable: candidates, isReadOnly: isReadOnly
+        )
+    }
+
     private func context(
         clicked: DatabaseTreeNode.Kind?,
         selectedTables: Set<DatabaseTreeTableRef> = [],
@@ -35,6 +51,11 @@ struct DatabaseTreeMenuSpecTests {
         canCopyObjects: Bool = true,
         canDuplicateDatabase: Bool = true,
         canCreateType: Bool = false,
+        supportsCreateSchema: Bool = false,
+        supportsSchemaOwner: Bool = false,
+        supportsSchemaPrivileges: Bool = false,
+        supportsCascadeDrop: Bool = true,
+        canExpressTableOperations: Bool = true,
         objectToolSupport: DatabaseObjectToolEligibility.Support = .none
     ) -> DatabaseTreeMenuContext {
         DatabaseTreeMenuContext(
@@ -65,10 +86,24 @@ struct DatabaseTreeMenuSpecTests {
                 supportsRenameSchema: supportsRename,
                 isReadOnly: isReadOnly
             ),
+            schemaEditEligibility: SchemaEditEligibility.Context(
+                supportsCreateSchema: supportsCreateSchema,
+                supportsSchemaOwner: supportsSchemaOwner,
+                supportsSchemaPrivileges: supportsSchemaPrivileges,
+                supportsRenameSchema: supportsRename,
+                isReadOnly: isReadOnly
+            ),
+            tableOperationEligibility: tableOperationEligibility(
+                clicked: clicked,
+                selectedTables: selectedTables,
+                canExpress: canExpressTableOperations,
+                isReadOnly: isReadOnly
+            ),
             containerEntityName: "Database",
             containerEntityNamePlural: "Databases",
             schemaEntityName: "Schema",
             schemaEntityNamePlural: "Schemas",
+            supportsCascadeDrop: supportsCascadeDrop,
             objectKindTitles: [.table: "Tables"],
             isFavorite: isFavorite,
             favoriteDatabaseEnvironments: favoriteDatabaseEnvironments,
@@ -316,6 +351,28 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
         #expect(!issued.contains(.dropTables(targets: [clicked, elsewhere], ref: clicked)))
+    }
+
+    /// #2884: Elasticsearch has no statement for either operation, and offering them anyway is
+    /// what let the app answer an index with `DROP TABLE "test_index"`.
+    @Test("Neither Delete nor Truncate is offered where the engine has no statement")
+    func tableOperationsHiddenWhenInexpressible() {
+        let clicked = tableRef("test_index")
+        let issued = commands(DatabaseTreeMenuSpec.sections(
+            for: context(clicked: .table(clicked), canExpressTableOperations: false)
+        ))
+
+        #expect(!issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(!issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
+    }
+
+    @Test("Delete and Truncate are offered where the engine has a statement")
+    func tableOperationsOfferedWhenExpressible() {
+        let clicked = tableRef("orders")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: .table(clicked))))
+
+        #expect(issued.contains(.dropTables(targets: [clicked], ref: clicked)))
+        #expect(issued.contains(.truncateTables(targets: [clicked], ref: clicked)))
     }
 
     @Test("A table row offers Rename where the engine can do it")
@@ -958,5 +1015,78 @@ struct DatabaseTreeMenuSpecTests {
 
         #expect(!issued.contains { if case .copyContainerTo = $0 { return true } else { return false } })
         #expect(!issued.contains { if case .duplicateDatabase = $0 { return true } else { return false } })
+    }
+
+    // MARK: - Schema management
+
+    @Test("A schema row offers Edit where the engine has a facet to edit")
+    func schemaOffersEdit() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            supportsSchemaOwner: true
+        )))
+
+        #expect(issued.contains(.editSchema(schema)))
+    }
+
+    /// The failure Drop Schema already shipped on Redshift: an item the menu offers and the driver
+    /// then refuses, which reaches the user as an alert for something the app promised.
+    @Test("An engine with no editable facet offers no Edit on a schema row")
+    func schemaWithoutFacetsHidesEdit() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            supportsRename: false
+        )))
+
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("New Schema is offered from the empty area where the engine creates one")
+    func emptyAreaOffersNewSchema() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: nil, supportsCreateSchema: true
+        )))
+
+        #expect(issued.contains(.createSchema(database: "app")))
+    }
+
+    @Test("An engine with no CREATE SCHEMA offers nothing from the empty area")
+    func emptyAreaHidesNewSchemaWithoutCapability() {
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(clicked: nil)))
+
+        #expect(!issued.contains { if case .createSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("Read-only hides both schema management items")
+    func readOnlyHidesSchemaManagement() {
+        let schema = DatabaseContainerRef.schema(database: "app", schema: "sales")
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "sales"),
+            selectedContainers: [schema],
+            isReadOnly: true,
+            supportsCreateSchema: true,
+            supportsSchemaOwner: true
+        )))
+
+        #expect(!issued.contains { if case .createSchema = $0 { return true } else { return false } })
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
+    }
+
+    @Test("A system schema offers no Edit")
+    func systemSchemaHidesEdit() {
+        let system = DatabaseContainerRef.schema(
+            database: "app", schema: "information_schema", isSystem: true
+        )
+        let issued = commands(DatabaseTreeMenuSpec.sections(for: context(
+            clicked: .schema(database: "app", schema: "information_schema"),
+            selectedContainers: [system],
+            supportsSchemaOwner: true
+        )))
+
+        #expect(!issued.contains { if case .editSchema = $0 { return true } else { return false } })
     }
 }

@@ -8,6 +8,7 @@ import Foundation
 enum DataWriteError: LocalizedError, Equatable {
     case statementGenerationUnavailable(String)
     case statementGenerationFailed(String)
+    case objectOperationUnsupported(String)
     case rowsNotIdentifiable(String, RowWriteKind)
     case identityNotPreservable(String)
     case tooManyRowsAffected(table: String, expected: Int, actual: Int)
@@ -25,6 +26,11 @@ enum DataWriteError: LocalizedError, Equatable {
             return String(
                 format: String(localized: "Could not generate SQL for '%@'."),
                 table
+            )
+        case .objectOperationUnsupported(let object):
+            return String(
+                format: String(localized: "This database has no statement for '%@'."),
+                object
             )
         case .rowsNotIdentifiable(let table, let kind):
             switch kind {

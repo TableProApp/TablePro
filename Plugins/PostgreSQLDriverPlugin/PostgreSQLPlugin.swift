@@ -87,6 +87,15 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsRenameDatabase = true
     static let supportsRenameSchema = true
     static let supportsDropSchema = true
+    static let supportsCreateSchema = true
+    static let supportsSchemaOwner = true
+    static let supportsSchemaPrivileges = true
+
+    /// The schema listing already leaves these out, so nothing normally shows them. Naming them
+    /// makes the guard real rather than a side effect of that query: a row that does reach the
+    /// tree, through Show System Objects or a future listing, is then refused rename, drop and
+    /// edit like any other system container.
+    static let systemSchemaNames = ["pg_catalog", "information_schema", "pg_toast"]
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true

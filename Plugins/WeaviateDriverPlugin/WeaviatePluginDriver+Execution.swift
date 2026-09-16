@@ -37,6 +37,80 @@ extension WeaviatePluginDriver {
         )
     }
 
+    // MARK: - Export
+
+    static let exportPageSize = 500
+
+    /// Exports one collection by walking it a page at a time, yielding each page instead of
+    /// holding the whole collection. The protocol default runs `execute` once and buffers
+    /// everything, which is fine for a grid page and not for an export.
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let collectionName = WeaviateOperations.decodeExport(query) else {
+            return defaultStreamRows(query: query)
+        }
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    try await self.streamCollection(collectionName, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
+    private func streamCollection(
+        _ name: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let client = try requireClient()
+        let collection = try await cachedCollection(name)
+        let columns = WeaviateSchema.columns(for: collection).map(\.name)
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: columns.map { typeName(for: $0, collection: collection) },
+            estimatedRowCount: nil
+        )))
+
+        var offset = 0
+        while true {
+            try Task.checkCancellation()
+            let objects = try await client.objects(
+                collection: name, limit: Self.exportPageSize, offset: offset, includeVector: true
+            )
+            guard !objects.isEmpty else { break }
+            continuation.yield(.rows(objects.map { object in
+                WeaviateObjectCodec.row(for: object, columns: columns).map { value in
+                    value.map(PluginCellValue.text) ?? .null
+                }
+            }))
+            if objects.count < Self.exportPageSize { break }
+            offset += objects.count
+        }
+    }
+
+    private func defaultStreamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames,
+                        estimatedRowCount: nil
+                    )))
+                    if !result.rows.isEmpty { continuation.yield(.rows(result.rows)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
     private func executeSearch(
         _ query: String,
         client: WeaviateClient,

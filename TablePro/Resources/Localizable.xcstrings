@@ -683,6 +683,9 @@
     "“%@” is no longer at that location." : {
 
     },
+    "\"%@\" is not a valid AWS region." : {
+
+    },
     "“%@” is still in use" : {
 
     },
@@ -1972,6 +1975,9 @@
         }
       }
     },
+    "%@ (reader)" : {
+
+    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -2334,6 +2340,9 @@
       }
     },
     "%@ cannot start with a dash or contain spaces" : {
+
+    },
+    "%@ changed after it was compared. Compare again before generating the script." : {
 
     },
     "%@ completed" : {
@@ -3849,6 +3858,16 @@
         }
       }
     },
+    "%@, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        }
+      }
+    },
     "%@, finished" : {
       "localizations" : {
         "ko" : {
@@ -3884,6 +3903,7 @@
       }
     },
     "%@, pinned" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -4603,6 +4623,12 @@
     "%1$@ (%2$lld of %3$lld), %4$lld rows" : {
 
     },
+    "%1$@ (%2$lld)" : {
+
+    },
+    "%1$@ (Copy %2$lld)" : {
+
+    },
     "%1$@ (ORA-%2$ld)." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4637,6 +4663,9 @@
           }
         }
       }
+    },
+    "%1$@ (reader, %2$@)" : {
+
     },
     "%1$@ %2$@" : {
 
@@ -5477,6 +5506,9 @@
         }
       }
     },
+    "%1$d of %2$d listed differences included" : {
+
+    },
     "%1$d of %2$d rows, %3$d marked for deletion" : {
       "localizations" : {
         "ko" : {
@@ -5544,6 +5576,12 @@
           }
         }
       }
+    },
+    "%1$d rows match. The first %2$d are listed." : {
+
+    },
+    "%1$d rows use %2$@, which cannot be drawn." : {
+
     },
     "%1$d statements stay out of this run and %2$@ keeps what it has for them." : {
       "extractionState" : "stale",
@@ -6013,6 +6051,7 @@
       }
     },
     "%d bytes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -6327,6 +6366,9 @@
       }
     },
     "%d could not be read, so no pair could be made." : {
+
+    },
+    "%d databases" : {
 
     },
     "%d deleted" : {
@@ -7006,6 +7048,9 @@
         }
       }
     },
+    "%d regions could not be searched." : {
+
+    },
     "%d rows" : {
       "localizations" : {
         "ko" : {
@@ -7039,6 +7084,21 @@
           }
         }
       }
+    },
+    "%d rows are past the drawing limit." : {
+
+    },
+    "%d rows could not be read back from the source by key. Compare again." : {
+
+    },
+    "%d rows could not be read back from the target by key. Compare again." : {
+
+    },
+    "%d rows could not be read." : {
+
+    },
+    "%d rows exist on the other side outside its filter. They are never written. Widen the filter to sync them." : {
+
     },
     "%d rows hold NULL in a key column and were left out. Choose a key with no NULLs to compare them." : {
       "localizations" : {
@@ -7092,7 +7152,11 @@
         }
       }
     },
+    "%d rows in other coordinate systems are not drawn." : {
+
+    },
     "%d rows match. Matching rows are counted, not listed, so a difference is never crowded out of this list." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "variations" : {
@@ -7147,6 +7211,9 @@
     "%d rows selected" : {
 
     },
+    "%d rows selected." : {
+
+    },
     "%d rows will be restored" : {
       "localizations" : {
         "ko" : {
@@ -7185,7 +7252,6 @@
 
     },
     "%d selected" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -7253,6 +7319,19 @@
         }
       }
     },
+    "%d statements failed, so the run was rolled back and %@ is unchanged." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d statements failed, so the run was rolled back and %2$@ is unchanged."
+          }
+        }
+      }
+    },
+    "%d statements failed. What already ran stays applied. Compare again to see where the target stands." : {
+
+    },
     "%d statements would destroy data and are not allowed yet." : {
       "localizations" : {
         "ko" : {
@@ -7288,6 +7367,9 @@
       }
     },
     "%d statements would destroy data. Allow them or exclude them before applying." : {
+
+    },
+    "%d values in this column are not in a format the map can read. The grid still shows them as the database returned them." : {
 
     },
     "%d-%d of ? rows" : {
@@ -7635,7 +7717,11 @@
         }
       }
     },
+    "%lld connection(s) use this profile. They keep this configuration as their own SSH tunnel." : {
+
+    },
     "%lld connection(s) use this profile. They will fall back to no SSH tunnel." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -9257,6 +9343,9 @@
         }
       }
     },
+    "^[%lld connection](inflect: true) use this profile. They keep these credentials as their own." : {
+
+    },
     "© 2026 Ngo Quoc Dat.\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9430,6 +9519,9 @@
           }
         }
       }
+    },
+    "~/.pgpass" : {
+
     },
     "~/.pgpass found — matching entry exists" : {
       "extractionState" : "stale",
@@ -9949,6 +10041,9 @@
           }
         }
       }
+    },
+    "1 database" : {
+
     },
     "1 day" : {
       "localizations" : {
@@ -11292,7 +11387,11 @@
         }
       }
     },
+    "A column left out of the comparison is still written on insert and update. A filter and a row limit read only the rows they select, on both sides." : {
+
+    },
     "A column left out of the comparison is still written on insert and update. Changing either list needs another comparison." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -11573,6 +11672,9 @@
         }
       }
     },
+    "A connection reads only the secrets its own database type declares, so one profile can carry several engines' keys." : {
+
+    },
     "A connection with this name, host, and type already exists." : {
       "localizations" : {
         "ko" : {
@@ -11608,6 +11710,9 @@
       }
     },
     "A copy to another engine needs a type system TablePro can translate, and %@ has none it knows. Copy to a target of the same type." : {
+
+    },
+    "A data comparison reads tables only." : {
 
     },
     "A Data Pump job for %1$@ was started, writing to %2$@. Watch DBA_DATAPUMP_JOBS for its progress." : {
@@ -11687,7 +11792,19 @@
     "A dump of chosen tables may not restore on its own. Sequences, types, schemas and tables it references are left out." : {
 
     },
+    "A file" : {
+
+    },
+    "A filter cannot contain a comment." : {
+
+    },
+    "A filter is a single condition and cannot contain a semicolon." : {
+
+    },
     "A filter is one expression. Remove the semicolon." : {
+
+    },
+    "A filtered comparison needs both sides to look up rows by key." : {
 
     },
     "A foreign key change recreates the table, and these cannot travel with it:\n\n%@\n\nSave them on their own first, then change the foreign key." : {
@@ -11810,6 +11927,9 @@
     "A Kubernetes resource is required, such as service/postgres" : {
 
     },
+    "A map needs a geometry or geography column. This result has none." : {
+
+    },
     "A materialized view" : {
 
     },
@@ -11849,6 +11969,9 @@
           }
         }
       }
+    },
+    "A new version downloads in the background and installs the next time you quit TablePro." : {
+
     },
     "A newer TablePro is required to load this plugin." : {
       "localizations" : {
@@ -11988,6 +12111,9 @@
           }
         }
       }
+    },
+    "A quote or parenthesis in this filter is not closed." : {
+
     },
     "A row with this key already exists" : {
       "localizations" : {
@@ -12195,6 +12321,9 @@
           }
         }
       }
+    },
+    "A SQL condition, such as status = 'active'" : {
+
     },
     "A statement on '%1$@' matched %2$d rows instead of %3$d, so nothing was saved." : {
       "localizations" : {
@@ -14466,6 +14595,9 @@
         }
       }
     },
+    "Add Credential Profile…" : {
+
+    },
     "Add Custom Provider…" : {
       "localizations" : {
         "ko" : {
@@ -15141,6 +15273,9 @@
     "Add Rule" : {
 
     },
+    "Add SSH Server…" : {
+
+    },
     "Add tags" : {
       "localizations" : {
         "ko" : {
@@ -15416,6 +15551,9 @@
           }
         }
       }
+    },
+    "Additional Secrets" : {
+
     },
     "Address" : {
       "localizations" : {
@@ -16577,6 +16715,9 @@
         }
       }
     },
+    "Alias Type" : {
+
+    },
     "All" : {
       "localizations" : {
         "ko" : {
@@ -17194,6 +17335,9 @@
         }
       }
     },
+    "All Selected Tags" : {
+
+    },
     "All tables and data will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -17542,6 +17686,9 @@
           }
         }
       }
+    },
+    "Allow explicit identity values in %@" : {
+
     },
     "Allow remote connections" : {
       "extractionState" : "stale",
@@ -18381,6 +18528,9 @@
     "An enum's labels in declaration order" : {
 
     },
+    "An environment variable" : {
+
+    },
     "an explain" : {
       "localizations" : {
         "ko" : {
@@ -19084,6 +19234,9 @@
         }
       }
     },
+    "Another profile already has this name." : {
+
+    },
     "ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are removed from the tool's environment, so replies always draw on the subscription." : {
       "localizations" : {
         "ko" : {
@@ -19253,6 +19406,9 @@
           }
         }
       }
+    },
+    "Any Selected Tag" : {
+
     },
     "API Key" : {
       "localizations" : {
@@ -19532,6 +19688,9 @@
           }
         }
       }
+    },
+    "app_reader" : {
+
     },
     "Appearance" : {
       "localizations" : {
@@ -21215,6 +21374,9 @@
         }
       }
     },
+    "As a Read-Only Copy" : {
+
+    },
     "As Copy" : {
       "localizations" : {
         "ko" : {
@@ -21556,6 +21718,9 @@
         }
       }
     },
+    "Ask every time" : {
+
+    },
     "Ask Every Time" : {
 
     },
@@ -21701,6 +21866,9 @@
       }
     },
     "Assistant" : {
+
+    },
+    "Assumes a role from its source profile." : {
 
     },
     "asterisk" : {
@@ -23221,6 +23389,12 @@
         }
       }
     },
+    "AWS IAM" : {
+
+    },
+    "AWS is throttling requests in %@. Try again shortly." : {
+
+    },
     "AWS managed key-value/document store" : {
       "localizations" : {
         "ko" : {
@@ -23254,6 +23428,9 @@
           }
         }
       }
+    },
+    "AWS Profile" : {
+
     },
     "AWS Region" : {
       "localizations" : {
@@ -23294,6 +23471,15 @@
           }
         }
       }
+    },
+    "AWS rejected the request signature because this Mac's clock is too far off. Check Date & Time in System Settings." : {
+
+    },
+    "AWS rejected the request signature for this profile's credentials." : {
+
+    },
+    "AWS rejected these credentials. Check the profile in ~/.aws/config." : {
+
     },
     "AWS SSM Session" : {
 
@@ -24903,6 +25089,9 @@
         }
       }
     },
+    "Building map" : {
+
+    },
     "Built-in" : {
       "localizations" : {
         "ko" : {
@@ -25903,6 +26092,9 @@
           }
         }
       }
+    },
+    "Cancel the running query" : {
+
     },
     "Cancel the running query on a server session, or kill the session outright. Takes a process id from get_server_dashboard. Needs tools:write and the user's approval." : {
       "localizations" : {
@@ -27444,6 +27636,7 @@
       }
     },
     "Change Color" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -27545,6 +27738,9 @@
           }
         }
       }
+    },
+    "Change Not Saved" : {
+
     },
     "Change Password" : {
       "localizations" : {
@@ -30126,6 +30322,9 @@
         }
       }
     },
+    "Choose which result this pane shows" : {
+
+    },
     "Choose which rows of this table are copied" : {
 
     },
@@ -30749,9 +30948,6 @@
         }
       }
     },
-    "Clear Filter" : {
-
-    },
     "Clear Filters" : {
       "localizations" : {
         "ko" : {
@@ -30956,6 +31152,9 @@
           }
         }
       }
+    },
+    "Clear Recent" : {
+
     },
     "Clear Recent Tables" : {
       "localizations" : {
@@ -32513,6 +32712,9 @@
         }
       }
     },
+    "Close Other Results" : {
+
+    },
     "Close Other Tabs" : {
       "localizations" : {
         "ko" : {
@@ -32548,6 +32750,7 @@
       }
     },
     "Close Others" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -32650,7 +32853,11 @@
         }
       }
     },
+    "Close Result" : {
+
+    },
     "Close result tab" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -33606,6 +33813,9 @@
           }
         }
       }
+    },
+    "CLR Type" : {
+
     },
     "Cluster" : {
       "localizations" : {
@@ -35944,6 +36154,9 @@
         }
       }
     },
+    "Compare again, or exclude the tables not compared yet: %@." : {
+
+    },
     "Compare lists the tables both sides share. Choose the tables to compare, then press Compare." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -36184,6 +36397,19 @@
         }
       }
     },
+    "Compared %@ keys in key order. Rows past the limit were not read on either side, and rows with NULL in a key column are not read under a limit." : {
+
+    },
+    "Compared %@. %d differences." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compared %1$@. %2$d differences."
+          }
+        }
+      }
+    },
     "Compared %@. %d differences. Nothing has been written." : {
       "localizations" : {
         "en" : {
@@ -36224,6 +36450,9 @@
         }
       }
     },
+    "Compared %@. 1 difference." : {
+
+    },
     "Compared %@. 1 difference. Nothing has been written." : {
       "localizations" : {
         "ko" : {
@@ -36258,6 +36487,9 @@
         }
       }
     },
+    "Compared %1$@ keys in key order, up to %2$@. Filter both sides past that key for the next rows. NULL keys are not read under a limit." : {
+
+    },
     "Compared columns" : {
       "localizations" : {
         "ko" : {
@@ -36291,6 +36523,9 @@
           }
         }
       }
+    },
+    "Comparing only. Changes applied earlier stay in the target." : {
+
     },
     "Comparing only. Nothing has been written." : {
       "localizations" : {
@@ -37555,7 +37790,6 @@
       }
     },
     "Connecting" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -37832,6 +38066,9 @@
           }
         }
       }
+    },
+    "Connection error" : {
+
     },
     "connection failed" : {
       "localizations" : {
@@ -42016,6 +42253,12 @@
         }
       }
     },
+    "Could not delete the profile. Check disk space and permissions, then try again." : {
+
+    },
+    "Could not delete the profile. Reopen the SSH settings and try again." : {
+
+    },
     "Could not encode image" : {
       "localizations" : {
         "ko" : {
@@ -42638,6 +42881,9 @@
         }
       }
     },
+    "Could not reach the AWS RDS API: %@" : {
+
+    },
     "Could not reach the license server. Check your internet connection and try again." : {
       "localizations" : {
         "ko" : {
@@ -42854,6 +43100,9 @@
         }
       }
     },
+    "Could not save a secret to the Keychain. Nothing was changed." : {
+
+    },
     "Could not save the connection. Check disk space and permissions, then try again." : {
       "localizations" : {
         "ko" : {
@@ -42887,6 +43136,15 @@
           }
         }
       }
+    },
+    "Could not save the password to the Keychain. Nothing was changed." : {
+
+    },
+    "Could not save the profile. Check disk space and permissions, then try again." : {
+
+    },
+    "Could not save the profile. Reopen the SSH settings and try again." : {
+
     },
     "Could not search the referenced table" : {
 
@@ -43244,6 +43502,9 @@
           }
         }
       }
+    },
+    "Couldn't read the referenced table" : {
+
     },
     "Couldn't Refresh Materialized View" : {
 
@@ -44635,6 +44896,9 @@
         }
       }
     },
+    "Credential Profiles" : {
+
+    },
     "Credentials" : {
       "localizations" : {
         "ko" : {
@@ -45234,6 +45498,9 @@
           }
         }
       }
+    },
+    "Current connection" : {
+
     },
     "Current database" : {
       "comment" : "A description of a database that is currently selected.",
@@ -48425,6 +48692,9 @@
     "Databases and objects to back up" : {
 
     },
+    "Databases found in AWS" : {
+
+    },
     "Databases of %@" : {
       "localizations" : {
         "ko" : {
@@ -48596,6 +48866,7 @@
       }
     },
     "db %d" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -49042,6 +49313,7 @@
       }
     },
     "Decrease Text Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -50043,6 +50315,9 @@
         }
       }
     },
+    "Delete %d Connections…" : {
+
+    },
     "Delete %lld columns?" : {
       "localizations" : {
         "ko" : {
@@ -50300,6 +50575,12 @@
         }
       }
     },
+    "Delete Connection…" : {
+
+    },
+    "Delete Credential Profile?" : {
+
+    },
     "Delete existing rows first" : {
 
     },
@@ -50472,6 +50753,9 @@
           }
         }
       }
+    },
+    "Delete Group…" : {
+
     },
     "Delete Index" : {
       "localizations" : {
@@ -53105,6 +53389,9 @@
         }
       }
     },
+    "Distributed HTAP, MySQL-compatible" : {
+
+    },
     "Distributed key-value store for service discovery" : {
       "localizations" : {
         "ko" : {
@@ -53860,6 +54147,9 @@
         }
       }
     },
+    "Download and install updates automatically" : {
+
+    },
     "Download cloud-sql-proxy…" : {
       "localizations" : {
         "ko" : {
@@ -54040,6 +54330,15 @@
           }
         }
       }
+    },
+    "Drawing %1$d shapes in SRID %2$d." : {
+
+    },
+    "Drawing %d shapes with no SRID, read as longitude and latitude." : {
+
+    },
+    "Drawing %d shapes." : {
+
     },
     "Driver Options" : {
       "comment" : "A section for driver-specific options.",
@@ -58821,6 +59120,7 @@
       }
     },
     "Enter a new name for the group." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -58887,6 +59187,12 @@
           }
         }
       }
+    },
+    "Enter Below" : {
+
+    },
+    "Enter Credentials Here" : {
+
     },
     "Enter database name" : {
       "extractionState" : "stale",
@@ -59411,9 +59717,6 @@
       }
     },
     "Enum Type" : {
-
-    },
-    "enum, composite, domain or range" : {
 
     },
     "Enumerated values the column accepts" : {
@@ -60395,7 +60698,16 @@
     "Every column is written when none is ticked." : {
 
     },
+    "Every connection using this profile asks for the password once each time TablePro runs." : {
+
+    },
     "Every database you picked is written into this folder." : {
+
+    },
+    "Every difference in the included tables is switched off in Options or excluded row by row." : {
+
+    },
+    "Every geometry in this column is empty or null." : {
 
     },
     "Every included column needs a name." : {
@@ -60989,6 +61301,9 @@
         }
       }
     },
+    "Exclude Every Listed Row" : {
+
+    },
     "Exclude Every Table" : {
       "localizations" : {
         "ko" : {
@@ -61231,6 +61546,9 @@
           }
         }
       }
+    },
+    "Execute a query to map its loaded rows." : {
+
     },
     "Execute a query to view results as JSON" : {
       "localizations" : {
@@ -61508,6 +61826,7 @@
       }
     },
     "Execute Without Limit" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -66920,6 +67239,7 @@
       }
     },
     "Favorited" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -66986,6 +67306,9 @@
           }
         }
       }
+    },
+    "FAVORITES" : {
+
     },
     "Feature Routing" : {
       "extractionState" : "stale",
@@ -68093,6 +68416,9 @@
         }
       }
     },
+    "Filter by Tag" : {
+
+    },
     "Filter by text or /regex/" : {
 
     },
@@ -68579,6 +68905,9 @@
         }
       }
     },
+    "Filter regions" : {
+
+    },
     "Filter roles" : {
       "localizations" : {
         "ko" : {
@@ -68923,6 +69252,9 @@
           }
         }
       }
+    },
+    "Filtered, first %@" : {
+
     },
     "Filtering by only this row" : {
       "extractionState" : "stale",
@@ -69367,6 +69699,12 @@
         }
       }
     },
+    "First" : {
+
+    },
+    "First %@" : {
+
+    },
     "First %d" : {
 
     },
@@ -69475,6 +69813,9 @@
     "First row" : {
 
     },
+    "Fit to Result" : {
+
+    },
     "Fit to Window" : {
       "localizations" : {
         "ko" : {
@@ -69577,6 +69918,9 @@
           }
         }
       }
+    },
+    "Fix the settings for, or exclude, %@." : {
+
     },
     "Fix with AI" : {
       "localizations" : {
@@ -70172,6 +70516,9 @@
           }
         }
       }
+    },
+    "For" : {
+
     },
     "For a metered path on Anthropic's commercial terms, add the Claude provider with an API key instead." : {
       "localizations" : {
@@ -71614,6 +71961,9 @@
         }
       }
     },
+    "Geometry Column" : {
+
+    },
     "Get Connection Status" : {
       "localizations" : {
         "ko" : {
@@ -72966,6 +73316,7 @@
       }
     },
     "Group Not Updated" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -76301,6 +76652,12 @@
         }
       }
     },
+    "Import from AWS" : {
+
+    },
+    "Import from AWS…" : {
+
+    },
     "Import from Codex CLI" : {
       "localizations" : {
         "ko" : {
@@ -76792,6 +77149,12 @@
         }
       }
     },
+    "Imported connections ask for a password on first connect." : {
+
+    },
+    "Imported connections use AWS IAM where the database has it enabled, and ask for a password where it does not." : {
+
+    },
     "Importing passwords from %1$@ reads up to %2$d keychain items. macOS prompts for your login password once per item because each is owned by %1$@. Click Always Allow on each prompt to grant TablePro permanent access. Cancel any prompt to skip the rest." : {
       "localizations" : {
         "ko" : {
@@ -76927,6 +77290,9 @@
           }
         }
       }
+    },
+    "in key order" : {
+
     },
     "in list" : {
       "localizations" : {
@@ -77374,6 +77740,9 @@
         }
       }
     },
+    "Include Every Listed Row" : {
+
+    },
     "Include every object in this group" : {
       "localizations" : {
         "ko" : {
@@ -77682,6 +78051,7 @@
       }
     },
     "Include this row" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -77888,6 +78258,7 @@
       }
     },
     "Increase Text Size" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -81212,6 +81583,9 @@
         }
       }
     },
+    "JSON Key" : {
+
+    },
     "JSON Too Large" : {
       "localizations" : {
         "ko" : {
@@ -82118,6 +82492,9 @@
           }
         }
       }
+    },
+    "Key %1$@ matches more than one row in the %2$@. Choose key columns that identify a single row." : {
+
     },
     "Key column %@ is not present on both sides. Choose a different key." : {
       "localizations" : {
@@ -83189,6 +83566,15 @@
           }
         }
       }
+    },
+    "Last checked: %@" : {
+
+    },
+    "Last checked: never" : {
+
+    },
+    "Last Connected" : {
+
     },
     "Last Hour" : {
       "localizations" : {
@@ -87026,7 +87412,7 @@
         }
       }
     },
-    "List the user-defined types in a schema: enums, composites, domains and ranges." : {
+    "List the user-defined types in a schema, whichever shapes the engine has." : {
 
     },
     "List the users and roles defined on the server, with their attributes and role memberships." : {
@@ -87203,6 +87589,9 @@
       }
     },
     "Listing the tables both sides share." : {
+
+    },
+    "Lists system databases such as mysql and information_schema, and system schemas, in the sidebar tree and the database filter. Switchers always list them." : {
 
     },
     "Load" : {
@@ -88519,6 +88908,9 @@
         }
       }
     },
+    "Looked up in ~/.pgpass by the host, port, database and username of whichever connection is opening." : {
+
+    },
     "Looking for database settings…" : {
       "localizations" : {
         "ko" : {
@@ -88552,6 +88944,9 @@
           }
         }
       }
+    },
+    "Looking for RDS instances and Aurora clusters" : {
+
     },
     "Looks like a placeholder value" : {
       "localizations" : {
@@ -89210,6 +89605,9 @@
         }
       }
     },
+    "Manage Profiles…" : {
+
+    },
     "Manage Tags" : {
       "localizations" : {
         "ko" : {
@@ -89312,6 +89710,12 @@
         }
       }
     },
+    "Map" : {
+
+    },
+    "Map of %1$d shapes from %2$d rows." : {
+
+    },
     "Markdown" : {
       "localizations" : {
         "ko" : {
@@ -89387,6 +89791,9 @@
         }
       }
     },
+    "Match" : {
+
+    },
     "Match all" : {
       "localizations" : {
         "ko" : {
@@ -89422,6 +89829,7 @@
       }
     },
     "Match All" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -89559,6 +89967,7 @@
       }
     },
     "Match Any" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -92185,6 +92594,9 @@
         }
       }
     },
+    "Missing Profile" : {
+
+    },
     "Missing required parameter: %@" : {
       "localizations" : {
         "ko" : {
@@ -92777,6 +93189,9 @@
     "Move Column Up" : {
 
     },
+    "Move Connections" : {
+
+    },
     "Move Down" : {
       "localizations" : {
         "ko" : {
@@ -93050,6 +93465,9 @@
           }
         }
       }
+    },
+    "Move Groups" : {
+
     },
     "Move Line Down" : {
       "localizations" : {
@@ -93671,6 +94089,7 @@
       }
     },
     "Moves the editor cursor to the statement that produced this result" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -97504,6 +97923,9 @@
         }
       }
     },
+    "No credential profiles yet." : {
+
+    },
     "No credentials are sent. Use this when the server handles authentication itself, such as a Tailscale SSH host." : {
       "localizations" : {
         "ko" : {
@@ -100558,6 +100980,9 @@
         }
       }
     },
+    "No RDS instances or Aurora clusters in %@." : {
+
+    },
     "No remote database file was named for this connection." : {
       "localizations" : {
         "ko" : {
@@ -101423,7 +101848,13 @@
         }
       }
     },
+    "No Spatial Column" : {
+
+    },
     "No SSH agent answered on the socket from %@. Check that agent is running." : {
+
+    },
+    "No SSH servers yet." : {
 
     },
     "No SSL encryption" : {
@@ -102366,6 +102797,9 @@
         }
       }
     },
+    "None selected" : {
+
+    },
     "Normal" : {
       "localizations" : {
         "ko" : {
@@ -102683,6 +103117,7 @@
       }
     },
     "Not connected to ClickHouse" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -103549,6 +103984,9 @@
         }
       }
     },
+    "Not synced to iCloud" : {
+
+    },
     "Not visible" : {
       "localizations" : {
         "ko" : {
@@ -103804,6 +104242,9 @@
 
     },
     "Nothing to Copy" : {
+
+    },
+    "Nothing to Draw" : {
 
     },
     "Nothing to Restore" : {
@@ -105401,6 +105842,9 @@
         }
       }
     },
+    "On the Server" : {
+
+    },
     "On Update" : {
       "localizations" : {
         "ko" : {
@@ -105468,6 +105912,9 @@
           }
         }
       }
+    },
+    "One bastion, many connections. Editing the server or its credentials reaches every connection tunnelling through it." : {
+
     },
     "One element per row. Use where a parser expects XML." : {
 
@@ -105573,6 +106020,9 @@
           }
         }
       }
+    },
+    "One username and password, shared by any number of connections. Change it here and every connection using it signs in with the new one." : {
+
     },
     "Only %1$d of %2$d bytes of %3$@ arrived." : {
       "localizations" : {
@@ -105743,6 +106193,12 @@
           }
         }
       }
+    },
+    "only in the source" : {
+
+    },
+    "only in the target" : {
+
     },
     "Only the first %1$lld nodes were loaded, so this value was not searched in full. Switch to %2$@ to search all of it." : {
       "localizations" : {
@@ -108556,6 +109012,9 @@
         }
       }
     },
+    "Optimize Table" : {
+
+    },
     "Optimize table (merge parts)" : {
       "localizations" : {
         "ko" : {
@@ -109590,6 +110049,9 @@
           }
         }
       }
+    },
+    "Outside Filter" : {
+
     },
     "Over an SSH tunnel, TablePro connects directly to the first host. Replica set failover is not available." : {
       "extractionState" : "stale",
@@ -111217,6 +111679,9 @@
         }
       }
     },
+    "Password source" : {
+
+    },
     "Password:" : {
       "localizations" : {
         "ko" : {
@@ -111394,6 +111859,9 @@
           }
         }
       }
+    },
+    "Past queries appear once the connection is up" : {
+
     },
     "Paste" : {
       "localizations" : {
@@ -112289,6 +112757,9 @@
           }
         }
       }
+    },
+    "Pick a profile from ~/.aws/config or ~/.aws/credentials." : {
+
     },
     "Pick the type of database you want to connect to." : {
       "localizations" : {
@@ -113705,6 +114176,9 @@
           }
         }
       }
+    },
+    "Point at latitude %1$.5f, longitude %2$.5f" : {
+
     },
     "Point at the socket file itself, not the directory holding it." : {
       "localizations" : {
@@ -116649,6 +117123,9 @@
         }
       }
     },
+    "Production reader" : {
+
+    },
     "Profile" : {
       "localizations" : {
         "en" : {
@@ -116803,6 +117280,9 @@
           }
         }
       }
+    },
+    "Profiles" : {
+
     },
     "Progress estimated (%d table(s) could not be counted)" : {
       "extractionState" : "stale",
@@ -120478,6 +120958,12 @@
         }
       }
     },
+    "Read From" : {
+
+    },
+    "Read from elsewhere" : {
+
+    },
     "Read Only" : {
       "localizations" : {
         "ko" : {
@@ -121328,7 +121814,6 @@
       }
     },
     "RECENT" : {
-      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -122118,6 +122603,9 @@
         }
       }
     },
+    "Reference" : {
+
+    },
     "referenced by %@" : {
 
     },
@@ -122834,6 +123322,9 @@
     "Region" : {
 
     },
+    "Regions" : {
+
+    },
     "Registry" : {
       "localizations" : {
         "ko" : {
@@ -122974,6 +123465,9 @@
       }
     },
     "Release File Lock" : {
+
+    },
+    "Release notes are on the changelog." : {
 
     },
     "Release the File Lock After (minutes, 0 to keep it)" : {
@@ -123465,6 +123959,9 @@
           }
         }
       }
+    },
+    "Remote SQLite session disconnected. Click to reconnect." : {
+
     },
     "Remove" : {
       "localizations" : {
@@ -124854,6 +125351,7 @@
       }
     },
     "Rename Group" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -125178,6 +125676,9 @@
       }
     },
     "Reorder Columns" : {
+
+    },
+    "Reorder Favorites" : {
 
     },
     "Replace" : {
@@ -126280,6 +126781,9 @@
           }
         }
       }
+    },
+    "Resolved on every connect. It stays on this Mac and never syncs, because it can name a command to run." : {
+
     },
     "Resource" : {
       "localizations" : {
@@ -127397,6 +127901,9 @@
           }
         }
       }
+    },
+    "Result %1$d of %2$d" : {
+
     },
     "Result %d" : {
       "localizations" : {
@@ -129712,6 +130219,9 @@
         }
       }
     },
+    "Rows in %@ changed after they were compared. Compare again before generating the script." : {
+
+    },
     "Rows in this export" : {
       "localizations" : {
         "ko" : {
@@ -130382,6 +130892,9 @@
         }
       }
     },
+    "Run All Statements" : {
+
+    },
     "Run button beside each statement" : {
       "localizations" : {
         "ko" : {
@@ -130619,6 +131132,9 @@
           }
         }
       }
+    },
+    "Run Query" : {
+
     },
     "Run Script" : {
       "localizations" : {
@@ -130932,6 +131448,9 @@
         }
       }
     },
+    "Run Without Limit" : {
+
+    },
     "Running on port %d" : {
       "localizations" : {
         "ko" : {
@@ -131044,6 +131563,9 @@
     "Runs on '%@'." : {
 
     },
+    "Runs statements on the SSH server so a database file there can be read and written in place." : {
+
+    },
     "Runs the claude command line tool so chat bills against your Claude subscription. Database tools need the MCP server turned on in Settings > Integrations." : {
       "localizations" : {
         "ko" : {
@@ -131079,6 +131601,9 @@
       }
     },
     "Runs the Google Cloud SQL Auth Proxy against an instance connection name." : {
+
+    },
+    "Runs the profile's credential_process command." : {
 
     },
     "Safe Mode" : {
@@ -132372,6 +132897,9 @@
         }
       }
     },
+    "Save These as a Profile…" : {
+
+    },
     "Save this comparison" : {
 
     },
@@ -132590,6 +133118,12 @@
           }
         }
       }
+    },
+    "Saved in the Keychain" : {
+
+    },
+    "Saved password" : {
+
     },
     "Saved passwords are decrypted during import" : {
       "localizations" : {
@@ -135261,6 +135795,9 @@
         }
       }
     },
+    "Searching…" : {
+
+    },
     "Seats on a team license are managed on tablepro.app." : {
       "localizations" : {
         "ko" : {
@@ -135543,6 +136080,9 @@
           }
         }
       }
+    },
+    "Secret ID" : {
+
     },
     "Section Header" : {
       "localizations" : {
@@ -140635,6 +141175,9 @@
         }
       }
     },
+    "Show system databases and schemas" : {
+
+    },
     "Show System Schemas" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -141335,6 +141878,9 @@
       }
     },
     "Shows how the time was spent" : {
+
+    },
+    "Side" : {
 
     },
     "Sidebar" : {
@@ -142367,6 +142913,12 @@
         }
       }
     },
+    "Signs in with a web identity token, which is not supported yet." : {
+
+    },
+    "Signs in with IAM Identity Center." : {
+
+    },
     "Silent" : {
       "localizations" : {
         "ko" : {
@@ -142745,6 +143297,12 @@
           }
         }
       }
+    },
+    "Skipped %@: no endpoint yet." : {
+
+    },
+    "Skipped %@: TablePro has no driver for that engine." : {
+
     },
     "Skipped settings this server does not recognize: %@." : {
       "localizations" : {
@@ -143399,6 +143957,9 @@
         }
       }
     },
+    "Some included tables have not been compared with their current settings." : {
+
+    },
     "Some passwords were not read. You can enter them in the connection editor after import." : {
       "localizations" : {
         "ko" : {
@@ -143434,6 +143995,7 @@
       }
     },
     "Some tables have not been compared with the columns now chosen." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -143638,6 +144200,9 @@
         }
       }
     },
+    "Sort and filter connections" : {
+
+    },
     "Sort Ascending" : {
       "localizations" : {
         "ko" : {
@@ -143672,6 +144237,9 @@
         }
       }
     },
+    "Sort By" : {
+
+    },
     "Sort columns in priority order" : {
       "localizations" : {
         "ko" : {
@@ -143705,6 +144273,9 @@
           }
         }
       }
+    },
+    "Sort Connections By" : {
+
     },
     "Sort Descending" : {
       "localizations" : {
@@ -143981,6 +144552,9 @@
     "Source column on the left, destination on the right." : {
 
     },
+    "Source filter" : {
+
+    },
     "Source Unavailable" : {
       "localizations" : {
         "ko" : {
@@ -144014,6 +144588,9 @@
           }
         }
       }
+    },
+    "source value, differs" : {
+
     },
     "Source:" : {
       "extractionState" : "stale",
@@ -145061,7 +145638,10 @@
         }
       }
     },
-    "SqlPackage has no other way to receive one, so while the dump runs the password is readable by other processes on this Mac. Windows or Entra authentication avoids it." : {
+    "SqlPackage has no other way to receive one, so while it runs the password is readable by other processes on this Mac. Windows or Entra authentication avoids it." : {
+
+    },
+    "SRID %d is a projected coordinate system. Maps places longitude and latitude only, so these shapes cannot be drawn. Query ST_Transform(geom, 4326) to see them." : {
 
     },
     "SSH" : {
@@ -145794,6 +146374,9 @@
           }
         }
       }
+    },
+    "SSH Servers" : {
+
     },
     "SSH Tunnel" : {
       "localizations" : {
@@ -147081,6 +147664,9 @@
     "Statements already executed stay committed." : {
 
     },
+    "Statements run on the SSH server, so reads and writes act on the live database. The server needs python3." : {
+
+    },
     "Statements TablePro generated and ran" : {
       "localizations" : {
         "ko" : {
@@ -147814,6 +148400,9 @@
           }
         }
       }
+    },
+    "Stop allowing explicit identity values in %@" : {
+
     },
     "Stop and Close" : {
       "localizations" : {
@@ -151115,6 +151704,9 @@
         }
       }
     },
+    "System Databases and Schemas" : {
+
+    },
     "System Memory" : {
 
     },
@@ -152903,6 +153495,9 @@
         }
       }
     },
+    "Table Type" : {
+
+    },
     "table_name" : {
       "localizations" : {
         "ko" : {
@@ -154599,6 +155194,9 @@
         }
       }
     },
+    "Target filter" : {
+
+    },
     "Target table for SQL output when exporting a query" : {
       "localizations" : {
         "ko" : {
@@ -154632,6 +155230,9 @@
           }
         }
       }
+    },
+    "target value, differs" : {
+
     },
     "Target: %@" : {
       "localizations" : {
@@ -155919,6 +156520,9 @@
     "The %@ plugin could not be loaded." : {
 
     },
+    "The %@ plugin is not installed. TablePro offers to install it on connect." : {
+
+    },
     "The %@ plugin is not installed. Would you like to download it from the plugin marketplace?" : {
       "localizations" : {
         "ko" : {
@@ -156212,6 +156816,15 @@
         }
       }
     },
+    "The AWS credentials for this profile have expired. Sign in again and retry." : {
+
+    },
+    "The AWS RDS API in %@ returned a response TablePro could not read." : {
+
+    },
+    "The AWS region %@ is not enabled for this account." : {
+
+    },
     "The bundled sample database is missing from the app." : {
       "localizations" : {
         "ko" : {
@@ -156281,6 +156894,9 @@
       }
     },
     "The change could not be applied: %@" : {
+
+    },
+    "The change could not be saved. Check disk space and permissions, then try again." : {
 
     },
     "The ChatGPT account could not be identified." : {
@@ -157818,6 +158434,9 @@
         }
       }
     },
+    "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are." : {
+
+    },
     "The license has been suspended." : {
       "localizations" : {
         "ko" : {
@@ -158483,6 +159102,9 @@
           }
         }
       }
+    },
+    "The output of a command" : {
+
     },
     "The pairing challenge is malformed." : {
       "localizations" : {
@@ -159315,6 +159937,12 @@
         }
       }
     },
+    "The run was rolled back, but %@ cannot roll back, so the rows already written there stay. Compare again to see where the target stands." : {
+
+    },
+    "The run was rolled back, but %1$@ cannot roll back, so rows already written there stay in %2$@. Compare again to see where it stands." : {
+
+    },
     "The run was rolled back. %@ is unchanged." : {
       "localizations" : {
         "ko" : {
@@ -159926,6 +160554,12 @@
 
     },
     "The source and the target share no writable column." : {
+
+    },
+    "The source could not be read with its filter: %@" : {
+
+    },
+    "The source could not be read: %@" : {
 
     },
     "The source driver cannot be read." : {
@@ -160573,6 +161207,12 @@
         }
       }
     },
+    "The target could not be read with its filter: %@" : {
+
+    },
+    "The target could not be read: %@" : {
+
+    },
     "The target database may be in a partial state. Review it and clean up as needed." : {
 
     },
@@ -161038,6 +161678,9 @@
 
     },
     "The tunnel command stopped. Click to reconnect." : {
+
+    },
+    "The type's shape, such as enum, composite, domain, range, aliasType, tableType or clrType" : {
 
     },
     "The user cancelled this operation." : {
@@ -161810,6 +162453,12 @@
         }
       }
     },
+    "This column carries no SRID and its coordinates are outside the range of longitude and latitude, so the map cannot place them." : {
+
+    },
+    "This column holds %@, which the map cannot draw." : {
+
+    },
     "This column needs a name." : {
 
     },
@@ -161965,6 +162614,9 @@
           }
         }
       }
+    },
+    "This connection uses a credential profile that isn't on this Mac." : {
+
     },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
@@ -162391,6 +163043,9 @@
 
     },
     "This database type has no dump TablePro can drive." : {
+
+    },
+    "This database type signs in with the username and password above." : {
 
     },
     "This DELETE query has no WHERE clause and will delete ALL rows in the table. This action cannot be undone." : {
@@ -164486,6 +165141,9 @@
         }
       }
     },
+    "This plugin needs a newer version of TablePro. Update TablePro, then install it again." : {
+
+    },
     "This plugin requires TablePro %@ or later" : {
       "localizations" : {
         "ko" : {
@@ -164519,6 +165177,9 @@
           }
         }
       }
+    },
+    "This profile is not allowed to run rds:DescribeDBInstances in %@. Attach AmazonRDSReadOnlyAccess or an equivalent policy." : {
+
     },
     "This profile will be permanently deleted." : {
       "localizations" : {
@@ -165087,6 +165748,9 @@
           }
         }
       }
+    },
+    "This statement changed %1$d rows where at most %2$d was expected." : {
+
     },
     "This statement drops or truncates data." : {
 
@@ -170082,6 +170746,9 @@
         }
       }
     },
+    "Undo Edit Cell" : {
+
+    },
     "Undo Staged Drop" : {
       "localizations" : {
         "ko" : {
@@ -171724,6 +172391,9 @@
         }
       }
     },
+    "Unused" : {
+
+    },
     "Update" : {
       "localizations" : {
         "ko" : {
@@ -171825,6 +172495,9 @@
           }
         }
       }
+    },
+    "Update Available…" : {
+
     },
     "Update Now" : {
       "localizations" : {
@@ -173137,6 +173810,9 @@
         }
       }
     },
+    "Use the same filter for the target" : {
+
+    },
     "Use your Cursor subscription with no API key. Requires the Cursor CLI." : {
       "localizations" : {
         "ko" : {
@@ -173204,6 +173880,9 @@
           }
         }
       }
+    },
+    "Used by %lld" : {
+
     },
     "User" : {
       "localizations" : {
@@ -173650,6 +174329,9 @@
           }
         }
       }
+    },
+    "Uses the access key stored in ~/.aws/credentials." : {
+
     },
     "Uses this Mac's Application Default Credentials. Run `gcloud auth application-default login` first, or set GOOGLE_APPLICATION_CREDENTIALS." : {
       "localizations" : {
@@ -174589,6 +175271,9 @@
         }
       }
     },
+    "Variable" : {
+
+    },
     "Variant id" : {
       "localizations" : {
         "ko" : {
@@ -175385,6 +176070,9 @@
         }
       }
     },
+    "View Full Changelog" : {
+
+    },
     "View License" : {
       "localizations" : {
         "ko" : {
@@ -175697,6 +176385,9 @@
           }
         }
       }
+    },
+    "Vim mode: %@" : {
+
     },
     "Waiting for %@" : {
 
@@ -176471,6 +177162,9 @@
       }
     },
     "What's New" : {
+
+    },
+    "What's New in %@" : {
 
     },
     "When enabled, clicking a new table replaces the current clean table tab instead of opening a new tab" : {

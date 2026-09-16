@@ -118,7 +118,7 @@ extension MainContentCoordinator {
         }
 
         if hasPendingTableOps {
-            let tableOpStatements = generateTableOperationSQL(
+            let tableOpStatements = try generateTableOperationSQL(
                 truncates: pendingTruncates,
                 deletes: pendingDeletes,
                 options: tableOperationOptions,

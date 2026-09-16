@@ -27,10 +27,16 @@ internal struct DatabaseTreeMenuContext {
     internal let maintenanceOperations: [PluginMaintenanceOperation]
     internal let dropEligibility: ContainerDropEligibility.Context
     internal let renameEligibility: ObjectRenameEligibility.Context
+    internal let schemaEditEligibility: SchemaEditEligibility.Context
+    internal let tableOperationEligibility: TableOperationEligibility.Context
     internal let containerEntityName: String
     internal let containerEntityNamePlural: String
     internal let schemaEntityName: String
     internal let schemaEntityNamePlural: String
+    /// Whether a drop takes the objects inside the container with it. SQL Server and BigQuery
+    /// refuse a non-empty schema outright, so promising a cascade there is a promise the engine
+    /// cannot keep, and the confirmation is the last thing the user reads before agreeing.
+    internal let supportsCascadeDrop: Bool
     internal let objectKindTitles: [SidebarObjectKind: String]
     internal let isFavorite: Bool
     /// Keyed per database rather than resolved for the clicked row alone, because a right-click

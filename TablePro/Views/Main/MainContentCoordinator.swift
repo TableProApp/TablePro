@@ -74,6 +74,11 @@ enum ActiveSheet: Identifiable {
         schema: String?
     )
     case createDatabase
+    /// The database the new schema goes in travels with the request, for the reason `.maintenance`
+    /// carries its scope: the sheet creates the schema in the database the user right-clicked, not
+    /// in wherever the object browser points by the time Create is pressed.
+    case createSchema(database: String?)
+    case editSchema(DatabaseContainerRef)
     /// The object's own database and schema travel in the target, for the reason `.maintenance`
     /// carries them: the comment is written to the object the user right-clicked, not to a
     /// same-named one wherever the browser points by the time Save is pressed.
@@ -100,6 +105,8 @@ enum ActiveSheet: Identifiable {
         case .maintenance(let operation, let tableName, let database, let schema):
             "maintenance-\(operation.name)-\(database ?? "")-\(schema ?? "")-\(tableName)"
         case .createDatabase: "createDatabase"
+        case .createSchema(let database): "createSchema-\(database ?? "")"
+        case .editSchema(let container): "editSchema-\(container.id)"
         case .editObjectComment(let target):
             "editObjectComment-\(target.scope.database)-\(target.scope.schema ?? "")-\(target.name)"
         case .copyObjects(let launch): "copyObjects-\(launch.id)"

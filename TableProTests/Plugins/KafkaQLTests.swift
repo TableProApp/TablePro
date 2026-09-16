@@ -158,6 +158,26 @@ struct KafkaQLTests {
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("PRODUCE INTO t") }
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("CONSUME \"unterminated") }
         #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("SHOW EVERYTHING") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP TOPIC") }
+        #expect(throws: KafkaError.self) { _ = try KafkaQL.parse("DROP TOPIC a b") }
+    }
+
+    /// A topic delete is KafkaQL's own verb. `DROP TABLE` stays a syntax error above, because a
+    /// topic is not a table and that text is what the app used to invent for engines with no SQL.
+    @Test("DROP TOPIC names the topic to delete")
+    func parsesDropTopic() throws {
+        guard case .dropTopic(let topic) = try KafkaQL.parse("DROP TOPIC orders") else {
+            Issue.record("expected a dropTopic statement")
+            return
+        }
+        #expect(topic == "orders")
+
+        guard case .dropTopic(let quoted) = try KafkaQL.parse("DROP TOPIC \"my topic\"") else {
+            Issue.record("expected a dropTopic statement")
+            return
+        }
+        #expect(quoted == "my topic")
     }
 
     private func isShowTopics(_ statement: KafkaStatement) -> Bool {

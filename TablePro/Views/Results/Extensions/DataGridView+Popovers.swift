@@ -367,23 +367,30 @@ extension TableViewCoordinator {
     func showArrayEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard presentsCell(row: row, tableColumnIndex: column) else { return }
         let tableRows = tableRowsProvider()
-        guard columnIndex >= 0, columnIndex < tableRows.columns.count else { return }
+        guard columnIndex >= 0,
+              columnIndex < tableRows.columns.count,
+              columnIndex < tableRows.columnTypes.count
+        else { return }
         let columnName = tableRows.columns[columnIndex]
 
+        let columnType = tableRows.columnTypes[columnIndex]
+        let delimiter = PostgresArrayDelimiter.forColumn(columnType)
         let typedValue = cellTypedValue(at: row, column: columnIndex)
-        let elements: [PostgresArrayElement]?
+        let literal: String?
         if typedValue.isNull {
-            elements = nil
+            literal = nil
         } else {
-            guard let parsed = PostgresArrayLiteralCodec.parse(typedValue.asText ?? "") else {
+            let stored = typedValue.asText ?? ""
+            guard PostgresArrayLiteralCodec.parse(stored, delimiter: delimiter) != nil else {
                 beginCellEdit(row: row, tableColumnIndex: column)
                 return
             }
-            elements = parsed
+            literal = stored
         }
 
         let allowedValues = tableRows.columnEnumValues[columnName] ?? []
         let isNullable = tableRows.columnNullable[columnName] ?? true
+        let elementEditor = columnType.arrayElementEditor ?? .scalar
         let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
 
         dismissActiveCellEditorPopover()
@@ -393,9 +400,11 @@ extension TableViewCoordinator {
             behavior: .applicationDefined
         ) { [weak self] dismiss in
             ArrayValueEditorView(
-                initialElements: elements,
+                literal: literal,
                 allowedValues: allowedValues,
                 isNullable: isNullable,
+                delimiter: delimiter,
+                elementEditor: elementEditor,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },

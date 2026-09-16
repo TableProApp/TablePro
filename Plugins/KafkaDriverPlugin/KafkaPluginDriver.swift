@@ -218,6 +218,20 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func quoteIdentifier(_ name: String) -> String { KafkaQL.quote(name) }
 
+    /// A topic delete, in KafkaQL, which is what the confirmation shows and what `execute` runs.
+    /// Kafka has no views, so any other object kind is not something this engine drops.
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        guard objectType.uppercased() == "TABLE", !name.isEmpty else { return nil }
+        return "DROP TOPIC \(KafkaQL.quote(name))"
+    }
+
+    /// Kafka has no truncate. Deleting records up to an offset is per partition and leaves the
+    /// topic's retention to remove them, which is not what Truncate promises, so it stays
+    /// unoffered rather than offered as something else.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        nil
+    }
+
     func escapeStringLiteral(_ value: String) -> String {
         value.replacingOccurrences(of: "\"", with: "\\\"")
     }
@@ -334,6 +348,8 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try await runDescribeGroup(group)
         case .describeTopic(let topic):
             return try await runDescribeTopic(topic)
+        case .dropTopic(let topic):
+            return try await runDropTopic(topic)
         case .showCluster:
             return try await runShowCluster()
         }
@@ -499,6 +515,23 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             ],
             rows: rows,
             rowsAffected: 0
+        )
+    }
+
+    /// Deletes one topic through the controller.
+    ///
+    /// The broker accepts the deletion and removes the log directories afterwards, so a Metadata
+    /// read taken straight after this can still carry the topic. The row says what was asked for
+    /// rather than claiming the data is already gone.
+    private func runDropTopic(_ topic: String) async throws -> PluginQueryResult {
+        let started = Date()
+        try await KafkaDeleteTopicsRequest.deleteTopic(topic, cluster: cluster)
+        return PluginQueryResult(
+            columns: ["topic", "result"],
+            columnTypeNames: ["string", "string"],
+            rows: [[.text(topic), .text("deleting")]],
+            rowsAffected: 1,
+            executionTime: Date().timeIntervalSince(started)
         )
     }
 

@@ -41,6 +41,28 @@ extension MainSplitViewController {
         commandActions?.openScopeSwitcher(.schema)
     }
 
+    @objc func createSchema(_ sender: Any?) {
+        commandActions?.coordinator?.createSchema(database: nil)
+    }
+
+    /// Edits the schema the connection is browsing. The sidebar's own item edits the row that was
+    /// clicked; this one is the route for a sidebar shape that draws no schema row at all.
+    @objc func editCurrentSchema(_ sender: Any?) {
+        guard let coordinator = commandActions?.coordinator,
+              let schema = coordinator.toolbarState.currentSchema
+                ?? DatabaseManager.shared.session(for: coordinator.connection.id)?.browseSchema
+        else { return }
+        coordinator.editSchema(
+            .schema(
+                database: coordinator.browseDatabaseName,
+                schema: schema,
+                isSystem: PluginManager.shared
+                    .systemSchemaNames(for: coordinator.connection.type)
+                    .contains(schema)
+            )
+        )
+    }
+
     @objc func setSafeModeLevel(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let level = SafeModeLevel(rawValue: raw) else { return }

@@ -367,6 +367,46 @@ struct KafkaIntegrationTests {
         #expect(ddl.contains("in-sync"))
     }
 
+    // MARK: - Topic deletion
+
+    /// DeleteTopics is hand-written wire protocol, so the only way to trust it is to ask a real
+    /// broker. The broker accepts the request and removes the log directories afterwards, so this
+    /// waits for the topic to leave the listing rather than asserting it is gone immediately.
+    @Test("Dropping a topic removes it from the cluster")
+    func dropTopicRemovesIt() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-drop", partitions: 2)
+        defer { harness.tearDown() }
+
+        let before = try await harness.driver.fetchTables(schema: nil)
+        #expect(before.contains { $0.name == harness.topic })
+
+        let statement = try #require(harness.driver.dropObjectStatement(
+            name: harness.topic, objectType: "TABLE", schema: nil, cascade: false
+        ))
+        #expect(statement == "DROP TOPIC \(harness.quoted)")
+
+        let result = try await harness.driver.execute(query: statement)
+        #expect(result.rowsAffected == 1)
+
+        var listed = true
+        for _ in 0 ..< 40 where listed {
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let tables = try await harness.driver.fetchTables(schema: nil)
+            listed = tables.contains { $0.name == harness.topic }
+        }
+        #expect(!listed, "the topic was still listed after the broker accepted the deletion")
+    }
+
+    @Test("Dropping a topic that does not exist reports the broker's own answer")
+    func dropUnknownTopicReports() async throws {
+        let harness = try await KafkaTestBroker.harness(topic: "tp-it-drop-missing", partitions: 1)
+        defer { harness.tearDown() }
+
+        await #expect(throws: (any Error).self) {
+            try await harness.driver.execute(query: "DROP TOPIC \"tp-it-no-such-topic-9e3f\"")
+        }
+    }
+
     /// The lag report is what a Kafka debugging session is usually after.
     @Test("Consumer group lag is reported per partition")
     func consumerGroupLag() async throws {

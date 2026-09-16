@@ -45,6 +45,10 @@ Column filters translate to `term`, `range`, `wildcard`, `terms` and `exists`. T
 
 Grid edits become REST calls keyed by `_id`: `POST /index/_update/{id}`, `PUT /index/_doc/{id}` and `DELETE /index/_doc/{id}`.
 
+Deleting an index from the sidebar sends `DELETE /<index>`, the request the confirmation shows.
+
+Export reads the whole index with a point-in-time and `search_after`, so it is not capped at the 10,000-document result window.
+
 ## Query DSL console
 
 <Frame caption="Query DSL console with a search result grid">
@@ -74,6 +78,7 @@ New connections start on **Disabled**, plain HTTP with no fallback to anything e
 - Sorting on `_id`, or on a `text` field with no `.keyword` subfield, does nothing: the column is dropped from the sort and the rows keep the order they had. Add the subfield, or sort a keyword field.
 - Paging past 10,000 documents switches to `search_after` over a point-in-time. That threshold is fixed, so an index with a lowered `max_result_window` errors before the switch; raise the index setting back to 10,000.
 - An array or object cell is cut at 10,000 characters and ends in `...`. Saving an edit to a cut cell stores the fragment; change long values in the console.
+- Truncate is not offered. The nearest thing Elasticsearch has is `_delete_by_query`, which runs asynchronously and reports conflicts per document. Run it in the console.
 - No mapping or schema editing, no transactions, no import, no [SSH tunnel](/connections/ssh-tunneling).
 - OpenSearch is not supported.
 

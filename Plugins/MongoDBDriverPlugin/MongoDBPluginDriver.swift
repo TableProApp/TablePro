@@ -662,6 +662,12 @@ final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "db.getCollection(\"\(escapeJsonString(name))\").drop()"
     }
 
+    /// `deleteMany({})` empties the collection and leaves it, its indexes and its options in place,
+    /// which is what Truncate means. `drop()` would take all three.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        ["db.getCollection(\"\(escapeJsonString(table))\").deleteMany({})"]
+    }
+
     func dropDatabase(name: String) async throws {
         guard let conn = mongoConnection else {
             throw MongoDBPluginError.notConnected

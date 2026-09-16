@@ -16,4 +16,15 @@ internal extension View {
             buttonStyle(.link)
         }
     }
+
+    /// `.accessoryBar` is macOS 14. `.borderless` is what macOS 13 offers for the same shape: a
+    /// label with no resting chrome that still takes the whole control as its hit area.
+    @ViewBuilder
+    func accessoryBarStyle() -> some View {
+        if #available(macOS 14.0, *) {
+            buttonStyle(.accessoryBar)
+        } else {
+            buttonStyle(.borderless)
+        }
+    }
 }

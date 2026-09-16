@@ -181,12 +181,7 @@ extension MainContentView {
         var columnTypes = tableRows.columnTypes
         for (i, col) in tableRows.columns.enumerated() where i < columnTypes.count {
             if let values = tableRows.columnEnumValues[col], !values.isEmpty {
-                let ct = columnTypes[i]
-                if ct.isEnumType {
-                    columnTypes[i] = .enumType(rawType: ct.rawType, values: values)
-                } else if ct.isSetType {
-                    columnTypes[i] = .set(rawType: ct.rawType, values: values)
-                }
+                columnTypes[i] = columnTypes[i].withAllowedValues(values)
             }
         }
 

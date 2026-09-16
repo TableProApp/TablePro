@@ -48,6 +48,8 @@ internal enum SidebarMenuCommand: Equatable {
     /// and every later command on that row would name an object that does not exist.
     case beginRenameTable(ref: DatabaseTreeTableRef, isRecentRow: Bool)
     case renameContainer(DatabaseContainerRef)
+    case createSchema(database: String?)
+    case editSchema(DatabaseContainerRef)
     case toggleFavorite(DatabaseTreeTableRef)
     case removeRecent(DatabaseTreeTableRef)
     case clearRecents
