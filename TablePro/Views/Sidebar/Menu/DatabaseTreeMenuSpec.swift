@@ -332,7 +332,9 @@ internal enum DatabaseTreeMenuSpec {
         if let renameable = ObjectRenameEligibility.renameable([ref], context: context.renameEligibility) {
             writes.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
         }
+        writes += editSchemaItems([ref], context: context)
         return [
+            DatabaseTreeMenuSection(newSchemaItems(database: context.activeDatabase, context: context)),
             DatabaseTreeMenuSection([.command(String(localized: "Refresh"), .refreshHierarchicalSchema(schema))]),
             /// Oracle, Snowflake, Trino, Dameng and BigQuery draw their schemas here rather than as
             /// container rows, and several of them need a schema-scoped source, so leaving Copy To
@@ -412,6 +414,7 @@ internal enum DatabaseTreeMenuSpec {
         if let renameable = ObjectRenameEligibility.renameable(targets, context: context.renameEligibility) {
             items.append(.command(renameTitle(for: renameable, context: context), .renameContainer(renameable)))
         }
+        items += editSchemaItems(targets, context: context)
         let droppable = ContainerDropEligibility.droppable(targets, context: context.dropEligibility)
         if !droppable.isEmpty {
             items.append(.command(dropTitle(for: droppable, context: context), .dropContainers(droppable)))
@@ -514,8 +517,35 @@ internal enum DatabaseTreeMenuSpec {
             targets: targets,
             entityName: isSchema ? context.schemaEntityName : context.containerEntityName,
             entityNamePlural: isSchema ? context.schemaEntityNamePlural : context.containerEntityNamePlural,
-            dropsDependentObjects: isSchema
+            dropsDependentObjects: isSchema && context.supportsCascadeDrop
         ).menuTitle
+    }
+
+    /// Both items take an ellipsis, because both open a sheet that asks for more before it can
+    /// complete, which is the HIG's rule for one. Rename does not, because it opens the row's own
+    /// field. The noun is the engine's, so these read "New Dataset\u{2026}" on BigQuery.
+    private static func newSchemaItems(
+        database: String?,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        guard SchemaEditEligibility.canCreate(context: context.schemaEditEligibility) else { return [] }
+        return [.command(
+            String(format: String(localized: "New %@\u{2026}"), context.schemaEntityName),
+            .createSchema(database: database)
+        )]
+    }
+
+    private static func editSchemaItems(
+        _ targets: [DatabaseContainerRef],
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuItem] {
+        guard let editable = SchemaEditEligibility.editable(targets, context: context.schemaEditEligibility) else {
+            return []
+        }
+        return [.command(
+            String(format: String(localized: "Edit %@\u{2026}"), context.schemaEntityName),
+            .editSchema(editable)
+        )]
     }
 
     /// The engine's own word for the container, so the item reads "Rename Keyspace" on Cassandra
@@ -548,6 +578,7 @@ internal enum DatabaseTreeMenuSpec {
             creation.append(.command(String(localized: "New Table…"), .createTable))
             creation.append(.command(String(localized: "New View…"), .createView))
         }
+        creation += newSchemaItems(database: context.activeDatabase, context: context)
         var filters: [DatabaseTreeMenuItem] = []
         if context.canFilterDatabases {
             filters.append(.command(String(localized: "Filter Databases…"), .filterDatabases))

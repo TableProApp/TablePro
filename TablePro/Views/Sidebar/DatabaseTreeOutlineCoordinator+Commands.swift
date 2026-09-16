@@ -19,6 +19,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createView()
         case .createType(let database, let schema):
             mainCoordinator?.createType(database: database, schema: schema)
+        case .createSchema(let database):
+            mainCoordinator?.createSchema(database: database)
+        case .editSchema(let container):
+            mainCoordinator?.editSchema(container)
         case .filterDatabases:
             mainCoordinator?.splitViewController?.presentDatabaseFilter()
         case .showAllDatabases:

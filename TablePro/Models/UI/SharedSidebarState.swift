@@ -114,6 +114,12 @@ final class SharedSidebarState {
         )
     }
 
+    func clearRecentTables(inDatabase database: String?, schema: String) {
+        recentTables = RecentTablesStore.shared.clear(
+            connectionId: connectionId, database: normalizedDatabase(database), schema: schema
+        )
+    }
+
     func reloadRecentTablesFromStore() {
         recentTables = AppSettingsManager.shared.general.showRecentTables
             ? RecentTablesStore.shared.entries(connectionId: connectionId)

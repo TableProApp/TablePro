@@ -355,6 +355,31 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// namespaces out and say so rather than emitting DDL the server will reject.
     func createSchemaStatement(name: String) -> String?
 
+    /// The statements that bring a schema into existence in the state the user asked for: the
+    /// `CREATE`, then whatever the engine needs for the owner, the comment and the grants.
+    ///
+    /// Statement generation rather than execution, so the sheet can show the user exactly what will
+    /// run and so one gate authorizes the same text that reaches the server. Return nil where the
+    /// engine cannot make a schema from a statement: on Oracle a schema is a user, and on the
+    /// engines whose namespace is the database the caller creates a database instead.
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
+
+    /// The statements that rename a schema, for the edit sheet's name field.
+    ///
+    /// Separate from `renameSchema(name:to:)`, which runs the rename itself and stays for the
+    /// inline rename in the sidebar. An engine that can only rename through a call and not a
+    /// statement returns nil here and keeps the inline path.
+    func renameSchemaStatements(name: String, to newName: String) -> [String]?
+
+    /// The statements that move a schema from `current` to `target`, emitting nothing for a facet
+    /// that did not change. The caller passes a `current` it read from the server a moment ago, so
+    /// the diff never revokes a grant the user did not see.
+    func alterSchemaStatements(from current: PluginSchemaDetails, to target: PluginSchemaDefinition) -> [String]?
+
+    /// The schema's owner, comment and grants. Nil where the engine exposes none of them, which
+    /// keeps the edit sheet off the menu rather than showing it with every field empty.
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails?
+
     /// Sets or clears the comment on a table-like object. `objectType` is the object's type as the
     /// table listing reported it, because engines that key the statement on the kind refuse the
     /// wrong keyword: PostgreSQL answers `COMMENT ON TABLE` on a view with "is not a table". A nil
@@ -851,6 +876,16 @@ public extension PluginDatabaseDriver {
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
     func createSchemaStatement(name: String) -> String? { nil }
+
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? { nil }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? { nil }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         nil

@@ -54,6 +54,16 @@ Every database on the server is listed, `postgres` included; `template0` and `te
 
 Right-click a schema to drop it. The statement is `DROP SCHEMA … CASCADE`, so views and functions in *other* schemas that depend on it go too; the confirmation says so before it runs.
 
+### Creating and editing a schema
+
+**New Schema…** and **Edit Schema…** on a schema row build `CREATE SCHEMA … AUTHORIZATION`, `ALTER SCHEMA … OWNER TO`, `COMMENT ON SCHEMA`, and the `GRANT` and `REVOKE` for `USAGE` and `CREATE`. The sheet shows them before it runs them. See [Creating and editing a schema](/features/table-operations#creating-and-editing-a-schema).
+
+**Owner** lists the roles on the server; leave it at **Database default** to let the connecting role own it. Changing it needs you to be a member of the new owning role, and the server's own refusal appears under the form.
+
+Rename from the same sheet, or in place: select the row and press Return.
+
+`pg_catalog`, `information_schema` and `pg_toast` are refused for rename, edit and drop.
+
 A partitioned table is listed once, under its own icon. Expand it for its partitions, and expand a partition again if it is subpartitioned; opening one works like opening any other table. Tables using the older `INHERITS` inheritance are listed normally, each child in its own right.
 
 ## Column types
