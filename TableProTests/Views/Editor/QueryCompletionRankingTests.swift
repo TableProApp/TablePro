@@ -138,6 +138,24 @@ struct QueryCompletionRankingTests {
         #expect(ranked.first?.label == "category")
     }
 
+    /// `"` opens a string literal on MySQL, and a re-rank cannot tell that from an identifier
+    /// quote. Widening a quotes-only token to every candidate would hold the popup open inside
+    /// the string, so it declines and lets the popup close instead.
+    @MainActor
+    @Test(
+        "A token that is nothing but quotes ranks nothing",
+        arguments: ["`", "\"", "``", "\"\""]
+    )
+    func quotesOnlyPrefixRanksNothing(prefix: String) {
+        let service = SQLCompletionService(schemaProvider: nil, databaseType: .mysql)
+        let items = [
+            SQLCompletionItem.table("category", isView: false),
+            SQLCompletionItem.table("inflation_rates", isView: false)
+        ]
+
+        #expect(service.rank(items, prefix: prefix).isEmpty)
+    }
+
     @MainActor
     @Test("MongoDB collection methods still rank the exact method first")
     func mongoCollectionMethodsRank() {

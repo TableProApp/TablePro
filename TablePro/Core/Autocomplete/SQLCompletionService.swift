@@ -55,10 +55,19 @@ final class SQLCompletionService: QueryCompletionService {
 
     /// The incremental path reads its own prefix off the live token, which carries an opening
     /// identifier quote, so it takes the same match text the analyzer resolves for a fresh request.
+    ///
+    /// A token that is nothing but quotes declines instead of widening to every candidate: a
+    /// re-rank cannot tell an identifier quote from the opening of a string, which `"` is on
+    /// MySQL, and matching everything there would hold the popup open inside a string literal.
+    /// Declining closes it, and the next character asks the analyzer, which reads the quote in
+    /// its own context.
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        engine.rank(
+        let matchText = SQLTokenBoundary.matchText(of: prefix)
+        guard !matchText.isEmpty || prefix.isEmpty else { return [] }
+
+        return engine.rank(
             items,
-            prefix: SQLTokenBoundary.matchText(of: prefix),
+            prefix: matchText,
             context: lastContext,
             keywordCase: keywordCase
         )
