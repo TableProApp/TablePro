@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Formatted JSON inspection and per-element editing for PostgreSQL `jsonb[]` and `json[]` columns. (#2897)
 - Array element editor in the row inspector.
 - **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
+- **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904)
 
 ### Changed
 
@@ -72,6 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Tab` reaching no further than the sidebar, leaving the editor, data grid, inspector and assistant unreachable from the keyboard. (#2904)
+- Clear Selection enabled on a window with nothing to clear.
 - PostgreSQL `box[]` cell split into fragments by the element editor, which read it with a comma.
 - Empty PostgreSQL `jsonb` object copied to another engine as an empty array. (Copy Objects)
 - Boolean dropdown on a PostgreSQL `bit(8)[]` column, and no element editor on `numeric(10,2)[]`.

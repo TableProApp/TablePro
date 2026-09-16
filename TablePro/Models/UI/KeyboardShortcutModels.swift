@@ -139,6 +139,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case pinResultTab
     case closeResultTab
     case focusSidebarSearch
+    case focusObjectList
+    case focusEditor
+    case focusResults
+    case focusInspector
+    case focusAssistant
     case showPreviousTab
     case showNextTab
     case toggleWorkspaceRail
@@ -169,6 +174,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .toggleInspector, .toggleAssistant, .toggleFilters, .toggleHistory, .toggleResults,
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
+             .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
              .showPreviousTab, .showNextTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
@@ -278,6 +284,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .pinResultTab: return String(localized: "Pin Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
+        case .focusObjectList: return String(localized: "Focus Object List")
+        case .focusEditor: return String(localized: "Focus Editor")
+        case .focusResults: return String(localized: "Focus Results")
+        case .focusInspector: return String(localized: "Focus Inspector")
+        case .focusAssistant: return String(localized: "Focus Assistant")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
@@ -600,6 +611,11 @@ struct KeyboardSettings: Codable, Equatable {
         .pinResultTab: .character("p", command: true, option: true),
         .closeResultTab: .character("w", command: true, shift: true),
         .focusSidebarSearch: .character("f", command: true, option: true, control: true),
+        .focusObjectList: .character("l", command: true, option: true, control: true),
+        .focusEditor: .character("e", command: true, option: true, control: true),
+        .focusResults: .character("r", command: true, option: true, control: true),
+        .focusInspector: .character("i", command: true, option: true, control: true),
+        .focusAssistant: .character("a", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),

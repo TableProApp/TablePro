@@ -70,6 +70,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.minSize = NSSize(width: 720, height: 460)
         window.title = String(localized: "Compare & Sync")
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.compareSync)
+        window.keepsKeyViewLoopCurrent()
         window.isRestorable = false
         window.isReleasedWhenClosed = false
         super.init(window: window)

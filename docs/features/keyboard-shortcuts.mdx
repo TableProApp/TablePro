@@ -207,7 +207,13 @@ See [Filtering](/features/filtering) for the filter bar itself.
 | Toggle connections | `Cmd+Option+0` |
 | Show previous connection | `Ctrl+Cmd+Up` |
 | Show next connection | `Ctrl+Cmd+Down` |
+| Move to the next / previous pane | `Tab` / `Shift+Tab` |
 | Focus sidebar filter | `Ctrl+Cmd+Option+F` |
+| Focus object list | `Ctrl+Cmd+Option+L` |
+| Focus editor | `Ctrl+Cmd+Option+E` |
+| Focus results | `Ctrl+Cmd+Option+R` |
+| Focus inspector | `Ctrl+Cmd+Option+I` |
+| Focus assistant | `Ctrl+Cmd+Option+A` |
 | Move from the sidebar filter into the object list | `Down` |
 | Move between objects in the sidebar | `Up` / `Down` |
 | Keep the selected table's tab (same as double-clicking it) | `Return` |
@@ -220,6 +226,8 @@ See [Filtering](/features/filtering) for the filter bar itself.
 | Zoom in: the focused diagram, otherwise the editor font | `Cmd+=` |
 | Zoom out: the focused diagram, otherwise the editor font | `Cmd+-` |
 | Toggle full screen | `Ctrl+Cmd+F` |
+
+`Tab` walks the panes in reading order and the six commands under **View > Focus** jump straight to one. The SQL editor keeps `Tab` and `Shift+Tab` for indentation, so a Focus command is the way out of it. A Focus command reveals a collapsed or hidden pane before moving the keyboard into it, and dims when the pane it names is not there.
 
 With the sidebar focused, typing the first letters of an object's name jumps to it.
 

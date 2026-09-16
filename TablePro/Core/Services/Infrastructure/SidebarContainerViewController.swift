@@ -22,7 +22,6 @@ internal final class SidebarContainerViewController: NSViewController {
 
     internal func show(_ controller: NSViewController?) {
         listHost.show(controller)
-        searchField.nextKeyView = controller?.view ?? listHost.view
     }
 
     /// Whether the filter field answers, and what it currently holds. The object list below it
@@ -79,7 +78,6 @@ internal final class SidebarContainerViewController: NSViewController {
         let hostingView = listHost.view
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
-        searchField.nextKeyView = hostingView
 
         /// The insets are a margin, not an invariant, so they yield rather than break when the
         /// window narrows the sidebar to the workspace rail and leaves this view no width at all.
@@ -103,6 +101,23 @@ internal final class SidebarContainerViewController: NSViewController {
     func focusSearchField() {
         guard !searchField.isHidden else { return }
         view.window?.makeFirstResponder(searchField)
+    }
+
+    /// The list under the filter field, whichever list that currently is: the object tree in any of
+    /// its layouts, or the favorites list. Both subclass `SidebarOutlineView`, and only the mounted
+    /// one is in the subtree, so the tab the user is on needs no tracking of its own.
+    @discardableResult
+    func focusObjectList() -> Bool {
+        guard let outlineView = mountedObjectList, let window = view.window else { return false }
+        return window.makeFirstResponder(outlineView)
+    }
+
+    var hasObjectList: Bool {
+        mountedObjectList != nil
+    }
+
+    private var mountedObjectList: SidebarOutlineView? {
+        listHost.view.firstDescendant(of: SidebarOutlineView.self)
     }
 
     /// The database filter, shown from the View menu and from the object list's contextual menu
@@ -213,18 +228,16 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
-    /// Down from the filter field hands focus to the list. The handoff goes through the key view loop,
-    /// which only ever lands on a view that answers `acceptsFirstResponder`; naming the hosting view
-    /// directly parked focus on a view that does not, so the selection never moved, the list never drew
-    /// as focused, and returning true swallowed the key. Returning false when nothing took focus leaves
-    /// AppKit's own handling in place.
+    /// Down from the filter field hands focus to the list.
+    ///
+    /// It names the list rather than asking the key view loop for whatever comes next. With the
+    /// system's Keyboard Navigation on, the view options button beside the field is a key view too,
+    /// so `selectKeyView(following:)` lands there and Down stops reaching the list on exactly the
+    /// machines most likely to press it. Returning false when nothing took focus leaves AppKit's own
+    /// handling in place.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard commandSelector == #selector(NSResponder.moveDown(_:)), let window = view.window else {
-            return false
-        }
-        let previous = window.firstResponder
-        window.selectKeyView(following: searchField)
-        return window.firstResponder !== previous
+        guard commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
+        return focusObjectList()
     }
 
     private func writeSearchText(_ text: String) {

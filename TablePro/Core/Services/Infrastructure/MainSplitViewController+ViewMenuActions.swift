@@ -51,6 +51,26 @@ extension MainSplitViewController {
         commandActions?.focusSidebarSearch()
     }
 
+    @objc func focusObjectList(_ sender: Any?) {
+        focusSidebarObjectList()
+    }
+
+    @objc func focusEditor(_ sender: Any?) {
+        focusQueryEditor()
+    }
+
+    @objc func focusResults(_ sender: Any?) {
+        focusResultGrid()
+    }
+
+    @objc func focusInspector(_ sender: Any?) {
+        focusInspectorPane()
+    }
+
+    @objc func focusAssistant(_ sender: Any?) {
+        focusAssistantPane()
+    }
+
     @objc func filterDatabases(_ sender: Any?) {
         presentDatabaseFilter()
     }

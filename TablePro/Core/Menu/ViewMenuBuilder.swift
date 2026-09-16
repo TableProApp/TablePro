@@ -52,12 +52,7 @@ enum ViewMenuBuilder {
             connectionSortSubmenu(),
             MenuItemFactory.separator,
             sidebarLayoutSubmenu(),
-            MenuItemFactory.item(
-                String(localized: "Focus Sidebar Filter"),
-                action: #selector(MainSplitViewController.focusSidebarFilter(_:)),
-                shortcut: .focusSidebarSearch,
-                keyboard: keyboard
-            ),
+            focusSubmenu(keyboard: keyboard),
             MenuItemFactory.item(
                 String(localized: "Filter Databases…"),
                 action: #selector(MainSplitViewController.filterDatabases(_:))
@@ -202,6 +197,51 @@ enum ViewMenuBuilder {
                 return item
             }
         )
+    }
+
+    /// Where the keyboard goes, as opposed to what is on screen, which is what the rest of this menu
+    /// settles. Tab walks the window's panes in reading order and is the macOS mechanism for this;
+    /// these name a pane directly, for the jump Tab makes long, and for the SQL editor, which keeps
+    /// Tab for itself the way every code editor does and so cannot be left with it.
+    private static func focusSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
+        MenuItemFactory.submenu(String(localized: "Focus"), items: [
+            MenuItemFactory.item(
+                String(localized: "Focus Sidebar Filter"),
+                action: #selector(MainSplitViewController.focusSidebarFilter(_:)),
+                shortcut: .focusSidebarSearch,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Focus Object List"),
+                action: #selector(MainSplitViewController.focusObjectList(_:)),
+                shortcut: .focusObjectList,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Focus Editor"),
+                action: #selector(MainSplitViewController.focusEditor(_:)),
+                shortcut: .focusEditor,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Focus Results"),
+                action: #selector(MainSplitViewController.focusResults(_:)),
+                shortcut: .focusResults,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Focus Inspector"),
+                action: #selector(MainSplitViewController.focusInspector(_:)),
+                shortcut: .focusInspector,
+                keyboard: keyboard
+            ),
+            MenuItemFactory.item(
+                String(localized: "Focus Assistant"),
+                action: #selector(MainSplitViewController.focusAssistant(_:)),
+                shortcut: .focusAssistant,
+                keyboard: keyboard
+            )
+        ])
     }
 
     private static func sidebarLayoutSubmenu() -> NSMenuItem {
