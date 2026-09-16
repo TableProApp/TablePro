@@ -345,8 +345,6 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
 
     func seedItems() -> [SQLCompletionItem] { [] }
 
-    func prepare() async {}
-
     func completions(
         in text: NSString,
         at offset: Int,

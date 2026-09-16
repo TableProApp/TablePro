@@ -27,8 +27,6 @@ final class MongoCompletionService: QueryCompletionService {
         }
     }
 
-    func prepare() async {}
-
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords
     }

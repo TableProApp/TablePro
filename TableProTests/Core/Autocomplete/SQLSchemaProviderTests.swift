@@ -224,6 +224,22 @@ struct SQLSchemaProviderTests {
         #expect(driver.fetchColumnsCallCount == 0)
     }
 
+    /// A failed catalog fetch leaves the provider empty and reports through the log. Recovery is
+    /// `SchemaProviderRegistry`'s: its `markLoadFailed` clears the scope so the next `prepare`
+    /// refetches.
+    @Test("A failed loadSchema leaves the provider empty and does not throw")
+    func loadSchemaFailureLeavesTheProviderEmpty() async {
+        let driver = MockDatabaseDriver()
+        driver.fetchTablesError = DatabaseError.queryFailed("connection lost")
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
+
+        let tables = await provider.getTables()
+        #expect(tables.isEmpty)
+        #expect(driver.fetchTablesCallCount == 1)
+    }
+
     @Test("getColumns fetches from driver on cache miss")
     func getColumnsLazyFetchOnMiss() async {
         let driver = MockDatabaseDriver()

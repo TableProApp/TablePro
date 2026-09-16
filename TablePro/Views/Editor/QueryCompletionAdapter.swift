@@ -106,8 +106,6 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
-        await service.prepare()
-
         guard let result = await service.completions(
             in: text,
             at: offset,
