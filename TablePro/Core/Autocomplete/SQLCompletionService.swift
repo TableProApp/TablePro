@@ -41,10 +41,6 @@ final class SQLCompletionService: QueryCompletionService {
         return Array(items.prefix(engine.provider.seedPoolLimit))
     }
 
-    func prepare() async {
-        await engine.retrySchemaIfNeeded()
-    }
-
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         engine.updateFavoriteKeywords(keywords)
     }
@@ -53,8 +49,24 @@ final class SQLCompletionService: QueryCompletionService {
         SQLTokenBoundary.segmentStart(in: text, endingAt: offset)
     }
 
+    /// The incremental path reads its own prefix off the live token, which carries an opening
+    /// identifier quote, so it takes the same match text the analyzer resolves for a fresh request.
+    ///
+    /// A token that is nothing but quotes declines instead of widening to every candidate: a
+    /// re-rank cannot tell an identifier quote from the opening of a string, which `"` is on
+    /// MySQL, and matching everything there would hold the popup open inside a string literal.
+    /// Declining closes it, and the next character asks the analyzer, which reads the quote in
+    /// its own context.
     func rank(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
-        engine.rank(items, prefix: prefix, context: lastContext, keywordCase: keywordCase)
+        let matchText = SQLTokenBoundary.matchText(of: prefix)
+        guard !matchText.isEmpty || prefix.isEmpty else { return [] }
+
+        return engine.rank(
+            items,
+            prefix: matchText,
+            context: lastContext,
+            keywordCase: keywordCase
+        )
     }
 
     func completions(in text: NSString, at offset: Int, isManualTrigger: Bool) async -> QueryCompletionSession? {
@@ -101,7 +113,7 @@ final class SQLCompletionService: QueryCompletionService {
 
         switch context.clauseType {
         case .from, .join, .into, .set, .insertColumns, .on,
-             .alterTableColumn, .returning, .using, .dropObject, .createIndex:
+             .alterTableColumn, .returning, .using, .dropObject, .createIndex, .castTarget:
             return false
         case .select where !context.isAfterComma:
             return false

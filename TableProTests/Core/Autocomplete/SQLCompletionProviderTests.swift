@@ -1163,6 +1163,35 @@ struct SQLCompletionProviderTests {
         #expect(items.contains { $0.kind == .table && $0.label == "inflation_rates" })
     }
 
+    // MARK: - Quoted identifiers
+
+    @Test(
+        "A quoted table prefix still offers the table",
+        arguments: ["SELECT * FROM `cat", "SELECT * FROM `cat`"]
+    )
+    func quotedTablePrefixOffersTheTable(text: String) async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "category"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(items.contains { $0.kind == .table && $0.label == "category" })
+    }
+
+    @Test("A lone quote after FROM offers every table")
+    func loneQuoteAfterFromOffersEveryTable() async {
+        await schemaProvider.updateTables([
+            TestFixtures.makeTableInfo(name: "category"),
+            TestFixtures.makeTableInfo(name: "inflation_rates")
+        ])
+        let text = "SELECT * FROM `"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: (text as NSString).length)
+
+        #expect(items.contains { $0.kind == .table && $0.label == "category" })
+        #expect(items.contains { $0.kind == .table && $0.label == "inflation_rates" })
+    }
+
     @Test("Tables rank first when the cursor is in the JOIN operand slot")
     func testTablesRankFirstAfterJoin() async {
         await schemaProvider.updateTables([

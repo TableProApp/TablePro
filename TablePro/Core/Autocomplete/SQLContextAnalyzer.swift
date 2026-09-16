@@ -771,7 +771,7 @@ final class SQLContextAnalyzer {
         }
 
         let start = SQLTokenBoundary.segmentStart(in: ns, endingAt: length)
-        let prefix = ns.substring(from: start)
+        let prefix = SQLTokenBoundary.matchText(of: ns.substring(from: start))
 
         guard start > 0, ns.character(at: start - 1) == Self.dot else {
             return (prefix, start, nil)
@@ -784,8 +784,7 @@ final class SQLContextAnalyzer {
         }
 
         let qualifierRange = NSRange(location: qualifierStart, length: qualifierEnd - qualifierStart)
-        let dotPrefix = ns.substring(with: qualifierRange)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "`\""))
+        let dotPrefix = SQLTokenBoundary.matchText(of: ns.substring(with: qualifierRange))
         return (prefix, start, dotPrefix)
     }
 

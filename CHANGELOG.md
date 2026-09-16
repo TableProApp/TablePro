@@ -77,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No autocomplete after an opening backtick or double quote, in the editor and the grid filter field.
+- No type list after a PostgreSQL `::` cast until a character was typed.
 - Twelve pull-down menus VoiceOver read without a name, the result chooser and the sidebar's schema picker among them.
 - Autocomplete popup never opening again after a completion request came back with nothing. (#2915)
 - Completion popup opening by itself over an editor whose popup had already been dismissed.
