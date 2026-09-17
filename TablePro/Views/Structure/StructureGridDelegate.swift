@@ -324,6 +324,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
         let item = NSPasteboardItem()
         if let json = jsonString {
             item.setString(json, forType: TableStructureView.structurePasteboardType)
+            item.setString(connection.type.rawValue, forType: TableStructureView.structureSourceTypePasteboardType)
         }
         if !tsvString.isEmpty {
             item.setString(tsvString, forType: .string)
@@ -360,8 +361,11 @@ final class StructureGridDelegate: DataGridViewDelegate {
             guard let indexes = try? decoder.decode([EditableIndexDefinition].self, from: Data(jsonString.utf8)) else {
                 return
             }
+            let source = NSPasteboard.general
+                .string(forType: TableStructureView.structureSourceTypePasteboardType)
+                .map(DatabaseType.init(rawValue:))
             for item in indexes {
-                structureChangeManager.addIndex(item.withNewIdentity())
+                structureChangeManager.addIndex(item.pasted(from: source, into: connection.type))
             }
 
         case .foreignKeys:

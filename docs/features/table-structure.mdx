@@ -102,7 +102,7 @@ Everything that runs goes to query history rather than the change queue.
 
 | Field | Description |
 |-------|-------------|
-| **Columns** | Key columns and expressions in key order, such as `tenant_id, lower(email)`. MySQL prefix lengths are written as `email(20)`. A PostgreSQL index's `INCLUDE` columns are not listed, and editing the index keeps them. An expression typed here is read as a column name, so create a new expression index in the SQL editor |
+| **Columns** | Key columns and expressions in key order, such as `tenant_id, lower(email)`. MySQL prefix lengths are written as `email(20)`. A PostgreSQL index's `INCLUDE` columns are not listed, and editing the index keeps them. An expression typed here is read as a column name, so create a new expression index in the SQL editor. Pasted into a MySQL, SQLite or other non-PostgreSQL table, an index leaves its `INCLUDE` columns behind and each expression becomes a column name the row flags until you replace it |
 | **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL 9.5 and later) |
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |

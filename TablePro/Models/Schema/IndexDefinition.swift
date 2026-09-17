@@ -208,4 +208,23 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         copy.id = UUID()
         return copy
     }
+
+    /// A copy under a fresh identity for a paste into a table on `target`, copied from a table on
+    /// `source`.
+    ///
+    /// Expressions and `INCLUDE` columns are the source engine's SQL, and a writer for another engine
+    /// cannot say either: it quotes an expression as a column name, which the server refuses on save,
+    /// and leaves `INCLUDE` out without a word. So a paste that crosses engines, on the line Copy To
+    /// draws with `SQLTypeFamily.needsTranslation`, keeps each expression as a plain entry that the
+    /// column check names before anything runs, and leaves the `INCLUDE` columns behind as Copy To
+    /// does. A `nil` source is a copy made by a build that wrote neither field.
+    func pasted(from source: DatabaseType?, into target: DatabaseType) -> EditableIndexDefinition {
+        var copy = withNewIdentity()
+        if let source, !SQLTypeFamily.needsTranslation(from: source, to: target) {
+            return copy
+        }
+        copy.expressions = []
+        copy.includedColumns = []
+        return copy
+    }
 }

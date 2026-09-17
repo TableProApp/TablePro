@@ -17,6 +17,9 @@ import UniformTypeIdentifiers
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
+    /// The database type of the connection the structure rows were copied from, so a paste can tell
+    /// a row said in its own engine's SQL from one said in another's.
+    static let structureSourceTypePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure.database-type")
 
     /// Whether the clipboard holds structure rows this view can paste. Structure paste reads its
     /// own pasteboard type and nothing else, so the plain text a structure copy also writes is not
