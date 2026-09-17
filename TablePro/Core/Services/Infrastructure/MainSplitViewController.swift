@@ -145,7 +145,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
     // MARK: - Toolbar
 
-    private var toolbarOwner: MainWindowToolbar?
+    internal var toolbarOwner: MainWindowToolbar?
 
     /// The coordinator currently treated as this window's active one, so a workspace switch can
     /// hand over key-window state the same way AppKit would between windows.
@@ -717,6 +717,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         workspace.panes.detail.rootView = AnyView(buildDetailView(for: workspace))
         workspace.panes.inspector.rootView = AnyView(buildInspectorView(for: workspace))
         workspace.panes.assistant.rootView = AnyView(buildAssistantView(for: workspace))
+        workspace.panes.agentResult.rootView = AnyView(buildAgentResultView(for: workspace))
         refreshTabStripPane(of: workspace)
         workspace.panes.markRendered(workspace.paneRenderKey)
         guard isShowing(workspace) else { return }
@@ -726,7 +727,7 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// The single entry point for a repaint, so a caller never has to know whether one is due. The
     /// record is what makes it free when nothing has moved, which is what lets a workspace switch
     /// ask for one without paying for the rebuild the panes exist to avoid.
-    private func syncPanes(of workspace: ConnectionWorkspace) {
+    func syncPanes(of workspace: ConnectionWorkspace) {
         guard workspace.paneRenderKey != workspace.panes.renderedKey else { return }
         refreshPanes(of: workspace)
     }
@@ -801,7 +802,17 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     /// so the tree is per-connection by construction and an identity would only throw it away.
     @ViewBuilder
     private func buildSidebarView(for workspace: ConnectionWorkspace) -> some View {
-        if workspace.resolvedPane == .content,
+        if workspace.resolvedContentMode == .agent, let connection = workspace.connection {
+            AgentSessionRailView(
+                connectionId: connection.id,
+                registry: AgentSessionRegistry.shared,
+                selectedSessionId: AgentSessionRegistry.shared.currentSession(for: connection.id)?.id,
+                onSelect: { [weak self] sessionId in self?.selectAgentSession(sessionId, for: connection.id) },
+                onNewSession: { [weak self] in self?.startAgentSession(for: connection.id) },
+                onCloseSession: { sessionId in AgentSessionRegistry.shared.stopSession(id: sessionId) }
+            )
+            .transaction { $0.animation = nil }
+        } else if workspace.resolvedPane == .content,
            let session = workspace.session,
            let sessionState = workspace.sessionState {
             SidebarView(
@@ -823,7 +834,18 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
     @ViewBuilder
     private func buildDetailView(for workspace: ConnectionWorkspace) -> some View {
         let pane = workspace.resolvedPane
-        if pane == .connecting, let pendingConnection = workspace.connection {
+        /// Agent mode draws before a session exists on purpose: the prompt the user typed is the
+        /// thing they are waiting with, and hiding it until the connect lands means typing into
+        /// nothing and then watching the conversation flash in.
+        if workspace.resolvedContentMode == .agent, let connection = workspace.connection {
+            AgentConversationView(
+                connection: connection,
+                session: AgentSessionRegistry.shared.currentSession(for: connection.id),
+                isConnecting: pane == .connecting,
+                onStartSession: { [weak self] in self?.startAgentSession(for: connection.id) }
+            )
+            .transaction { $0.animation = nil }
+        } else if pane == .connecting, let pendingConnection = workspace.connection {
             ConnectingStateView(connection: pendingConnection) { [weak self] in
                 self?.cancelConnectionAttempt(for: workspace.connectionId)
             }
@@ -907,21 +929,40 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
         selected.panes.assistant.rootView = AnyView(buildAssistantView(for: selected))
     }
 
+    /// The agent session's result pane, built per workspace like the other three.
+    @ViewBuilder
+    private func buildAgentResultView(for workspace: ConnectionWorkspace) -> some View {
+        if workspace.resolvedContentMode == .agent,
+           let connection = workspace.connection,
+           let session = AgentSessionRegistry.shared.currentSession(for: connection.id) {
+            AgentResultPaneView(session: session, connection: connection)
+        } else {
+            TrailingPaneUnavailableView(surface: .agentResult)
+        }
+    }
+
     /// Parents whichever surface the selected workspace is showing.
     ///
     /// Measured: swapping the hosted child of an inspector split item leaves its width exactly as
     /// the user dragged it, so a surface change costs a view swap and nothing else. Assigning
     /// `viewController` on the item itself instead would throw, which is why the pane is a
     /// container in the first place.
-    private func showSelectedTrailingPane() {
+    func showSelectedTrailingPane() {
         guard let selected = workspaces.selected else {
             inspectorPaneHost.show(nil)
             return
         }
-        let surface = TrailingPaneSurface.resolved(
-            selected.trailingPaneState?.surface ?? .inspector,
-            isAIEnabled: AppSettingsManager.shared.ai.enabled
-        )
+        /// Agent mode owns the trailing pane for as long as it is on, and never writes that over
+        /// the surface the user chose for browsing: coming back to Browse puts their choice back.
+        let surface: TrailingPaneSurface
+        if selected.resolvedContentMode == .agent {
+            surface = .agentResult
+        } else {
+            surface = TrailingPaneSurface.resolved(
+                selected.trailingPaneState?.surface ?? .inspector,
+                isAIEnabled: AppSettingsManager.shared.ai.enabled
+            )
+        }
         inspectorPaneHost.show(selected.panes.trailingPane(for: surface))
     }
 

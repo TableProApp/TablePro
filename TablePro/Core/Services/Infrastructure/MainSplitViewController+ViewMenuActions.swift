@@ -22,6 +22,18 @@ extension MainSplitViewController {
         activateWorkspace(offsetBy: 1)
     }
 
+    /// Both mode commands. A tolerant sender: AppKit hands the menu item here and the toolbar
+    /// group's own action hands the group, and neither should be the only one that works.
+    @objc func setContentModeFromMenu(_ sender: Any?) {
+        guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
+              let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return }
+        setContentMode(mode)
+    }
+
+    @objc func toggleContentModeFromMenu(_ sender: Any?) {
+        toggleContentMode(sender)
+    }
+
     @objc func setResultView(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let mode = ResultsViewMode(rawValue: raw) else { return }

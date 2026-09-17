@@ -39,6 +39,14 @@ internal final class ConnectionWorkspace {
     internal var attemptToken: UUID?
     internal var phase: ConnectionWindowPhase
 
+    /// Browsing this connection's objects, or working with an agent on it.
+    ///
+    /// Beside `phase` rather than inside it: the phase machine is pure and exhaustive over whether
+    /// there is a live session to show, and a mode is not one of its transitions. It is per
+    /// connection, so one connection can sit in Agent mode while another in the same window stays
+    /// on a table.
+    internal var contentMode: ConnectionWorkspaceContentMode = .browse
+
     /// Each workspace owns its undo stack. Routing through `NSWindow.undoManager` was correct
     /// while a window meant one connection; sharing one window between several would let an
     /// undo in one connection roll back an edit made in another.
@@ -216,13 +224,22 @@ internal final class ConnectionWorkspace {
         )
     }
 
+    /// The mode the window actually draws, which is browsing whenever the AI feature is off.
+    internal var resolvedContentMode: ConnectionWorkspaceContentMode {
+        ConnectionWorkspaceContentMode.resolved(
+            contentMode,
+            isAIEnabled: AppSettingsManager.shared.ai.enabled
+        )
+    }
+
     /// Everything the panes are built from, compared against `panes.renderedKey` to decide whether
     /// they have to be built at all.
     internal var paneRenderKey: WorkspacePaneRenderKey {
         WorkspacePaneRenderKey(
             pane: resolvedPane,
             connection: connection,
-            sessionRevision: sessionRevision
+            sessionRevision: sessionRevision,
+            contentMode: resolvedContentMode
         )
     }
 

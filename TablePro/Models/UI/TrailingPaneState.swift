@@ -23,7 +23,7 @@ internal final class TrailingPaneState: ObservableObject {
     /// which is what lets a reveal put back what the user was last looking at.
     @Published internal var surface: TrailingPaneSurface {
         didSet {
-            guard let connectionId else { return }
+            guard let connectionId, surface.isUserSelectable else { return }
             defaults.set(surface.rawValue, forKey: Self.surfaceKey(connectionId))
         }
     }
@@ -48,7 +48,8 @@ internal final class TrailingPaneState: ObservableObject {
         self.assistant = AssistantState(connectionId: connectionId, registry: sessionRegistry)
         if let connectionId,
            let raw = defaults.string(forKey: Self.surfaceKey(connectionId)),
-           let stored = TrailingPaneSurface(rawValue: raw) {
+           let stored = TrailingPaneSurface(rawValue: raw),
+           stored.isUserSelectable {
             self.surface = stored
         } else {
             self.surface = .inspector

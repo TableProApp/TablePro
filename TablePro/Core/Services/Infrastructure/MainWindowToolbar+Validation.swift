@@ -24,6 +24,9 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let supportsServerDashboard: Bool
         let canNavigateBack: Bool
         let canNavigateForward: Bool
+        /// A connection is on screen, whether or not it has finished connecting. The mode control is
+        /// the one item that answers to this rather than to `connected`.
+        var hasSelectedWorkspace: Bool = false
     }
 
     /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
@@ -58,6 +61,11 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             return context.connected
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
             return context.connected
+        /// Reachable while a connection is still dialling, unlike the rest of these. Agent mode
+        /// draws the prompt the user typed, so a control gated on `connected` would be dead in the
+        /// one state that surface exists for.
+        case Self.contentModeItem:
+            return context.hasSelectedWorkspace && AppSettingsManager.shared.ai.enabled
         case Self.addRow:
             return context.connected && context.canAddRow
         case Self.restorePreviousValues:
@@ -96,7 +104,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
             supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false,
             canNavigateBack: coordinator?.canNavigateBack ?? false,
-            canNavigateForward: coordinator?.canNavigateForward ?? false
+            canNavigateForward: coordinator?.canNavigateForward ?? false,
+            hasSelectedWorkspace: coordinator?.splitViewController?.hasSelectedWorkspace ?? false
         )
     }
 

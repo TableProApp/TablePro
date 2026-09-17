@@ -479,10 +479,29 @@ extension MainSplitViewController: NSMenuItemValidation {
         /// rather than staying enabled over a pane that would refuse to open.
         if action == #selector(toggleAssistant(_:)) { return canRevealAssistant }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
+        /// Reachable while the connection is still dialling: agent mode draws the prompt the user
+        /// typed, which is exactly what they are waiting with, so gating on `connected` would make
+        /// the command dead in the one state it is most wanted.
+        if action == #selector(setContentModeFromMenu(_:)) || action == #selector(toggleContentModeFromMenu(_:)) {
+            return canSwitchContentMode
+        }
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
         return Self.isEnabled(action, context: menuValidationContext)
+    }
+
+    /// The mode is per connection, so the command needs one selected and the AI feature on. It does
+    /// not need a live session: the surface it switches to is what the user types into while one is
+    /// being made.
+    private var canSwitchContentMode: Bool {
+        workspaces.selected != nil && AppSettingsManager.shared.ai.enabled
+    }
+
+    private func isCurrentContentMode(_ menuItem: NSMenuItem) -> Bool {
+        guard let raw = menuItem.representedObject as? String,
+              let mode = ConnectionWorkspaceContentMode(rawValue: raw) else { return false }
+        return contentMode == mode
     }
 
     /// Assigning a title or state that has not changed still posts an item-changed notification,
@@ -537,6 +556,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             )
         case #selector(setResultView(_:)):
             setState(isCurrentResultView(menuItem) ? .on : .off, on: menuItem)
+        case #selector(setContentModeFromMenu(_:)):
+            setState(isCurrentContentMode(menuItem) ? .on : .off, on: menuItem)
         case #selector(useFlatSidebarLayout(_:)):
             setState(commandActions?.sidebarLayout == .flat ? .on : .off, on: menuItem)
         case #selector(useTreeSidebarLayout(_:)):

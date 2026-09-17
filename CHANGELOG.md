@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
 - **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904)
 - **Network Encryption** on the Oracle connection form, matching `SQLNET.ENCRYPTION_CLIENT`. (#2919)
+- **Agent** mode, giving one session the whole connection window: its sessions, its conversation, and what it ran.
+- **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
 
 ### Changed
 
@@ -247,6 +249,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The assistant held a provider and its open stream for the rest of the session when a window closed over an approval card.
 - Another connection's chat history appeared in a second connection's assistant, and could be deleted from there.
 - Two conversations on one Copilot configuration were answered with each other's context.
+- The sidebar toggle announced its SF Symbol names to VoiceOver instead of Tables and Favorites.
+- Choosing Tables or Favorites from the toolbar's overflow menu did nothing.
 
 ### Security
 
