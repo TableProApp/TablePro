@@ -7,9 +7,18 @@ use uuid::Uuid;
 use tablepro_core::AuthMode;
 use tablepro_storage::{ConnectionColor, SavedConnection};
 
+/// What a row needs to build itself: the connection, plus the groups
+/// the rest of the list is filed under so its menu can offer them.
+#[derive(Debug, Clone)]
+pub struct ConnectionRowInit {
+    pub saved: SavedConnection,
+    pub groups: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct ConnectionRow {
     saved: SavedConnection,
+    groups: Vec<String>,
     /// AdwActionRow root widget. Cached so the trash button's
     /// confirmation dialog can `present()` against it (the dialog
     /// walks up to find the GtkWindow, but it needs *some* widget
@@ -30,6 +39,11 @@ pub enum ConnectionRowMsg {
     /// A colour from the row's own menu, or `None` for the "No colour"
     /// entry.
     SetColor(Option<ConnectionColor>),
+    /// A group from the row's own menu, or `None` for "No Group".
+    SetGroup(Option<String>),
+    /// "New Group…", which asks for a name before filing the
+    /// connection under it.
+    NewGroupRequested,
 }
 
 #[derive(Debug)]
@@ -38,11 +52,12 @@ pub enum ConnectionRowOutput {
     Delete(Uuid),
     Duplicate(SavedConnection),
     SetColor(Uuid, Option<ConnectionColor>),
+    SetGroup(Uuid, Option<String>),
 }
 
 #[relm4::factory(pub)]
 impl FactoryComponent for ConnectionRow {
-    type Init = SavedConnection;
+    type Init = ConnectionRowInit;
     type Input = ConnectionRowMsg;
     type Output = ConnectionRowOutput;
     type CommandOutput = ();
@@ -74,13 +89,17 @@ impl FactoryComponent for ConnectionRow {
                 set_valign: gtk::Align::Center,
                 set_tooltip_text: Some(crate::i18n::gettext("Connection options").as_str()),
                 add_css_class: "flat",
-                set_menu_model: Some(&row_menu()),
+                set_menu_model: Some(&row_menu(&self.groups)),
             },
         }
     }
 
-    fn init_model(saved: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
-        Self { saved, root: None }
+    fn init_model(init: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
+        Self {
+            saved: init.saved,
+            groups: init.groups,
+            root: None,
+        }
     }
 
     fn init_widgets(
@@ -123,6 +142,31 @@ impl FactoryComponent for ConnectionRow {
             color_sender.input(ConnectionRowMsg::SetColor(ConnectionColor::from_id(&id)));
         });
         actions.add_action(&color);
+
+        // The same radio shape as the colour, over a set of names that
+        // comes from the list rather than from a fixed vocabulary.
+        let group_sender = sender.clone();
+        let group = gio::SimpleAction::new_stateful(
+            "group",
+            Some(&String::static_variant_type()),
+            &self.saved.group.clone().unwrap_or_default().to_variant(),
+        );
+        group.connect_activate(move |action, parameter| {
+            let Some(name) = parameter.and_then(|value| value.get::<String>()) else {
+                return;
+            };
+            action.set_state(&name.to_variant());
+            group_sender.input(ConnectionRowMsg::SetGroup(match name.trim().is_empty() {
+                true => None,
+                false => Some(name),
+            }));
+        });
+        actions.add_action(&group);
+        let new_group_sender = sender.clone();
+        let new_group = gio::ActionEntry::builder("new-group")
+            .activate(move |_, _, _| new_group_sender.input(ConnectionRowMsg::NewGroupRequested))
+            .build();
+        actions.add_action_entries([new_group]);
         root.insert_action_group("connection", Some(&actions));
 
         widgets
@@ -138,6 +182,35 @@ impl FactoryComponent for ConnectionRow {
             }
             ConnectionRowMsg::SetColor(color) => {
                 let _ = sender.output(ConnectionRowOutput::SetColor(self.saved.id, color));
+            }
+            ConnectionRowMsg::SetGroup(group) => {
+                let _ = sender.output(ConnectionRowOutput::SetGroup(self.saved.id, group));
+            }
+            ConnectionRowMsg::NewGroupRequested => {
+                let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("New Group")), None);
+                let entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+                let group = adw::PreferencesGroup::new();
+                group.add(&entry);
+                dialog.set_extra_child(Some(&group));
+                dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                dialog.add_response("add", &crate::i18n::gettext("Add"));
+                dialog.set_response_appearance("add", adw::ResponseAppearance::Suggested);
+                dialog.set_default_response(Some("add"));
+                dialog.set_close_response("cancel");
+                let id = self.saved.id;
+                let output = sender.output_sender().clone();
+                dialog.connect_response(None, move |dlg, response| {
+                    dlg.close();
+                    if response != "add" {
+                        return;
+                    }
+                    let name = entry.text().to_string();
+                    if name.trim().is_empty() {
+                        return;
+                    }
+                    let _ = output.send(ConnectionRowOutput::SetGroup(id, Some(name)));
+                });
+                dialog.present(self.root.as_ref());
             }
             ConnectionRowMsg::RequestDelete => {
                 // GNOME HIG: destructive actions need explicit
@@ -183,10 +256,11 @@ fn subtitle_for(saved: &SavedConnection) -> String {
 
 /// The row's own menu. Remove sits in its own section so a destructive
 /// action is never the neighbour of an ordinary one.
-fn row_menu() -> gio::Menu {
+fn row_menu(groups: &[String]) -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append(Some(&crate::i18n::gettext("Duplicate")), Some("connection.duplicate"));
     menu.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
+    menu.append_submenu(Some(&crate::i18n::gettext("Group")), &group_menu(groups));
     let danger = gio::Menu::new();
     danger.append(Some(&crate::i18n::gettext("Remove…")), Some("connection.remove"));
     menu.append_section(None, &danger);
@@ -207,6 +281,29 @@ fn color_menu() -> gio::Menu {
         colors.append_item(&item);
     }
     menu.append_section(None, &colors);
+    menu
+}
+
+/// The groups already in the list, as a radio group, with a way to
+/// start a new one at the end. A connection whose group is the only
+/// one of its kind still appears here, because it is in `groups`.
+fn group_menu(groups: &[String]) -> gio::Menu {
+    let menu = gio::Menu::new();
+    let none = gio::MenuItem::new(Some(&crate::i18n::gettext("No Group")), None);
+    none.set_action_and_target_value(Some("connection.group"), Some(&"".to_variant()));
+    menu.append_item(&none);
+    if !groups.is_empty() {
+        let existing = gio::Menu::new();
+        for group in groups {
+            let item = gio::MenuItem::new(Some(group), None);
+            item.set_action_and_target_value(Some("connection.group"), Some(&group.to_variant()));
+            existing.append_item(&item);
+        }
+        menu.append_section(None, &existing);
+    }
+    let new = gio::Menu::new();
+    new.append(Some(&crate::i18n::gettext("New Group…")), Some("connection.new-group"));
+    menu.append_section(None, &new);
     menu
 }
 
@@ -279,7 +376,27 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
+            group: None,
         }
+    }
+
+    /// The labels a menu model carries, in order, for every item and
+    /// every section it holds.
+    fn menu_labels(menu: &gio::Menu) -> Vec<String> {
+        use relm4::gtk::prelude::*;
+        let mut labels = Vec::new();
+        for index in 0..menu.n_items() {
+            if let Some(label) = menu
+                .item_attribute_value(index, "label", None)
+                .and_then(|v| v.get::<String>())
+            {
+                labels.push(label);
+            }
+            if let Some(section) = menu.item_link(index, "section").and_downcast::<gio::Menu>() {
+                labels.extend(menu_labels(&section));
+            }
+        }
+        labels
     }
 
     #[test]
@@ -332,5 +449,22 @@ mod tests {
             ConnectionColor::from_id(color_state(Some(ConnectionColor::Red))),
             Some(ConnectionColor::Red)
         );
+    }
+
+    #[test]
+    fn the_group_menu_offers_every_group_the_list_already_has() {
+        let menu = group_menu(&["Archive".to_owned(), "Work".to_owned()]);
+
+        let labels = menu_labels(&menu);
+        assert!(labels.contains(&"Archive".to_owned()), "{labels:?}");
+        assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
+    }
+
+    #[test]
+    fn the_group_menu_always_offers_no_group_and_a_new_one() {
+        let labels = menu_labels(&group_menu(&[]));
+
+        assert_eq!(labels.first().map(String::as_str), Some("No Group"));
+        assert_eq!(labels.last().map(String::as_str), Some("New Group…"));
     }
 }

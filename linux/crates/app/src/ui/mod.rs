@@ -2,6 +2,7 @@ mod app;
 mod browse_tab;
 mod cell_editor;
 mod connect_dialog;
+mod connection_list;
 mod connection_list_banner;
 mod connection_row;
 mod editor;

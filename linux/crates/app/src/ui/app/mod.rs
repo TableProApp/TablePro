@@ -83,6 +83,9 @@ pub struct App {
     reconnect_banner: adw::Banner,
     connection_list_banner: adw::Banner,
     connections_factory: FactoryVecDeque<ConnectionRow>,
+    /// The popover list's own list box, kept so the group headers can
+    /// be reinstalled whenever the list changes.
+    connections_listbox: gtk::ListBox,
     connections_popover: gtk::Popover,
     health_state: Option<ConnectionHealth>,
     row_op_spinner: adw::Spinner,
@@ -350,6 +353,9 @@ pub enum AppMsg {
     /// A colour picked from a connection row's menu, or `None` when the
     /// user cleared it.
     SetConnectionColor(Uuid, Option<tablepro_storage::ConnectionColor>),
+    /// A group picked from a connection row's menu, or `None` when the
+    /// user took it out of one.
+    SetConnectionGroup(Uuid, Option<String>),
     ExportConnections,
     ImportConnections,
     /// The file the user picked, read off the GTK thread.
@@ -1133,18 +1139,18 @@ impl SimpleComponent for App {
             row.set_header(Some(&header_box));
         });
 
+        let connections_listbox = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
         let connections_factory: FactoryVecDeque<ConnectionRow> = FactoryVecDeque::builder()
-            .launch(
-                gtk::ListBox::builder()
-                    .selection_mode(gtk::SelectionMode::None)
-                    .css_classes(["boxed-list"])
-                    .build(),
-            )
+            .launch(connections_listbox.clone())
             .forward(sender.input_sender(), |out| match out {
                 ConnectionRowOutput::Open(saved) => AppMsg::OpenSaved(saved),
                 ConnectionRowOutput::Delete(id) => AppMsg::DeleteConnection(id),
                 ConnectionRowOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
                 ConnectionRowOutput::SetColor(id, color) => AppMsg::SetConnectionColor(id, color),
+                ConnectionRowOutput::SetGroup(id, group) => AppMsg::SetConnectionGroup(id, group),
             });
 
         // The SplitButton's tooltip already labels the popover, so we drop
@@ -1220,6 +1226,7 @@ impl SimpleComponent for App {
                     WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
                     WelcomeViewOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
                     WelcomeViewOutput::SetColor(id, color) => AppMsg::SetConnectionColor(id, color),
+                    WelcomeViewOutput::SetGroup(id, group) => AppMsg::SetConnectionGroup(id, group),
                 });
 
         let model = App {
@@ -1243,6 +1250,7 @@ impl SimpleComponent for App {
             reconnect_banner: widgets.reconnect_banner.clone(),
             connection_list_banner: widgets.connection_list_banner.clone(),
             connections_factory,
+            connections_listbox,
             connections_popover: widgets.connections_popover.clone(),
             health_state: None,
             row_op_spinner: widgets.row_op_spinner.clone(),
@@ -1453,6 +1461,7 @@ impl SimpleComponent for App {
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
             AppMsg::SetConnectionColor(id, color) => self.on_set_connection_color(id, color, sender),
+            AppMsg::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group, sender),
             AppMsg::ExportConnections => self.on_export_connections(sender),
             AppMsg::ImportConnections => self.on_import_connections(sender),
             AppMsg::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes, sender),

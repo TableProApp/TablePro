@@ -61,6 +61,7 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
+            group: None,
         }
     }
 

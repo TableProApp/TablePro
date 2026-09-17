@@ -61,6 +61,7 @@ crates/app/src/ui/app/workspace_tabs.rs
 crates/app/src/ui/browse_tab.rs
 crates/app/src/ui/cell_editor.rs
 crates/app/src/ui/connect_dialog.rs
+crates/app/src/ui/connection_list.rs
 crates/app/src/ui/connection_list_banner.rs
 crates/app/src/ui/connection_row.rs
 crates/app/src/ui/editor/format_plan.rs

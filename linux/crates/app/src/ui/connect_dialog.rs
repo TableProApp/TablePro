@@ -766,10 +766,11 @@ async fn run_connect(
         // connect arrives in that order, so a freshly-saved entry is
         // briefly None on disk before the touch lands.
         last_opened_at: None,
-        // The colour is put on from the connection list, not from this
-        // form, so reconnecting through the dialog has to carry the
-        // one already there instead of clearing it.
+        // The colour and the group are put on from the connection list,
+        // not from this form, so reconnecting through the dialog has to
+        // carry what is already there instead of clearing it.
         color: existing.as_ref().and_then(|saved| saved.color),
+        group: existing.as_ref().and_then(|saved| saved.group.clone()),
     };
 
     // Secrets go in first, so the single list write can record whether
@@ -1007,6 +1008,7 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
+            group: None,
         }
     }
 

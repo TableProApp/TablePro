@@ -41,6 +41,7 @@ fn connection(id: Uuid, has_passphrase: bool) -> SavedConnection {
         }),
         last_opened_at: None,
         color: None,
+        group: None,
     }
 }
 

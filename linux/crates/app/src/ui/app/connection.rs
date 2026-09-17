@@ -160,12 +160,23 @@ impl App {
 
     pub(super) fn on_connections_loaded(&mut self, connections: &[SavedConnection], sender: ComponentSender<Self>) {
         self.saved_connections = connections.to_vec();
+        // The popover shows the same list as the welcome page, so it
+        // sorts the same way and reads the same group headers.
+        crate::ui::connection_list::sort(&mut self.saved_connections);
+        let groups = crate::ui::connection_list::groups(&self.saved_connections);
         let mut guard = self.connections_factory.guard();
         guard.clear();
-        for saved in connections {
-            guard.push_back(saved.clone());
+        for saved in &self.saved_connections {
+            guard.push_back(crate::ui::connection_row::ConnectionRowInit {
+                saved: saved.clone(),
+                groups: groups.clone(),
+            });
         }
         drop(guard);
+        crate::ui::connection_list::install_group_headers(
+            &self.connections_listbox,
+            std::rc::Rc::new(self.saved_connections.clone()),
+        );
         let _ = self
             .welcome_view
             .sender()
@@ -288,6 +299,20 @@ impl App {
         });
     }
 
+    /// File a connection under a group, or take it out of the one it
+    /// is in. An empty name means no group.
+    pub(super) fn on_set_connection_group(&self, id: Uuid, group: Option<String>, sender: ComponentSender<Self>) {
+        let group = group.map(|name| name.trim().to_owned()).filter(|name| !name.is_empty());
+        let Some(mut saved) = self.saved_connections.iter().find(|saved| saved.id == id).cloned() else {
+            return;
+        };
+        if saved.group == group {
+            return;
+        }
+        saved.group = group;
+        self.write_connection(saved, crate::i18n::gettext("The group could not be saved."), sender);
+    }
+
     /// Put a colour on a connection, or take the one it has off.
     ///
     /// The whole entry is rewritten because that is what the store
@@ -306,6 +331,12 @@ impl App {
             return;
         }
         saved.color = color;
+        self.write_connection(saved, crate::i18n::gettext("The colour could not be saved."), sender);
+    }
+
+    /// Write one connection back and reload the list from disk, so both
+    /// connection lists redraw from what was actually saved.
+    fn write_connection(&self, saved: SavedConnection, failure: String, sender: ComponentSender<Self>) {
         let connections = self.storage.connections().clone();
         let tasks = self.tasks.clone();
         let sender_clone = sender.clone();
@@ -316,10 +347,8 @@ impl App {
                         .spawn_blocking_task(move || connections.upsert_blocking(saved))
                         .await;
                     if let Ok(Err(error)) = written {
-                        tracing::warn!(%error, "could not save the connection colour");
-                        sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
-                            "The colour could not be saved.",
-                        )));
+                        tracing::warn!(%error, "could not save the connection");
+                        sender_clone.input(AppMsg::ShowToast(failure));
                     }
                     sender_clone.input(AppMsg::ReloadConnections);
                 })

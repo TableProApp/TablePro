@@ -6,11 +6,15 @@ use relm4::{adw, gtk};
 use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
-use super::connection_row::{ConnectionRow, ConnectionRowOutput};
+use super::connection_list;
+use super::connection_row::{ConnectionRow, ConnectionRowInit, ConnectionRowOutput};
 
 pub struct WelcomeView {
     connections: Vec<SavedConnection>,
     factory: FactoryVecDeque<ConnectionRow>,
+    /// The factory's own list box, kept so the group headers can be
+    /// reinstalled whenever the list changes.
+    listbox: gtk::ListBox,
     stack: gtk::Stack,
 }
 
@@ -22,6 +26,7 @@ pub enum WelcomeViewInput {
     Delete(Uuid),
     Duplicate(SavedConnection),
     SetColor(Uuid, Option<ConnectionColor>),
+    SetGroup(Uuid, Option<String>),
 }
 
 #[derive(Debug)]
@@ -31,6 +36,7 @@ pub enum WelcomeViewOutput {
     Delete(Uuid),
     Duplicate(SavedConnection),
     SetColor(Uuid, Option<ConnectionColor>),
+    SetGroup(Uuid, Option<String>),
 }
 
 #[derive(Debug, Default)]
@@ -48,19 +54,20 @@ impl SimpleComponent for WelcomeView {
     }
 
     fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
-        let factory: FactoryVecDeque<ConnectionRow> = FactoryVecDeque::builder()
-            .launch(
-                gtk::ListBox::builder()
-                    .selection_mode(gtk::SelectionMode::None)
-                    .css_classes(["boxed-list"])
-                    .build(),
-            )
-            .forward(sender.input_sender(), |out| match out {
-                ConnectionRowOutput::Open(saved) => WelcomeViewInput::OpenSaved(saved),
-                ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
-                ConnectionRowOutput::Duplicate(saved) => WelcomeViewInput::Duplicate(saved),
-                ConnectionRowOutput::SetColor(id, color) => WelcomeViewInput::SetColor(id, color),
-            });
+        let listbox = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .build();
+        let factory: FactoryVecDeque<ConnectionRow> =
+            FactoryVecDeque::builder()
+                .launch(listbox.clone())
+                .forward(sender.input_sender(), |out| match out {
+                    ConnectionRowOutput::Open(saved) => WelcomeViewInput::OpenSaved(saved),
+                    ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
+                    ConnectionRowOutput::Duplicate(saved) => WelcomeViewInput::Duplicate(saved),
+                    ConnectionRowOutput::SetColor(id, color) => WelcomeViewInput::SetColor(id, color),
+                    ConnectionRowOutput::SetGroup(id, group) => WelcomeViewInput::SetGroup(id, group),
+                });
 
         // Empty page — no saved connections yet. GNOME convention is
         // state / instruction / action — title states the situation,
@@ -132,6 +139,7 @@ impl SimpleComponent for WelcomeView {
         let model = WelcomeView {
             connections: Vec::new(),
             factory,
+            listbox,
             stack: root.clone(),
         };
         ComponentParts { model, widgets: () }
@@ -140,31 +148,19 @@ impl SimpleComponent for WelcomeView {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             WelcomeViewInput::SetConnections(connections) => {
-                // Recency-first with alphabetical tiebreaker. Connections
-                // that have been opened sort newest-first; never-opened
-                // entries (no timestamp) fall to the bottom and sort
-                // alphabetically among themselves. Mirrors GNOME Files'
-                // recent-files panel and DataGrip / TablePlus welcome
-                // screens — the connection the user opened last is
-                // almost always the one they want next.
                 self.connections = connections;
-                self.connections.sort_by(|a, b| {
-                    use std::cmp::Ordering;
-                    match (a.last_opened_at, b.last_opened_at) {
-                        (Some(ta), Some(tb)) => tb
-                            .cmp(&ta)
-                            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
-                        (Some(_), None) => Ordering::Less,
-                        (None, Some(_)) => Ordering::Greater,
-                        (None, None) => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                    }
-                });
+                connection_list::sort(&mut self.connections);
+                let groups = connection_list::groups(&self.connections);
                 let mut guard = self.factory.guard();
                 guard.clear();
                 for saved in &self.connections {
-                    guard.push_back(saved.clone());
+                    guard.push_back(ConnectionRowInit {
+                        saved: saved.clone(),
+                        groups: groups.clone(),
+                    });
                 }
                 drop(guard);
+                connection_list::install_group_headers(&self.listbox, std::rc::Rc::new(self.connections.clone()));
                 let name = if self.connections.is_empty() {
                     "empty"
                 } else {
@@ -187,6 +183,98 @@ impl SimpleComponent for WelcomeView {
             WelcomeViewInput::SetColor(id, color) => {
                 let _ = sender.output(WelcomeViewOutput::SetColor(id, color));
             }
+            WelcomeViewInput::SetGroup(id, group) => {
+                let _ = sender.output(WelcomeViewOutput::SetGroup(id, group));
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connection(name: &str, group: Option<&str>) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            driver_id: "postgres".to_owned(),
+            host: "db".to_owned(),
+            port: 5432,
+            database: "app".to_owned(),
+            username: "postgres".to_owned(),
+            use_tls: true,
+            read_only: false,
+            auth_mode: tablepro_core::AuthMode::Password,
+            ssh: None,
+            last_opened_at: None,
+            color: None,
+            group: group.map(str::to_owned),
+        }
+    }
+
+    /// The header text on each row, in list order, with `None` where a
+    /// row carries no header.
+    fn headers(view: &WelcomeView) -> Vec<Option<String>> {
+        (0..)
+            .map_while(|index| view.listbox.row_at_index(index))
+            .map(|row| {
+                row.header()
+                    .and_then(|widget| widget.downcast::<gtk::Label>().ok())
+                    .map(|label| label.label().to_string())
+            })
+            .collect()
+    }
+
+    #[gtk4::test]
+    fn a_grouped_list_carries_one_header_per_group() {
+        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        view.sender()
+            .send(WelcomeViewInput::SetConnections(vec![
+                connection("loose", None),
+                connection("a", Some("Work")),
+                connection("b", Some("Work")),
+                connection("c", Some("Zoo")),
+            ]))
+            .expect("send");
+
+        crate::test_support::drain_main_context();
+
+        assert_eq!(
+            headers(&view.model()),
+            vec![None, Some("Work".to_owned()), None, Some("Zoo".to_owned())]
+        );
+    }
+
+    #[gtk4::test]
+    fn an_ungrouped_list_carries_no_headers_at_all() {
+        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        view.sender()
+            .send(WelcomeViewInput::SetConnections(vec![
+                connection("a", None),
+                connection("b", None),
+            ]))
+            .expect("send");
+
+        crate::test_support::drain_main_context();
+
+        assert_eq!(headers(&view.model()), vec![None, None]);
+    }
+
+    #[gtk4::test]
+    fn taking_the_last_connection_out_of_a_group_takes_its_header_with_it() {
+        let view = WelcomeView::builder().launch(WelcomeViewInit);
+        view.sender()
+            .send(WelcomeViewInput::SetConnections(vec![connection("a", Some("Work"))]))
+            .expect("send");
+        crate::test_support::drain_main_context();
+        assert_eq!(headers(&view.model()), vec![Some("Work".to_owned())]);
+
+        view.sender()
+            .send(WelcomeViewInput::SetConnections(vec![connection("a", None)]))
+            .expect("send");
+        crate::test_support::drain_main_context();
+
+        assert_eq!(headers(&view.model()), vec![None]);
     }
 }

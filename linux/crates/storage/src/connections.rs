@@ -37,6 +37,11 @@ pub struct SavedConnection {
     /// apart from staging at a glance. `None` until they pick one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<crate::ConnectionColor>,
+    /// The folder the user filed this connection under, as they typed
+    /// it. `None` means it sits on its own, which is where every
+    /// connection starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -369,8 +374,8 @@ pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedCo
         name: copy_name(&source.name, &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>()),
         // A copy has never been opened, whatever the original did, so
         // it sorts by name rather than claiming the original's recency.
-        // The colour does carry: a copy points at the same server, so
-        // it belongs to the same group of connections at a glance.
+        // The colour and the group do carry: a copy points at the same
+        // server, so it belongs with the original.
         last_opened_at: None,
         ..source.clone()
     }
@@ -409,6 +414,7 @@ mod tests {
             ssh: None,
             last_opened_at: Some(Utc::now()),
             color: None,
+            group: None,
         }
     }
 
@@ -485,6 +491,7 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
+            group: None,
         }
     }
 
