@@ -7,29 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **No Database Selected** in the sidebar for a MySQL, MariaDB, TiDB or OceanBase connection with no database open.
-
-### Changed
-
-- Scripts with their own `BEGIN` or `START TRANSACTION` run without a second transaction wrapped around them.
-
 ### Fixed
 
-- Data race on the server version of a PostgreSQL, Redshift or CockroachDB connection while it closes.
-- Structure sync scripts refused for tables that had not changed since they were compared.
-- MySQL and MariaDB indexes listed in a different order each time a table's structure loads.
-- `START TRANSACTION READ WRITE` syntax error on MySQL and MariaDB 5.5 when saving, importing or running several statements.
-- A batch whose transaction failed to start reported as a failed commit of its first statement.
-- No tables, columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
+- No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
 - Export dialog listing no tables for a MySQL server behind a proxy, and failing to open at all on Kafka, Cassandra and Teradata.
 - ClickHouse object lists showing the connection's own database under every other database's name.
 - MySQL `SELECT ... INTO @var`, `INTO OUTFILE` and `INTO DUMPFILE` reported as an error or as an empty grid of another table's columns.
 - Schema sync scripts offering to drop the indexes and foreign keys of a table whose structure could not be read.
 - Schema sync scripts offering to drop a table the comparison could not read, as if the source no longer had it.
-- Tables and routines of the previous database, or none, shown with no error when a newly opened database fails to load.
 - Truncate offered on MariaDB sequences, and on system-versioned tables on Mac.
 - MariaDB sequences, and OceanBase external, system and virtual tables, listed as ordinary tables.
 - Duplicate row for a MariaDB table that a temporary table of the same name shadows.
