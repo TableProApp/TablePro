@@ -187,7 +187,7 @@ impl FactoryComponent for SidebarRow {
         menu.append_section(None, &structure_section);
         let mutate_section = gtk::gio::Menu::new();
         mutate_section.append(
-            Some(&crate::i18n::gettext("Drop Table\u{2026}")),
+            Some(&crate::i18n::gettext("Drop Table…")),
             Some("sidebar-row.drop-table"),
         );
         menu.append_section(None, &mutate_section);

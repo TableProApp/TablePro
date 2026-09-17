@@ -1456,10 +1456,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
         set_value.append(Some("NULL"), Some("cell.set-null"));
         action_section.append_submenu(Some(&crate::i18n::gettext("Set Value")), &set_value);
     }
-    action_section.append(
-        Some(&crate::i18n::gettext("Export Results\u{2026}")),
-        Some("cell.export"),
-    );
+    action_section.append(Some(&crate::i18n::gettext("Export Results…")), Some("cell.export"));
     if shape.row_ops {
         action_section.append(Some(&crate::i18n::gettext("Insert row")), Some("cell.insert-row"));
         action_section.append(Some(&crate::i18n::gettext("Duplicate")), Some("cell.duplicate-row"));

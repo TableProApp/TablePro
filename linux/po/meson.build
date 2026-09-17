@@ -11,14 +11,18 @@ if xgettext.found()
   endif
 endif
 
-# `tr!` is the crate's own gettext macro; the glib preset covers the
-# C and GLib keywords the preset already knows about.
+# The app calls gettextrs directly, plus the `_f` wrappers in
+# crates/app/src/i18n.rs that translate and then fill `{name}`
+# placeholders. xgettext knows the plain names already; the wrappers
+# have to be named, with the argument that carries the msgid. A
+# context argument is `1c`, a plural is the second number.
 i18n.gettext(
   meson.project_name(),
   preset: 'glib',
   args: [
-    '--keyword=tr',
-    '--keyword=tr:1',
+    '--keyword=gettext_f',
+    '--keyword=ngettext_f:1,2',
+    '--keyword=pgettext_f:1c,2',
     '--from-code=UTF-8',
     '--add-comments=Translators:',
     '--package-name=' + meson.project_name(),

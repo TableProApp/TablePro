@@ -261,9 +261,7 @@ pub fn present(
         rows_for_reset.show(&settings_for_reset.csv_options());
     });
 
-    let export_button = gtk::Button::builder()
-        .label(crate::i18n::gettext("Export\u{2026}"))
-        .build();
+    let export_button = gtk::Button::builder().label(crate::i18n::gettext("Export…")).build();
     export_button.add_css_class("suggested-action");
 
     let footer = gtk::Box::builder()
