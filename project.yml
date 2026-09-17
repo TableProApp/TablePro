@@ -259,7 +259,6 @@ targets:
           - $(SRCROOT)/Libs/dylibs
         OTHER_LDFLAGS:
           - $(inherited)
-          - -Wl,-w
           - -force_load
           - $(SRCROOT)/Libs/libssh2.a
           - -lssl.3
