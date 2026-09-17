@@ -139,7 +139,11 @@ struct TableStructureView: View {
         nonmutating set { session.tabData = newValue }
     }
 
-    var structureChangeManager: StructureChangeManager { session.changeManager }
+    /// Observed in its own right, not reached through `session`. The session is observed, but a
+    /// change inside the manager it owns fires the manager's publisher and never the session's, so
+    /// every `onChange` below that reads the manager went deaf: staging a column, an index or a
+    /// foreign key reloaded no grid and left Save disabled, so Command+S did nothing.
+    @ObservedObject var structureChangeManager: StructureChangeManager
 
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
@@ -172,6 +176,7 @@ struct TableStructureView: View {
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.session = session
+        self.structureChangeManager = session.changeManager
     }
 
     var body: some View {
