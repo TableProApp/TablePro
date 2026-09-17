@@ -120,9 +120,11 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     /// The same column holding `other`'s character set and collation, with the catalog spelling
     /// that goes with them.
     ///
-    /// For a comparison told to ignore collation: a column changed for some other reason is
-    /// rewritten whole on engines that restate the column to alter it, and with the source's
-    /// collation in it that rewrite changed a collation the comparison had been told to leave alone.
+    /// For a comparison that reports no collation difference: a column changed for some other reason
+    /// is rewritten whole on engines that restate the column to alter it, and with the source's
+    /// collation in it that rewrite changed a collation the comparison had left alone. Only for a
+    /// column of `other`'s type: a collation is read on its type, and `INT CHARACTER SET utf8mb4` is
+    /// a syntax error.
     func keepingCollation(of other: EditableColumnDefinition) -> EditableColumnDefinition {
         var copy = self
         copy.charset = other.charset

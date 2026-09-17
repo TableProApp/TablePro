@@ -52,7 +52,7 @@ These drift between environments by design, so they are ignored by default. Turn
 | Column order | The same columns in a different order |
 | Whitespace in text | Indentation inside default values, comments and routine bodies |
 | Auto-increment seed | The counter's current value |
-| Collation and character set | A table-level or column-level collation difference. A column changed for another reason keeps the target's collation |
+| Collation and character set | A table-level or column-level collation difference. A column changed for another reason keeps the target's collation, unless its type changes |
 | Comments, owners, definers | Descriptive metadata with no runtime effect |
 
 With **Collation and character set** off, a PostgreSQL column whose collation differs is retyped to the type it already has, `ALTER COLUMN … TYPE text COLLATE …`. That rebuilds the column's indexes, and PostgreSQL refuses it on a column a view or a generated column reads: drop the view or the generated column first, or leave the option on.
