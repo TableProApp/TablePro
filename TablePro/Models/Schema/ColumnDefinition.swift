@@ -27,16 +27,6 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isPrimaryKey: Bool
 
-    /// A spelling read from the catalog, with the value of the field it spells.
-    struct CatalogSpelling: Hashable {
-        let value: String
-        let spelling: String
-
-        func spelling(for current: String?) -> String? {
-            current == value ? spelling : nil
-        }
-    }
-
     /// The server's own spellings of `dataType`, `defaultValue` and `generationExpression` for a
     /// `CREATE TABLE`, carried from the catalog read.
     ///
@@ -52,9 +42,9 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     var ddlDefault: String? { catalogDefault?.spelling(for: defaultValue) }
     var ddlGenerationExpression: String? { catalogGeneration?.spelling(for: generationExpression) }
 
-    private var catalogType: CatalogSpelling?
-    private var catalogDefault: CatalogSpelling?
-    private var catalogGeneration: CatalogSpelling?
+    private var catalogType: CatalogSpelling<String>?
+    private var catalogDefault: CatalogSpelling<String>?
+    private var catalogGeneration: CatalogSpelling<String>?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, dataType, isNullable, defaultValue, autoIncrement, unsigned, comment, collation
@@ -106,7 +96,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.catalogGeneration = Self.catalogSpelling(value: generationExpression, spelling: ddlGenerationExpression)
     }
 
-    private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling? {
+    private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling<String>? {
         guard let value, let spelling else { return nil }
         return CatalogSpelling(value: value, spelling: spelling)
     }

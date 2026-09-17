@@ -105,21 +105,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             }
         }
         self.currentIndexes = indexes.map { EditableIndexDefinition.from($0) }
-        // Group foreign keys by name to merge multi-column FKs into single definitions
-        let groupedFKs = Dictionary(grouping: foreignKeys, by: { $0.name })
-        self.currentForeignKeys = groupedFKs.keys.sorted().compactMap { name -> EditableForeignKeyDefinition? in
-            guard let fkInfos = groupedFKs[name], let first = fkInfos.first else { return nil }
-            return EditableForeignKeyDefinition(
-                id: first.id,
-                name: first.name,
-                columns: fkInfos.map { $0.column },
-                referencedTable: first.referencedTable,
-                referencedColumns: fkInfos.map { $0.referencedColumn },
-                referencedSchema: first.referencedSchema,
-                onDelete: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onDelete.uppercased()) ?? .noAction,
-                onUpdate: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onUpdate.uppercased()) ?? .noAction
-            )
-        }
+        self.currentForeignKeys = EditableForeignKeyDefinition.grouping(foreignKeys).sorted { $0.name < $1.name }
         self.currentCheckConstraints = checkConstraints.map { EditableCheckConstraintDefinition.from($0) }
         self.currentPrimaryKey = primaryKey
 
