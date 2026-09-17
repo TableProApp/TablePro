@@ -353,6 +353,34 @@ final class StructureChangeGuardTests: XCTestCase {
         }
     }
 
+    func testASyncWhoseSecondReadReportsAnotherIndexTypeIsRefused() {
+        let typedRead = { (type: String) in
+            self.ordersRead(extraIndexes: [
+                PluginIndexInfo(name: "orders_country_idx", columns: ["country"], type: type)
+            ])
+        }
+        let expectedCreate = inputs(comparing: [typedRead("hnsw")], with: [], action: .create)
+        let expectedAlter = inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
+
+        XCTAssertEqual(expectedCreate.values.first?.sourceSnapshot?.indexes.last?.type.rawValue, "HNSW")
+        XCTAssertNil(StructureChangeGuard.refusal(
+            expected: expectedCreate,
+            actual: inputs(comparing: [typedRead("HNSW")], with: [], action: .create)
+        ))
+        XCTAssertNotNil(StructureChangeGuard.refusal(
+            expected: expectedCreate,
+            actual: inputs(comparing: [typedRead("ivfflat")], with: [], action: .create)
+        ))
+        XCTAssertNil(StructureChangeGuard.refusal(
+            expected: expectedAlter,
+            actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
+        ))
+        XCTAssertNotNil(StructureChangeGuard.refusal(
+            expected: expectedAlter,
+            actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("bloom")], action: .alter)
+        ))
+    }
+
     func testAnAlterWhoseTargetColumnMovedBetweenReadsIsRefused() {
         let expected = inputs(comparing: [ordersRead()], with: [legacyOrdersRead()], action: .alter)
         let actual = inputs(
