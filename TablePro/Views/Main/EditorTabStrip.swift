@@ -39,16 +39,11 @@ internal struct EditorTabStrip: View {
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
     internal let containerTarget: ContainerSwitchTarget?
-    /// Which tabs are running something. Read from the coordinator rather than pushed in, because
-    /// `tabExecution` is a stored property of an `@Observable`, so a claim opening or settling
-    /// invalidates this strip the same way it invalidates the result pane. A tab that is not the
+    /// Which tabs are running something. Observed rather than pushed in, so a claim opening or
+    /// settling redraws this strip the same way it redraws the result pane. A tab that is not the
     /// selected one has no status bar on screen, and its progress used to show as the window-wide
     /// spinner in the centre of the toolbar.
-    ///
-    /// Weak for the reason `MainWindowToolbar.coordinator` is: the coordinator leaves
-    /// `activeCoordinators` only on deinit, so a strong reference held by a pane that outlives the
-    /// workspace would keep a torn-down connection voting in every aggregate that walks it.
-    internal weak var executionOwner: MainContentCoordinator?
+    @ObservedObject internal var execution: TabExecutionObservation
     internal let onNewTab: () -> Void
     /// Left unset by the app, which reads the two accessibility settings instead. A test sets it,
     /// because glass does not rasterise.
@@ -182,7 +177,7 @@ internal struct EditorTabStrip: View {
                 ),
                 position: index + 1,
                 count: tabs.count,
-                isBusy: executionOwner?.tabExecution.isBusy(tab.id) ?? false,
+                isBusy: execution.isBusy(tab.id),
                 commands: interaction.commands
             )
             .opacity(opacity(of: tab))
