@@ -182,6 +182,12 @@ struct MySQLObjectQueryTests {
         #expect(MySQLObjectQueries.quoteIdentifier("we`ird") == "`we``ird`")
     }
 
+    @Test("SHOW FULL TABLES names its database as a quoted identifier")
+    func showFullTablesQuotesTheDatabase() {
+        #expect(MySQLObjectQueries.showFullTables(schema: "app") == "SHOW FULL TABLES FROM `app`")
+        #expect(MySQLObjectQueries.showFullTables(schema: "we`ird") == "SHOW FULL TABLES FROM `we``ird`")
+    }
+
     /// A caller that names no database means the one the connection is on. Dropping the one it did
     /// name is what made a read about another database answer about the session's.
     @Test("A named schema wins over the active database, and only a missing one falls back")

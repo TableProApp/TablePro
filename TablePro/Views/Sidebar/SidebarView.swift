@@ -238,6 +238,8 @@ struct SidebarView: View {
                 errorState(message: message)
             case .loading:
                 loadingState
+            case .noDatabaseSelected:
+                noDatabaseSelectedState
             case .noMatch, .list:
                 SidebarTreeView(
                     connectionId: connectionId,
@@ -261,8 +263,13 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasOutlastedGrace: showsSchemaProgress
+            hasOutlastedGrace: showsSchemaProgress,
+            needsDatabaseSelection: needsDatabaseSelection
         )
+    }
+
+    private var needsDatabaseSelection: Bool {
+        viewModel.databaseType.browsingRequiresSelectedDatabase && activeDatabase == nil
     }
 
     /// Asked above the switch rather than inside its loading branch, so which of the two the
@@ -279,6 +286,8 @@ struct SidebarView: View {
                 loadingState
             case .failed(let message):
                 errorState(message: message)
+            case .noDatabaseSelected:
+                noDatabaseSelectedState
             case .noMatch:
                 noMatchState
             case .list:
@@ -312,6 +321,19 @@ struct SidebarView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    private var noDatabaseSelectedState: some View {
+        UnavailableStateView {
+            Label(String(localized: "No Database Selected"), systemImage: "cylinder")
+        } description: {
+            Text("Open a database to browse its tables.")
+        } actions: {
+            Button(String(localized: "Open Database…")) {
+                coordinator?.commandActions?.openDatabaseSwitcher()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var noMatchState: some View {

@@ -80,6 +80,12 @@ public enum MySQLObjectQueries {
             """
     }
 
+    /// The server's own answer to which tables an account can see in a database. Unlike
+    /// `information_schema`, it reports an account with no table privilege there as an access error.
+    public static func showFullTables(schema: String) -> String {
+        "SHOW FULL TABLES FROM \(quoteIdentifier(schema))"
+    }
+
     /// One table's partitions, subpartitions included. A subpartition arrives as its own row
     /// carrying its parent partition's name, ordered so the parent is read before its children.
     public static func partitionList(schema: String, table: String) -> String {

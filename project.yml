@@ -496,6 +496,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
       - Plugins/MySQLDriverPlugin/MySQLPartitionBound.swift
+      - Plugins/MySQLDriverPlugin/MySQLTableListing.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
       - Plugins/MySQLDriverPlugin/MySQLSystemDatabases.swift

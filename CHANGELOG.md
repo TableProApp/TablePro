@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **No Database Selected** in the sidebar for a MySQL, MariaDB, TiDB or OceanBase connection with no database open.
+
 ### Changed
 
 - Scripts with their own `BEGIN` or `START TRANSACTION` run without a second transaction wrapped around them.
@@ -18,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MySQL and MariaDB indexes listed in a different order each time a table's structure loads.
 - `START TRANSACTION READ WRITE` syntax error on MySQL and MariaDB 5.5 when saving, importing or running several statements.
 - A batch whose transaction failed to start reported as a failed commit of its first statement.
+- No tables listed for a MySQL server that answers `information_schema` with nothing or an error.
+- Tables and routines of the previous database, or none, shown with no error when a newly opened database fails to load.
 
 ## [0.75.0] - 2026-09-17
 

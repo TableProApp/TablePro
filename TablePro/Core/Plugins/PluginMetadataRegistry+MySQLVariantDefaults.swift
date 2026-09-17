@@ -97,6 +97,7 @@ extension PluginMetadataRegistry {
                 supportsRoutines: false,
                 supportsDatabaseTriggerBrowse: false,
                 defaultSSLMode: .preferred,
+                browsingRequiresSelectedDatabase: true,
                 supportsPrincipalConnectionLimit: false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
@@ -238,6 +239,7 @@ extension PluginMetadataRegistry {
                 supportsRoutines: true,
                 supportsDatabaseTriggerBrowse: true,
                 defaultSSLMode: .preferred,
+                browsingRequiresSelectedDatabase: true,
                 supportsPrincipalConnectionLimit: true
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(

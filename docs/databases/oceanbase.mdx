@@ -11,7 +11,7 @@ The tenant goes in the user name: `root@test` on an observer's port 2881, `root@
 |-------|---------|-------|
 | **Port** | `2881` | The observer's MySQL port. OBProxy listens on `2883` |
 | **Username** | empty | `user@tenant` on an observer, `user@tenant#cluster` through OBProxy. The sys tenant's administrator is `root@sys` |
-| **Database** | empty | Optional. Leave it empty to browse every database in the tenant |
+| **Database** | empty | Optional. Leave it empty and open one in the tenant with `Cmd+K` |
 | **SSL Mode** | Preferred | TLS first, plain text if the server refuses |
 
 **Release the Server Connection After** is available under Advanced. AWS IAM, Cloud SQL Auth Proxy and Unix socket are not offered; reach a private cluster through an [SSH tunnel](/connections/ssh-tunneling).

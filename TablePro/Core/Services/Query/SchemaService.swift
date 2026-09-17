@@ -609,7 +609,8 @@ final class SchemaService: ObservableObject {
               let scope = DatabaseManager.shared.browseScope(for: connectionId) else {
             markLoadFailed(
                 connectionId: connectionId,
-                message: String(localized: "The connection is not available. Reconnect and try again.")
+                message: String(localized: "The connection is not available. Reconnect and try again."),
+                scope: nil
             )
             return
         }
@@ -625,14 +626,53 @@ final class SchemaService: ObservableObject {
                 )
             }
         } catch {
-            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            markLoadFailed(connectionId: connectionId, message: error.localizedDescription, scope: scope)
         }
     }
 
-    func markLoadFailed(connectionId: UUID, message: String) {
-        if case .loaded = state(for: connectionId) { return }
-        states[connectionId] = .failed(message)
+    /// For a load that failed before it could run, so no fetch is left to settle the other object
+    /// kinds. When the failed scope is not the one the loaded objects came from, as after a database
+    /// switch, every kind reports the failure instead of showing the database being left.
+    func markLoadFailed(connectionId: UUID, message: String, scope: DatabaseScope?) {
+        let leftLoadedScope = hasLeftLoadedScope(connectionId, for: scope)
+        guard settleTablesFailed(connectionId, message: message, leftLoadedScope: leftLoadedScope) else { return }
+        if leftLoadedScope {
+            updateSideObjects(connectionId) { $0 = Self.failed($0, message: message) }
+        }
         bumpGeneration(connectionId)
+    }
+
+    /// No recorded scope proves nothing about where the held objects came from: a table fetch that
+    /// failed for the database being browsed clears it while that database's routines still load.
+    private func hasLeftLoadedScope(_ connectionId: UUID, for scope: DatabaseScope?) -> Bool {
+        guard let scope, let loadedScope = loadedScopes[connectionId] else { return false }
+        return loadedScope != scope
+    }
+
+    /// Returns false when nothing changed, so a refresh that failed over tables it keeps publishes nothing.
+    private func settleTablesFailed(_ connectionId: UUID, message: String, leftLoadedScope: Bool) -> Bool {
+        let current = state(for: connectionId)
+        let next = current.settled(byFailure: message, discardingValue: leftLoadedScope)
+        guard next != current || leftLoadedScope else { return false }
+        states[connectionId] = next
+        if leftLoadedScope {
+            loadedScopes.removeValue(forKey: connectionId)
+        }
+        return true
+    }
+
+    /// A kind still idle was never browsed for this connection, so there is no fetch to report as failed.
+    private static func failed(_ side: SideObjects, message: String) -> SideObjects {
+        var next = side
+        next.routines = failed(side.routines, message: message)
+        next.triggers = failed(side.triggers, message: message)
+        next.userDefinedTypes = failed(side.userDefinedTypes, message: message)
+        return next
+    }
+
+    private static func failed<Value>(_ state: MetadataLoadState<Value>, message: String) -> MetadataLoadState<Value> {
+        if case .idle = state { return .idle }
+        return state.settled(by: .failed(message), discardingValue: true)
     }
 
     private func runLoad(
@@ -735,7 +775,9 @@ final class SchemaService: ObservableObject {
             Self.logger.warning(
                 "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+                bumpGeneration(connectionId)
+            }
         }
 
         let routinesOutcome = await routinesTask
@@ -825,7 +867,9 @@ final class SchemaService: ObservableObject {
                 types: typesOutcome,
                 discardingValue: scopeChanged
             )
-            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+                bumpGeneration(connectionId)
+            }
             return
         }
 

@@ -22,6 +22,9 @@ internal enum SidebarObjectListPresentation: Equatable {
     case preparing
     case loading
     case failed(String)
+    /// The engine lists objects only inside a database and the connection has none selected, so an
+    /// empty list would read as an empty database.
+    case noDatabaseSelected
     case noMatch
     case list
 
@@ -45,7 +48,8 @@ internal enum SidebarObjectListPresentation: Equatable {
         state: SchemaState,
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
-        hasOutlastedGrace: Bool = true
+        hasOutlastedGrace: Bool = true,
+        needsDatabaseSelection: Bool = false
     ) -> SidebarObjectListPresentation {
         switch state {
         case .idle, .loading:
@@ -53,6 +57,9 @@ internal enum SidebarObjectListPresentation: Equatable {
         case .failed(let message):
             return .failed(message)
         case .loaded:
+            if needsDatabaseSelection {
+                return .noDatabaseSelected
+            }
             if hasActiveFilter, !hasAnyMatch {
                 return .noMatch
             }

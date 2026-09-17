@@ -13,14 +13,40 @@ struct SidebarObjectListPresentationTests {
         _ state: SchemaState,
         hasActiveFilter: Bool = false,
         hasAnyMatch: Bool = true,
-        hasOutlastedGrace: Bool = true
+        hasOutlastedGrace: Bool = true,
+        needsDatabaseSelection: Bool = false
     ) -> SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
             state: state,
             hasActiveFilter: hasActiveFilter,
             hasAnyMatch: hasAnyMatch,
-            hasOutlastedGrace: hasOutlastedGrace
+            hasOutlastedGrace: hasOutlastedGrace,
+            needsDatabaseSelection: needsDatabaseSelection
         )
+    }
+
+    // MARK: - No database selected
+
+    /// A MySQL connection with no database named lists nothing, and a bare "No items" under Tables
+    /// read as an empty database rather than as a connection waiting for one to be chosen.
+    @Test("A loaded list with no database selected asks for one")
+    func loadedWithoutDatabaseAsksForOne() {
+        #expect(resolve(.loaded([]), needsDatabaseSelection: true) == .noDatabaseSelected)
+    }
+
+    @Test("A filter never hides that no database is selected")
+    func noDatabaseOutranksTheFilter() {
+        #expect(
+            resolve(.loaded([]), hasActiveFilter: true, hasAnyMatch: false, needsDatabaseSelection: true)
+                == .noDatabaseSelected
+        )
+    }
+
+    @Test("A load in flight or a failure still reports itself with no database selected")
+    func loadStatesOutrankNoDatabase() {
+        #expect(resolve(.loading, needsDatabaseSelection: true) == .loading)
+        #expect(resolve(.idle, hasOutlastedGrace: false, needsDatabaseSelection: true) == .preparing)
+        #expect(resolve(.failed("boom"), needsDatabaseSelection: true) == .failed("boom"))
     }
 
     @Test("A connection whose schema has never loaded is still loading, not empty")

@@ -106581,6 +106581,40 @@
         }
       }
     },
+    "Open a database to browse its tables." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블을 보려면 데이터베이스를 여세요."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tablolarına göz atmak için bir veritabanı açın."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở một cơ sở dữ liệu để duyệt các bảng của nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开一个数据库以浏览其中的表。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟一個資料庫以瀏覽其中的資料表。"
+          }
+        }
+      }
+    },
     "Open a different file from the Welcome window." : {
       "localizations" : {
         "ko" : {

@@ -490,28 +490,38 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Schema Operations
 
+    /// A session with no database selected has no tables to list, so nothing is asked of the server:
+    /// `SHOW FULL TABLES FROM` an empty name is `ERROR 1102`, not an empty answer.
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let query = MySQLObjectQueries.tableList(
-            schema: effectiveSchema(schema),
-            includePartitions: !flavor.isDatabend
-        )
-        let result = try await execute(query: query)
+        let database = effectiveSchema(schema)
+        let listsSequencesAsTables = flavor.listsSequencesAsTables
+        guard !flavor.isDatabend else {
+            let query = MySQLObjectQueries.tableList(schema: database, includePartitions: false)
+            let result = try await execute(query: query)
+            return MySQLTableListing.tables(from: result.rows, listsSequencesAsTables: listsSequencesAsTables)
+        }
+        guard !database.isEmpty else { return [] }
 
-        return result.rows.compactMap { row -> PluginTableInfo? in
-            guard let name = row[safe: 0]?.asText else { return nil }
-            let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
-            guard flavor.listsSequencesAsTables || typeStr != "SEQUENCE" else { return nil }
-            let isView = typeStr.contains("VIEW")
-            let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
-            let partitionCount = isView ? nil : row[safe: 3]?.asText.flatMap(Int.init)
-            let type = isView ? "VIEW" : (partitionCount == nil ? "TABLE" : "PARTITIONED TABLE")
-            return PluginTableInfo(
-                name: name,
-                type: type,
-                comment: comment,
-                partitionCount: partitionCount
+        if let catalogRows = try await catalogTableRows(database: database), !catalogRows.isEmpty {
+            return MySQLTableListing.tables(from: catalogRows, listsSequencesAsTables: listsSequencesAsTables)
+        }
+        let listed = try await execute(query: MySQLObjectQueries.showFullTables(schema: database))
+        return MySQLTableListing.tables(from: listed.rows, listsSequencesAsTables: listsSequencesAsTables)
+    }
+
+    /// Nil when the server refused the catalog read, which `SHOW FULL TABLES` then settles. A client
+    /// error still throws, because the connection that failed it would fail the second read too.
+    private func catalogTableRows(database: String) async throws -> [[PluginCellValue]]? {
+        do {
+            let query = MySQLObjectQueries.tableList(schema: database, includePartitions: true)
+            return try await execute(query: query).rows
+        } catch let error as MariaDBPluginError
+            where MySQLTableListing.showFullTablesSettlesCatalogFailure(code: error.code) {
+            Self.logger.warning(
+                "information_schema table list refused code=\(error.code, privacy: .public) message=\(error.message)"
             )
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            return nil
+        }
     }
 
     /// A subpartition arrives as its own row carrying its parent partition's name, so the list is

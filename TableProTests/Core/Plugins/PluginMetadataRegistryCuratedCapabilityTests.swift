@@ -61,6 +61,22 @@ private final class MockSpannerPlugin: NSObject, TableProPlugin, DriverPlugin {
     }
 }
 
+private final class MockMySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
+    static let pluginName = "Mock MySQL"
+    static let pluginVersion = "1.0.0"
+    static let pluginDescription = "Stands in for the bundled MySQL plugin"
+    static let capabilities: [PluginCapability] = [.databaseDriver]
+
+    static let databaseTypeId = "MySQL"
+    static let databaseDisplayName = "MySQL"
+    static let iconName = "mysql-icon"
+    static let defaultPort = 3_306
+
+    func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+        fatalError("Not used in tests")
+    }
+}
+
 private final class MockUnknownPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Mock Unknown"
     static let pluginVersion = "1.0.0"
@@ -112,6 +128,36 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.authenticationIsDatabaseScoped == true)
     }
 
+    @Test("MySQL keeps browsing only inside a selected database when its plugin registers")
+    func mySQLKeepsBrowsingRequiresSelectedDatabase() {
+        let registry = PluginMetadataRegistry.shared
+
+        let built = registry.buildMetadataSnapshot(from: MockMySQLPlugin.self)
+
+        #expect(built.capabilities.browsingRequiresSelectedDatabase == true)
+    }
+
+    /// A MySQL-protocol session opened with no database has none at all, so it lists nothing until
+    /// one is chosen. Databend's session falls back to its `default` database instead.
+    @Test("Only the MySQL engines with no default database require a selected database to browse")
+    func browsingRequiresSelectedDatabasePerEngine() {
+        let registry = PluginMetadataRegistry.shared
+
+        for typeId in ["MySQL", "MariaDB", "TiDB", "OceanBase"] {
+            #expect(
+                registry.snapshot(forRegisteredTypeId: typeId)?.capabilities.browsingRequiresSelectedDatabase == true,
+                "\(typeId)"
+            )
+        }
+        for typeId in ["Databend", "PostgreSQL", "ClickHouse"] {
+            #expect(
+                (registry.snapshot(forRegisteredTypeId: typeId)?.capabilities.browsingRequiresSelectedDatabase ?? false)
+                    == false,
+                "\(typeId)"
+            )
+        }
+    }
+
     @Test("Spanner keeps its implicit schema when its plugin registers")
     func spannerKeepsItsImplicitSchema() {
         let registry = PluginMetadataRegistry.shared
@@ -140,6 +186,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
 
         #expect(built.capabilities.supportsConnectionPooling == true)
         #expect(built.capabilities.authenticationIsDatabaseScoped == false)
+        #expect(built.capabilities.browsingRequiresSelectedDatabase == false)
         #expect(built.schema.implicitSchemaName == nil)
     }
 }

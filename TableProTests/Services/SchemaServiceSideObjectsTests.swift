@@ -187,6 +187,54 @@ struct SchemaServiceSideObjectsTests {
         #expect(service.routinesLoadState(for: connectionId) == .loaded([procedure("close_month")]))
     }
 
+    // MARK: - A load that could not start
+
+    /// A database switch whose metadata connection failed ran no fetch at all, so nothing else was
+    /// going to replace the routines of the database being left.
+    @Test("A load that fails before running for another database reports every kind as failed")
+    func failureForAnotherScopeFailsRoutines() async {
+        let (connectionId, connection, driver) = makeDriver()
+        let sales = DatabaseScope(connectionId: connectionId, database: "sales", schema: nil)
+        let billing = DatabaseScope(connectionId: connectionId, database: "billing", schema: nil)
+        driver.routinesBySchema[""] = [procedure("close_month")]
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: sales)
+
+        service.markLoadFailed(connectionId: connectionId, message: "boom", scope: billing)
+
+        #expect(service.routinesLoadState(for: connectionId) == .failed("boom"))
+        #expect(service.routines(for: connectionId).isEmpty)
+    }
+
+    @Test("A load that fails before running for the loaded database keeps its routines")
+    func failureForTheLoadedScopeKeepsRoutines() async {
+        let (connectionId, connection, driver) = makeDriver()
+        let sales = DatabaseScope(connectionId: connectionId, database: "sales", schema: nil)
+        driver.routinesBySchema[""] = [procedure("close_month")]
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: sales)
+
+        service.markLoadFailed(connectionId: connectionId, message: "boom", scope: sales)
+
+        #expect(service.routinesLoadState(for: connectionId) == .loaded([procedure("close_month")]))
+    }
+
+    @Test("A load that fails before running keeps the routines of a database whose tables failed")
+    func failureAfterTablesFailedKeepsThatScopesRoutines() async {
+        let (connectionId, connection, driver) = makeDriver()
+        let billing = DatabaseScope(connectionId: connectionId, database: "billing", schema: nil)
+        driver.tablesError = boom
+        driver.routinesBySchema[""] = [procedure("close_month")]
+        let service = SchemaService()
+        await service.load(connectionId: connectionId, driver: driver, connection: connection, scope: billing)
+        #expect(service.state(for: connectionId) == .failed("boom"))
+
+        service.markLoadFailed(connectionId: connectionId, message: "pool exhausted", scope: billing)
+
+        #expect(service.state(for: connectionId) == .failed("pool exhausted"))
+        #expect(service.routinesLoadState(for: connectionId) == .loaded([procedure("close_month")]))
+    }
+
     // MARK: - One schema at a time
 
     /// Oracle, Snowflake, BigQuery, Dameng and Trino list their objects one schema at a time, and

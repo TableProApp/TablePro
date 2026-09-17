@@ -294,8 +294,9 @@ final class SchemaRefreshService {
             await schemaService.prepareForReload(connectionId: connectionId)
         }
 
+        let browseScope = metadataDriverProvider.browseScope(for: connectionId)
         do {
-            guard let scope = metadataDriverProvider.browseScope(for: connectionId) else {
+            guard let scope = browseScope else {
                 throw DatabaseError.notConnected
             }
             try await metadataDriverProvider.withMetadataDriver(
@@ -319,7 +320,11 @@ final class SchemaRefreshService {
             Self.logger.warning(
                 "[schema] refresh failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            schemaService.markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            schemaService.markLoadFailed(
+                connectionId: connectionId,
+                message: error.localizedDescription,
+                scope: browseScope
+            )
         }
 
         if refreshesLoadedTreeTables {

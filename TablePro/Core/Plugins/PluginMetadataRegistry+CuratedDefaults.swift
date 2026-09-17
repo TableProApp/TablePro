@@ -268,7 +268,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -336,7 +337,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

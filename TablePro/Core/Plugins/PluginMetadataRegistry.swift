@@ -82,6 +82,11 @@ struct PluginMetadataSnapshot: Sendable {
         /// behalf of one entry selects it for all of them.
         var pooledDriversShareOneSession: Bool = false
         var authenticationIsDatabaseScoped: Bool = false
+        /// Whether a connection that names no database has nothing to browse until one is chosen. A
+        /// MySQL session opened without one has no current database: `SHOW TABLES` there is
+        /// `ERROR 1046 No database selected`. An engine whose session falls back to a default
+        /// database, such as ClickHouse's `default`, leaves this false.
+        var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
         var isEngineReadOnly: Bool = false
 
@@ -699,6 +704,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     .pooledDriversShareOneSession ?? false,
                 authenticationIsDatabaseScoped: existingSnapshot?.capabilities
                     .authenticationIsDatabaseScoped ?? false,
+                browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
+                    .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
