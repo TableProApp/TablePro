@@ -275,7 +275,9 @@ public actor CloudKitSyncEngine {
                 Self.logger.warning(
                     "Transient CK error (attempt \(attempt + 1)/\(Self.maxRetries)): \(error.localizedDescription)"
                 )
-                try await Task.sleep(for: .seconds(delay))
+                /// A retry that waits out a rate limit has no deadline of its own, so it can
+                /// ride whichever wake the system was going to make anyway.
+                try await Task.sleep(for: .seconds(delay), tolerance: .seconds(delay / 2))
             } catch {
                 throw error
             }
