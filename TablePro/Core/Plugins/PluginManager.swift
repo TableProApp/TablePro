@@ -78,11 +78,15 @@ final class PluginManager: ObservableObject {
     private let builtInPluginsURL: URL?
     internal let userPluginsDir: URL
 
-    internal(set) var plugins: [PluginEntry] = []
+    /// Every plugin collection here is published. The class was `@Observable` until #2874, which
+    /// tracked these without a word, and Settings > Plugins and the rejected-plugin banner are
+    /// written against that: without it an install, an update or a rejection changed nothing on
+    /// screen until the pane was reopened.
+    @Published internal(set) var plugins: [PluginEntry] = []
 
-    internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
+    @Published internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
 
-    internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+    @Published internal(set) var pluginsWithRegistryUpdate: Set<String> = []
 
     var isInstalling: Bool {
         PluginInstallTracker.shared.activeInstalls.values.contains { progress in
@@ -135,19 +139,19 @@ final class PluginManager: ObservableObject {
         waiter.continuation.resume()
     }
 
-    internal(set) var rejectedPlugins: [RejectedPlugin] = []
+    @Published internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
     @Published var needsRestart: Bool = false
 
-    internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
+    @Published internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
 
-    internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
+    @Published internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
 
-    internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
+    @Published internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
 
-    internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
+    @Published internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
 
-    internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
+    @Published internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
         get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
