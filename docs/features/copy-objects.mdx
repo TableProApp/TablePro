@@ -58,8 +58,7 @@ all arrive as they were.
 An index keeps its type when both ends are the same database type, so a SQL Server `CLUSTERED` index
 stays clustered. Between two database types, a PostgreSQL `gin`, `hnsw` or `bloom` index is left out
 of a copy to any engine outside PostgreSQL and named in the review step. So are a Redshift `DISTKEY`
-and `SORTKEY`, a Snowflake clustering key and BigQuery clustering and partitioning, which are keys
-of the table rather than indexes.
+and `SORTKEY`, a Snowflake clustering key, and BigQuery clustering and partitioning.
 
 ## When the target already has the object
 
