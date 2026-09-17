@@ -91,10 +91,36 @@ reshaped where the source and the target spell a value differently. `TINYINT(1)`
 `LONGTEXT` as `text`, `INT UNSIGNED` as `BIGINT`, and a PostgreSQL `t` arrives in a MySQL
 `TINYINT(1)` as `1`.
 
+Lengths, precision, scale and fractional seconds cross with the type. From PostgreSQL to MySQL,
+`character varying(50)` arrives as `VARCHAR(50)`, `numeric(10,2)` as `DECIMAL(10, 2)` and
+`timestamp(3) with time zone` as `DATETIME(3)`. A PostgreSQL `timestamp` or `time` declared without a
+precision stores microseconds, so it arrives with 6: `DATETIME(6)` on MySQL, `DATETIME2(6)` on SQL
+Server.
+
+A PostgreSQL `numeric` declared without a precision has no limit, and most engines need one. It
+arrives at the target's widest, marked approximated: `DECIMAL(65, 30)` on MySQL, `DECIMAL(38, 18)` on
+SQL Server and DuckDB, `Decimal(76, 30)` on ClickHouse, a bare `NUMBER` on Oracle. A value with more
+digits than that is rounded or refused. To keep it exact, declare the precision on the source before
+copying, or create the target table yourself and use **Add rows to it**.
+
 Nothing is dropped for want of a type. A type the target does not have becomes its widest text
 column, so the values arrive as text rather than the column going missing. The target server's
 version counts too: a JSON column crossing into PostgreSQL arrives as `jsonb` from 9.4, `json` on 9.2
 and 9.3, and `text` on 9.1.
+
+A kept length can pass a limit the source does not have. Each change in this table is a line in the
+review step.
+
+| Target | Limit | What the copy does |
+|---|---|---|
+| MySQL, MariaDB | A key over 3,072 bytes, counting 4 bytes a character | Cuts the widest key column until the key fits: a primary key column to `VARCHAR(255)`, an index column to a 255-character prefix. An index that still does not fit is left out |
+| MySQL, MariaDB | A row over 65,535 bytes, or over 8,126 bytes in one InnoDB record | Creates the widest column as `TEXT` until the table fits. Key columns never move, and indexed columns move last |
+| Oracle | 4,000 bytes in a `VARCHAR2`, 2,000 in a `CHAR` | Counts lengths in characters, `VARCHAR2(50 CHAR)`. A column over 1,000 characters becomes a `CLOB` |
+| SQL Server | `NVARCHAR(n)` counts UTF-16 units, so most emoji count as two | Keeps `n`. One line per table names the columns where a value full of emoji can be refused |
+
+A primary key column cut to `VARCHAR(255)` refuses a row whose key is longer, and a unique index cut to
+a prefix refuses two rows that agree for their first 255 characters. If your data holds such rows,
+create the target table yourself with keys that fit, then use **Add rows to it**.
 
 The review step lists every column and index the crossing changed, one line each. It is the only
 place those conversions appear, and it is shown before **Copy** does anything.
@@ -200,6 +226,11 @@ create the target table first and use **Add rows to it**.
 A copy from PostgreSQL into an older PostgreSQL passes its types through the same way, so a `jsonb`
 column is refused by a server before 9.4. Create the target table first with `json` or `text`, then
 use **Add rows to it**.
+
+A PostgreSQL column typed with a domain crosses as the domain's base type without its modifier. A
+`price` domain over `numeric(12,2)` arrives on MySQL as `DECIMAL(65, 30)`, and a domain over
+`varchar(20)` as `LONGTEXT`. Create the target table with the types you want, then use **Add rows to
+it**.
 
 A PostgreSQL column that uses an extension or user-defined type or function, such as a PostGIS
 `geometry`, an enum, or a `DEFAULT` that calls `ST_GeomFromText`, is created naming each one in the
