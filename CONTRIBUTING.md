@@ -94,7 +94,7 @@ One logical change per PR. Make sure tests pass and lint is clean.
 Checklist:
 
 - [ ] Tests added or updated
-- [ ] `CHANGELOG.md` updated under `[Unreleased]` (skip for unreleased-only fixes)
+- [ ] `CHANGELOG.md` updated under `[Unreleased]` (skip for unreleased-only fixes). Leave the credit off: the release adds `(#123 by @you)` to every entry from your pull request, so there is no number to guess and no second commit to push
 - [ ] Docs updated in `docs/` if the change affects user-facing behavior
 - [ ] User-facing strings localized
 - [ ] No SwiftLint/SwiftFormat violations

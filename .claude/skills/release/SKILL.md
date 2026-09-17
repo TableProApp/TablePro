@@ -72,13 +72,36 @@ Verify all of these first. If any fails, stop and say what is wrong.
 4. **Working tree is clean**: `git status --porcelain`. If not, warn and ask whether
    to fold those changes into the release.
 5. **`[Unreleased]` has content.** If empty, the release has no notes. Say so.
-6. **Entries are the right shape.** They accumulate one PR at a time and drift long.
+6. **Credit every entry to its pull request and its author**, in the form GitHub's
+   generated release notes use. Do this before anything rewords an entry: the script
+   reads each line's commit with `git blame`, and a line reworded in the working tree
+   blames to nothing and is skipped.
+
+   ```bash
+   python3 scripts/ci/changelog_credits.py --dry-run | tail -5
+   python3 scripts/ci/changelog_credits.py
+   ```
+
+   Each entry ends up as `(#2905 by @digows)`, or `(#1748, #2741 by @J2TeamNNL)` when it
+   already named an issue. The last lines name every contributor and every entry left
+   alone. Read that list: an entry is left bare when its commit has no pull request
+   number, which is a direct push. Credit it by hand from `git log` or leave it bare;
+   never guess a handle.
+
+   `git blame` credits the last commit to touch a line, so an entry a maintainer reworded
+   in a later pull request carries the maintainer's handle. Check the contributor list
+   against `gh pr list --state merged --search "merged:>=<last release date>" --json author`
+   and put a contributor's handle back on any entry that lost it. The script is
+   idempotent, so running it again changes only what is still bare.
+7. **Entries are the right shape.** They accumulate one PR at a time and drift long.
    Per `CLAUDE.md` rule 1 and Keep a Changelog 1.1.0, an entry is a fragment naming
-   the change, one line, aiming under 120 characters:
+   the change, one line, aiming under 120 characters. The credit is not part of the
+   fragment, so measure without it:
 
    ```bash
    awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md \
-     | grep '^- ' | awk '{ t+=length($0); n++; if (length($0)>120) o++ } \
+     | grep '^- ' | sed -E 's/ \(#[0-9, #]+ by @[A-Za-z0-9-]+\)$//' \
+     | awk '{ t+=length($0); n++; if (length($0)>120) o++ } \
          END { if (!n) { print "no entries"; exit } \
                print n" entries, avg "int(t/n)" chars, "o+0" over 120" }'
    ```
@@ -96,26 +119,27 @@ Verify all of these first. If any fails, stop and say what is wrong.
    If entries run over or match, rewrite the whole section before finalizing: cut each
    to the notable difference, turn every `X now does Y instead of Z` into the bug or
    the thing itself, drop trailing `so ...` clauses, merge entries describing one
-   change, keep every `(#1234)`. Diff the reference IDs before and after to prove none
-   were dropped. The explanation belongs in the PR body. At 0.67.0 this arrived with
-   211 entries averaging 300 characters, the longest 1,685.
-7. **On `main`**: warn, do not block.
-8. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
+   change, keep every trailing `(#1234 by @handle)` exactly as it is. Diff the
+   reference IDs and handles before and after to prove none were dropped. The
+   explanation belongs in the PR body. At 0.67.0 this arrived with 211 entries
+   averaging 300 characters, the longest 1,685.
+8. **On `main`**: warn, do not block.
+9. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
    own commit.
-9. **Report the last full-suite verdict on `main`**: warn, do not block.
+10. **Report the last full-suite verdict on `main`**: warn, do not block.
 
-   ```bash
-   gh run list --workflow=macos-tests.yml --branch main --limit 1 \
-     --json conclusion,headSha,createdAt -q '.[] | "\(.conclusion // "in progress") \(.headSha[0:9]) \(.createdAt)"'
-   ```
+    ```bash
+    gh run list --workflow=macos-tests.yml --branch main --limit 1 \
+      --json conclusion,headSha,createdAt -q '.[] | "\(.conclusion // "in progress") \(.headSha[0:9]) \(.createdAt)"'
+    ```
 
-   Say the verdict and the commit it belongs to, then carry on. This reports rather
-   than blocks on purpose: `main` is red or cancelled far more often than green, on
-   merge skew rather than on real defects, and a hard gate with no merge queue behind
-   it would stop releases instead of improving them. The release tag is currently the
-   only unconditional full-suite run, so knowing what the last one said is worth the
-   one command. Eight of the last seventeen releases had their tag moved onto extra
-   commits before going green.
+    Say the verdict and the commit it belongs to, then carry on. This reports rather
+    than blocks on purpose: `main` is red or cancelled far more often than green, on
+    merge skew rather than on real defects, and a hard gate with no merge queue behind
+    it would stop releases instead of improving them. The release tag is currently the
+    only unconditional full-suite run, so knowing what the last one said is worth the
+    one command. Eight of the last seventeen releases had their tag moved onto extra
+    commits before going green.
 
 The release job re-checks what it can once the tag is pushed. It fails if the tag
 disagrees with `MARKETING_VERSION`, and it fails if `CURRENT_PROJECT_VERSION` did not

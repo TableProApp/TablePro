@@ -106,6 +106,9 @@ jobs:
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
 
+      - name: Validate changelog contributor credits
+        run: python3 scripts/ci/test_changelog_credits.py
+
       # Only a real release runs sign-and-appcast.sh, so nothing on a pull request ever exercised
       # the code that edits the file every install polls. These two cover the parts that can be
       # tested without a signing key: which bytes move, and which releases are refused.
