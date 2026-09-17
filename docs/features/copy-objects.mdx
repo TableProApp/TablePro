@@ -158,7 +158,9 @@ names something only the source engine has. A MySQL `0000-00-00` is written as `
 value the rest accept for it.
 
 MySQL and MariaDB count as one engine, and so do PostgreSQL, Redshift, CockroachDB and PGlite. A copy
-between two of those runs unchanged and reports no conversions.
+between two of those writes every column as the source declares it and reports no conversion for any
+of them. Its indexes follow the [index rules](#what-each-object-carries) for two database types, so a
+copy from Redshift leaves out `DISTKEY` and `SORTKEY` and names both in the review step.
 
 ## When both sides are one connection
 
