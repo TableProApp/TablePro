@@ -33,7 +33,7 @@ tokio-util = { version = "0.7", default-features = false, features = ["codec", "
 russh = "0.63"
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clickhouse = { version = "0.15", default-features = false, features = ["rustls-tls-aws-lc", "rustls-tls-webpki-roots"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "rust_decimal", "uuid", "json"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "rustls", "chrono", "rust_decimal"] }

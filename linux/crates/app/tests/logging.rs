@@ -21,17 +21,26 @@ fn main() -> ExitCode {
 /// child with its own `RUST_LOG`.
 fn parent() -> ExitCode {
     let cases = [
-        ("trace", "trace", vec![TRACE_PROBE, DEBUG_PROBE, INFO_PROBE], vec![]),
+        ("trace", "trace", "", vec![TRACE_PROBE, DEBUG_PROBE, INFO_PROBE], vec![]),
         (
             "an unparsable filter",
             "this is not a filter=??",
+            "",
             vec![INFO_PROBE, "RUST_LOG could not be parsed"],
             vec![DEBUG_PROBE],
         ),
+        (
+            "a format naming nothing known",
+            "info",
+            "yaml",
+            vec![INFO_PROBE, "TABLEPRO_LOG_FORMAT names no known format"],
+            // The fallback is text, so the line is not an object.
+            vec!["\"fields\""],
+        ),
     ];
 
-    for (what, filter, expected, forbidden) in cases {
-        let Ok(stderr) = run_child(filter, what) else {
+    for (what, filter, format, expected, forbidden) in cases {
+        let Ok(stderr) = run_child(filter, format, what) else {
             return ExitCode::FAILURE;
         };
         for needle in expected {
@@ -47,13 +56,42 @@ fn parent() -> ExitCode {
             }
         }
     }
+    json_lines_are_objects()
+}
+
+/// Every line a shipper reads has to parse on its own, so the case
+/// checks the shape rather than a substring: one object per line, the
+/// message in a field.
+fn json_lines_are_objects() -> ExitCode {
+    let Ok(stderr) = run_child("info", "json", "json") else {
+        return ExitCode::FAILURE;
+    };
+    let mut saw_probe = false;
+    for line in stderr.lines().filter(|line| !line.trim().is_empty()) {
+        if !(line.starts_with('{') && line.ends_with('}')) {
+            eprintln!("a json line is not an object:\n{line}");
+            return ExitCode::FAILURE;
+        }
+        for key in ["\"timestamp\"", "\"level\"", "\"fields\""] {
+            if !line.contains(key) {
+                eprintln!("a json line is missing {key}:\n{line}");
+                return ExitCode::FAILURE;
+            }
+        }
+        saw_probe |= line.contains(INFO_PROBE);
+    }
+    if !saw_probe {
+        eprintln!("the json output never carried {INFO_PROBE}:\n{stderr}");
+        return ExitCode::FAILURE;
+    }
     ExitCode::SUCCESS
 }
 
-fn run_child(filter: &str, what: &str) -> Result<String, ()> {
+fn run_child(filter: &str, format: &str, what: &str) -> Result<String, ()> {
     let output = Command::new(std::env::args_os().next().unwrap_or_default())
         .env(CHILD_MARKER, "1")
         .env("RUST_LOG", filter)
+        .env("TABLEPRO_LOG_FORMAT", format)
         .stdin(Stdio::null())
         .output()
         .map_err(|error| eprintln!("could not run the {what} case: {error}"))?;
