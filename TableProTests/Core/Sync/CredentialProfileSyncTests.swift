@@ -17,19 +17,18 @@ struct CredentialProfileSyncTests {
         ownerName: CKCurrentUserDefaultName
     )
 
-    /// `CredentialProfile` is declared but not deployed to the CloudKit Production schema, so every
-    /// field is unverified and the gated subscript drops every write. Nothing reaches CloudKit
-    /// until the schema ships and both sets flip together.
-    @Test("The record type is declared but withheld until the schema is deployed")
-    func recordTypeIsWithheld() {
+    /// `CredentialProfile` is deployed to the CloudKit Production schema, so every field passes the
+    /// gated subscript. A field added later is unverified until the snapshot and both sets move.
+    @Test("The record type is deployed and every declared field is writable")
+    func recordTypeIsWritable() {
         #expect(SyncRecordType.allCases.contains(.credentialProfile))
-        #expect(!SyncRecordType.credentialProfile.isWritable)
-        #expect(CredentialProfileSyncField.writableKeys.isEmpty)
+        #expect(SyncRecordType.credentialProfile.isWritable)
+        #expect(CredentialProfileSyncField.writableKeys == CredentialProfileSyncField.declaredKeys)
         #expect(!CredentialProfileSyncField.declaredKeys.isEmpty)
     }
 
-    @Test("A record of the withheld type is never published")
-    func recordsAreNotPublished() {
+    @Test("A record of the deployed type is published")
+    func recordsArePublished() {
         let record = CKRecord(
             recordType: SyncRecordType.credentialProfile.rawValue,
             recordID: CKRecord.ID(
@@ -38,9 +37,9 @@ struct CredentialProfileSyncTests {
             )
         )
 
-        #expect(SyncSchemaGate.publishable(records: [record]).isEmpty)
-        #expect(SyncSchemaGate.withheldRecordTypes(in: [record]) == ["CredentialProfile"])
-        #expect(SyncSchemaGate.publishable(deletions: [record.recordID]).isEmpty)
+        #expect(SyncSchemaGate.publishable(records: [record]) == [record])
+        #expect(SyncSchemaGate.withheldRecordTypes(in: [record]).isEmpty)
+        #expect(SyncSchemaGate.publishable(deletions: [record.recordID]) == [record.recordID])
     }
 
     @Test("A record name round trips to the right type")

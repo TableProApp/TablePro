@@ -97,6 +97,8 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 
 ### Fixed
 
+- Filters cleared on a table coming back the next time that table is read.
+
 - Oracle login hanging until the server gave up when it declined the network encryption negotiation. (#2919, #2935 by @datlechin)
 - Oracle login timeout that never fired, leaving the connecting spinner up past its deadline. (#2919, #2935 by @datlechin)
 - Crash from an Oracle server sending a marker packet, or an accept packet under 32 bytes, during login. (#2919, #2935 by @datlechin)
