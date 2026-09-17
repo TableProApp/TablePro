@@ -121,7 +121,17 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
 
     func beginTransactionStatement(mode: PluginTransactionAccessMode) -> String {
         guard !isDatabend else { return "BEGIN" }
-        return mode == .readWrite ? "START TRANSACTION READ WRITE" : "START TRANSACTION"
+        guard mode == .readWrite else { return "START TRANSACTION" }
+        return "START TRANSACTION \(readWriteAccessModeClause)"
+    }
+
+    private var readWriteAccessModeClause: String {
+        switch self {
+        case .mysql, .mariadb:
+            return "/*!50605 READ WRITE */"
+        case .tidb, .oceanbase, .databend:
+            return "READ WRITE"
+        }
     }
 
     func queryTimeoutStatements(seconds: Int) -> [String] {

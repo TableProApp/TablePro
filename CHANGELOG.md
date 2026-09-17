@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Scripts with their own `BEGIN` or `START TRANSACTION` run without a second transaction wrapped around them.
+
 ### Fixed
 
 - Data race on the server version of a PostgreSQL, Redshift or CockroachDB connection while it closes.
 - Structure sync scripts refused for tables that had not changed since they were compared.
 - MySQL and MariaDB indexes listed in a different order each time a table's structure loads.
+- `START TRANSACTION READ WRITE` syntax error on MySQL and MariaDB 5.5 when saving, importing or running several statements.
+- A batch whose transaction failed to start reported as a failed commit of its first statement.
 
 ## [0.75.0] - 2026-09-17
 

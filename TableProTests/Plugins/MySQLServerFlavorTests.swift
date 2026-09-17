@@ -166,10 +166,25 @@ struct MySQLServerFlavorTests {
         #expect(MySQLServerFlavor.oceanbase(version: nil).preparesOnServer)
     }
 
-    @Test("A read-write transaction declares the access mode so a read-only session default is overridden")
-    func readWriteDeclaresAccessMode() {
-        #expect(MySQLServerFlavor.mysql.beginTransactionStatement(mode: .readWrite) == "START TRANSACTION READ WRITE")
-        #expect(MySQLServerFlavor.tidb(version: nil).beginTransactionStatement(mode: .readWrite) == "START TRANSACTION READ WRITE")
+    @Test(
+        "MySQL and MariaDB declare the access mode in a comment only 5.6.5 and later execute",
+        arguments: [MySQLServerFlavor.mysql, .mariadb]
+    )
+    func readWriteDeclaresAccessModeForServersThatParseIt(flavor: MySQLServerFlavor) {
+        #expect(flavor.beginTransactionStatement(mode: .readWrite) == "START TRANSACTION /*!50605 READ WRITE */")
+    }
+
+    @Test(
+        "TiDB and OceanBase declare the access mode as plain syntax",
+        arguments: [
+            MySQLServerFlavor.tidb(version: nil),
+            .tidb(version: MySQLEngineVersion(major: 8, minor: 5, patch: 0)),
+            .oceanbase(version: nil),
+            .oceanbase(version: MySQLEngineVersion(major: 4, minor: 3, patch: 5)),
+        ]
+    )
+    func readWriteDeclaresAccessModeAsSyntax(flavor: MySQLServerFlavor) {
+        #expect(flavor.beginTransactionStatement(mode: .readWrite) == "START TRANSACTION READ WRITE")
     }
 
     @Test("A server-default transaction inherits the session access mode")

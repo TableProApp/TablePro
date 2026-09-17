@@ -53,6 +53,11 @@ enum SqlBlockStructure {
         routineDefinitionOpeners.contains(keyword)
     }
 
+    static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
+        guard let keyword else { return true }
+        return transactionFollowers.contains(keyword)
+    }
+
     /// The keyword at `offset`, uppercased, and the offset just past it.
     ///
     /// Returns an empty string when `offset` does not start an identifier, along with the next offset, so a caller can
@@ -104,7 +109,7 @@ enum SqlBlockStructure {
         let cursor = skipTrivia(from: offset, in: text, length: length)
         guard cursor < length else { return true }
         guard text.character(at: cursor) != SqlLexer.semicolon else { return true }
-        return transactionFollowers.contains(readKeyword(text, at: cursor, length: length).text)
+        return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
     }
 
     private static func closesControlFlow(after offset: Int, in text: NSString, length: Int) -> Bool {

@@ -65,6 +65,64 @@ final class QueryRunUITests: UITestCase {
         )
     }
 
+    func testRunAllRunsAScriptThatOpensItsOwnTransaction() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery("BEGIN; SELECT 1 AS answer; COMMIT;", in: app)
+
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let window = app.windows.firstMatch
+        let chooser = window.descendants(matching: .any)
+            .matching(identifier: "result-set-menu")
+            .firstMatch
+        let banner = window.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { chooser.exists || banner.exists },
+            "Running the script must end in results or an error"
+        )
+        XCTAssertFalse(
+            banner.exists,
+            "A script that opens its own transaction must not collide with one the app opened around it"
+        )
+        XCTAssertTrue(
+            waitForPredicate(timeout: 10) { chooser.title.contains("3") },
+            "All three statements must run and report a result: got \(chooser.title)"
+        )
+    }
+
+    func testRunAllRollsBackTheTransactionAFailedScriptLeftOpen() throws {
+        let app = try launchWithSampleDatabase()
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery(
+            "BEGIN; CREATE TABLE run_all_rollback_probe (id INTEGER); SELECT * FROM run_all_missing; COMMIT;",
+            in: app
+        )
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
+
+        let banner = app.windows.firstMatch.staticTexts["query-error-message"].firstMatch
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { bannerText(banner).contains("Statement 3/4 failed") },
+            "The script must stop at its third statement: got \(bannerText(banner))"
+        )
+
+        app.typeKey("t", modifierFlags: .command)
+        typeQuery("SELECT * FROM run_all_rollback_probe;", in: app)
+        app.typeKey(.return, modifierFlags: .command)
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { bannerText(banner).contains("no such table: run_all_rollback_probe") },
+            "The table the failed script created inside its own transaction must be rolled back: got \(bannerText(banner))"
+        )
+    }
+
+    private func bannerText(_ banner: XCUIElement) -> String {
+        guard banner.exists else { return "" }
+        return (banner.value as? String) ?? banner.label
+    }
+
     /// The control is a split button: its body runs the query and only its trailing half opens the
     /// menu, so the two halves are addressed separately. The menu half carries its own identifier,
     /// which is what this resolves. Reaching it as a fraction of the Run half's width used to work
