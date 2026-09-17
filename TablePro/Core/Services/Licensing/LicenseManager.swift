@@ -54,8 +54,9 @@ final class LicenseManager: ObservableObject {
         }
     }
 
-    /// Whether a network operation is in progress
-    private(set) var isValidating: Bool = false
+    /// Whether a network operation is in progress. Published, because the License and Sync panes
+    /// disable their buttons on it while a check runs.
+    @Published private(set) var isValidating: Bool = false
 
     /// Last error from an operation (cleared on success)
     @Published private(set) var lastError: LicenseError?
