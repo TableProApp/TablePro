@@ -143,6 +143,7 @@ final class WelcomeViewModel: ObservableObject {
     private var linkedFoldersCancellable: AnyCancellable?
     private var teamLibraryCancellable: AnyCancellable?
     private var licenseCancellable: AnyCancellable?
+    private var connectionStatusCancellable: AnyCancellable?
     private var welcomeRouterTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
     private let importableAppDetector: @MainActor () -> Bool
@@ -417,6 +418,16 @@ final class WelcomeViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.teamLibraryConnections = Self.buildTeamLibraryConnections()
+            }
+
+        /// A row's status badge reads `DatabaseManager.activeSessions`, which is not observable, and
+        /// the row is only rewritten when the outline revision moves. Nothing here listened for a
+        /// connection coming up or going away, so a row that said Connected went on saying it after
+        /// a Disconnect, for as long as the window stayed open.
+        connectionStatusCancellable = services.appEvents.connectionStatusChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.outlineRevision += 1
             }
 
         loadConnections()

@@ -66,6 +66,12 @@ internal extension MainWindowToolbar {
         return group
     }
 
+    /// The Inspector item on macOS 13, forwarded because the action belongs to the split controller
+    /// and a toolbar item's explicit target has to respond to its own selector to validate.
+    @objc func forwardToggleInspector(_ sender: Any?) {
+        coordinator?.splitViewController?.toggleInspector(sender)
+    }
+
     @objc func contentModeChanged(_ sender: Any?) {
         guard let index = Self.segmentIndex(from: sender, group: contentModeGroup),
               Self.contentModes.indices.contains(index) else { return }

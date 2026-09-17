@@ -252,6 +252,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two conversations on one Copilot configuration were answered with each other's context.
 - The sidebar toggle announced its SF Symbol names to VoiceOver instead of Tables and Favorites.
 - Choosing Tables or Favorites from the toolbar's overflow menu did nothing.
+- The Inspector toolbar button was permanently dimmed on macOS 13.
+- A connection's status on the welcome window stopped updating once the window was open.
+- The Compare & Sync licence notice froze the app instead of opening as a sheet.
 
 ### Security
 
