@@ -92,8 +92,8 @@ struct PostgreSQLColumnClausesTests {
         #expect(clause == "'new'::public.status")
     }
 
-    @Test("A default with no qualified spelling, such as one reading a sequence, is written as read")
-    func sequenceDefaultStaysRelative() {
+    @Test("A default with no qualified spelling is written as read")
+    func defaultWithoutSpellingIsWrittenAsRead() {
         let clause = PostgreSQLColumnClauses.defaultExpression(
             for: column(defaultValue: "nextval('orders_id_seq'::regclass)")
         )

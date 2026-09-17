@@ -248,6 +248,13 @@ schema it lives in on the source: `public.geometry(Point,4326)`. A target databa
 that schema refuses the table with `type "…" does not exist` or `function … does not exist`. Install
 the extension or create the type there first, in the same schema.
 
+A PostgreSQL column declared with a collation of its own keeps it, named with its schema:
+`COLLATE pg_catalog."C"`, `COLLATE app."Case Insens"`. Collation names differ between operating
+systems and between builds with and without ICU, so a target that lacks one refuses the table with
+`collation "…" for encoding "UTF8" does not exist`, or `schema "…" does not exist` for a collation
+created in a schema the target does not have. Create the collation on the target first, in the same
+schema.
+
 Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
 the sheet names the engine that cannot rather than failing part way in.
 
@@ -256,10 +263,13 @@ declared `GENERATED ALWAYS AS IDENTITY`, the server refuses an explicit value an
 appears in the result. Copy the structure, then the data with the identity column removed from the
 target, or use **Add rows to it** against a table whose key is plain.
 
-A PostgreSQL `SERIAL` column's default names a sequence. Within PostgreSQL the sequence is copied
-ahead of the table. Crossing to another engine there is no sequence to copy, so the column is created
-with that engine's own auto-increment and the counter starts where the target starts it, not where
-the source left off.
+A PostgreSQL `SERIAL` column's default names a sequence. Within PostgreSQL a sequence in the table's
+own schema is copied ahead of the table, and the copied default reads the copy, including a default
+that passes the sequence to a function. A sequence in any other schema is not copied: the default
+keeps naming it there, and a target database without it refuses the table with
+`relation "…" does not exist`. Create that sequence on the target first. Crossing to another engine
+there is no sequence to copy, so the column is created with that engine's own auto-increment and the
+counter starts where the target starts it, not where the source left off.
 
 Two databases on one connection can be copied between only where the driver opens a second
 connection of its own. DuckDB and PGlite hold their database inside the driver instance, so the

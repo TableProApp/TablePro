@@ -75,7 +75,6 @@ extension PostgreSQLPluginDriver {
             cost: .tableRebuild,
             caveats: parts.dependentViewCaveat + [
                 String(localized: "Grants, row-level security policies, publications, extended statistics, partitioning and table inheritance are not carried over."),
-                String(localized: "A column collation that differs from its type default is not reproduced."),
                 String(localized: "An identity column keeps its value, but its sequence is recreated under a new name because the old table still holds the original name when the new one is created.")
             ],
             isRunnable: false
@@ -167,7 +166,7 @@ extension PostgreSQLPluginDriver {
         let columnRows = try await execute(query: """
             SELECT
                 a.attname,
-                quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+                quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) || \(PostgreSQLSchemaQueries.columnCollateClause) ||
                 \(identityClause)
                 \(generatedClause)
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||

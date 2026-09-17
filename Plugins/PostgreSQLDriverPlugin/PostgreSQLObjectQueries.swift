@@ -259,7 +259,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     }
 
     /// The qualified, quoted name of a collation oid, spelled the way a COLLATE clause takes it.
-    private static func collationName(_ oidExpression: String) -> String {
+    static func collationName(_ oidExpression: String) -> String {
         """
         (SELECT pg_catalog.quote_ident(cn.nspname) || '.' || pg_catalog.quote_ident(co.collname)
             FROM pg_catalog.pg_collation co

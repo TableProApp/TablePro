@@ -553,6 +553,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaStatementPlanner.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift

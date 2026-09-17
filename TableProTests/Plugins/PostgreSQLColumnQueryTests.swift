@@ -308,7 +308,7 @@ struct PostgreSQLColumnDDLQueryTests {
         #expect(query.contains("AND c.relname = 'places'"))
     }
 
-    @Test("Asks pg_depend whether the stored expression reads a sequence, matching the relation catalog only")
+    @Test("Asks pg_depend which sequences the stored expression reads, matching the relation catalog only")
     func detectsSequenceDependency() {
         let query = PostgreSQLSchemaQueries.columnDDLQuery(schema: "public", table: nil, capabilities: modern)
         #expect(query.contains("dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass"))
@@ -352,10 +352,15 @@ struct PostgreSQLColumnDDLParsingTests {
         _ spelling: String?,
         _ expression: String? = nil,
         generated: String = "",
-        readsSequence: Bool = false
+        qualifiedSequences: String? = nil,
+        relativeSequences: String? = nil,
+        standardConformingStrings: String? = "on",
+        collation: String? = nil
     ) -> [PluginCellValue] {
-        [table, column, spelling, expression, generated, readsSequence ? "t" : "f"]
-            .map { $0.map(PluginCellValue.text) ?? .null }
+        [
+            table, column, spelling, expression, generated,
+            qualifiedSequences, relativeSequences, standardConformingStrings, collation
+        ].map { $0.map(PluginCellValue.text) ?? .null }
     }
 
     @Test("Keys each column's clauses by relation and column")
@@ -369,13 +374,16 @@ struct PostgreSQLColumnDDLParsingTests {
         #expect(columns["orders"]?["status"]?.defaultExpression == "'new'::public.status")
     }
 
-    @Test("A default that reads a sequence has no qualified spelling, so a copy binds to its own sequence")
-    func sequenceDefaultIsLeftRelative() {
+    @Test("A default that reads a sequence beside the table writes that sequence relative and the rest qualified")
+    func sequenceDefaultKeepsOnlyTheSequenceRelative() {
         let columns = PostgreSQLSchemaQueries.columnDDL(rows: [
-            row("orders", "id", "integer", "nextval('public.orders_id_seq'::regclass)", readsSequence: true)
+            row(
+                "orders", "id", "integer", "sales.wrap(nextval('sales.orders_id_seq'::regclass))",
+                qualifiedSequences: "{sales.orders_id_seq}", relativeSequences: "{orders_id_seq}"
+            )
         ])
         #expect(columns["orders"]?["id"]?.typeSpelling == "integer")
-        #expect(columns["orders"]?["id"]?.defaultExpression == nil)
+        #expect(columns["orders"]?["id"]?.defaultExpression == "sales.wrap(nextval('orders_id_seq'::regclass))")
     }
 
     @Test("A generated column's expression is its generation expression, not a default")

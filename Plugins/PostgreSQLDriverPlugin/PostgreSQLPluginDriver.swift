@@ -386,6 +386,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let columnsQuery = """
             SELECT
                 quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+                \(PostgreSQLSchemaQueries.columnCollateClause) ||
                 \(identityClause)
                 \(generatedClause)
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
@@ -894,6 +895,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(PostgreSQLColumnClauses.type(for: col))"
+        if let collation = PostgreSQLColumnClauses.collation(for: col) {
+            def += " COLLATE \(collation)"
+        }
         if let expression = PostgreSQLColumnClauses.generationExpression(for: col) {
             def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
             if !col.isNullable { def += " NOT NULL" }
@@ -1022,8 +1026,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         let colName = quoteIdentifier(newColumn.name)
 
-        if oldColumn.dataType.uppercased() != newColumn.dataType.uppercased() {
-            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(PostgreSQLColumnClauses.alteredType(for: newColumn))")
+        if let type = PostgreSQLColumnClauses.alterType(old: oldColumn, new: newColumn) {
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(type)")
         }
 
         if oldColumn.isNullable != newColumn.isNullable {

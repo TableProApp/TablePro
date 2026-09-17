@@ -55,6 +55,8 @@ These drift between environments by design, so they are ignored by default. Turn
 | Collation and character set | A table-level or column-level collation difference. A column changed for another reason keeps the target's collation |
 | Comments, owners, definers | Descriptive metadata with no runtime effect |
 
+With **Collation and character set** off, a PostgreSQL column whose collation differs is retyped to the type it already has, `ALTER COLUMN … TYPE text COLLATE …`. That rebuilds the column's indexes, and PostgreSQL refuses it on a column a view or a generated column reads: drop the view or the generated column first, or leave the option on.
+
 ## Reading the results
 
 Each object lands in one of four states: **only in source**, **only in target**, **different**, or **identical**. **Group By** sections the table by difference or by object kind, and the search field filters by name. Identical objects stay hidden until **Show Identical Objects**.

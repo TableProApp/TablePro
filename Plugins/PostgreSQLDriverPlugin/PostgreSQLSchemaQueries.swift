@@ -300,8 +300,8 @@ enum PostgreSQLSchemaQueries {
         WHERE arr.typelem <> 0 AND el.typarray = arr.oid
         """
 
-    /// Each column's type, default and generation expression as the server writes them for a
-    /// `CREATE TABLE` on another schema. `format_type` is the one spelling of a type that keeps its
+    /// Each column's type, default, generation expression and collation as the server writes them for
+    /// a `CREATE TABLE` on another schema. `format_type` is the one spelling of a type that keeps its
     /// schema, its modifier and its quoting: `information_schema.columns` reports
     /// `public.geometry(Point,4326)` as `USER-DEFINED` and `geometry`, and `varchar(50)` as
     /// `character varying`. Both `format_type` and `pg_get_expr` leave out the schema of anything the
@@ -309,12 +309,16 @@ enum PostgreSQLSchemaQueries {
     /// (see `PostgreSQLViewDefinition.qualifiedReadPrefix`).
     ///
     /// A query of its own rather than columns of `columnsQuery`, because a narrowed path would
-    /// change what that query reports for display and comparison, and because a default that reads
-    /// a sequence has to stay relative: a copy recreates the sequence beside the table, and a
-    /// qualified `nextval('public.orders_id_seq')` bound the copy to the source's sequence, so both
-    /// tables handed out the same keys. `reads_sequence` is that dependency from `pg_depend`, which
-    /// is exact where scanning the expression text is not. The relation kinds are the ones
+    /// change what that query reports for display and comparison. The relation kinds are the ones
     /// `information_schema.columns` covers plus materialized views.
+    ///
+    /// A default that reads a sequence in the table's own schema comes back qualified like the rest,
+    /// with the two arrays that let the parser write that one name relative: a copy recreates the
+    /// sequence beside the table, and a qualified `nextval('public.orders_id_seq')` bound the copy to
+    /// the source's sequence, so both tables handed out the same keys. The arrays list exactly the
+    /// sequences `PostgreSQLSequenceQueries.sequenceList(schema:dependentOnTable:source:)` recreates,
+    /// from the same `pg_depend` rows, and `standard_conforming_strings` is read in the same statement
+    /// because it decides how `pg_get_expr` quoted them.
     static func columnDDLQuery(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {
         let tableFilter = table.map { "\n  AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
         let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated::text" : "''"
@@ -325,15 +329,10 @@ enum PostgreSQLSchemaQueries {
                 pg_catalog.format_type(a.atttypid, a.atttypmod),
                 pg_catalog.pg_get_expr(ad.adbin, ad.adrelid),
                 \(generatedProjection),
-                EXISTS (
-                    SELECT 1
-                    FROM pg_catalog.pg_depend dep
-                    JOIN pg_catalog.pg_class seq ON seq.oid = dep.refobjid
-                    WHERE dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass
-                      AND dep.objid = ad.oid
-                      AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
-                      AND seq.relkind = 'S'
-                ) AS reads_sequence
+                \(ownSchemaSequences("seq.oid::pg_catalog.regclass::pg_catalog.text")) AS qualified_sequences,
+                \(ownSchemaSequences("pg_catalog.quote_ident(seq.relname)")) AS relative_sequences,
+                pg_catalog.current_setting('standard_conforming_strings'),
+                \(columnCollation) AS ddl_collation
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -343,6 +342,37 @@ enum PostgreSQLSchemaQueries {
               AND a.attnum > 0
               AND NOT a.attisdropped
             """
+    }
+
+    /// The column's collation as `COLLATE` takes it, or NULL where the column keeps its type's own.
+    ///
+    /// `pg_dump`'s rule: only a collation that differs from the type's is written. Both a column that
+    /// inherits `C` from its domain and one declared `COLLATE "C"` over `text` report `C` in
+    /// `information_schema`, and only the second declares it. Reads the attribute as `a`, which every
+    /// column read and column DDL builder in this plugin aliases it to.
+    static let columnCollation = """
+        CASE WHEN a.attcollation <> 0
+                  AND a.attcollation <> (SELECT ty.typcollation FROM pg_catalog.pg_type ty WHERE ty.oid = a.atttypid)
+                 THEN \(PostgreSQLObjectQueries.collationName("a.attcollation"))
+            END
+        """
+
+    /// `columnCollation` as the text a column definition appends after its type: ` COLLATE <name>`, or
+    /// an empty string.
+    static let columnCollateClause = "COALESCE(' COLLATE ' || \(columnCollation), '')"
+
+    /// One array over the sequences this column's default reads in the table's own schema, ordered by
+    /// oid so the qualified and relative arrays pair element for element.
+    private static func ownSchemaSequences(_ element: String) -> String {
+        """
+        (SELECT pg_catalog.array_agg(\(element) ORDER BY seq.oid)
+                    FROM pg_catalog.pg_depend dep
+                    JOIN pg_catalog.pg_class seq ON seq.oid = dep.refobjid
+                    WHERE \(PostgreSQLSequenceQueries.columnDefaultDependency(alias: "dep"))
+                      AND dep.objid = ad.oid
+                      AND seq.relkind = 'S'
+                      AND seq.relnamespace = c.relnamespace)
+        """
     }
 
     /// Keyed by relation, then by column, with exact spellings: PostgreSQL allows quoted `Orders`
@@ -357,7 +387,13 @@ enum PostgreSQLSchemaQueries {
                 typeSpelling: spelling,
                 expression: row[safe: 3]?.asText?.nilIfEmpty,
                 isGenerated: row[safe: 4]?.asText?.nilIfEmpty != nil,
-                readsSequence: PostgreSQLCatalogBoolean.isTrue(row[safe: 5]?.asText)
+                sequenceReferences: PostgreSQLSequenceReference.references(
+                    qualified: row[safe: 5]?.asText, relative: row[safe: 6]?.asText
+                ),
+                standardConformingStrings: PostgreSQLSequenceReference.standardConformingStrings(
+                    row[safe: 7]?.asText
+                ),
+                collation: row[safe: 8]?.asText?.nilIfEmpty
             )
         }
         return columns
@@ -559,10 +595,31 @@ struct PostgreSQLCatalogColumnDDL: Equatable {
     let typeSpelling: String
     let defaultExpression: String?
     let generationExpression: String?
+    let collation: String?
 
-    init(typeSpelling: String, expression: String?, isGenerated: Bool, readsSequence: Bool) {
+    /// `sequenceReferences` is nil when the column read could not pair its sequence arrays. A default
+    /// with no qualified spelling falls back to the text `information_schema` reports under the
+    /// table's own `search_path`, where a sequence beside the table is already relative, so an
+    /// unreadable pairing costs the qualified names of everything else and nothing worse.
+    init(
+        typeSpelling: String,
+        expression: String?,
+        isGenerated: Bool,
+        sequenceReferences: [PostgreSQLSequenceReference]?,
+        standardConformingStrings: Bool?,
+        collation: String?
+    ) {
         self.typeSpelling = typeSpelling
         self.generationExpression = isGenerated ? expression : nil
-        self.defaultExpression = isGenerated || readsSequence ? nil : expression
+        self.collation = collation
+        guard !isGenerated, let expression, let sequenceReferences else {
+            self.defaultExpression = nil
+            return
+        }
+        self.defaultExpression = PostgreSQLSequenceReference.relativize(
+            expression,
+            references: sequenceReferences,
+            standardConformingStrings: standardConformingStrings
+        )
     }
 }
