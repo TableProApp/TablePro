@@ -305,7 +305,9 @@ struct FieldEditorResolverImageTests {
 
     /// `jsonb[]` and `jsonb[][]` are one type in PostgreSQL's catalog and any array column may
     /// carry a dimension prefix, so the declared type cannot rule either out on a given row. The
-    /// text editor over the raw literal is the lossless fallback, as it is in the grid.
+    /// text editor over the raw literal is the lossless fallback, as it is in the grid, and which
+    /// text editor is the value's own length talking: both literals here sit under
+    /// `multiLineValueThreshold`.
     @Test("A literal the element list cannot represent falls back to the text editor")
     func unrepresentableArrayFallsBackToText() {
         #expect(
@@ -313,7 +315,7 @@ struct FieldEditorResolverImageTests {
                 for: jsonArrayType,
                 isLongText: false,
                 originalValue: #"{{"{\"id\": 1}"},{"{\"id\": 2}"}}"#
-            ) == .multiLine
+            ) == .singleLine
         )
         #expect(
             FieldEditorResolver.resolve(

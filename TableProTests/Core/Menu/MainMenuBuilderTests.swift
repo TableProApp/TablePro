@@ -478,7 +478,9 @@ struct MainMenuValidationTests {
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
+        context.hasRowSelection = true
         context.canTruncateSelectedTables = true
+        context.canDropSelectedTables = true
         context.canShowTableStructure = true
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true
