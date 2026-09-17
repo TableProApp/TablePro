@@ -20,6 +20,7 @@ pub struct SqlTarget {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Format {
     Csv,
+    Xlsx,
     Json,
     Markdown,
     Html,
@@ -30,9 +31,17 @@ enum Format {
 impl Format {
     /// Every format a query result can take. A browse tab adds SQL,
     /// which needs a table to insert into.
-    const ALL: [Format; 5] = [Format::Csv, Format::Json, Format::Markdown, Format::Html, Format::Xml];
-    const ALL_WITH_SQL: [Format; 6] = [
+    const ALL: [Format; 6] = [
         Format::Csv,
+        Format::Xlsx,
+        Format::Json,
+        Format::Markdown,
+        Format::Html,
+        Format::Xml,
+    ];
+    const ALL_WITH_SQL: [Format; 7] = [
+        Format::Csv,
+        Format::Xlsx,
         Format::Json,
         Format::Markdown,
         Format::Html,
@@ -50,6 +59,7 @@ impl Format {
     fn label(self) -> &'static str {
         match self {
             Format::Csv => "CSV",
+            Format::Xlsx => "Excel",
             Format::Json => "JSON",
             Format::Markdown => "Markdown",
             Format::Html => "HTML",
@@ -61,6 +71,7 @@ impl Format {
     fn extension(self) -> &'static str {
         match self {
             Format::Csv => "csv",
+            Format::Xlsx => "xlsx",
             Format::Json => "json",
             Format::Markdown => "md",
             Format::Html => "html",
@@ -72,6 +83,7 @@ impl Format {
     fn mime_type(self) -> &'static str {
         match self {
             Format::Csv => "text/csv",
+            Format::Xlsx => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             Format::Json => "application/json",
             Format::Markdown => "text/markdown",
             Format::Html => "text/html",
@@ -352,25 +364,33 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
     file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
         let Ok(file) = outcome else { return };
         let Some(path) = file.path() else { return };
-        let encoded = match format {
-            Format::Csv => export::render_csv(&result.columns, &result.rows, &options).map_err(|e| e.to_string()),
-            Format::Json => Ok(export::render_json(&result.columns, &result.rows)),
-            Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows)),
-            Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title)),
-            Format::Xml => Ok(export::render_xml(&result.columns, &result.rows)),
+        // Bytes rather than text, because a workbook is a zip archive.
+        // The text formats hand over their own bytes unchanged.
+        let encoded: Result<Vec<u8>, String> = match format {
+            Format::Csv => export::render_csv(&result.columns, &result.rows, &options)
+                .map(String::into_bytes)
+                .map_err(|e| e.to_string()),
+            Format::Xlsx => {
+                export::render_xlsx(&result.columns, &result.rows, &title).map_err(|error| error.to_string())
+            }
+            Format::Json => Ok(export::render_json(&result.columns, &result.rows).into_bytes()),
+            Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows).into_bytes()),
+            Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title).into_bytes()),
+            Format::Xml => Ok(export::render_xml(&result.columns, &result.rows).into_bytes()),
             Format::Sql => match target.as_ref() {
                 Some(target) => Ok(export::render_sql_insert(
                     tablepro_core::dialect::dialect_for(&target.driver_id),
                     &target.table,
                     &result.columns,
                     &result.rows,
-                )),
+                )
+                .into_bytes()),
                 // The format is only offered with a target, so this is
                 // unreachable through the dialog.
                 None => Err(crate::i18n::gettext("This result has no table to insert into.")),
             },
         };
-        let written = encoded.and_then(|text| std::fs::write(&path, text).map_err(|e| e.to_string()));
+        let written = encoded.and_then(|bytes| std::fs::write(&path, bytes).map_err(|e| e.to_string()));
         match written {
             Ok(()) => toast_overlay.add_toast(adw::Toast::new(&crate::i18n::gettext_f(
                 "Exported to {path}",
@@ -391,4 +411,30 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_format_has_a_label_extension_and_type_of_its_own() {
+        let mut labels: Vec<&str> = Format::ALL_WITH_SQL.iter().map(|f| f.label()).collect();
+        let mut extensions: Vec<&str> = Format::ALL_WITH_SQL.iter().map(|f| f.extension()).collect();
+        let mut types: Vec<&str> = Format::ALL_WITH_SQL.iter().map(|f| f.mime_type()).collect();
+
+        for list in [&mut labels, &mut extensions, &mut types] {
+            let before = list.len();
+            list.sort_unstable();
+            list.dedup();
+            assert_eq!(list.len(), before, "two formats share an entry: {list:?}");
+        }
+    }
+
+    #[test]
+    fn sql_is_the_only_format_that_needs_a_table() {
+        assert!(!Format::offered(None).contains(&Format::Sql));
+        assert!(Format::offered(None).contains(&Format::Xlsx));
+        assert_eq!(Format::offered(None).len() + 1, Format::ALL_WITH_SQL.len());
+    }
 }

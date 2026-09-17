@@ -40,6 +40,9 @@ tiberius = { version = "0.12", default-features = false, features = ["tds73", "r
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
 rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
+# No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
+# the build free of another C dependency.
+rust_xlsxwriter = { version = "0.99", default-features = false, features = ["chrono"] }
 futures = "0.3"
 libsqlite3-sys = ">=0.30.1, <0.38.0"
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }

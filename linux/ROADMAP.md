@@ -139,7 +139,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] Export current grid to CSV / JSON from the result grid's right-click menu and the paginator (query results included)
 - [x] Export with CSV options: NULL handling, line breaks, header row, formula sanitizing, delimiter, quote style, line endings, decimal separator
 - [x] Export as SQL INSERT / Markdown / HTML / XML
-- [ ] Export as XLSX
+- [x] Export as XLSX, with numbers, dates and booleans in the types Excel has for them
 - [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
 - [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
 - [ ] Import CSV → table (with column mapping dialog)

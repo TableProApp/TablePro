@@ -8,6 +8,7 @@ mod markdown;
 mod sql;
 mod tsv;
 mod value_text;
+mod xlsx;
 mod xml;
 
 use thiserror::Error;
@@ -25,6 +26,7 @@ pub use markdown::render_markdown;
 pub use sql::{literal, render_sql_insert};
 pub use tsv::{render_tsv, tsv_writer_builder};
 pub use value_text::{value_text, value_to_text};
+pub use xlsx::render_xlsx;
 pub use xml::render_xml;
 
 #[derive(Debug, Error)]
@@ -37,6 +39,15 @@ pub enum EncodeError {
 
     #[error("CSV output is not valid UTF-8: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
+
+    #[error("XLSX encoding failed: {0}")]
+    Xlsx(String),
+
+    #[error("a sheet holds {limit} rows, and this result has {got}")]
+    TooManyRows { got: usize, limit: usize },
+
+    #[error("a sheet holds {limit} columns, and this result has {got}")]
+    TooManyColumns { got: usize, limit: usize },
 }
 
 /// The text of one cell, at the precision its column declares.

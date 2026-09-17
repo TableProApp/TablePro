@@ -16,6 +16,7 @@ csv.workspace = true
 futures.workspace = true
 num-bigint.workspace = true
 rust_decimal.workspace = true
+rust_xlsxwriter.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true
 serde.workspace = true
