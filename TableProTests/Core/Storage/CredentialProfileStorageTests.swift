@@ -17,6 +17,9 @@ struct CredentialProfileStorageTests {
     private let keychain: InMemoryKeychain
     private let metadata: SyncMetadataStorage
     private let directory: URL
+    /// The system keychain is out of reach in a test host, so every store it stamps would read back
+    /// untrusted and the trust assertions here would pass or fail on the environment.
+    private let integrity: ConnectionStoreIntegrity
 
     init() {
         let unique = UUID().uuidString
@@ -30,18 +33,21 @@ struct CredentialProfileStorageTests {
             userDefaults: UserDefaults(suiteName: "com.TablePro.tests.CredProfileSync.\(unique)")!
         )
         let tracker = SyncChangeTracker(metadataStorage: metadata)
+        integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: UserDefaults(suiteName: "com.TablePro.tests.CredProfileConn.\(unique)")!,
             syncTracker: tracker,
-            keychain: keychain
+            keychain: keychain,
+            integrity: integrity
         )
         connections = connectionStorage
         storage = CredentialProfileStorage(
             fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             syncTracker: tracker,
-            connectionStorage: connectionStorage
+            connectionStorage: connectionStorage,
+            integrity: integrity
         )
     }
 
@@ -152,7 +158,8 @@ struct CredentialProfileStorageTests {
             fileURL: lockedDirectory.appendingPathComponent("credentialProfiles.json"),
             keychain: lockedKeychain,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: lockedConnections
+            connectionStorage: lockedConnections,
+            integrity: integrity
         )
 
         let profile = makeProfile()
@@ -180,7 +187,8 @@ struct CredentialProfileStorageTests {
             fileURL: fileURL,
             keychain: InMemoryKeychain(),
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: connections
+            connectionStorage: connections,
+            integrity: integrity
         )
 
         #expect(corrupted.loadProfiles().isEmpty)
@@ -209,7 +217,8 @@ struct CredentialProfileStorageTests {
             fileURL: fileURL,
             keychain: keychain,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: connections
+            connectionStorage: connections,
+            integrity: integrity
         )
         _ = reopened.loadProfiles()
 
@@ -233,7 +242,8 @@ struct CredentialProfileStorageTests {
             fileURL: fileURL,
             keychain: keychain,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: connections
+            connectionStorage: connections,
+            integrity: integrity
         )
         #expect(store.loadProfiles().count == 1)
         #expect(!store.storeIsTrusted)
@@ -255,7 +265,8 @@ struct CredentialProfileStorageTests {
             fileURL: fileURL,
             keychain: keychain,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: connections
+            connectionStorage: connections,
+            integrity: integrity
         )
         var connection = TestFixtures.makeConnection()
         connection.credentialMode = .profile(id: planted.id)

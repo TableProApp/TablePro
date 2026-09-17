@@ -44,13 +44,15 @@ final class ConnectionStorage {
         syncTracker: SyncChangeTracker = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
-        appEvents: @escaping @autoclosure () -> AppEvents = .shared
+        appEvents: @escaping @autoclosure () -> AppEvents = .shared,
+        integrity: ConnectionStoreIntegrity = .shared
     ) {
         self.file = IntegrityStampedFileStore(
             fileURL: fileURL,
             label: "connections.json",
             logger: Self.logger,
-            userSaveEstablishesTrust: true
+            userSaveEstablishesTrust: true,
+            integrity: integrity
         )
         self.defaults = userDefaults
         self.syncTracker = syncTracker

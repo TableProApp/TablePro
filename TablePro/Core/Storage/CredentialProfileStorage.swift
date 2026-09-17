@@ -45,13 +45,15 @@ final class CredentialProfileStorage {
         fileURL: URL = CredentialProfileStorage.defaultFileURL(),
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
         syncTracker: SyncChangeTracker = .shared,
-        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
+        integrity: ConnectionStoreIntegrity = .shared
     ) {
         self.file = IntegrityStampedFileStore(
             fileURL: fileURL,
             label: "credentialProfiles.json",
             logger: Self.logger,
-            userSaveEstablishesTrust: false
+            userSaveEstablishesTrust: false,
+            integrity: integrity
         )
         self.keychain = keychain
         self.syncTracker = syncTracker

@@ -18,6 +18,9 @@ struct ConnectionLibraryStorageTests {
     private let appEvents: AppEvents
     private let storage: ConnectionStorage
     private let groupStorage: GroupStorage
+    /// The system keychain is out of reach in a test host, so a store stamped through it reads back
+    /// untrusted and the migration's trust assertion would turn on the environment.
+    private let integrity: ConnectionStoreIntegrity
 
     init() throws {
         let unique = UUID().uuidString
@@ -31,12 +34,15 @@ struct ConnectionLibraryStorageTests {
             withIntermediateDirectories: true
         )
         let events = AppEvents()
+        let storeIntegrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
         let connectionStorage = ConnectionStorage(
             fileURL: storeURL,
             userDefaults: suiteDefaults,
             syncTracker: tracker,
-            appEvents: events
+            appEvents: events,
+            integrity: storeIntegrity
         )
+        integrity = storeIntegrity
         defaults = suiteDefaults
         fileURL = storeURL
         appEvents = events
@@ -150,15 +156,12 @@ struct ConnectionLibraryStorageTests {
         let first = DatabaseConnection(name: "First", type: .mysql, sortOrder: 0)
         let second = DatabaseConnection(name: "Second", type: .mysql, sortOrder: 0)
         #expect(storage.saveConnections([first, second]))
-        guard storage.storeIsTrusted else {
-            Issue.record("The connection store integrity key is unavailable in this test host")
-            return
-        }
+        #expect(storage.storeIsTrusted)
 
-        let migrating = ConnectionStorage(fileURL: fileURL, userDefaults: defaults)
+        let migrating = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, integrity: integrity)
         #expect(migrating.loadConnections().map(\.sortOrder) == [0, 1])
 
-        let relaunched = ConnectionStorage(fileURL: fileURL, userDefaults: defaults)
+        let relaunched = ConnectionStorage(fileURL: fileURL, userDefaults: defaults, integrity: integrity)
         _ = relaunched.loadConnections()
         #expect(relaunched.storeIsTrusted)
     }
