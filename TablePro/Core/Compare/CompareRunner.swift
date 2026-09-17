@@ -438,8 +438,9 @@ internal struct CompareRunner {
                     String(localized: "The target driver cannot generate a sync script.")
                 )
             }
-            var statements = try SchemaSyncScriptBuilder(targetDriver: plugin)
-                .build(operations: tableOperations, foreignKeysByTable: foreignKeys)
+            var statements = try SchemaSyncScriptBuilder(
+                targetDriver: plugin, targetDatabaseType: driver.connection.type
+            ).build(operations: tableOperations, foreignKeysByTable: foreignKeys)
             let sourceBuilder = SourceObjectSyncBuilder(
                 targetDriver: plugin, targetDatabaseType: driver.connection.type
             )

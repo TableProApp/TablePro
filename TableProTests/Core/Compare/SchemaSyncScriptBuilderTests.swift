@@ -88,7 +88,7 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
     override func setUp() {
         super.setUp()
         driver = StubSyncDriver()
-        builder = SchemaSyncScriptBuilder(targetDriver: driver)
+        builder = SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .mysql)
     }
 
     override func tearDown() {
@@ -283,6 +283,10 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
 final class SyncSafetyClassifierTests: XCTestCase {
     private let classifier = SyncSafetyClassifier()
 
+    private func hazards(for change: SchemaChange, family: SQLTypeFamily = .mysql) -> [SyncHazard] {
+        classifier.hazards(for: change, typeFamily: family)
+    }
+
     private func column(_ name: String, _ dataType: String, nullable: Bool = true) -> EditableColumnDefinition {
         EditableColumnDefinition(
             id: UUID(), name: name, dataType: dataType, isNullable: nullable, defaultValue: nil,
@@ -292,14 +296,14 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testDropColumnIsRefusedByDefault() {
-        let hazards = classifier.hazards(for: .deleteColumn(column("email", "varchar(255)")))
+        let hazards = hazards(for: .deleteColumn(column("email", "varchar(255)")))
 
         XCTAssertEqual(hazards.first?.severity, .refusedByDefault)
         XCTAssertEqual(hazards.first?.kind, .dataLoss)
     }
 
     func testNarrowingTypeChangeIsRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("name", "varchar(255)"),
             new: column("name", "varchar(50)")
         ))
@@ -308,7 +312,7 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testWideningTypeChangeIsNotRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("name", "varchar(50)"),
             new: column("name", "varchar(255)")
         ))
@@ -317,7 +321,7 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testMakingColumnNotNullIsRefused() {
-        let hazards = classifier.hazards(for: .modifyColumn(
+        let hazards = hazards(for: .modifyColumn(
             old: column("email", "varchar(50)", nullable: true),
             new: column("email", "varchar(50)", nullable: false)
         ))
@@ -326,11 +330,11 @@ final class SyncSafetyClassifierTests: XCTestCase {
     }
 
     func testAddColumnCarriesNoHazard() {
-        XCTAssertTrue(classifier.hazards(for: .addColumn(column("nickname", "varchar(20)"))).isEmpty)
+        XCTAssertTrue(hazards(for: .addColumn(column("nickname", "varchar(20)"))).isEmpty)
     }
 
     func testPrimaryKeyChangeIsRefused() {
-        let hazards = classifier.hazards(for: .modifyPrimaryKey(old: ["id"], new: ["id", "tenant"]))
+        let hazards = hazards(for: .modifyPrimaryKey(old: ["id"], new: ["id", "tenant"]))
 
         XCTAssertEqual(hazards.first?.severity, .refusedByDefault)
     }
