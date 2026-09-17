@@ -3,7 +3,11 @@ use std::path::PathBuf;
 use tablepro_core::credentials::{CredentialPrompt, PromptField, PromptPurpose, PromptReason};
 
 const HOST_KEY_OPENING: &str = "The authenticity of host '";
-const HOST_KEY_FINGERPRINT: &str = " key fingerprint is: ";
+/// OpenSSH 10 writes "ED25519 key fingerprint is: SHA256:…" while 9.x
+/// writes "ED25519 key fingerprint is SHA256:…." Matching up to the
+/// word reads both, and the colon and the closing period come off
+/// with the surrounding space.
+const HOST_KEY_FINGERPRINT: &str = " key fingerprint is";
 const HOST_KEY_QUESTION: &str = "(yes/no/[fingerprint])? ";
 const PASSPHRASE_OPENING: &str = "Enter passphrase for key '";
 const PASSWORD_ENDING: &str = "'s password: ";
@@ -104,8 +108,9 @@ fn host_key_confirmation(text: &str) -> Option<AskpassPrompt> {
     let quoted = text.get(HOST_KEY_OPENING.len()..)?.split_once('\'')?.0;
     let host = quoted.split_once(" (").map_or(quoted, |(host, _)| host);
     let (algorithm, fingerprint) = text.lines().find_map(|line| {
-        let (algorithm, fingerprint) = line.split_once(HOST_KEY_FINGERPRINT)?;
-        Some((algorithm.trim(), fingerprint.trim()))
+        let (algorithm, rest) = line.split_once(HOST_KEY_FINGERPRINT)?;
+        let fingerprint = rest.trim_start_matches(':').trim().trim_end_matches('.');
+        Some((algorithm.trim(), fingerprint))
     })?;
     Some(AskpassPrompt::HostKeyConfirmation {
         host: host.to_owned(),
@@ -185,6 +190,37 @@ mod tests {
                 text: "PIN: ".to_owned()
             }
         );
+    }
+
+    /// Ubuntu 24.04 ships OpenSSH 9.6, which writes the fingerprint
+    /// line without the colon and with a closing period. It is what the
+    /// CI runner has, so the parser has to read it too.
+    #[test]
+    fn askpass_classify_matches_openssh_9_6_strings() {
+        let host_key = "The authenticity of host 'bastion (192.0.2.10)' can't be established.\nED25519 key fingerprint is SHA256:Qa4bFq8b0hN2kL9x.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ";
+
+        assert_eq!(
+            AskpassPrompt::classify("", host_key),
+            AskpassPrompt::HostKeyConfirmation {
+                host: "bastion".to_owned(),
+                algorithm: "ED25519".to_owned(),
+                fingerprint: "SHA256:Qa4bFq8b0hN2kL9x".to_owned(),
+            }
+        );
+    }
+
+    /// OpenSSH keeps a second, older question without the
+    /// `[fingerprint]` arm, which it asks for things that are not host
+    /// keys. Answering it as though it were one would say yes to a
+    /// question nobody read.
+    #[test]
+    fn a_question_without_the_fingerprint_arm_is_not_a_host_key_prompt() {
+        let host_key = "The authenticity of host 'bastion (192.0.2.10)' can't be established.\nED25519 key fingerprint is SHA256:abc.\nAre you sure you want to continue connecting (yes/no)? ";
+
+        assert!(!matches!(
+            AskpassPrompt::classify("", host_key),
+            AskpassPrompt::HostKeyConfirmation { .. }
+        ));
     }
 
     #[test]

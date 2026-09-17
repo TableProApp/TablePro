@@ -171,6 +171,10 @@ mod tests {
 
     const HOST_KEY_PROMPT: &str = "The authenticity of host 'bastion (192.0.2.10)' can't be established.\nED25519 key fingerprint is: SHA256:abc\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ";
 
+    /// The same prompt as OpenSSH 9.6 writes it, which is what Ubuntu
+    /// 24.04 and the CI runner have: no colon, and a closing period.
+    const HOST_KEY_PROMPT_9_6: &str = "The authenticity of host 'bastion (192.0.2.10)' can't be established.\nED25519 key fingerprint is SHA256:abc.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? ";
+
     fn current_uid() -> u32 {
         tempfile::tempdir().unwrap().path().metadata().unwrap().uid()
     }
@@ -232,6 +236,20 @@ mod tests {
                 reason: PromptReason::Rejected
             }
         );
+    }
+
+    /// The bridge has to answer the older wording too, or ssh gets no
+    /// answer and reports the host key as unverified.
+    #[tokio::test]
+    async fn an_older_openssh_host_key_prompt_is_answered_the_same_way() {
+        let accepting = Arc::new(FakePrompter::new([PromptReply::Submitted {
+            values: Vec::new(),
+            remember: false,
+        }]));
+        let mut bridge = bridge(CredentialInteraction::Attended(accepting), &SshAuth::Agent);
+
+        assert_eq!(exchange(&mut bridge, "", HOST_KEY_PROMPT_9_6).await, b"\x00yes");
+        assert!(bridge.declined_host_key().is_none());
     }
 
     #[tokio::test]
