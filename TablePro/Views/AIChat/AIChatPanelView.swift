@@ -28,6 +28,18 @@ struct AIChatPanelView: View {
         settingsManager.ai.hasActiveProvider
     }
 
+    /// The first call still waiting, in transcript order, which is the only one Return may answer.
+    private var primaryPendingToolUseId: String? {
+        for turn in viewModel.messages {
+            for block in turn.blocks {
+                guard case .toolUse(let useBlock) = block.kind,
+                      case .pending = useBlock.approvalState else { continue }
+                return useBlock.id
+            }
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !hasConfiguredProvider && viewModel.messages.isEmpty {
@@ -46,6 +58,8 @@ struct AIChatPanelView: View {
                 inputArea
             }
         }
+        .environment(\.chatPrimaryPendingToolUseId, primaryPendingToolUseId)
+        .environment(\.chatApprovalConnectionName, connection.name)
         .onAppear {
             viewModel.connection = connection
         }

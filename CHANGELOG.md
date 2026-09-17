@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL Server sessions open with the ANSI SET profile the server requires, matching every other client.
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
 - Query editor command bar with one control size, the container picker leading and the commands trailing.
+- Approval cards name the statement and the connection, and **Cancel** on one is now **Reject**.
 
 ### Removed
 
@@ -229,6 +230,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ClickHouse autocomplete offering 18 function names the server rejects, `TOSTRING` and `UNIQ` among them.
 - Completion inserted beside a non-ASCII prefix instead of replacing it: `SELECT 名` became `SELECT 名名前`.
 - Caret landing after the closing parenthesis when accepting a function in the filter panel's Raw SQL field.
+- Run and Reject did nothing on every approval card but the first when a turn proposed several tool calls.
+- Return answered an arbitrary approval card when more than one was waiting.
+- A reply still arriving was lost when its window closed, its connection dropped, or its session ended.
+- The assistant held a provider and its open stream for the rest of the session when a window closed over an approval card.
 
 ### Security
 

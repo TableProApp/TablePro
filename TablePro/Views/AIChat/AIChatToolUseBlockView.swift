@@ -55,7 +55,25 @@ struct AIChatToolUseBlockView: View {
             }
             .buttonStyle(.borderless)
 
-            if shouldShowInput {
+            if isPending, let proposedStatement {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(proposedStatement)
+                        .font(ThemeEngine.shared.valueFontSwiftUI)
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+                .accessibilityLabel(String(localized: "Proposed statement"))
+                .accessibilityValue(proposedStatement)
+            } else if shouldShowInput {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(prettyInput)
                         .font(.caption)
@@ -75,10 +93,35 @@ struct AIChatToolUseBlockView: View {
             }
 
             if case .pending = block.approvalState {
-                ToolApprovalActionsRow(toolUseId: block.id, toolName: block.name)
+                ToolApprovalActionsRow(
+                    toolUseId: block.id,
+                    toolName: block.name,
+                    allowsStandingGrant: allowsStandingGrant,
+                    standingGrantUnavailableReason: standingGrantUnavailableReason
+                )
             }
         }
         .padding(.horizontal, 8)
+    }
+
+    /// A destructive statement is confirmed every time it is proposed. No standing grant, no Safe
+    /// Mode level and no earlier answer covers the next one.
+    private var allowsStandingGrant: Bool {
+        ChatToolRegistry.shared.tool(named: block.name)?.mode != .agentOnly
+    }
+
+    private var standingGrantUnavailableReason: String? {
+        guard !allowsStandingGrant else { return nil }
+        return String(localized: "Confirmed each time.")
+    }
+
+    /// The statement itself, when the call carries one, so the user answers about SQL rather than
+    /// about a tool name with a JSON blob under it. The whole input stays behind the disclosure.
+    private var proposedStatement: String? {
+        guard case .object(let fields) = block.input,
+              case .string(let query)? = fields["query"],
+              !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return query
     }
 
     private var callingLabel: String {
