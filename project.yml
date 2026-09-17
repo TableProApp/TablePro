@@ -308,6 +308,13 @@ targets:
         PRODUCT_NAME: $(TARGET_NAME:c99extidentifier)
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
+        # The app and all 41 plugin bundles link this framework, and every one of those links
+        # waits for its link step without this. It is Swift-only, so the build system can emit a
+        # TBD and unblock them.
+        EAGER_LINKING: YES
+        # No Objective-C anywhere in the framework and nothing imports the generated header, which
+        # the app then strips again with removeHeaders at embed time.
+        SWIFT_INSTALL_OBJC_HEADER: NO
 
   # ─── MCP stdio bridge, embedded in the app as Contents/MacOS/tablepro-mcp ─────
 
