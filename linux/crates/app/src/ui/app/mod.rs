@@ -1,5 +1,6 @@
 mod browse;
 mod connection;
+mod import;
 mod ran_statements;
 mod row_ops;
 mod status_pages;
@@ -109,6 +110,7 @@ pub struct App {
     schema_buffer: gtk::TextBuffer,
     history_dialog: Option<Controller<HistoryDialog>>,
     saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
+    import_dialog: Option<Controller<super::import_dialog::ImportCsvDialog>>,
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
@@ -358,6 +360,22 @@ pub enum AppMsg {
     SetConnectionGroup(Uuid, Option<String>),
     ExportConnections,
     ImportConnections,
+    /// "Import CSV…" from a table's own menu: ask for a file, then
+    /// open the mapping dialog against that table's columns.
+    ImportCsvRequested {
+        schema: Option<String>,
+        table: String,
+    },
+    /// The file came back with the table's columns beside it, so the
+    /// mapping dialog has everything it needs.
+    ImportCsvReady {
+        schema: Option<String>,
+        table: String,
+        columns: Vec<tablepro_core::ColumnInfo>,
+        bytes: Vec<u8>,
+    },
+    /// The mapping is settled, so the rows can be written.
+    ImportCsvRun(Box<super::import_dialog::CsvImport>),
     /// The file the user picked, read off the GTK thread.
     ConnectionsFileRead {
         path: std::path::PathBuf,
@@ -973,6 +991,7 @@ impl SimpleComponent for App {
                 SidebarRowOutput::ShowCreateTable { schema, name } => {
                     AppMsg::ShowCreateTableForExisting { schema, table: name }
                 }
+                SidebarRowOutput::ImportCsv { schema, name } => AppMsg::ImportCsvRequested { schema, table: name },
                 SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             });
 
@@ -1265,6 +1284,7 @@ impl SimpleComponent for App {
             schema_buffer: build_schema_buffer(),
             history_dialog: None,
             saved_queries_dialog: None,
+            import_dialog: None,
             welcome_view,
             current_driver_id: None,
             table_names: Vec::new(),
@@ -1464,6 +1484,14 @@ impl SimpleComponent for App {
             AppMsg::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group, sender),
             AppMsg::ExportConnections => self.on_export_connections(sender),
             AppMsg::ImportConnections => self.on_import_connections(sender),
+            AppMsg::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table, sender),
+            AppMsg::ImportCsvReady {
+                schema,
+                table,
+                columns,
+                bytes,
+            } => self.on_import_csv_ready(schema, table, columns, bytes, sender),
+            AppMsg::ImportCsvRun(import) => self.on_import_csv_run(*import, sender),
             AppMsg::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes, sender),
             AppMsg::SaveActiveQuery => self.on_save_active_query(sender),
             AppMsg::SaveQueryNamed { name, query } => self.on_save_query_named(name, query, sender),

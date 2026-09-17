@@ -52,6 +52,7 @@ crates/app/src/test_support/wait_timed_out.rs
 crates/app/src/test_support/widget_lookup.rs
 crates/app/src/ui/app/browse.rs
 crates/app/src/ui/app/connection.rs
+crates/app/src/ui/app/import.rs
 crates/app/src/ui/app/mod.rs
 crates/app/src/ui/app/ran_statements.rs
 crates/app/src/ui/app/row_ops.rs
@@ -75,6 +76,7 @@ crates/app/src/ui/filter_strip.rs
 crates/app/src/ui/grid.rs
 crates/app/src/ui/history_dialog.rs
 crates/app/src/ui/icons.rs
+crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs

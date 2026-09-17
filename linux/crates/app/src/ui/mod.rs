@@ -13,6 +13,7 @@ mod filter_strip;
 mod grid;
 mod history_dialog;
 pub(crate) mod icons;
+mod import_dialog;
 mod preferences_dialog;
 mod row_object;
 mod saved_queries_dialog;

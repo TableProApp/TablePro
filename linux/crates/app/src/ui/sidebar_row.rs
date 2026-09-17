@@ -23,6 +23,7 @@ pub enum SidebarRowMsg {
     OpenInNewTab,
     EditStructure,
     ShowCreateTable,
+    ImportCsv,
     DropTable,
 }
 
@@ -42,6 +43,9 @@ pub enum SidebarRowOutput {
     /// it in a fresh editor tab. Useful for schema export, sharing,
     /// or just reading the canonical DDL without going through pg_dump.
     ShowCreateTable { schema: Option<String>, name: String },
+    /// Right-click "Import CSV…" → App asks for a file and opens the
+    /// mapping dialog against this table's columns.
+    ImportCsv { schema: Option<String>, name: String },
     /// Right-click "Drop Table…" → App presents the AdwAlertDialog
     /// confirmation; on confirm runs DROP TABLE and closes any open
     /// tabs for the dropped table.
@@ -185,6 +189,12 @@ impl FactoryComponent for SidebarRow {
             Some("sidebar-row.show-create-table"),
         );
         menu.append_section(None, &structure_section);
+        let data_section = gtk::gio::Menu::new();
+        data_section.append(
+            Some(&crate::i18n::gettext("Import CSV…")),
+            Some("sidebar-row.import-csv"),
+        );
+        menu.append_section(None, &data_section);
         let mutate_section = gtk::gio::Menu::new();
         mutate_section.append(
             Some(&crate::i18n::gettext("Drop Table…")),
@@ -216,11 +226,15 @@ impl FactoryComponent for SidebarRow {
         let show_create_action = gtk::gio::ActionEntry::builder("show-create-table")
             .activate(move |_, _, _| sender_show.input(SidebarRowMsg::ShowCreateTable))
             .build();
+        let sender_import = sender.clone();
+        let import_action = gtk::gio::ActionEntry::builder("import-csv")
+            .activate(move |_, _, _| sender_import.input(SidebarRowMsg::ImportCsv))
+            .build();
         let sender_drop = sender.clone();
         let drop_action = gtk::gio::ActionEntry::builder("drop-table")
             .activate(move |_, _, _| sender_drop.input(SidebarRowMsg::DropTable))
             .build();
-        group.add_action_entries([open_action, edit_action, show_create_action, drop_action]);
+        group.add_action_entries([open_action, edit_action, show_create_action, import_action, drop_action]);
         root.insert_action_group("sidebar-row", Some(&group));
 
         // Defence against the factory-clears-row-while-menu-is-open
@@ -283,6 +297,12 @@ impl FactoryComponent for SidebarRow {
             }
             SidebarRowMsg::ShowCreateTable => {
                 let _ = sender.output(SidebarRowOutput::ShowCreateTable {
+                    schema: self.info.schema.clone(),
+                    name: self.info.name.clone(),
+                });
+            }
+            SidebarRowMsg::ImportCsv => {
+                let _ = sender.output(SidebarRowOutput::ImportCsv {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });

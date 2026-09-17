@@ -142,7 +142,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] Export as XLSX, with numbers, dates and booleans in the types Excel has for them
 - [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
 - [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
-- [ ] Import CSV → table (with column mapping dialog)
+- [x] Import CSV into a table, from the table's own menu, with a mapping dialog and one transaction for the whole file
 - [x] Run SQL file: opened from the editor's menu into the tab, then run like anything else
 
 ### Schema browser (partial)
