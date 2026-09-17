@@ -55,6 +55,7 @@ struct ClickHouseIndexEditTests {
     /// The issue used to say the database "does not create indexes with a statement", while the
     /// ClickHouse docs send the reader to `ALTER TABLE … ADD INDEX`, which is one.
     @Test("Create Table creates the table and says it cannot add the index")
+    @MainActor
     func createTableNamesTheIndexItCannotAdd() {
         let plan = CreateTablePlan(
             definition: PluginCreateTableDefinition(
