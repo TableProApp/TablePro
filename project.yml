@@ -405,7 +405,6 @@ targets:
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Http.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+Schema.swift
       - Plugins/ClickHouseDriverPlugin/ClickHousePluginDriver+TableOperations.swift
-      - Plugins/ClickHouseDriverPlugin/ClickHouseSkippingIndexType.swift
       - Plugins/ClickHouseDriverPlugin/ClickHouseTableOperations.swift
       - Plugins/CloudflareR2SQLDriverPlugin/CloudflareR2SQLMetadata.swift
       - Plugins/CassandraDriverPlugin/CassandraIndexStatements.swift
