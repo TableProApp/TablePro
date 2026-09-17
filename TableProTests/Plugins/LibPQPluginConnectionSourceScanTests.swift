@@ -29,6 +29,7 @@ struct LibPQPluginConnectionSourceScanTests {
         let scan = try StateLockScan(source: source)
 
         #expect(scan.stateNames.isSuperset(of: ["_cachedServerVersion", "_cachedServerVersionNumber", "_isConnected"]))
+        #expect(scan.endsBalanced, "The scan lost track of a literal or a brace, so the code after it went unchecked")
         #expect(scan.unlockedAccesses.isEmpty, "Touched without stateLock held: \(scan.unlockedAccesses)")
     }
 
@@ -72,20 +73,52 @@ struct LibPQPluginConnectionSourceScanTests {
         let scan = try StateLockScan(source: source)
 
         #expect(scan.stateNames == ["_value", "_label"])
+        #expect(scan.endsBalanced)
         #expect(scan.unlockedAccesses == ["13:_value", "20:_label", "20:_value"])
+    }
+
+    @Test("The scan reports a literal it cannot read instead of passing the code after it unchecked")
+    func scanReportsLiteralItCannotRead() throws {
+        let rawStringEndingInBackslash = """
+        final class Sample {
+            private var _value = 0
+            private let separator = #"\\"#
+
+            func read() -> Int {
+                _value
+            }
+        }
+        """
+        let regexHoldingQuote = """
+        final class Sample {
+            private var _value = 0
+            private let pattern = /"/
+
+            func read() -> Int {
+                _value
+            }
+        }
+        """
+
+        for source in [rawStringEndingInBackslash, regexHoldingQuote] {
+            let scan = try StateLockScan(source: source)
+            #expect(!scan.endsBalanced, "Read as balanced: \(source)")
+        }
     }
 }
 
 private struct StateLockScan {
     let stateNames: Set<String>
     let unlockedAccesses: [String]
+    let endsBalanced: Bool
 
     init(source: String) throws {
         let declarationPattern = try NSRegularExpression(pattern: #"\b(?:var|let)\s+(_[A-Za-z]\w*)"#)
         let tokenPattern = try NSRegularExpression(
             pattern: #"[{}]|stateLock\.(?:withLock\b|lock\(\)|unlock\(\))|\bdefer\b|(?<!\w)_[A-Za-z]\w*"#
         )
-        let code = Self.maskingCommentsAndLiterals(Array(source.utf16))
+        let masking = Self.maskingCommentsAndLiterals(Array(source.utf16))
+        let code = masking.units
         let text = String(decoding: code, as: UTF16.self)
         let nsText = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
@@ -139,12 +172,13 @@ private struct StateLockScan {
 
         stateNames = names
         unlockedAccesses = unlocked
+        endsBalanced = depth == 0 && !masking.endsInsideLiteral
     }
 
     /// Blanks comments and string literal text to spaces, keeping line breaks and every offset, so
     /// a brace or a property name quoted in SQL or prose is not read as code. Interpolated
     /// expressions stay, because `"\(_value)"` reads the property.
-    private static func maskingCommentsAndLiterals(_ units: [UInt16]) -> [UInt16] {
+    private static func maskingCommentsAndLiterals(_ units: [UInt16]) -> (units: [UInt16], endsInsideLiteral: Bool) {
         let newline = UInt16(UInt8(ascii: "\n"))
         let quote = UInt16(UInt8(ascii: "\""))
         let slash = UInt16(UInt8(ascii: "/"))
@@ -212,6 +246,6 @@ private struct StateLockScan {
                 index += 1
             }
         }
-        return masked
+        return (masked, openDelimiter != nil || !interpolations.isEmpty)
     }
 }
