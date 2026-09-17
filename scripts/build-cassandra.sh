@@ -16,10 +16,11 @@ CASSANDRA_SHA256="e6ab5f5c60a916dd6c0dd9a19a883a4a1ab3d6b4e95cab925a186fecff0834
 LIBUV_VERSION="1.48.0"
 LIBUV_SHA256="7f1db8ac368d89d1baf163bac1ea5fe5120697a73910c8ae6b2fffb3551d59fb"
 BUILD_DIR="/tmp/cassandra-build"
-LIBS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Libs"
+LIBS_DIR="${LIBS_DIR:-$(cd "$(dirname "$0")/.." && pwd)/Libs}"
 HEADERS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Plugins/CassandraDriverPlugin/CCassandra/include"
 ARCH="${1:-both}"
-MACOS_TARGET="14.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+MACOS_TARGET="$DEPLOY_TARGET"
 
 echo "Building DataStax Cassandra C driver $CASSANDRA_VERSION..."
 
