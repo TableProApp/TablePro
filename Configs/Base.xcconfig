@@ -45,6 +45,10 @@ GCC_WARN_UNUSED_FUNCTION = YES
 GCC_WARN_UNUSED_VARIABLE = YES
 LOCALIZATION_PREFERS_STRING_CATALOGS = YES
 MTL_FAST_MATH = YES
+
+// Xcode 26 and later cache compiled output, which pays back on the workloads this repo runs most:
+// clean builds in CI and switching between the branches in .claude/worktrees.
+COMPILATION_CACHE_ENABLE_CACHING = YES
 STRING_CATALOG_GENERATE_SYMBOLS = YES
 STRINGS_FILE_OUTPUT_ENCODING = binary
 SWIFT_VERSION = 6.0
