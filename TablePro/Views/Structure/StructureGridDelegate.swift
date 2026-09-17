@@ -88,6 +88,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.referenceMenus = ForeignKeyReferenceMenus(
             connectionId: connection.id, databaseType: connection.type
         )
+        /// The inspector builds its reference pickers from the same menus the grid opens, once per
+        /// revision, so one built while a list was still loading offers only `Loading…` until the
+        /// revision moves. The coordinator is read when the list lands, not captured here, because
+        /// the view hands it over again on every appearance.
+        referenceMenus.onListsChanged = { [weak self] in
+            self?.coordinator?.inspectorRowSourceRevision += 1
+        }
     }
 
     // MARK: - Index Translation
@@ -105,13 +112,17 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     /// The Foreign Keys grid's Columns, Ref Table and Ref Columns cells offer the database's own
-    /// names, exactly as the Create Table tab does.
+    /// names, exactly as the Create Table tab does, and the Indexes grid's Type cell offers the
+    /// row's own type beside the known ones.
     ///
-    /// `StructureRowProvider` marks those three columns as carrying a chevron for every grid it
-    /// serves, so without this the chevron here would reach the data grid's boolean fallback and
-    /// offer to write `1` into Ref Table. The row is translated first: this grid filters and sorts,
-    /// so a display position is not an index into `workingForeignKeys`.
+    /// `StructureRowProvider` marks those columns as carrying a chevron for every grid it serves, so
+    /// without this the chevron here would reach the data grid's boolean fallback and offer to write
+    /// `1` into Ref Table. The row is translated first: this grid filters and sorts, so a display
+    /// position is not an index into the working rows.
     func dataGridMenuOptions(forRow row: Int, columnIndex: Int) -> [GridMenuOption]? {
+        if selectedTab == .indexes {
+            return indexMenuOptions(forSourceRow: sourceRow(for: row), columnIndex: columnIndex)
+        }
         guard selectedTab == .foreignKeys, canEditForeignKeys else { return nil }
         let sourceRowIndex = sourceRow(for: row)
         guard sourceRowIndex >= 0, sourceRowIndex < structureChangeManager.workingForeignKeys.count else {
@@ -122,6 +133,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
             columnIndex: columnIndex,
             foreignKey: structureChangeManager.workingForeignKeys[sourceRowIndex],
             tableColumns: structureChangeManager.workingColumns.map(\.name)
+        )
+    }
+
+    private func indexMenuOptions(forSourceRow sourceRowIndex: Int, columnIndex: Int) -> [GridMenuOption]? {
+        guard structureChangeManager.workingIndexes.indices.contains(sourceRowIndex) else { return nil }
+        return StructureRowProvider.indexMenuOptions(
+            columnIndex: columnIndex,
+            index: structureChangeManager.workingIndexes[sourceRowIndex],
+            serverSupport: serverSupport
         )
     }
 

@@ -163,8 +163,11 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         stageAddition(column, using: Self.columnOperations)
     }
 
+    /// A deleted index is left out of what the copy is added beside, because the save drops every
+    /// index before it adds one.
     func addIndex(_ index: EditableIndexDefinition) {
-        stageAddition(index, using: Self.indexOperations)
+        let remaining = workingIndexes.filter { pendingChanges[.index($0.id)]?.isDelete != true }
+        stageAddition(index.addedBeside(remaining), using: Self.indexOperations)
     }
 
     func addForeignKey(_ foreignKey: EditableForeignKeyDefinition) {

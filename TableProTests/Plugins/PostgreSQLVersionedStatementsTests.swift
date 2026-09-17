@@ -279,12 +279,15 @@ struct PostgreSQLVersionedStatementsTests {
         #expect(PostgreSQLVersionedStatements.refusal(for: definition, capabilities: Self.v96) == nil)
     }
 
-    @Test("The structure editor hides generated fields before 12, BRIN before 9.5 and MySQL index types always")
+    /// SP-GiST joined the structure editor's known types, so 9.1, which predates it, hides it too.
+    @Test("The structure editor hides generated fields before 12, BRIN before 9.5, SP-GiST before 9.2 and MySQL index types always")
     func unsupportedStructureOptions() {
         #expect(PostgreSQLVersionedStatements.unsupportedStructureColumnFields(capabilities: Self.v11)
             == [.generated, .generationExpression])
         #expect(PostgreSQLVersionedStatements.unsupportedStructureColumnFields(capabilities: Self.v12).isEmpty)
-        #expect(PostgreSQLVersionedStatements.unsupportedIndexTypes(capabilities: Self.v91) == ["BRIN", "FULLTEXT", "SPATIAL"])
+        #expect(PostgreSQLVersionedStatements.unsupportedIndexTypes(capabilities: Self.v91)
+            == ["BRIN", "FULLTEXT", "SPATIAL", "SPGIST"])
+        #expect(PostgreSQLVersionedStatements.unsupportedIndexTypes(capabilities: Self.v92) == ["BRIN", "FULLTEXT", "SPATIAL"])
         #expect(PostgreSQLVersionedStatements.unsupportedIndexTypes(capabilities: Self.v96) == ["FULLTEXT", "SPATIAL"])
     }
 

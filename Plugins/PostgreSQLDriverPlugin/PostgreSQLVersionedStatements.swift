@@ -32,7 +32,6 @@ internal struct PostgreSQLSessionFacts: Sendable, Equatable {
 }
 
 internal enum PostgreSQLVersionedStatements {
-    static let postgreSQLIndexMethods: Set<String> = ["BTREE", "HASH", "GIN", "GIST", "BRIN"]
     static let mySQLOnlyIndexTypes: Set<String> = ["FULLTEXT", "SPATIAL"]
 
     static func createSchema(_ name: String, capabilities: PostgreSQLCapabilities) -> String {
@@ -158,6 +157,9 @@ internal enum PostgreSQLVersionedStatements {
         if mySQLOnlyIndexTypes.contains(type) {
             return String(format: String(localized: "PostgreSQL has no %@ index type."), type)
         }
+        if type == "SPGIST", !capabilities.hasSpGistIndexes {
+            return String(localized: "SP-GiST indexes need PostgreSQL 9.2 or later.")
+        }
         guard type == "BRIN", !capabilities.hasBrinIndexes else { return nil }
         return String(localized: "BRIN indexes need PostgreSQL 9.5 or later.")
     }
@@ -167,7 +169,14 @@ internal enum PostgreSQLVersionedStatements {
     }
 
     static func unsupportedIndexTypes(capabilities: PostgreSQLCapabilities) -> Set<String> {
-        capabilities.hasBrinIndexes ? mySQLOnlyIndexTypes : mySQLOnlyIndexTypes.union(["BRIN"])
+        var unsupported = mySQLOnlyIndexTypes
+        if !capabilities.hasBrinIndexes {
+            unsupported.insert("BRIN")
+        }
+        if !capabilities.hasSpGistIndexes {
+            unsupported.insert("SPGIST")
+        }
+        return unsupported
     }
 
     static func roleAttributes(capabilities: PostgreSQLCapabilities) -> Set<PostgreSQLRoleAttribute> {

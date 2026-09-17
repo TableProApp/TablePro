@@ -55,6 +55,11 @@ Within PostgreSQL an index is created from the server's own definition of it: ex
 operator classes, sort order, `INCLUDE` columns, storage parameters and a partial index's condition
 all arrive as they were.
 
+An index keeps its type when both ends are the same database type, so a SQL Server `CLUSTERED` index
+stays clustered. Between two database types, a PostgreSQL `gin`, `hnsw` or `bloom` index is left out
+of a copy to any engine outside PostgreSQL and named in the review step. So are a Redshift `DISTKEY`
+and `SORTKEY`, a Snowflake clustering key, and BigQuery clustering and partitioning.
+
 ## When the target already has the object
 
 Chosen once, before the run, and applied to every object in it.
@@ -153,7 +158,9 @@ names something only the source engine has. A MySQL `0000-00-00` is written as `
 value the rest accept for it.
 
 MySQL and MariaDB count as one engine, and so do PostgreSQL, Redshift, CockroachDB and PGlite. A copy
-between two of those runs unchanged and reports no conversions.
+between two of those writes every column as the source declares it and reports no conversion for any
+of them. Its indexes follow the [index rules](#what-each-object-carries) for two database types, so a
+copy from Redshift leaves out `DISTKEY` and `SORTKEY` and names both in the review step.
 
 ## When both sides are one connection
 

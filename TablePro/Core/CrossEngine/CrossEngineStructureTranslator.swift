@@ -12,9 +12,10 @@
 //  expression, the character set, the generation expression and the index
 //  kind. Translating exactly those is what turns a refusal into a copy.
 //
-//  Same-family pairs return the snapshot they were given, byte for byte. A
-//  MySQL to MariaDB copy runs the path it always ran, which is the only way a
-//  change this wide can be trusted not to move what already worked.
+//  Same-family pairs return the snapshot they were given, byte for byte, apart
+//  from an index the target cannot write. A MySQL to MariaDB copy runs the
+//  path it always ran, which is the only way a change this wide can be trusted
+//  not to move what already worked.
 //
 
 import Foundation
@@ -52,9 +53,14 @@ internal enum CrossEngineStructureTranslator {
         let targetFamily = SQLTypeFamily.of(target)
         guard SQLTypeFamily.needsTranslation(from: source, to: target) else {
             let kinds = kinds(of: snapshot, family: targetFamily)
+            /// A family shares type spellings, not indexes: Redshift reports its `DISTKEY` and
+            /// `SORTKEY` as indexes, and PostgreSQL writes an index type it does not know into `USING`.
+            let indexOutcome = CrossEngineIndexTranslator.retyped(
+                snapshot.indexes, table: snapshot.name, from: source, to: target
+            )
             return Result(
-                snapshot: snapshot,
-                notes: [],
+                snapshot: replacingIndexes(of: snapshot, with: indexOutcome.indexes),
+                notes: indexOutcome.notes,
                 sourceKinds: kinds,
                 targetKinds: kinds,
                 translated: false
@@ -65,9 +71,12 @@ internal enum CrossEngineStructureTranslator {
         let jsonColumnType = PostgreSQLServerVersion.jsonColumnType(
             for: target, serverVersion: targetServerVersion
         )
+        let creatableIndexes = CrossEngineIndexTranslator.creatable(
+            snapshot.indexes, table: snapshot.name, from: source, to: target
+        )
         let keyColumns = Set(snapshot.primaryKeyColumns.map { $0.lowercased() })
         let indexedColumns = Set(
-            snapshot.indexes.filter { !$0.isPrimary }.flatMap(\.columns).map { $0.lowercased() }
+            creatableIndexes.indexes.filter { !$0.isPrimary }.flatMap(\.columns).map { $0.lowercased() }
         )
 
         var drafts = snapshot.columns.map { column in
@@ -114,12 +123,12 @@ internal enum CrossEngineStructureTranslator {
         var kindsByLowercasedName: [String: CanonicalTypeKind] = [:]
         for draft in drafts { kindsByLowercasedName[draft.name.lowercased()] = draft.targetKind }
         let indexOutcome = CrossEngineIndexTranslator.translate(
-            snapshot.indexes,
+            creatableIndexes.indexes,
             table: snapshot.name,
             to: targetFamily,
             columnKinds: kindsByLowercasedName
         )
-        notes += indexOutcome.notes
+        notes += creatableIndexes.notes + indexOutcome.notes
 
         let translated = TableStructureSnapshot(
             name: snapshot.name,
@@ -139,6 +148,23 @@ internal enum CrossEngineStructureTranslator {
             sourceKinds: sourceKindsByColumn,
             targetKinds: kindsByColumn,
             translated: true
+        )
+    }
+
+    private static func replacingIndexes(
+        of snapshot: TableStructureSnapshot,
+        with indexes: [EditableIndexDefinition]
+    ) -> TableStructureSnapshot {
+        guard indexes != snapshot.indexes else { return snapshot }
+        return TableStructureSnapshot(
+            name: snapshot.name,
+            schema: snapshot.schema,
+            columns: snapshot.columns,
+            indexes: indexes,
+            foreignKeys: snapshot.foreignKeys,
+            engine: snapshot.engine,
+            charset: snapshot.charset,
+            collation: snapshot.collation
         )
     }
 

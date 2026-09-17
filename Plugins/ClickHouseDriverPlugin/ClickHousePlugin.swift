@@ -800,10 +800,16 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    /// Nil for every index. A data skipping index is an expression, a type with its arguments and a
+    /// granularity, and an index row carries none of them: it holds a column list and says `BTREE`
+    /// when new or `DATA_SKIPPING` when read. A changed index is a drop and an add, and the app builds
+    /// every statement before it runs one, so declining here keeps the index the table has rather than
+    /// dropping it ahead of an add that could not say what the index was.
+    ///
+    /// Not a `schemaOperationRefusal`: that also answers for the indexes of a copied `CREATE TABLE`,
+    /// which this driver leaves out of the statement, and refusing those would refuse the whole copy.
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let indexType = index.indexType ?? "minmax"
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD INDEX \(quoteIdentifier(index.name)) (\(cols)) TYPE \(indexType) GRANULARITY 1"
+        nil
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

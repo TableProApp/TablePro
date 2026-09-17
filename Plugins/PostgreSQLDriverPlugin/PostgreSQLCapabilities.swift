@@ -49,6 +49,7 @@ nonisolated struct PostgreSQLCapabilities: Sendable, Equatable {
     var hasModernICUSyntax: Bool { serverVersion >= 160_000 }
 
     var hasRenameConstraint: Bool { serverVersion >= 90_200 }
+    var hasSpGistIndexes: Bool { serverVersion >= 90_200 }
     var hasCreateSchemaIfNotExists: Bool { serverVersion >= 90_300 }
     var hasBrinIndexes: Bool { serverVersion >= 90_500 }
     /// `INCLUDE` columns and the `indnkeyatts` count that tells them from key columns landed in 11.
