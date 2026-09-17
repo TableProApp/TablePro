@@ -12,14 +12,26 @@ import XCTest
 /// its parent, and a probe that resolves it leaves that menu open, so the click's own traversal then
 /// fails with "open menu during menu traversal".
 final class WindowFocusUITests: UITestCase {
+    /// Whether the keyboard is on this element.
+    ///
     /// `hasFocus` is declared on `XCUIElementAttributes` in ObjC
     /// (`XCUIAutomation.framework/Headers/XCUIElementAttributes.h:69`) and does not reach Swift:
     /// it appears in no `XCUIAutomation.swiftinterface` for this toolchain, and `hasKeyboardFocus`
-    /// is the iOS spelling. Key-value coding is what is left, and it is what an XCUITest
-    /// `NSPredicate` on the same attribute would use anyway, without that predicate's app-rooted
-    /// query walking the whole tree.
+    /// is the iOS spelling. Key-value coding is not the way round it either. Measured: it raises
+    /// `NSInternalInconsistencyException: Calling hasFocus on element is not supported on a macOS.`,
+    /// which took every test here with it.
+    ///
+    /// What macOS does publish is the snapshot XCUITest prints for itself. Its first line holds the
+    /// element's own attributes and carries `Keyboard Focused` when that element has the keyboard,
+    /// so that line is what this reads. Only the first: every `NSTableView` cell under a focused
+    /// list carries the same word, and the subtree below is not this element's answer.
     private func holdsKeyboardFocus(_ element: XCUIElement) -> Bool {
-        (element as NSObject).value(forKey: "hasFocus") as? Bool ?? false
+        guard element.exists else { return false }
+        let ownAttributes = element.debugDescription
+            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            .first
+            .map(String.init) ?? ""
+        return ownAttributes.contains("Keyboard Focused")
     }
 
     private func chooseFocusCommand(_ title: String, in app: XCUIApplication) {

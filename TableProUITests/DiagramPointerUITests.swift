@@ -92,10 +92,7 @@ final class DiagramPointerUITests: UITestCase {
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
-        let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
-        queryEditor.click()
-        app.typeText(sql)
+        typeQuery(sql, in: app)
         app.typeKey(.return, modifierFlags: .command)
     }
 }

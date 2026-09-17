@@ -127,7 +127,7 @@ final class ResultMapModeUITests: UITestCase {
     private func runSpatialSetup(in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
         replaceEditorText(with: Self.spatialSetup, in: app)
-        openExecuteMenu(in: app).menuItems["Execute All Statements"].click()
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
         let confirm = app.windows.firstMatch.sheets.firstMatch.buttons["Execute"]
         if confirm.waitToExist(timeout: 15) { confirm.click() }
     }
@@ -159,14 +159,14 @@ final class ResultMapModeUITests: UITestCase {
     /// The control is a split button: its leading half runs the query and only its trailing chevron
     /// opens the menu, so a plain `click()` would execute instead of opening. Cmd+Return runs the
     /// statement under the cursor alone, which is not enough for a setup that creates a table.
-    private func openExecuteMenu(in app: XCUIApplication) -> XCUIElement {
+    private func openRunMenu(in app: XCUIApplication) -> XCUIElement {
         let window = app.windows.firstMatch
         let executeMenu = window.descendants(matching: .any)
-            .matching(identifier: "query-execute-menu")
+            .matching(identifier: "query-run-menu")
             .firstMatch
         XCTAssertTrue(
             waitUntilHittable(executeMenu, timeout: 15),
-            "The editor toolbar must expose the Execute split button"
+            "The editor toolbar must expose the Run split button"
         )
         executeMenu.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
         return window.menus.firstMatch

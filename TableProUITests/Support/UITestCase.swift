@@ -277,6 +277,30 @@ internal class UITestCase: XCTestCase {
         return window.textViews.firstMatch
     }
 
+    /// Puts `sql` in the query editor and confirms it arrived, retyping it if it did not.
+    ///
+    /// A click focuses the editor, but the keystrokes that follow it can outrun the focus: the
+    /// editor installs its coordinators and its key monitor on a later run-loop turn, and anything
+    /// typed before that lands nowhere. Measured on this suite, `EXPLAIN QUERY PLAN SELECT …`
+    /// reached the editor as `IN QUERY PLAN SELECT …` and the query came back
+    /// `near "IN": syntax error`, which reads in the report as a broken query plan rather than as
+    /// five lost keystrokes. Select-all before each attempt, so a partial first attempt is replaced
+    /// rather than prepended to.
+    internal func typeQuery(_ sql: String, in app: XCUIApplication, attempts: Int = 3) {
+        let editor = editorTextView(in: app)
+        XCTAssertTrue(editor.waitToExist(timeout: 10), "The query tab must hold an editor to type into")
+        for _ in 0 ..< attempts {
+            editor.click()
+            app.typeKey("a", modifierFlags: .command)
+            app.typeText(sql)
+            let arrived = waitForPredicate(timeout: 3) {
+                ((editor.value as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == sql
+            }
+            if arrived { return }
+        }
+        XCTFail("The editor never received the query typed into it")
+    }
+
     /// AppKit reports those rows as disabled, so they never become hittable and a plain `click()`
     /// waits for a state that cannot arrive. Clicking through a coordinate reaches them.
     internal func clickAtCenter(_ element: XCUIElement) {

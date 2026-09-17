@@ -35,7 +35,7 @@ final class GridTimeZoneOffsetUITests: UITestCase {
         queryEditor.click()
         paste(Self.setup, into: app)
 
-        openExecuteMenu(in: app).menuItems["Execute All Statements"].click()
+        openRunMenu(in: app).menuItems["Run All Statements"].click()
         confirmDestructiveExecution(in: app)
 
         guard waitForPredicate(timeout: 60, { self.offsetCell(in: app) != nil }) else {
@@ -87,18 +87,18 @@ final class GridTimeZoneOffsetUITests: UITestCase {
     }
 
     /// The control is a split button: its leading half runs the query and only its trailing
-    /// chevron opens the menu, so a plain `click()` would execute instead of opening.
+    /// chevron opens the menu, so a plain `click()` would run instead of opening.
     ///
     /// The opened menu is scoped to the window rather than matched by identifier, because the CI
     /// runner's macOS build exposes a just-opened menu without one.
-    private func openExecuteMenu(in app: XCUIApplication) -> XCUIElement {
+    private func openRunMenu(in app: XCUIApplication) -> XCUIElement {
         let window = app.windows.firstMatch
         let executeMenu = window.descendants(matching: .any)
-            .matching(identifier: "query-execute-menu")
+            .matching(identifier: "query-run-menu")
             .firstMatch
         XCTAssertTrue(
             waitUntilHittable(executeMenu, timeout: 10),
-            "The editor toolbar must expose the Execute split button"
+            "The editor toolbar must expose the Run split button"
         )
         executeMenu.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).click()
         return window.menus.firstMatch

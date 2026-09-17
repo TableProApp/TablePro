@@ -28,10 +28,13 @@ final class ImportFromAWSUITests: UITestCase {
             "File > Import > Import from AWS must open the discovery sheet"
         )
 
-        XCTAssertTrue(
-            app.staticTexts["US East (N. Virginia)"].firstMatch.waitToExist(timeout: 5),
-            "The sheet must list the AWS regions to search"
-        )
+        /// A region row is a checkbox whose label joins the region's name and its id
+        /// (`US East (N. Virginia), us-east-1`). The two `Text`s inside it are not published as
+        /// elements of their own, so matching a bare static text finds nothing.
+        let region = app.sheets.firstMatch.checkBoxes
+            .matching(NSPredicate(format: "label BEGINSWITH %@", "US East (N. Virginia)"))
+            .firstMatch
+        XCTAssertTrue(region.waitToExist(timeout: 5), "The sheet must list the AWS regions to search")
 
         let continueButton = app.buttons["aws-import-continue"]
         XCTAssertTrue(continueButton.waitToExist(timeout: 5), "The sheet must offer Continue")

@@ -234,19 +234,13 @@ final class QueryPlanResultUITests: UITestCase {
 
     private func runQuery(_ sql: String, in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
-        let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
-        queryEditor.click()
-        app.typeText(sql)
+        typeQuery(sql, in: app)
         app.typeKey(.return, modifierFlags: .command)
     }
 
     private func runExplainAction(_ sql: String, in app: XCUIApplication) {
         app.typeKey("t", modifierFlags: .command)
-        let queryEditor = editorTextView(in: app)
-        XCTAssertTrue(queryEditor.waitToExist(timeout: 10))
-        queryEditor.click()
-        app.typeText(sql)
+        typeQuery(sql, in: app)
 
         let explainButton = app.buttons["Explain"].firstMatch
         XCTAssertTrue(waitUntilHittable(explainButton, timeout: 10))
