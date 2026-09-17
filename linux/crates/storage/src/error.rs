@@ -41,6 +41,9 @@ pub enum StorageError {
     #[error("not found")]
     NotFound,
 
+    #[error("a name is required")]
+    EmptyName,
+
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::EncodeError),
 

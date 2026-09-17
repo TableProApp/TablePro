@@ -161,7 +161,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] SQL editor runs recorded with timestamp, duration, success, connection name
 - [x] Record the SQL the app runs outside the editor (Structure tab DDL saves, grid row saves)
 - [x] History pane with full-text search
-- [ ] Saved queries: name + SQL, organized by connection
+- [x] Saved queries: named and kept per connection, saved from the editor, reopened from the app menu
 
 ### Connection management (partial)
 

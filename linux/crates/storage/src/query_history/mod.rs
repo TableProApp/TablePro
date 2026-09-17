@@ -7,7 +7,7 @@ pub mod retention;
 mod search_filter;
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{AssertSqlSafe, ConnectOptions, Row, SqlitePool};
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::paths::StoragePaths;
+use crate::unix_time::{from_unix, to_unix};
 
 pub use entry::Entry;
 pub use new_entry::NewEntry;
@@ -72,6 +73,13 @@ impl QueryHistory {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// The saved queries, which share this database. One file, one
+    /// migration chain, one open: what the user keeps and what they
+    /// ran are the same kind of thing in the same place.
+    pub fn saved_queries(&self) -> crate::saved_queries::SavedQueries {
+        crate::saved_queries::SavedQueries::new(self.pool.clone())
     }
 
     pub async fn record(&self, entry: NewEntry) -> Result<i64, StorageError> {
@@ -346,24 +354,6 @@ impl QueryHistory {
     }
 }
 
-fn to_unix(t: SystemTime) -> i64 {
-    // System clocks before 1970 (clock skew, VM snapshots) should not collapse
-    // every record to epoch, so the negative offset is preserved and
-    // timestamps round-trip.
-    match t.duration_since(UNIX_EPOCH) {
-        Ok(d) => d.as_secs() as i64,
-        Err(e) => -(e.duration().as_secs() as i64),
-    }
-}
-
-fn from_unix(s: i64) -> SystemTime {
-    if s >= 0 {
-        UNIX_EPOCH + std::time::Duration::from_secs(s as u64)
-    } else {
-        UNIX_EPOCH - std::time::Duration::from_secs((-s) as u64)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
@@ -464,7 +454,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 1);
+        assert_eq!(applied, 2);
     }
 
     #[tokio::test]
@@ -580,9 +570,12 @@ mod tests {
         assert_eq!(found.len(), 2);
     }
 
+    /// Bump this with each new migration file. An applied migration is
+    /// never edited, so a count that did not move when the schema did
+    /// means a change went into a file that has already run somewhere.
     #[test]
-    fn migrator_embeds_one_migration() {
-        assert_eq!(MIGRATOR.iter().count(), 1);
+    fn migrator_embeds_every_migration() {
+        assert_eq!(MIGRATOR.iter().count(), 2);
     }
 
     #[tokio::test]

@@ -105,6 +105,7 @@ pub struct App {
     dialog: Option<Controller<ConnectDialog>>,
     schema_buffer: gtk::TextBuffer,
     history_dialog: Option<Controller<HistoryDialog>>,
+    saved_queries_dialog: Option<Controller<super::saved_queries_dialog::SavedQueriesDialog>>,
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
@@ -339,6 +340,13 @@ pub enum AppMsg {
         drafts: std::collections::HashMap<tablepro_storage::DraftId, String>,
     },
     ShowHistory,
+    ShowSavedQueries,
+    /// Keep the active editor tab's SQL under a name the user picks.
+    SaveActiveQuery,
+    SaveQueryNamed {
+        name: String,
+        query: String,
+    },
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
@@ -1185,7 +1193,10 @@ impl SimpleComponent for App {
         workspace_outer_stack.set_visible_child_name("empty");
 
         let actions = install_window_actions(&widgets.window, sender.clone());
-        let history_gate = spawn_history_gate(actions.show_history.clone(), history.availability());
+        let history_gate = spawn_history_gate(
+            vec![actions.show_history.clone(), actions.show_saved_queries.clone()],
+            history.availability(),
+        );
         install_window_shortcuts(&widgets.window);
         widgets.primary_menu_button.set_menu_model(Some(&primary_menu_model()));
 
@@ -1233,6 +1244,7 @@ impl SimpleComponent for App {
             dialog: None,
             schema_buffer: build_schema_buffer(),
             history_dialog: None,
+            saved_queries_dialog: None,
             welcome_view,
             current_driver_id: None,
             table_names: Vec::new(),
@@ -1427,6 +1439,9 @@ impl SimpleComponent for App {
             AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
             AppMsg::WorkspaceTabsRead { saved, drafts } => self.on_workspace_tabs_read(saved, drafts, sender),
             AppMsg::ShowHistory => self.on_show_history(sender),
+            AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
+            AppMsg::SaveActiveQuery => self.on_save_active_query(sender),
+            AppMsg::SaveQueryNamed { name, query } => self.on_save_query_named(name, query, sender),
             AppMsg::OpenHistoryQuery(text) => {
                 if self.connected {
                     self.append_editor_tab(Some(text), sender);
@@ -1481,6 +1496,10 @@ fn primary_menu_model() -> gio::Menu {
     menu.append_section(None, &connection_section);
     let history_section = gio::Menu::new();
     history_section.append(Some(&crate::i18n::gettext("Query History")), Some("win.show-history"));
+    history_section.append(
+        Some(&crate::i18n::gettext("Saved Queries")),
+        Some("win.show-saved-queries"),
+    );
     menu.append_section(None, &history_section);
     let prefs_section = gio::Menu::new();
     prefs_section.append(Some(&crate::i18n::gettext("Preferences")), Some("win.preferences"));
@@ -1493,18 +1512,21 @@ fn primary_menu_model() -> gio::Menu {
     menu
 }
 
-/// Flip `win.show-history` whenever `HistoryService` changes state.
+/// Flip the actions that need the query database whenever
+/// `HistoryService` changes state.
 ///
-/// The watch channel is read on the GTK thread, so the action is only
-/// ever touched from the thread that owns it.
+/// The watch channel is read on the GTK thread, so the actions are only
+/// ever touched from the thread that owns them.
 fn spawn_history_gate(
-    action: gio::SimpleAction,
+    actions: Vec<gio::SimpleAction>,
     mut availability: tokio::sync::watch::Receiver<crate::services::history_availability::HistoryAvailability>,
 ) -> glib::JoinHandle<()> {
     glib::spawn_future_local(async move {
         loop {
             let state = availability.borrow_and_update().clone();
-            action.set_enabled(state.is_ready());
+            for action in &actions {
+                action.set_enabled(state.is_ready());
+            }
             if let Some(failure) = state.failure() {
                 tracing::warn!(error = failure, "query history stays unavailable");
             }
@@ -1520,6 +1542,7 @@ fn spawn_history_gate(
 struct WindowActions {
     disconnect: gio::SimpleAction,
     show_history: gio::SimpleAction,
+    show_saved_queries: gio::SimpleAction,
 }
 
 fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSender<App>) -> WindowActions {
@@ -1553,6 +1576,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("redo-change", AppMsg::RedoActiveBrowseTab),
         input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
         input_action!("open-filter", AppMsg::ShowFilterDialog),
+        input_action!("save-query", AppMsg::SaveActiveQuery),
     ]);
     let disconnect = gio::SimpleAction::new("disconnect", None);
     let sender_for_disconnect = sender.clone();
@@ -1568,11 +1592,20 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
     show_history.set_enabled(false);
     group.add_action(&show_history);
 
+    // Saved queries live in the same database, so they are reachable
+    // exactly when it is.
+    let show_saved_queries = gio::SimpleAction::new("show-saved-queries", None);
+    let sender_for_saved = sender.clone();
+    show_saved_queries.connect_activate(move |_, _| sender_for_saved.input(AppMsg::ShowSavedQueries));
+    show_saved_queries.set_enabled(false);
+    group.add_action(&show_saved_queries);
+
     window.insert_action_group("win", Some(&group));
     tracing::info!(enabled = disconnect.is_enabled(), "registered win.disconnect");
     WindowActions {
         disconnect,
         show_history,
+        show_saved_queries,
     }
 }
 
@@ -1598,6 +1631,7 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut(Key::y, primary, "win.redo-change"));
     controller.add_shortcut(make_shortcut(Key::z, primary_shift, "win.redo-change"));
     controller.add_shortcut(make_shortcut(Key::t, primary_shift, "win.reopen-closed-tab"));
+    controller.add_shortcut(make_shortcut(Key::s, primary_shift, "win.save-query"));
     window.add_controller(controller);
 }
 
@@ -1655,7 +1689,7 @@ mod tests {
         let action = gio::SimpleAction::new("show-history", None);
         action.set_enabled(false);
         let (sender, receiver) = tokio::sync::watch::channel(HistoryAvailability::Starting);
-        let gate = spawn_history_gate(action.clone(), receiver);
+        let gate = spawn_history_gate(vec![action.clone()], receiver);
 
         crate::test_support::drain_main_context();
         assert!(!action.is_enabled(), "enabled while the database was still opening");

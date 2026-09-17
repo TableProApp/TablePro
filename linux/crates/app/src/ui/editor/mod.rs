@@ -1180,6 +1180,9 @@ pub fn derive_tab_label(query: &str) -> String {
 fn editor_menu() -> relm4::gtk::gio::Menu {
     let menu = relm4::gtk::gio::Menu::new();
     menu.append(Some(&crate::i18n::gettext("Open SQL File…")), Some("editor.open-file"));
+    // Saving lives on the window, because a saved query is kept under
+    // the connection rather than under this tab.
+    menu.append(Some(&crate::i18n::gettext("Save Query…")), Some("win.save-query"));
     menu.append(Some(&crate::i18n::gettext("Format")), Some("editor.format"));
     menu
 }

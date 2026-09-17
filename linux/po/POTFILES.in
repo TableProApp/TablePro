@@ -53,6 +53,7 @@ crates/app/src/test_support/widget_lookup.rs
 crates/app/src/ui/app/browse.rs
 crates/app/src/ui/app/connection.rs
 crates/app/src/ui/app/mod.rs
+crates/app/src/ui/app/ran_statements.rs
 crates/app/src/ui/app/row_ops.rs
 crates/app/src/ui/app/status_pages.rs
 crates/app/src/ui/app/structure.rs
@@ -77,6 +78,7 @@ crates/app/src/ui/mod.rs
 crates/app/src/ui/preferences_dialog/imp.rs
 crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/row_object.rs
+crates/app/src/ui/saved_queries_dialog.rs
 crates/app/src/ui/sidebar_row.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs

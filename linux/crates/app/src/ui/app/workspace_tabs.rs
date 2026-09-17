@@ -1263,6 +1263,16 @@ impl App {
         self.append_editor_tab(Some(text), sender);
     }
 
+    /// The SQL in the editor tab the user is looking at, or `None`
+    /// when the active tab is not an editor.
+    pub(super) fn active_editor_query(&self) -> Option<String> {
+        let id = self.selected_workspace_tab_id()?;
+        match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Editor(slot)) => Some(slot.query.clone()),
+            _ => None,
+        }
+    }
+
     fn editor_tab_count(&self) -> usize {
         self.workspace_tabs
             .borrow()

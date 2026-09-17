@@ -201,7 +201,8 @@ impl App {
             .unwrap_or_else(|| crate::i18n::gettext("this connection"));
         let title = crate::i18n::gettext_f("Delete {name}?", &[("name", &connection_name)]);
         let body = crate::i18n::gettext(
-            "The saved entry and any stored passwords will be removed from your keyring. This cannot be undone.",
+            "The saved entry, any stored passwords and the queries saved under this connection \
+             will be removed. This cannot be undone.",
         );
         let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
         dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
@@ -216,6 +217,7 @@ impl App {
         let column_widths = self.storage.column_widths().clone();
         let filter_settings = self.storage.filter_settings().clone();
         let tasks_for_response = self.tasks.clone();
+        let saved_queries_for_response = self.history.store().map(|history| history.saved_queries());
         dialog.connect_response(None, move |dialog, response| {
             dialog.close();
             if response != "delete" {
@@ -229,6 +231,7 @@ impl App {
                 connections_for_response.clone(),
                 secrets_for_response.clone(),
                 tasks_for_response.clone(),
+                saved_queries_for_response.clone(),
                 id,
                 sender_for_response.clone(),
             );
@@ -425,6 +428,7 @@ fn execute_delete_connection(
     connections: tablepro_storage::ConnectionStore,
     secrets: std::sync::Arc<dyn tablepro_core::credentials::SecretVault>,
     tasks: tablepro_session::runtime::Tasks,
+    saved_queries: Option<tablepro_storage::SavedQueries>,
     id: Uuid,
     sender: ComponentSender<App>,
 ) {
@@ -444,6 +448,15 @@ fn execute_delete_connection(
                 let removed = tasks.spawn_blocking_task(move || connections.remove_blocking(id)).await;
                 if let Ok(Err(error)) = removed {
                     tracing::warn!(%error, "could not remove the saved connection");
+                }
+                // The queries saved here name tables only this database
+                // has, so they go with it. A failure leaves them listed
+                // under the connection's last name, which the user can
+                // still delete one by one.
+                if let Some(saved_queries) = saved_queries
+                    && let Err(error) = saved_queries.delete_for_connection(id).await
+                {
+                    tracing::warn!(%error, "could not remove the connection's saved queries");
                 }
                 sender_clone.input(AppMsg::ReloadConnections);
             })

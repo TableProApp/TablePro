@@ -14,6 +14,7 @@ mod history_dialog;
 pub(crate) mod icons;
 mod preferences_dialog;
 mod row_object;
+mod saved_queries_dialog;
 mod sidebar_row;
 mod ssh_inputs;
 mod ssh_section;

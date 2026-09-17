@@ -2,6 +2,7 @@ use relm4::adw::prelude::*;
 use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
+use crate::ui::saved_queries_dialog::{SavedQueriesDialog, SavedQueriesDialogInit, SavedQueriesDialogOutput};
 
 use super::{App, AppMsg};
 
@@ -80,6 +81,114 @@ impl App {
         self.history_dialog = Some(dialog);
     }
 
+    pub(super) fn on_show_saved_queries(&mut self, sender: ComponentSender<Self>) {
+        let dialog = SavedQueriesDialog::builder()
+            .launch(SavedQueriesDialogInit {
+                store: self.history.store().map(|history| history.saved_queries()),
+                active_connection: crate::services::database_service::instance()
+                    .active_metadata()
+                    .map(|metadata| metadata.id),
+            })
+            .forward(sender.input_sender(), |out| match out {
+                SavedQueriesDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
+                SavedQueriesDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
+                SavedQueriesDialogOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
+                SavedQueriesDialogOutput::ShowToast(text) => AppMsg::ShowToast(text),
+            });
+        dialog.model().dialog().present(Some(&self.window));
+        self.saved_queries_dialog = Some(dialog);
+    }
+
+    /// Ask what to call the SQL in front of the user, then keep it.
+    ///
+    /// The text is read now rather than when the dialog closes, so what
+    /// is saved is what the user was looking at when they asked.
+    pub(super) fn on_save_active_query(&self, sender: ComponentSender<Self>) {
+        let Some(query) = self.active_editor_query() else {
+            self.show_toast(&crate::i18n::gettext("Open a SQL editor tab to save a query."));
+            return;
+        };
+        if query.trim().is_empty() {
+            self.show_toast(&crate::i18n::gettext("There is nothing in the editor to save."));
+            return;
+        }
+        if crate::services::database_service::instance()
+            .active_metadata()
+            .is_none()
+        {
+            self.show_toast(&crate::i18n::gettext(
+                "Connect to a database first: a saved query is kept under its connection.",
+            ));
+            return;
+        }
+
+        let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Save Query")), None);
+        let entry = adw::EntryRow::builder().title(crate::i18n::gettext("Name")).build();
+        entry.set_text(&suggested_query_name(&query));
+        let group = adw::PreferencesGroup::new();
+        group.add(&entry);
+        dialog.set_extra_child(Some(&group));
+        dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+        dialog.add_response("save", &crate::i18n::gettext("Save"));
+        dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("save"));
+        dialog.set_close_response("cancel");
+
+        let sender = sender.input_sender().clone();
+        dialog.connect_response(None, move |dialog, response| {
+            dialog.close();
+            if response != "save" {
+                return;
+            }
+            let name = entry.text().to_string();
+            if name.trim().is_empty() {
+                return;
+            }
+            let _ = sender.send(AppMsg::SaveQueryNamed {
+                name,
+                query: query.clone(),
+            });
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    pub(super) fn on_save_query_named(&self, name: String, query: String, sender: ComponentSender<Self>) {
+        let Some(store) = self.history.store().map(|history| history.saved_queries()) else {
+            self.show_toast(&crate::i18n::gettext("The query database is not open yet."));
+            return;
+        };
+        let Some(metadata) = crate::services::database_service::instance().active_metadata() else {
+            self.show_toast(&crate::i18n::gettext(
+                "Connect to a database first: a saved query is kept under its connection.",
+            ));
+            return;
+        };
+        let new_query = tablepro_storage::saved_queries::NewSavedQuery {
+            name: name.clone(),
+            query,
+            connection_id: metadata.id,
+            connection_name: metadata.name,
+        };
+        let sender_for_result = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let message = match store.save(new_query).await {
+                        Ok(outcome) if outcome.replaced => {
+                            crate::i18n::gettext_f("Replaced “{name}”.", &[("name", &name)])
+                        }
+                        Ok(_) => crate::i18n::gettext_f("Saved “{name}”.", &[("name", &name)]),
+                        Err(error) => {
+                            tracing::warn!(%error, "could not save the query");
+                            crate::i18n::gettext("Could not save that query.")
+                        }
+                    };
+                    sender_for_result.input(AppMsg::ShowToast(message));
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn on_show_about(&self) {
         let dialog = adw::AboutDialog::builder()
             .application_name(crate::i18n::gettext("TablePro"))
@@ -98,5 +207,51 @@ impl App {
         dialog.set_developers(&["TablePro Authors https://github.com/TableProApp/TablePro"]);
         dialog.set_translator_credits(&crate::i18n::gettext("translator-credits"));
         dialog.present(Some(&self.window));
+    }
+}
+
+/// A name for a query the user has not named, taken from the first
+/// line that is neither blank nor a comment. It is a starting point in
+/// an entry the user can edit, not a final name.
+fn suggested_query_name(query: &str) -> String {
+    const MAX_CHARS: usize = 40;
+    for line in query.lines() {
+        let trimmed = line.trim().trim_end_matches(';').trim();
+        if trimmed.is_empty() || trimmed.starts_with("--") {
+            continue;
+        }
+        return trimmed
+            .chars()
+            .take(MAX_CHARS)
+            .collect::<String>()
+            .trim_end()
+            .to_owned();
+    }
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::suggested_query_name;
+
+    #[test]
+    fn the_suggested_name_is_the_first_real_line() {
+        assert_eq!(
+            suggested_query_name("\n-- yesterday's orders\nSELECT * FROM orders;\n"),
+            "SELECT * FROM orders"
+        );
+    }
+
+    #[test]
+    fn a_long_first_line_is_cut_rather_than_run_on() {
+        let name = suggested_query_name("SELECT a, b, c, d, e, f, g, h FROM a_table_with_a_long_name");
+
+        assert_eq!(name.chars().count(), 40);
+        assert!(!name.ends_with(' '));
+    }
+
+    #[test]
+    fn a_query_that_is_only_comments_suggests_nothing() {
+        assert_eq!(suggested_query_name("-- nothing here\n\n"), "");
     }
 }
