@@ -81,7 +81,8 @@ enum StructureEditingSupport {
             index.columnPrefixes = prefixes
             index.expressions = expressions
         case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
+            let indexType = EditableIndexDefinition.IndexType(rawValue: value)
+            if EditableIndexDefinition.IndexType.knownTypes.contains(indexType) {
                 index.type = indexType
             }
         case 3: index.isUnique = parseBool(value)

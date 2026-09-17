@@ -26,7 +26,8 @@ internal enum CrossEngineIndexTranslator {
     internal static func translate(
         _ indexes: [EditableIndexDefinition],
         table: String,
-        to family: SQLTypeFamily,
+        from source: DatabaseType,
+        to target: DatabaseType,
         columnKinds: [String: CanonicalTypeKind]
     ) -> Result {
         var kept: [EditableIndexDefinition] = []
@@ -41,20 +42,89 @@ internal enum CrossEngineIndexTranslator {
                 continue
             }
             guard let translated = translate(
-                index, table: table, to: family, columnKinds: columnKinds, notes: &notes
+                index,
+                table: table,
+                from: source,
+                to: target,
+                columnKinds: columnKinds,
+                notes: &notes
             ) else { continue }
             kept.append(translated)
         }
         return Result(indexes: kept, notes: notes)
     }
 
+    /// The indexes of a copy between two database types that share a type family, where the columns,
+    /// expressions and spellings come across as written and only each index's type is decided.
+    internal static func retyped(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> Result {
+        var kept: [EditableIndexDefinition] = []
+        var notes: [CrossEngineConversionNote] = []
+
+        for index in indexes {
+            guard !index.isPrimary else {
+                kept.append(index)
+                continue
+            }
+            guard let type = resolvedType(index.type, from: source, to: target) else {
+                notes.append(droppedForType(index, table: table))
+                continue
+            }
+            var retyped = index
+            retyped.type = type
+            kept.append(retyped)
+        }
+        return Result(indexes: kept, notes: notes)
+    }
+
+    /// The type an index read from a table on `source` takes on `target`, or nil where `target` has
+    /// no index of that kind.
+    ///
+    /// Decided whenever the two database types differ, not only when their families do. Redshift
+    /// shares PostgreSQL's family and reports `DISTKEY` and `SORTKEY` as index types, which no
+    /// `USING` clause names. So a type outside `knownTypes` keeps its name only when the source
+    /// reports its access method and the target is in PostgreSQL's family, and becomes a b-tree
+    /// when the source reports something else, which is what every such type became before the
+    /// vocabulary was opened.
+    internal static func resolvedType(
+        _ type: EditableIndexDefinition.IndexType,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> EditableIndexDefinition.IndexType? {
+        guard source != target else { return type }
+        let family = SQLTypeFamily.of(target)
+        switch type {
+        case .btree:
+            return .btree
+        case .hash:
+            return family == .mysql || family == .postgres ? .hash : .btree
+        case .fulltext, .spatial:
+            return family == .mysql ? type : nil
+        case .gin, .gist, .brin, .spgist:
+            return family == .postgres ? type : nil
+        default:
+            guard accessMethodSources.contains(source) else { return .btree }
+            return family == .postgres ? type : nil
+        }
+    }
+
+    /// The database types whose index type is the server's own access method, read from `pg_am`, so
+    /// `BLOOM`, `HNSW` or `IVFFLAT` names something a PostgreSQL `USING` clause can write.
+    private static let accessMethodSources: Set<DatabaseType> = [.postgresql, .pglite]
+
     private static func translate(
         _ index: EditableIndexDefinition,
         table: String,
-        to family: SQLTypeFamily,
+        from source: DatabaseType,
+        to target: DatabaseType,
         columnKinds: [String: CanonicalTypeKind],
         notes: inout [CrossEngineConversionNote]
     ) -> EditableIndexDefinition? {
+        let family = SQLTypeFamily.of(target)
         guard supportsSecondaryIndexes(family) else {
             notes.append(dropped(index, table: table, reason: String(
                 localized: "This engine does not take a secondary index in a CREATE TABLE."
@@ -72,11 +142,8 @@ internal enum CrossEngineIndexTranslator {
             return nil
         }
 
-        guard let type = translatedType(index.type, family: family) else {
-            notes.append(dropped(index, table: table, reason: String(
-                format: String(localized: "A %@ index has no equivalent on this engine."),
-                index.type.rawValue
-            )))
+        guard let type = resolvedType(index.type, from: source, to: target) else {
+            notes.append(droppedForType(index, table: table))
             return nil
         }
 
@@ -185,6 +252,13 @@ internal enum CrossEngineIndexTranslator {
         )
     }
 
+    private static func droppedForType(_ index: EditableIndexDefinition, table: String) -> CrossEngineConversionNote {
+        dropped(index, table: table, reason: String(
+            format: String(localized: "A %@ index has no equivalent on this engine."),
+            index.type.rawValue
+        ))
+    }
+
     private static func dropped(
         _ index: EditableIndexDefinition,
         table: String,
@@ -213,21 +287,5 @@ internal enum CrossEngineIndexTranslator {
 
     private static func supportsPartialIndexes(_ family: SQLTypeFamily) -> Bool {
         family == .postgres || family == .sqlite || family == .duckdb
-    }
-
-    private static func translatedType(
-        _ type: EditableIndexDefinition.IndexType,
-        family: SQLTypeFamily
-    ) -> EditableIndexDefinition.IndexType? {
-        switch type {
-        case .btree:
-            return .btree
-        case .hash:
-            return family == .mysql || family == .postgres ? .hash : .btree
-        case .fulltext, .spatial:
-            return family == .mysql ? type : nil
-        case .gin, .gist, .brin:
-            return family == .postgres ? type : nil
-        }
     }
 }

@@ -57,14 +57,41 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         case expressions, includedColumns
     }
 
-    enum IndexType: String, Codable, CaseIterable {
-        case btree = "BTREE"
-        case hash = "HASH"
-        case fulltext = "FULLTEXT"
-        case spatial = "SPATIAL"  // MySQL only
-        case gin = "GIN"          // PostgreSQL only
-        case gist = "GIST"        // PostgreSQL only
-        case brin = "BRIN"        // PostgreSQL only
+    /// The kind of index the engine reports, such as `BTREE`, PostgreSQL's `SPGIST` and `HNSW`, SQL
+    /// Server's `CLUSTERED` or ClickHouse's `DATA_SKIPPING`.
+    ///
+    /// Open, because the engine decides the vocabulary: a PostgreSQL access method comes from
+    /// `pg_am` and an extension can add one. A closed list read every other type as `BTREE`, so an
+    /// index written from its fields came back as a b-tree.
+    ///
+    /// Encoded as its raw value alone, the same JSON the closed list wrote.
+    struct IndexType: RawRepresentable, Hashable, Sendable, Codable {
+        let rawValue: String
+
+        init(rawValue: String) {
+            self.rawValue = rawValue.uppercased()
+        }
+
+        init(from decoder: Decoder) throws {
+            self.init(rawValue: try String(from: decoder))
+        }
+
+        func encode(to encoder: Encoder) throws {
+            try rawValue.encode(to: encoder)
+        }
+
+        static let btree = IndexType(rawValue: "BTREE")
+        static let hash = IndexType(rawValue: "HASH")
+        static let fulltext = IndexType(rawValue: "FULLTEXT")
+        static let spatial = IndexType(rawValue: "SPATIAL")
+        static let gin = IndexType(rawValue: "GIN")
+        static let gist = IndexType(rawValue: "GIST")
+        static let brin = IndexType(rawValue: "BRIN")
+        static let spgist = IndexType(rawValue: "SPGIST")
+
+        /// The types the structure editor offers for a new index, before a driver takes out the
+        /// ones its server lacks.
+        static let knownTypes: [IndexType] = [.btree, .hash, .fulltext, .spatial, .gin, .gist, .brin, .spgist]
     }
 
     init(
@@ -159,7 +186,7 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             id: indexInfo.id,
             name: indexInfo.name,
             columns: indexInfo.columns,
-            type: IndexType(rawValue: indexInfo.type.uppercased()) ?? .btree,
+            type: IndexType(rawValue: indexInfo.type),
             isUnique: indexInfo.isUnique,
             isPrimary: indexInfo.isPrimary,
             comment: nil,
@@ -218,8 +245,15 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
     /// draws with `SQLTypeFamily.needsTranslation`, keeps each expression as a plain entry that the
     /// column check names before anything runs, and leaves the `INCLUDE` columns behind as Copy To
     /// does. A `nil` source is a copy made by a build that wrote neither field.
+    ///
+    /// The type is decided the way Copy To decides it whenever the database types differ, so a
+    /// Redshift `DISTKEY` never reaches a PostgreSQL `USING` clause. Where Copy To would leave the
+    /// index out, the paste stages it as a b-tree, which the Type cell shows before anything is saved.
     func pasted(from source: DatabaseType?, into target: DatabaseType) -> EditableIndexDefinition {
         var copy = withNewIdentity()
+        if let source {
+            copy.type = CrossEngineIndexTranslator.resolvedType(type, from: source, to: target) ?? .btree
+        }
         if let source, !SQLTypeFamily.needsTranslation(from: source, to: target) {
             return copy
         }

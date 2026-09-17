@@ -18,7 +18,8 @@ internal struct ObjectCopyTableDraft {
     let selection: ObjectCopySelection
     let snapshot: TableStructureSnapshot
     /// The same table said in the target's own types, which is what the target driver is handed.
-    /// Identical to `snapshot` whenever the two engines share a type family.
+    /// Identical to `snapshot` whenever the two engines share a type family, apart from an index
+    /// type the target cannot name.
     let targetStructure: TableStructureSnapshot
     let sourceSchema: String?
     let targetSchema: String?

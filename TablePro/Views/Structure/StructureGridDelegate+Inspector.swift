@@ -15,7 +15,8 @@ extension StructureGridDelegate: InspectorRowSource {
             atDisplayRow: displayRow,
             tab: selectedTab,
             provider: provider,
-            canEditSchema: connection.type.supportsSchemaEditing
+            canEditSchema: connection.type.supportsSchemaEditing,
+            rowOptions: { dataGridMenuOptions(forRow: displayRow, columnIndex: $0) }
         )
     }
 

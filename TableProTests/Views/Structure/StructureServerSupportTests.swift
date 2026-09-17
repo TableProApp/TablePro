@@ -103,16 +103,16 @@ struct StructureServerSupportTests {
     func unrestrictedOffersEverything() {
         let support = StructureServerSupport.unrestricted
         #expect(StructureColumnField.allCases.allSatisfy { support.offers($0) })
-        #expect(support.offeredIndexTypes(from: EditableIndexDefinition.IndexType.allCases)
-            == EditableIndexDefinition.IndexType.allCases)
+        #expect(support.offeredIndexTypes(from: EditableIndexDefinition.IndexType.knownTypes)
+            == EditableIndexDefinition.IndexType.knownTypes)
     }
 
     @Test("Index types are matched case-insensitively")
     func indexTypesMatchCaseInsensitively() {
-        let offered = Self.legacyServer.offeredIndexTypes(from: EditableIndexDefinition.IndexType.allCases)
+        let offered = Self.legacyServer.offeredIndexTypes(from: EditableIndexDefinition.IndexType.knownTypes)
         #expect(!offered.contains(.brin))
         #expect(offered.contains(.gin))
-        #expect(offered.count == EditableIndexDefinition.IndexType.allCases.count - 1)
+        #expect(offered.count == EditableIndexDefinition.IndexType.knownTypes.count - 1)
     }
 
     @Test("A server without generated columns never shows the Generated and Expression columns")
@@ -141,14 +141,24 @@ struct StructureServerSupportTests {
         #expect(!fields.contains(.generated))
     }
 
+    /// The list is built per row, because it names the row's own type, so it is asked of the row
+    /// rather than read from the fixed per-column lists.
     @Test("The index type dropdown leaves out what the server lacks")
     func indexTypeDropdownFiltersUnsupportedTypes() {
-        let types = provider(tab: .indexes, support: Self.legacyServer).customDropdownOptions[2]?.compactMap(\.sql) ?? []
-        #expect(!types.isEmpty)
-        #expect(!types.contains("BRIN"))
-        #expect(types.contains("GIN"))
-        let unrestricted = provider(tab: .indexes, support: .unrestricted).customDropdownOptions[2]?.compactMap(\.sql)
-        #expect(unrestricted?.contains("BRIN") == true)
+        func types(_ support: StructureServerSupport) -> [String] {
+            StructureRowProvider.indexMenuOptions(
+                columnIndex: StructureRowProvider.indexTypeColumn,
+                index: .placeholder(),
+                serverSupport: support
+            )?.compactMap(\.sql) ?? []
+        }
+        #expect(!types(Self.legacyServer).isEmpty)
+        #expect(!types(Self.legacyServer).contains("BRIN"))
+        #expect(types(Self.legacyServer).contains("GIN"))
+        #expect(types(.unrestricted).contains("BRIN"))
+        let indexes = provider(tab: .indexes, support: Self.legacyServer)
+        #expect(indexes.rowDependentDropdownColumns == [StructureRowProvider.indexTypeColumn])
+        #expect(indexes.customDropdownOptions[StructureRowProvider.indexTypeColumn] == nil)
     }
 
     @Test("The adapter bridges what the connected server cannot honour")
