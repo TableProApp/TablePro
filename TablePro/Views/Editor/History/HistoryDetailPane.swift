@@ -1,6 +1,33 @@
 import SwiftUI
 import TableProPluginKit
 
+/// Reads the selection off the model itself so a click repaints the detail.
+///
+/// `HistoryPanelView` keeps the model in `@State`, which stores the reference and subscribes to
+/// nothing. Reading `selectedEntry` in that view's own `body` therefore built this pane once, with
+/// no entry, and nothing ever rebuilt it: clicking a row selected it in the list and the detail
+/// went on saying "No Query Selected". The list and the toolbar were never wrong because each
+/// observes the model for itself, which is what this does.
+struct HistorySelectedDetailPane: View {
+    @ObservedObject var viewModel: HistoryPanelViewModel
+
+    let canRunInNewTab: (QueryHistoryEntry) -> Bool
+    let onLoadInEditor: (QueryHistoryEntry) -> Void
+    let onRunInNewTab: (QueryHistoryEntry) -> Void
+    let onCopy: (QueryHistoryEntry) -> Void
+
+    var body: some View {
+        HistoryDetailPane(
+            entry: viewModel.selectedEntry,
+            connectionLabel: viewModel.selectedEntry.flatMap { viewModel.connectionLabel(for: $0) },
+            canRunInNewTab: viewModel.selectedEntry.map { canRunInNewTab($0) } ?? false,
+            onLoadInEditor: onLoadInEditor,
+            onRunInNewTab: onRunInNewTab,
+            onCopy: onCopy
+        )
+    }
+}
+
 struct HistoryDetailPane: View {
     let entry: QueryHistoryEntry?
     let connectionLabel: HistoryConnectionLabel?

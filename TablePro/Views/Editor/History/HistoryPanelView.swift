@@ -78,10 +78,9 @@ struct HistoryPanelView: View {
                 onRestorePreviousValues: { coordinator.rewindSave(historyId: $0.id) }
             )
         } secondary: {
-            HistoryDetailPane(
-                entry: viewModel.selectedEntry,
-                connectionLabel: viewModel.selectedEntry.flatMap { viewModel.connectionLabel(for: $0) },
-                canRunInNewTab: viewModel.selectedEntry.map { canRun($0) } ?? false,
+            HistorySelectedDetailPane(
+                viewModel: viewModel,
+                canRunInNewTab: { canRun($0) },
                 onLoadInEditor: { load($0) },
                 onRunInNewTab: { runInNewTab($0) },
                 onCopy: { copy($0) }
