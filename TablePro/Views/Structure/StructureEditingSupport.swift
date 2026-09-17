@@ -64,7 +64,7 @@ enum StructureEditingSupport {
             let previousExpressions = Set(index.expressions)
             var prefixes: [String: Int] = [:]
             var expressions: [String] = []
-            index.columns = indexKeyParts(value).map { trimmed in
+            index.columns = indexKeyParts(value, expressions: index.expressions).map { trimmed in
                 if previousExpressions.contains(trimmed) {
                     expressions.append(trimmed)
                     return trimmed
@@ -92,34 +92,41 @@ enum StructureEditingSupport {
 
     /// The entries of an index's Columns cell, split at the commas that separate key parts.
     ///
-    /// A comma inside parentheses or quotes belongs to its entry, so `tenant_id, coalesce(a, b)` is
-    /// two parts rather than three. An entry that was an expression before the edit stays one, and
-    /// an entry the user typed is a column name, with `email(20)` still read as a prefix.
-    static func indexKeyParts(_ value: String) -> [String] {
+    /// The cell lists column names as they are, unquoted, beside expressions as the server writes
+    /// them, so no single reading of quotes and parentheses fits both: the column `owner's_id` opens a
+    /// quote that never closes, and `coalesce(a, b)` holds a comma that separates nothing. An
+    /// expression can only have come from the index being edited, so each of `expressions` is taken
+    /// whole where an entry starts with it, and the rest of the cell is split at every comma, the way
+    /// a list of column names always was. An expression edited by hand is therefore read as column
+    /// names, which the column check then names.
+    static func indexKeyParts(_ value: String, expressions: [String]) -> [String] {
+        let longestFirst = expressions.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
         var parts: [String] = []
-        var current = ""
-        var depth = 0
-        var quote: Character?
-        for character in value {
-            if let open = quote {
-                if character == open { quote = nil }
-            } else if character == "'" || character == "\"" {
-                quote = character
-            } else if character == "(" {
-                depth += 1
-            } else if character == ")" {
-                depth = max(depth - 1, 0)
-            } else if character == ",", depth == 0 {
-                parts.append(current)
-                current = ""
+        var remaining = value[...]
+        while !remaining.isEmpty {
+            remaining = remaining.drop(while: isBlank)
+            if let expression = longestFirst.first(where: { entry(in: remaining, isWhole: $0) }) {
+                parts.append(expression)
+                remaining = remaining.dropFirst(expression.count).drop(while: isBlank).dropFirst()
                 continue
             }
-            current.append(character)
+            let entryEnd = remaining.firstIndex(of: ",") ?? remaining.endIndex
+            parts.append(remaining[..<entryEnd].trimmingCharacters(in: .whitespaces))
+            remaining = entryEnd == remaining.endIndex
+                ? remaining[entryEnd...]
+                : remaining[remaining.index(after: entryEnd)...]
         }
-        parts.append(current)
-        return parts
-            .filter { !$0.isEmpty }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+        return parts.filter { !$0.isEmpty }
+    }
+
+    nonisolated private static func entry(in text: Substring, isWhole expression: String) -> Bool {
+        guard text.hasPrefix(expression) else { return false }
+        let rest = text.dropFirst(expression.count).drop(while: isBlank)
+        return rest.isEmpty || rest.first == ","
+    }
+
+    nonisolated private static func isBlank(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
     }
 
     static func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {
