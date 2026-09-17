@@ -90,6 +90,9 @@ build_mongoc() {
         openssl_lib_dir="$openssl_prefix/lib64"
     fi
 
+    # Snappy is pinned off rather than left to detection: on a machine that has Homebrew's
+    # snappy, CMake links it and the archive gains three undefined symbols the shipped one
+    # never had, which is a plugin that fails to load on every other machine.
     run_quiet env MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
     "$CMAKE_BIN" .. \
         -DCMAKE_INSTALL_PREFIX="$prefix" \
@@ -105,6 +108,7 @@ build_mongoc() {
         -DENABLE_SRV=ON \
         -DENABLE_ZLIB=SYSTEM \
         -DENABLE_ZSTD=OFF \
+        -DENABLE_SNAPPY=OFF \
         -DENABLE_SSL=OPENSSL \
         -DENABLE_TESTS=OFF \
         -DENABLE_EXAMPLES=OFF \
