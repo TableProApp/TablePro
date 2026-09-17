@@ -120,6 +120,14 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     let schema: String?
     let comment: String?
 
+    /// How many partitions this table holds, when the engine reports it with the listing. Nil for
+    /// an engine that says nothing, which is not the same as zero: a partitioned table with no
+    /// partitions yet answers 0.
+    ///
+    /// It is not part of the table's identity, because the same table with one more partition is
+    /// the same table.
+    let partitionCount: Int?
+
     enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
         case view = "VIEW"
@@ -151,12 +159,20 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         }
     }
 
-    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
+    init(
+        name: String,
+        type: TableType,
+        rowCount: Int?,
+        schema: String? = nil,
+        comment: String? = nil,
+        partitionCount: Int? = nil
+    ) {
         self.name = name
         self.type = type
         self.rowCount = rowCount
         self.schema = schema
         self.comment = comment
+        self.partitionCount = partitionCount
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {

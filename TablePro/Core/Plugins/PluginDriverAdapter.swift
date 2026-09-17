@@ -233,30 +233,44 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] {
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
-        let pluginTables = try await pluginDriver.fetchPartitions(table: table, schema: resolvedSchema)
-        return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
+        let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)
+        return partitions.map { partition in
+            let relationType = partition.relationType.flatMap(Self.mapPluginTableType)
+            return PartitionInfo(
+                name: partition.name,
+                schema: relationType == nil ? partition.schema : (partition.schema ?? resolvedSchema),
+                bound: partition.bound,
+                ordinalPosition: partition.ordinalPosition,
+                rowCount: partition.rowCount,
+                relationType: relationType,
+                isSubpartitioned: partition.isSubpartitioned,
+                parentPartitionName: partition.parentPartitionName
+            )
+        }
+    }
+
+    /// One vocabulary for what a plugin calls an object, shared with the partition path so a
+    /// foreign-table partition cannot arrive as a plain table and pick up Truncate on its way in.
+    nonisolated internal static func mapPluginTableType(_ declaredType: String) -> TableInfo.TableType? {
+        switch declaredType.lowercased().replacingOccurrences(of: "_", with: " ") {
+        case "table", "base table", "prefix": return .table
+        case "partitioned table":             return .partitionedTable
+        case "view":                          return .view
+        case "materialized view":             return .materializedView
+        case "foreign table":                 return .foreignTable
+        case "system table", "system base table", "system view": return .systemTable
+        case "external table":                return .externalTable
+        default:                              return nil
+        }
     }
 
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
         let tableType: TableInfo.TableType
-        switch table.type.lowercased() {
-        case "table", "base table", "prefix":
-            tableType = .table
-        case "partitioned table", "partitioned_table":
-            tableType = .partitionedTable
-        case "view":
-            tableType = .view
-        case "materialized view", "materialized_view":
-            tableType = .materializedView
-        case "foreign table", "foreign_table":
-            tableType = .foreignTable
-        case "system table", "system base table", "system view":
-            tableType = .systemTable
-        case "external table", "external_table":
-            tableType = .externalTable
-        default:
+        if let mapped = Self.mapPluginTableType(table.type) {
+            tableType = mapped
+        } else {
             Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
             tableType = .table
         }
@@ -265,7 +279,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             type: tableType,
             rowCount: table.rowCount,
             schema: table.schema ?? schemaFallback,
-            comment: table.comment
+            comment: table.comment,
+            partitionCount: table.partitionCount
         )
     }
 

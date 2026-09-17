@@ -76,16 +76,40 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
+    /// Both a partitioned table and a subpartitioned partition of one are restored here. On
+    /// PostgreSQL a subpartitioned partition is a relation of its own and loads its own children, so
+    /// it is recorded and re-expanded under the same key a table uses.
     private func restorePartitionExpansion(under parent: DatabaseTreeNode) {
-        guard searchText.isEmpty, let outlineView = self.outlineView, let windowState else { return }
-        for tableNode in resolvedChildren(of: parent) {
-            guard case .table(let ref) = tableNode.kind, ref.table.type == .partitionedTable else { continue }
+        guard showsPartitions, searchText.isEmpty, let outlineView = self.outlineView, let windowState
+        else { return }
+        for node in resolvedChildren(of: parent) {
+            guard node.isExpandable, let ref = expandableTableRef(of: node) else { continue }
             let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
             guard windowState.expandedTreeTables.contains(key) else { continue }
-            setExpanded(tableNode, true)
-            guard outlineView.isItemExpanded(tableNode) else { continue }
-            triggerLoad(for: tableNode)
-            restorePartitionExpansion(under: tableNode)
+            setExpanded(node, true)
+            guard outlineView.isItemExpanded(node) else { continue }
+            triggerLoad(for: node)
+            restorePartitionExpansion(under: node)
+        }
+    }
+
+    private func expandableTableRef(of node: DatabaseTreeNode) -> DatabaseTreeTableRef? {
+        switch node.kind {
+        case .table(let ref):
+            return ref.table.type == .partitionedTable ? ref : nil
+        case .partition(let ref):
+            return ref.tableRef
+        default:
+            return nil
+        }
+    }
+
+    private func recordTableExpansion(_ ref: DatabaseTreeTableRef, expanded: Bool) {
+        let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
+        if expanded {
+            windowState?.expandedTreeTables.insert(key)
+        } else {
+            windowState?.expandedTreeTables.remove(key)
         }
     }
 
@@ -112,10 +136,10 @@ extension DatabaseTreeOutlineCoordinator {
             restoreObjectGroupExpansion(under: node)
         case .schema, .hierarchicalSchemaSection:
             restoreObjectGroupExpansion(under: node)
-        case .objectKindSection, .containerObjectKindSection:
+        case .objectKindSection, .containerObjectKindSection, .table, .partition:
             restorePartitionExpansion(under: node)
-        case .recentSection, .recentTable, .database, .table, .routine, .trigger, .userType, .status,
-             .redisKeysSection, .redisNode:
+        case .recentSection, .recentTable, .database, .routine, .trigger,
+             .userType, .status, .redisKeysSection, .redisNode:
             break
         }
     }
@@ -159,12 +183,10 @@ extension DatabaseTreeOutlineCoordinator {
                 windowState?.expandedTreeDatabaseSchemas.remove(key)
             }
         case .table(let ref):
-            let key = DatabaseTableKey(database: ref.database ?? "", schema: ref.schema, table: ref.table.name)
-            if expanded {
-                windowState?.expandedTreeTables.insert(key)
-            } else {
-                windowState?.expandedTreeTables.remove(key)
-            }
+            recordTableExpansion(ref, expanded: expanded)
+        case .partition(let ref):
+            guard let tableRef = ref.tableRef else { break }
+            recordTableExpansion(tableRef, expanded: expanded)
         case .recentTable, .routine, .trigger, .userType, .status, .redisNode:
             break
         }
@@ -185,6 +207,8 @@ extension DatabaseTreeOutlineCoordinator {
             loadObjects(database: database, schema: schema)
         case .table(let ref):
             loadPartitions(ref)
+        case .partition(let ref):
+            loadPartitions(ref.tableRef ?? ref.parent)
         case .hierarchicalSchemaSection(let schema):
             loadHierarchicalSchemaObjects(schema)
         case .recentSection, .recentTable, .routine, .trigger, .userType, .status,
@@ -219,7 +243,7 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private func loadPartitions(_ ref: DatabaseTreeTableRef) {
-        guard ref.table.type == .partitionedTable else { return }
+        guard showsPartitions, ref.table.type == .partitionedTable else { return }
         let database = ref.database ?? ""
         let state = service.partitionsLoadState(
             connectionId: connectionId, database: database, schema: ref.schema, table: ref.table.name

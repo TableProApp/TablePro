@@ -312,11 +312,11 @@ extension MCPConnectionBridge {
         try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let partitions = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchPartitions(table: table, schema: schema)
+            try await driver.fetchPartitionDetails(table: table, schema: schema)
         }
         return .object([
             "table": .string(table),
-            "partitions": .array(Self.sortedTables(partitions).map { Self.encode(table: $0, rowCount: $0.rowCount) })
+            "partitions": .array(partitions.map(Self.encode(partition:)))
         ])
     }
 
@@ -391,6 +391,40 @@ extension MCPConnectionBridge {
         }
         if let rowCount {
             fields["row_count"] = .int(rowCount)
+        }
+        if let partitionCount = table.partitionCount {
+            fields["partition_count"] = .int(partitionCount)
+        }
+        return .object(fields)
+    }
+
+    /// `type` stays required, in the same vocabulary `list_tables` uses. This tool used to encode
+    /// its partitions with the table encoder, so a client that reads `partitions[].type` predates
+    /// the richer fields and must keep working. A partition that is not a relation has no table
+    /// type of its own and reports `PARTITION`.
+    static func encode(partition: PartitionInfo) -> JsonValue {
+        var fields: [String: JsonValue] = [
+            "name": .string(partition.name),
+            "type": .string(partition.relationType?.rawValue ?? "PARTITION"),
+            "is_separate_relation": .bool(partition.isSeparateRelation)
+        ]
+        if let schema = partition.schema, !schema.isEmpty {
+            fields["schema"] = .string(schema)
+        }
+        if let bound = partition.bound, !bound.isEmpty {
+            fields["bound"] = .string(bound)
+        }
+        if let position = partition.ordinalPosition {
+            fields["ordinal_position"] = .int(position)
+        }
+        if let rowCount = partition.rowCount {
+            fields["row_count"] = .int(rowCount)
+        }
+        if partition.isSubpartitioned {
+            fields["is_subpartitioned"] = .bool(true)
+        }
+        if let parent = partition.parentPartitionName, !parent.isEmpty {
+            fields["parent_partition"] = .string(parent)
         }
         return .object(fields)
     }

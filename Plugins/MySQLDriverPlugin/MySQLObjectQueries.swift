@@ -45,6 +45,55 @@ public enum MySQLObjectQueries {
         qualifiedIdentifier(schema: schema, name: name, quote: quoteIdentifier)
     }
 
+    /// Lists a schema's tables, with the partition count joined in for the ones that have any.
+    ///
+    /// `information_schema.PARTITIONS` holds one all-null row for a table that is not partitioned,
+    /// so `PARTITION_NAME IS NOT NULL` is what separates the two. A subpartitioned table repeats its
+    /// partition name once per subpartition, so the count is over distinct names rather than rows.
+    ///
+    /// The grouping and the join are both binary. `INFORMATION_SCHEMA` compares identifiers
+    /// case-insensitively, so on a server with `lower_case_table_names=0` a schema holding both
+    /// `orders` and `Orders` would merge their counts and could label the unpartitioned one
+    /// `PARTITIONED TABLE`.
+    ///
+    /// `includePartitions` is false for Databend, which answers the same wire protocol through the
+    /// same driver without this catalog.
+    public static func tableList(schema: String, includePartitions: Bool) -> String {
+        let schemaLiteral = escapeLiteral(schema)
+        guard includePartitions else {
+            return """
+                SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT, NULL
+                FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
+                """
+        }
+        return """
+            SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT, p.PARTITION_COUNT
+            FROM information_schema.TABLES t
+            LEFT JOIN (
+                SELECT TABLE_NAME AS P_TABLE_NAME, COUNT(DISTINCT PARTITION_NAME) AS PARTITION_COUNT
+                FROM information_schema.PARTITIONS
+                WHERE TABLE_SCHEMA = '\(schemaLiteral)' AND PARTITION_NAME IS NOT NULL
+                GROUP BY BINARY TABLE_NAME, TABLE_NAME
+            ) p ON BINARY p.P_TABLE_NAME = BINARY t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
+            """
+    }
+
+    /// One table's partitions, subpartitions included. A subpartition arrives as its own row
+    /// carrying its parent partition's name, ordered so the parent is read before its children.
+    public static func partitionList(schema: String, table: String) -> String {
+        """
+        SELECT PARTITION_NAME, SUBPARTITION_NAME, PARTITION_METHOD, PARTITION_DESCRIPTION,
+               PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION, TABLE_ROWS
+        FROM information_schema.PARTITIONS
+        WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+          AND TABLE_NAME = '\(escapeLiteral(table))'
+          AND PARTITION_NAME IS NOT NULL
+        ORDER BY PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION
+        """
+    }
+
     /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's
     /// return value rather than a parameter.
     public static func routineList(schema: String) -> String {

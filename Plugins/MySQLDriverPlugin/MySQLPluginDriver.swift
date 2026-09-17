@@ -491,11 +491,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let query = """
-        SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT
-        FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
-        """
+        let query = MySQLObjectQueries.tableList(
+            schema: effectiveSchema(schema),
+            includePartitions: !flavor.isDatabend
+        )
         let result = try await execute(query: query)
 
         return result.rows.compactMap { row -> PluginTableInfo? in
@@ -503,10 +502,66 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let typeStr = (row[safe: 1]?.asText) ?? "BASE TABLE"
             guard flavor.listsSequencesAsTables || typeStr != "SEQUENCE" else { return nil }
             let isView = typeStr.contains("VIEW")
-            let type = isView ? "VIEW" : "TABLE"
             let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
-            return PluginTableInfo(name: name, type: type, comment: comment)
+            let partitionCount = isView ? nil : row[safe: 3]?.asText.flatMap(Int.init)
+            let type = isView ? "VIEW" : (partitionCount == nil ? "TABLE" : "PARTITIONED TABLE")
+            return PluginTableInfo(
+                name: name,
+                type: type,
+                comment: comment,
+                partitionCount: partitionCount
+            )
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// A subpartition arrives as its own row carrying its parent partition's name, so the list is
+    /// returned whole and the tree nests it. `SUBPARTITION_METHOD` states the subpartition's own
+    /// shape, and `PARTITION_DESCRIPTION` on such a row repeats the parent's bound rather than
+    /// describing the subpartition, so a subpartition reports no bound of its own.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
+        guard !flavor.isDatabend else { return [] }
+        let query = MySQLObjectQueries.partitionList(
+            schema: effectiveSchema(schema),
+            table: table
+        )
+        let result = try await execute(query: query)
+
+        var emittedPartitions: Set<String> = []
+        var ordered: [PluginPartitionInfo] = []
+        for row in result.rows {
+            guard let partitionName = row[safe: 0]?.asText else { continue }
+            let subpartitionName = row[safe: 1]?.asText?.nilIfEmpty
+            let rowCount = row[safe: 6]?.asText.flatMap(Int.init)
+            let isSubpartitionRow = subpartitionName != nil
+
+            if emittedPartitions.insert(partitionName).inserted {
+                ordered.append(
+                    PluginPartitionInfo(
+                        name: partitionName,
+                        bound: MySQLPartitionBound.display(
+                            method: row[safe: 2]?.asText,
+                            description: row[safe: 3]?.asText
+                        ),
+                        ordinalPosition: row[safe: 4]?.asText.flatMap(Int.init),
+                        rowCount: isSubpartitionRow ? nil : rowCount,
+                        relationType: nil,
+                        isSubpartitioned: isSubpartitionRow
+                    )
+                )
+            }
+
+            guard let subpartitionName else { continue }
+            ordered.append(
+                PluginPartitionInfo(
+                    name: subpartitionName,
+                    ordinalPosition: row[safe: 5]?.asText.flatMap(Int.init),
+                    rowCount: rowCount,
+                    relationType: nil,
+                    parentPartitionName: partitionName
+                )
+            )
+        }
+        return ordered
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {

@@ -197,6 +197,7 @@ struct DatabaseTreeView: View {
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
             showSystemContainers: showsSystemContainers,
+            showsPartitions: settingsManager.general.showPartitions,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

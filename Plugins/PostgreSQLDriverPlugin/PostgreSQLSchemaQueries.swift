@@ -79,18 +79,26 @@ enum PostgreSQLSchemaQueries {
     /// listing.
     ///
     /// `includePartitionAwareness` labels a declarative partition parent as
-    /// `PARTITIONED TABLE` and drops its partition children, which
-    /// `information_schema.tables` reports as plain `BASE TABLE` rows
-    /// indistinguishable from the parent. The test is `pg_inherits` joined to
-    /// the parent's `relkind`, not `pg_class.relispartition`: `relispartition`
-    /// only exists from PostgreSQL 10, and referencing a missing column fails
-    /// at parse time, which would break the listing outright on older servers.
-    /// Comparing `relkind` against `'p'`/`'I'` is a value test on a column
-    /// present since PostgreSQL 8, so it parses everywhere and simply matches
-    /// nothing before declarative partitioning existed. Rows still come from
-    /// `information_schema.tables`, which keeps its privilege filtering; the
-    /// catalog joins only label and exclude rows it already returned. The
-    /// caller passes `false` for engines without these catalogs.
+    /// `PARTITIONED TABLE`, counts its partitions, and drops its partition
+    /// children, which `information_schema.tables` reports as plain
+    /// `BASE TABLE` rows indistinguishable from the parent. The test is
+    /// `pg_inherits` joined to the parent's `relkind`, not
+    /// `pg_class.relispartition`: `relispartition` only exists from PostgreSQL
+    /// 10, and referencing a missing column fails at parse time, which would
+    /// break the listing outright on older servers. Comparing `relkind` against
+    /// `'p'`/`'I'` is a value test on a column present since PostgreSQL 8, so it
+    /// parses everywhere and simply matches nothing before declarative
+    /// partitioning existed. Rows still come from `information_schema.tables`,
+    /// which keeps its privilege filtering; the catalog joins only label, count
+    /// and exclude rows it already returned. The caller passes `false` for
+    /// engines without these catalogs.
+    ///
+    /// A child is dropped only when its parent is itself listed. Keying the
+    /// exclusion on the child alone hid a partition whose parent the role cannot
+    /// read: granting `SELECT` on one partition and nothing on its parent left
+    /// the whole schema listing empty while that partition was perfectly
+    /// readable. The visibility test reuses `information_schema.tables` rather
+    /// than restating its privilege predicate, so the two cannot drift.
     ///
     /// Legacy `INHERITS` children stay listed on purpose. Their parent is an
     /// ordinary table (`relkind = 'r'`), and they are independently useful
@@ -117,20 +125,22 @@ enum PostgreSQLSchemaQueries {
             ? "CASE WHEN pc.relkind = 'p' THEN 'PARTITIONED TABLE' ELSE t.table_type END"
             : "t.table_type"
 
-        let partitionFilter = includePartitionAwareness ? """
+        let partitionCountColumn = includePartitionAwareness ? """
+            CASE WHEN pc.relkind = 'p' THEN (
+                       SELECT count(*)
+                       FROM pg_catalog.pg_inherits ci
+                       WHERE ci.inhparent = pc.oid) END
+            """ : "NULL::bigint"
 
-              AND NOT EXISTS (
-                    SELECT 1
-                    FROM pg_catalog.pg_inherits i
-                    JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
-                    WHERE i.inhrelid = pc.oid
-                      AND parent.relkind IN ('p', 'I'))
-            """ : ""
+        let partitionFilter = includePartitionAwareness
+            ? "\n  " + partitionChildExclusion(childOidExpression: "pc.oid")
+            : ""
 
         var unions: [String] = [
             """
             SELECT t.table_name, \(tableTypeColumn) AS table_type,
-                   \(commentColumn("pc.oid")) AS table_comment
+                   \(commentColumn("pc.oid")) AS table_comment,
+                   \(partitionCountColumn) AS partition_count
             FROM information_schema.tables t\(classJoin)
             WHERE t.table_schema = \(schemaLiteral)
               AND t.table_type IN ('BASE TABLE', 'VIEW')\(partitionFilter)
@@ -146,7 +156,8 @@ enum PostgreSQLSchemaQueries {
             unions.append(
                 """
                 SELECT m.matviewname AS table_name, 'MATERIALIZED VIEW' AS table_type,
-                       \(commentColumn("mc.oid")) AS table_comment
+                       \(commentColumn("mc.oid")) AS table_comment,
+                       NULL::bigint AS partition_count
                 FROM pg_matviews m\(matviewJoin)
                 WHERE m.schemaname = \(schemaLiteral)
                 """
@@ -154,14 +165,18 @@ enum PostgreSQLSchemaQueries {
         }
 
         if includeForeignTables {
+            let foreignPartitionFilter = includePartitionAwareness
+                ? "\n  " + partitionChildExclusion(childOidExpression: "c.oid")
+                : ""
             unions.append(
                 """
                 SELECT c.relname AS table_name, 'FOREIGN TABLE' AS table_type,
-                       \(commentColumn("c.oid")) AS table_comment
+                       \(commentColumn("c.oid")) AS table_comment,
+                       NULL::bigint AS partition_count
                 FROM pg_foreign_table ft
                 JOIN pg_class c ON c.oid = ft.ftrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
-                WHERE n.nspname = \(schemaLiteral)
+                WHERE n.nspname = \(schemaLiteral)\(foreignPartitionFilter)
                 """
             )
         }
@@ -169,20 +184,50 @@ enum PostgreSQLSchemaQueries {
         return unions.joined(separator: "\nUNION ALL\n") + "\nORDER BY table_name"
     }
 
-    /// Lists one partitioned table's direct partitions, ordered so the DEFAULT
-    /// partition sorts last. A child that is itself subpartitioned comes back
-    /// with `relkind = 'p'` so it can be expanded in turn.
+    /// The predicate that keeps a partition out of a flat listing. A foreign
+    /// table can be a partition from PostgreSQL 11, so the foreign-table union
+    /// arm needs it as much as the base arm does: without it one relation was
+    /// listed flat under Foreign Tables and nested under its parent at once.
+    private static func partitionChildExclusion(childOidExpression: String) -> String {
+        """
+            AND NOT EXISTS (
+                  SELECT 1
+                  FROM pg_catalog.pg_inherits i
+                  JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+                  JOIN pg_catalog.pg_namespace parentns ON parentns.oid = parent.relnamespace
+                  WHERE i.inhrelid = \(childOidExpression)
+                    AND parent.relkind IN ('p', 'I')
+                    AND EXISTS (
+                          SELECT 1
+                          FROM information_schema.tables pt
+                          WHERE pt.table_schema = parentns.nspname
+                            AND pt.table_name = parent.relname))
+        """
+    }
+
+    /// Lists one partitioned table's direct partitions with each one's own
+    /// schema and bound, ordered so the DEFAULT partition sorts last. A child
+    /// that is itself subpartitioned comes back with `relkind = 'p'` so it can
+    /// be expanded in turn.
+    ///
+    /// The child's namespace is projected because a partition need not live in
+    /// its parent's schema: `CREATE TABLE archive.orders_2023 PARTITION OF
+    /// public.orders` is legal, and stamping the parent's schema on the row
+    /// pointed every statement built from it at a different relation.
     ///
     /// `relpartbound` exists only from PostgreSQL 10, so unlike `fetchTables`
     /// this query cannot be issued against an older server. The caller gates it
     /// on `PostgreSQLCapabilities.hasDeclarativePartitioning`.
     static func fetchPartitions(schema: String, table: String) -> String {
         """
-        SELECT cc.relname, cc.relkind
+        SELECT cc.relname, cc.relkind, cn.nspname,
+               pg_catalog.pg_get_expr(cc.relpartbound, cc.oid) AS partition_bound,
+               cc.reltuples::bigint AS approximate_rows
         FROM pg_catalog.pg_inherits i
         JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
         JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
         JOIN pg_catalog.pg_class cc ON cc.oid = i.inhrelid
+        JOIN pg_catalog.pg_namespace cn ON cn.oid = cc.relnamespace
         WHERE pn.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
           AND parent.relname = \(PostgreSQLObjectQueries.quoteLiteral(table))
           AND parent.relkind = 'p'

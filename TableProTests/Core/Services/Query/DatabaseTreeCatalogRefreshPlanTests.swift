@@ -14,21 +14,91 @@ struct DatabaseTreeCatalogRefreshPlanTests {
 
     private let connectionId = UUID()
 
+    private typealias PartitionsKey = DatabaseTreeMetadataService.PartitionsKey
+
     private func plan(
         _ change: CatalogChange,
         hasDatabaseList: Bool = true,
         keys: [ObjectsKey],
-        schemaLists: [DatabaseKey] = []
+        schemaLists: [DatabaseKey] = [],
+        partitions: [PartitionsKey] = []
     ) -> CatalogTreeRefreshPlan {
         DatabaseTreeMetadataService.catalogRefreshPlan(
             for: change,
             hasDatabaseList: hasDatabaseList,
             schemaListKeys: schemaLists,
             tableKeys: keys,
+            partitionKeys: partitions,
             routineKeys: keys,
             triggerKeys: keys,
             typeKeys: keys
         )
+    }
+
+    /// A partition list is keyed per table and does not follow its parent's list, so planning from
+    /// the table keys alone left an expanded partitioned table showing the partitions it had before
+    /// the DDL until a reconnect.
+    @Test("A loaded partition list is refreshed even with no table list beside it")
+    func partitionListsAreReachedWithoutTheirParentList() {
+        let partition = PartitionsKey(
+            connectionId: connectionId, database: "shop", schema: "public", table: "events"
+        )
+
+        let result = plan(
+            CatalogChange(connectionId: connectionId, kinds: .tables),
+            keys: [],
+            partitions: [partition]
+        )
+
+        #expect(result.partitions == [partition])
+        #expect(!result.isEmpty)
+    }
+
+    /// A PostgreSQL partition can live in another schema than the table it belongs to, so matching
+    /// its schema against the change would miss exactly the cross-schema case the tree nests.
+    @Test("A partition list in another schema than the change still refreshes")
+    func crossSchemaPartitionListsAreReached() {
+        let partition = PartitionsKey(
+            connectionId: connectionId, database: "shop", schema: "archive", table: "events"
+        )
+
+        let result = plan(
+            CatalogChange(connectionId: connectionId, database: "shop", schema: "public", kinds: .tables),
+            keys: [],
+            partitions: [partition]
+        )
+
+        #expect(result.partitions == [partition])
+    }
+
+    @Test("A change that reaches no partition kind leaves partition lists alone")
+    func partitionListsIgnoreUnrelatedKinds() {
+        let partition = PartitionsKey(
+            connectionId: connectionId, database: "shop", schema: "public", table: "events"
+        )
+
+        let result = plan(
+            CatalogChange(connectionId: connectionId, kinds: .routines),
+            keys: [],
+            partitions: [partition]
+        )
+
+        #expect(result.partitions.isEmpty)
+    }
+
+    @Test("Another connection's partition lists are not touched")
+    func otherConnectionPartitionListsAreLeftAlone() {
+        let partition = PartitionsKey(
+            connectionId: UUID(), database: "shop", schema: "public", table: "events"
+        )
+
+        let result = plan(
+            CatalogChange(connectionId: connectionId, kinds: .tables),
+            keys: [],
+            partitions: [partition]
+        )
+
+        #expect(result.partitions.isEmpty)
     }
 
     @Test("routines, triggers and types are refreshed, not only tables")

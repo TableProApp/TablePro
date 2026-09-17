@@ -391,7 +391,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.toPluginResult(executionTime: executionTime)
     }
 
-    private func rawQuery(_ query: String) async throws -> OracleRawResult {
+    internal func rawQuery(_ query: String) async throws -> OracleRawResult {
         guard let core else { throw OraclePluginError(core: .notConnected) }
         do {
             return try await core.executeQuery(query)
@@ -472,8 +472,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let result = try await rawQuery(OracleSchemaQueries.tables(schema: effectiveSchema(schema)))
-        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map {
-            PluginTableInfo(name: $0.name, type: $0.isView ? "VIEW" : "TABLE")
+        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map { row in
+            PluginTableInfo(
+                name: row.name,
+                type: row.isView ? "VIEW" : (row.isPartitioned ? "PARTITIONED TABLE" : "TABLE"),
+                comment: nil,
+                partitionCount: row.partitionCount
+            )
         }
     }
 
@@ -1325,7 +1330,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
         )
     }
-
 
     // MARK: - Private Helpers
 

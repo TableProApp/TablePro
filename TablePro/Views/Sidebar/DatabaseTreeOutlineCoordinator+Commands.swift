@@ -166,7 +166,8 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(key)
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
-        case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .setRowSize:
+        case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
+             .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
     }

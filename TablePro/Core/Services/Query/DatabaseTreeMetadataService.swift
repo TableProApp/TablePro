@@ -36,7 +36,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     @Published private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
     @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
     @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
-    @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
+    @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[PartitionInfo]>] = [:]
 
     private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
     private let schemaDedup = OnceTask<DatabaseKey, [String]>()
@@ -44,7 +44,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
     private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
     private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
-    private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
+    private let partitionsDedup = OnceTask<PartitionsKey, [PartitionInfo]>()
 
     private var databaseListFence = CommitFence<UUID>()
     private var schemaListFence = CommitFence<DatabaseKey>()
@@ -114,7 +114,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
 
     func partitionsLoadState(
         connectionId: UUID, database: String, schema: String?, table: String
-    ) -> MetadataLoadState<[TableInfo]> {
+    ) -> MetadataLoadState<[PartitionInfo]> {
         let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
         return partitionsState[key] ?? .idle
     }
@@ -349,7 +349,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         do {
             let list = try await partitionsDedup.execute(key: key) { [self] in
                 try await withDriver(connectionId: connectionId, database: database) { driver in
-                    try await driver.fetchPartitions(table: table, schema: normalizedSchema)
+                    try await driver.fetchPartitionDetails(table: table, schema: normalizedSchema)
                 }
             }
             guard partitionsFence.isCurrent(token, for: key) else { return }
@@ -586,7 +586,8 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             }
             guard tablesFence.isCurrent(token, for: key) else { return }
             let next: MetadataLoadState<[TableInfo]> = .loaded(list)
-            guard tablesState[key] != next else { return }
+            guard tablesState[key] != next || Self.partitionCountsChanged(from: tablesState[key], to: next)
+            else { return }
             tablesState[key] = next
         } catch is CancellationError {
         } catch {
@@ -596,6 +597,32 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         }
     }
 
+    /// A table's identity deliberately ignores its partition count, because the same table with one
+    /// more partition is the same table. That makes the equality guard above blind to a count that
+    /// moved on its own, which is exactly what a refresh after another client added a partition
+    /// brings back, so the counts are compared separately.
+    nonisolated internal static func partitionCountsChanged(
+        from previous: MetadataLoadState<[TableInfo]>?,
+        to next: MetadataLoadState<[TableInfo]>
+    ) -> Bool {
+        guard case .loaded(let nextTables) = next else { return false }
+        guard case .loaded(let previousTables) = previous else { return true }
+        let previousCounts = Dictionary(
+            previousTables.map { ($0.id, $0.partitionCount) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return nextTables.contains { table in
+            guard let previous = previousCounts[table.id] else { return true }
+            return previous != table.partitionCount
+        }
+    }
+
+    /// One loaded partition list, reloaded in place. The catalog-change path names its keys
+    /// directly, because a partition list does not follow its parent's table list.
+    internal func refreshPartitions(_ key: PartitionsKey) async {
+        await reloadPartitionsInPlace(key)
+    }
+
     private func reloadPartitionsInPlace(_ key: PartitionsKey) async {
         guard isConnected(key.connectionId) else { return }
         let token = partitionsFence.supersede(key)
@@ -603,11 +630,11 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         do {
             let list = try await partitionsDedup.execute(key: key) { [self] in
                 try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
-                    try await driver.fetchPartitions(table: key.table, schema: key.schema)
+                    try await driver.fetchPartitionDetails(table: key.table, schema: key.schema)
                 }
             }
             guard partitionsFence.isCurrent(token, for: key) else { return }
-            let next: MetadataLoadState<[TableInfo]> = .loaded(list)
+            let next: MetadataLoadState<[PartitionInfo]> = .loaded(list)
             guard partitionsState[key] != next else { return }
             partitionsState[key] = next
         } catch is CancellationError {

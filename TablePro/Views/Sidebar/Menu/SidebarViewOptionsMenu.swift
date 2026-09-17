@@ -25,6 +25,7 @@ internal enum SidebarViewOptionsMenu {
             showObjectIcons: context.showObjectIcons,
             showObjectComments: context.showObjectComments,
             showSystemContainers: context.showSystemContainers,
+            showPartitions: context.showPartitions,
             rowSize: context.rowSize
         )
     }
@@ -33,6 +34,7 @@ internal enum SidebarViewOptionsMenu {
         showObjectIcons: Bool,
         showObjectComments: Bool,
         showSystemContainers: Bool,
+        showPartitions: Bool,
         rowSize: SidebarRowSizePreference
     ) -> [DatabaseTreeMenuSection] {
         [
@@ -51,6 +53,11 @@ internal enum SidebarViewOptionsMenu {
                     title: String(localized: "System Databases and Schemas"),
                     command: .toggleSystemContainers,
                     isOn: showSystemContainers
+                )),
+                .command(SidebarMenuEntry(
+                    title: String(localized: "Partitions"),
+                    command: .togglePartitions,
+                    isOn: showPartitions
                 ))
             ]),
             DatabaseTreeMenuSection(SidebarRowSizePreference.allCases.map { size in
@@ -76,6 +83,8 @@ internal enum SidebarViewOptionsMenu {
             AppSettingsManager.shared.general.showObjectComments.toggle()
         case .toggleSystemContainers:
             AppSettingsManager.shared.general.showSystemContainers.toggle()
+        case .togglePartitions:
+            AppSettingsManager.shared.general.showPartitions.toggle()
         case .setRowSize(let size):
             AppSettingsManager.shared.general.sidebarRowSize = size
         default:
@@ -93,6 +102,7 @@ internal enum SidebarViewOptionsMenu {
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
             showSystemContainers: settings.showSystemContainers,
+            showPartitions: settings.showPartitions,
             rowSize: settings.sidebarRowSize
         )
     }

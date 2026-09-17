@@ -29,6 +29,101 @@ struct DatabaseTreeNodeTests {
         #expect(Set([databaseId, schemaId, tableId, tableGroupId, otherSchemaGroupId]).count == 5)
     }
 
+    private func partitionRef(
+        _ name: String,
+        parent: String = "orders",
+        schema: String? = nil,
+        relationType: TableInfo.TableType? = .table,
+        isSubpartitioned: Bool = false,
+        parentPartitionName: String? = nil
+    ) -> DatabaseTreePartitionRef {
+        DatabaseTreePartitionRef(
+            parent: DatabaseTreeTableRef(
+                database: "shop",
+                schema: "public",
+                table: TableInfo(name: parent, type: .partitionedTable, rowCount: nil, schema: "public")
+            ),
+            partition: PartitionInfo(
+                name: name,
+                schema: schema,
+                relationType: relationType,
+                isSubpartitioned: isSubpartitioned,
+                parentPartitionName: parentPartitionName
+            )
+        )
+    }
+
+    @Test("A partition row has an identity of its own, distinct from a table of the same name")
+    func partitionIdsAreDistinct() {
+        let partition = DatabaseTreeNode.partitionId(partitionRef("orders_2024"))
+        let table = DatabaseTreeNode.tableId(tableRef("orders_2024"))
+        let otherParent = DatabaseTreeNode.partitionId(partitionRef("orders_2024", parent: "invoices"))
+
+        #expect(Set([partition, table, otherParent]).count == 3)
+    }
+
+    @Test("Two tables' partitions of the same name are two rows, which is the MySQL case")
+    func sameNamedPartitionsOfDifferentParentsDiffer() {
+        let first = DatabaseTreeNode.partitionId(partitionRef("p0", parent: "events", relationType: nil))
+        let second = DatabaseTreeNode.partitionId(partitionRef("p0", parent: "orders", relationType: nil))
+
+        #expect(first != second)
+    }
+
+    @Test("A subpartition is a third row again, under the partition it subdivides")
+    func subpartitionIsItsOwnRow() {
+        let partition = DatabaseTreeNode.partitionId(partitionRef("p0", relationType: nil))
+        let subpartition = DatabaseTreeNode.partitionId(
+            partitionRef("p0", relationType: nil, parentPartitionName: "p1")
+        )
+
+        #expect(partition != subpartition)
+    }
+
+    @Test("Only a partition holding subpartitions is expandable")
+    func partitionExpandability() {
+        let leaf = DatabaseTreeNode(
+            id: "a",
+            kind: .partition(partitionRef("orders_2024"))
+        )
+        let composite = DatabaseTreeNode(
+            id: "b",
+            kind: .partition(partitionRef("orders_2025", isSubpartitioned: true))
+        )
+
+        #expect(!leaf.isExpandable)
+        #expect(composite.isExpandable)
+    }
+
+    @Test("A partition row is selectable and is not a section header or a container")
+    func partitionRowShape() {
+        let node = DatabaseTreeNode(id: "a", kind: .partition(partitionRef("orders_2024")))
+
+        #expect(DatabaseTreeSelection.isSelectable(node.kind))
+        #expect(!node.isGroupRow)
+        #expect(!node.isContainer)
+        #expect(node.containerRef(systemSchemas: []) == nil)
+    }
+
+    @Test("Type-select can land on a partition by its own name")
+    func partitionMatchesTypeSelect() {
+        let node = DatabaseTreeNode(id: "a", kind: .partition(partitionRef("orders_2024")))
+
+        #expect(DatabaseTreeTypeSelect.matchString(for: node.kind) == "orders_2024")
+    }
+
+    @Test("A relation partition opens on double-click; one that is not a relation does not")
+    func partitionDoubleClickFollowsAddressability() {
+        let relation = DatabaseTreeNode(id: "a", kind: .partition(partitionRef("orders_2024")))
+        let intraTable = DatabaseTreeNode(
+            id: "b",
+            kind: .partition(partitionRef("p0", relationType: nil))
+        )
+
+        #expect(DatabaseTreeDoubleClickResolver.resolve(node: relation) != .ignore)
+        #expect(DatabaseTreeDoubleClickResolver.resolve(node: intraTable) == .ignore)
+    }
+
     @Test("status ids are unique per parent and per status")
     func statusIds() {
         let loading = DatabaseTreeNode.statusId(parentId: "db\u{1}shop", status: .loading)

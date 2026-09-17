@@ -66,6 +66,10 @@ The sidebar lists every accessible database with each table's structure and DDL.
 
 Table and column comments show in the UI: dimmed after a table's name in the sidebar, and in the grid header tooltip. Turn that off under **View Options**, the button beside the sidebar’s filter field.
 
+A partitioned table shows how many partitions it holds and lists them under it. A `RANGE` partition is labelled `VALUES LESS THAN (2024)` and a `LIST` one `VALUES IN (1,2,3)`; `HASH` and `KEY` partitions state no bound, so their rows carry the position instead. Subpartitions nest under the partition they subdivide.
+
+A MySQL partition belongs to its table rather than standing as one, so its row offers **Copy Name**, **Copy Bound** and **Copy Table Name** and nothing that writes. Query one with `SELECT * FROM orders PARTITION (p2024)` in the editor.
+
 ## Releasing an idle connection
 
 A connection holds a server thread and one slot against `max_connections` for as long as it is open, and MySQL's `wait_timeout` rarely reclaims it because the connection check counts as activity on the server. **Release the Server Connection After**, in **Options**, hands the connection back after that many minutes of no queries and takes a new one on the next query. `0`, the default, keeps it.

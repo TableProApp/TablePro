@@ -34,9 +34,22 @@ enum TableRowLogic {
         showObjectIcons || isPendingTruncate || isPendingDelete
     }
 
-    static func accessibilityLabel(table: TableInfo, isPendingDelete: Bool, isPendingTruncate: Bool, isFavorite: Bool = false) -> String {
-        let kind = accessibilityKindLabel(for: table.type)
+    static func accessibilityLabel(
+        table: TableInfo,
+        isPendingDelete: Bool,
+        isPendingTruncate: Bool,
+        isFavorite: Bool = false,
+        kindOverride: String? = nil,
+        bound: String? = nil
+    ) -> String {
+        let kind = kindOverride ?? accessibilityKindLabel(for: table.type)
         var label = String(format: String(localized: "%@: %@"), kind, table.name)
+        if let bound, !bound.isEmpty {
+            label += ", " + bound
+        }
+        if let partitions = SidebarPartitionRow.tableAccessibilitySuffix(partitionCount: table.partitionCount) {
+            label += ", " + partitions
+        }
         if isPendingDelete {
             label += ", " + String(localized: "pending delete")
         } else if isPendingTruncate {
@@ -53,9 +66,19 @@ struct TableRow: View {
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
     var isFavorite: Bool = false
+    var showsPartitionCount: Bool = false
+    /// Set when the row stands for a partition that is a relation of its own. It draws beside the
+    /// name like a comment does, and it is not the comment: the comment is what the server stores
+    /// against the object, and it is hidden behind its own setting.
+    var partitionBound: String?
     var onToggleFavorite: (() -> Void)?
 
     @State private var isHovered = false
+
+    private var visiblePartitionCount: String? {
+        guard showsPartitionCount, table.type == .partitionedTable else { return nil }
+        return SidebarPartitionRow.countLabel(partitionCount: table.partitionCount)
+    }
 
     private var visibleComment: String? {
         guard AppSettingsManager.shared.general.showObjectComments,
@@ -104,6 +127,20 @@ struct TableRow: View {
                             .truncationMode(.tail)
                             .help(visibleComment)
                     }
+                    if let partitionBound {
+                        Text(partitionBound)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(partitionBound)
+                    }
+                    if let visiblePartitionCount {
+                        Text(visiblePartitionCount)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             } icon: {
                 if showsObjectIcon {
@@ -137,7 +174,9 @@ struct TableRow: View {
                 table: table,
                 isPendingDelete: isPendingDelete,
                 isPendingTruncate: isPendingTruncate,
-                isFavorite: isFavorite
+                isFavorite: isFavorite,
+                kindOverride: partitionBound == nil ? nil : SidebarPartitionRow.kindLabel,
+                bound: partitionBound
             )
         )
         .modifier(FavoriteAccessibilityAction(isFavorite: isFavorite, toggle: onToggleFavorite))

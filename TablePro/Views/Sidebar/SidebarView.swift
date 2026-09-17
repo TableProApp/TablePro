@@ -345,6 +345,7 @@ struct SidebarView: View {
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
             showSystemContainers: settingsManager.general.showSystemContainers,
+            showsPartitions: settingsManager.general.showPartitions,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

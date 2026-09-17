@@ -32,6 +32,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
     internal var showSystemContainers = false
+    internal var showsPartitions = true
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
@@ -172,6 +173,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
             || showSystemContainers != view.showSystemContainers
+            || showsPartitions != view.showsPartitions
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -182,6 +184,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
         showSystemContainers = view.showSystemContainers
+        showsPartitions = view.showsPartitions
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
@@ -272,6 +275,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
+                )
+            case .partition(let ref):
+                let source = ref.tableRef ?? ref.parent
+                _ = service.partitionsLoadState(
+                    connectionId: connectionId,
+                    database: source.database ?? "",
+                    schema: source.schema,
+                    table: source.table.name
                 )
             case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
                  .objectKindSection, .containerObjectKindSection,
@@ -429,7 +440,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         let selectedObjects = Set(selectedTables.map(\.table))
         var nodes: [DatabaseTreeNode] = []
         for node in nodeCache.values {
-            guard case .table(let ref) = node.kind, selectedObjects.contains(ref.table) else { continue }
+            guard let ref = node.tableRef, selectedObjects.contains(ref.table) else { continue }
             guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
             nodes.append(node)
         }
@@ -571,7 +582,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             },
             routineDisplayLabel: { [weak self] ref in
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
-            }
+            },
+            showsPartitions: showsPartitions
         )
     }
 
@@ -714,8 +726,19 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
         resolvedChildren(of: item)[index]
     }
 
+    /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
+    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
+    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isExpandable ?? false
+        guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
+        switch node.kind {
+        case .table(let ref) where ref.table.type == .partitionedTable:
+            return showsPartitions
+        case .partition:
+            return showsPartitions
+        default:
+            return true
+        }
     }
 }
 

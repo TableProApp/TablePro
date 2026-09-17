@@ -74,6 +74,8 @@ Table info carries columns, types, nullability, primary keys, indexes, foreign k
 
 The editor runs SQL and anonymous PL/SQL blocks, and grid paging is written as `OFFSET … ROWS FETCH NEXT … ROWS ONLY`. Import and export work as they do elsewhere, and a remote server reaches through an [SSH tunnel](/connections/ssh-tunneling).
 
+A partitioned table shows its partition count and lists the partitions under it, each with its position. `ALL_TAB_PARTITIONS.HIGH_VALUE` is a `LONG` column the driver cannot decode, so an Oracle partition row carries the position rather than the bound. Subpartitions nest under their partition. An interval-partitioned table reports no count: the server's figure there is the range it will extend into, not the partitions that exist. Query one with `SELECT * FROM orders PARTITION (p2024)`.
+
 ## Column type support
 
 | Oracle type | Display |

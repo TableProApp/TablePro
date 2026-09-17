@@ -208,11 +208,57 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             default:                  type = "TABLE"
             }
             let comment = row[safe: 2]?.asText?.nilIfEmpty
-            return PluginTableInfo(name: name, type: type, comment: comment)
+            let partitionCount = row[safe: 3]?.asText.flatMap(Int.init)
+            return PluginTableInfo(name: name, type: type, comment: comment, partitionCount: partitionCount)
         }
     }
 
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] {
+        try await partitionRows(table: table, schema: schema).map { row in
+            PluginTableInfo(
+                name: row.name,
+                type: row.relationType,
+                rowCount: row.rowCount,
+                schema: row.schema,
+                comment: nil
+            )
+        }
+    }
+
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
+        try await partitionRows(table: table, schema: schema).map { row in
+            PluginPartitionInfo(
+                name: row.name,
+                schema: row.schema,
+                bound: row.bound,
+                rowCount: row.rowCount,
+                relationType: row.relationType,
+                isSubpartitioned: row.isSubpartitioned
+            )
+        }
+    }
+
+    private struct PostgreSQLPartitionRow {
+        let name: String
+        let schema: String?
+        let bound: String?
+        let rowCount: Int?
+        let relationType: String
+        var isSubpartitioned: Bool { relationType == "PARTITIONED TABLE" }
+    }
+
+    /// A partition is whatever `relkind` says it is. From PostgreSQL 11 a foreign table can be a
+    /// partition, and it is read-only, so reporting one as an ordinary table offers Truncate on a
+    /// table that lives on another server.
+    private static func partitionRelationType(relkind: String?) -> String {
+        switch relkind {
+        case "p": return "PARTITIONED TABLE"
+        case "f": return "FOREIGN TABLE"
+        default:  return "TABLE"
+        }
+    }
+
+    private func partitionRows(table: String, schema: String?) async throws -> [PostgreSQLPartitionRow] {
         guard versionedCapabilities.hasDeclarativePartitioning else { return [] }
         let result = try await execute(
             query: PostgreSQLSchemaQueries.fetchPartitions(
@@ -220,14 +266,15 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 table: table
             )
         )
-        return result.rows.compactMap { row -> PluginTableInfo? in
+        return result.rows.compactMap { row -> PostgreSQLPartitionRow? in
             guard let name = row[0].asText else { return nil }
-            let isSubpartitioned = row[safe: 1]?.asText == "p"
-            return PluginTableInfo(
+            let approximateRows = row[safe: 4]?.asText.flatMap(Int.init)
+            return PostgreSQLPartitionRow(
                 name: name,
-                type: isSubpartitioned ? "PARTITIONED TABLE" : "TABLE",
-                schema: schema ?? core.currentSchema,
-                comment: nil
+                schema: row[safe: 2]?.asText?.nilIfEmpty ?? schema ?? core.currentSchema,
+                bound: PostgreSQLPartitionBound.display(rawExpression: row[safe: 3]?.asText),
+                rowCount: approximateRows.flatMap { $0 < 0 ? nil : $0 },
+                relationType: Self.partitionRelationType(relkind: row[safe: 1]?.asText)
             )
         }
     }

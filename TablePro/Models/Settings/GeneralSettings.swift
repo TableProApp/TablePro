@@ -76,6 +76,9 @@ struct GeneralSettings: Codable, Equatable {
     /// Whether the sidebar tree and its database filter list system databases and schemas
     var showSystemContainers: Bool
 
+    /// Whether a partitioned table lists its partitions in the sidebar and shows how many it holds
+    var showPartitions: Bool
+
     /// Whether the window shows the workspace rail listing every open connection and database
     var showWorkspaceRail: Bool
 
@@ -94,6 +97,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments: true,
         showObjectIcons: true,
         showSystemContainers: false,
+        showPartitions: true,
         showWorkspaceRail: true,
         sidebarRowSize: .matchSystem,
         connectionHealthCheck: .every30Seconds
@@ -108,6 +112,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments: Bool = true,
         showObjectIcons: Bool = true,
         showSystemContainers: Bool = false,
+        showPartitions: Bool = true,
         showWorkspaceRail: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
@@ -120,6 +125,7 @@ struct GeneralSettings: Codable, Equatable {
         self.showObjectComments = showObjectComments
         self.showObjectIcons = showObjectIcons
         self.showSystemContainers = showSystemContainers
+        self.showPartitions = showPartitions
         self.showWorkspaceRail = showWorkspaceRail
         self.sidebarRowSize = sidebarRowSize
         self.connectionHealthCheck = connectionHealthCheck
@@ -135,6 +141,7 @@ struct GeneralSettings: Codable, Equatable {
         showObjectComments = try container.decodeIfPresent(Bool.self, forKey: .showObjectComments) ?? true
         showObjectIcons = try container.decodeIfPresent(Bool.self, forKey: .showObjectIcons) ?? true
         showSystemContainers = try container.decodeIfPresent(Bool.self, forKey: .showSystemContainers) ?? false
+        showPartitions = try container.decodeIfPresent(Bool.self, forKey: .showPartitions) ?? true
         showWorkspaceRail = try container.decodeIfPresent(Bool.self, forKey: .showWorkspaceRail) ?? true
         sidebarRowSize = try container.decodeIfPresent(
             SidebarRowSizePreference.self, forKey: .sidebarRowSize

@@ -66,7 +66,11 @@ Rename from the same sheet, or in place: select the row and press Return.
 
 `pg_catalog`, `information_schema` and `pg_toast` are refused for rename, edit and drop.
 
-A partitioned table is listed once, under its own icon. Expand it for its partitions, and expand a partition again if it is subpartitioned; opening one works like opening any other table. Tables using the older `INHERITS` inheritance are listed normally, each child in its own right.
+A partitioned table is listed once, with how many partitions it holds beside its name. Expand it for the partitions, each labelled with its bound: `FROM ('2024-01-01') TO ('2024-02-01')`, `IN ('de', 'fr')`, `WITH (modulus 4, remainder 0)`, or `DEFAULT`. Expand a partition again if it is subpartitioned.
+
+A partition is a relation, so opening, truncating, renaming and dropping one work as they do on any table. A partition declared in another schema, `CREATE TABLE archive.orders_2023 PARTITION OF public.orders`, is reached under its parent and carries `archive` into every statement built from it.
+
+Tables using the older `INHERITS` inheritance are listed normally, each child on its own. Turn partitions off with **Partitions** under **View Options**.
 
 ## Column types
 

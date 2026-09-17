@@ -134,6 +134,7 @@ struct SidebarMenuBuilderTests {
             showObjectIcons: settings.showObjectIcons,
             showObjectComments: settings.showObjectComments,
             showSystemContainers: settings.showSystemContainers,
+            showPartitions: settings.showPartitions,
             rowSize: settings.sidebarRowSize
         )
 

@@ -78,5 +78,6 @@ internal enum SidebarMenuCommand: Equatable {
     case toggleObjectIcons
     case toggleObjectComments
     case toggleSystemContainers
+    case togglePartitions
     case setRowSize(SidebarRowSizePreference)
 }

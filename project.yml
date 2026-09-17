@@ -411,6 +411,7 @@ targets:
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
       - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
@@ -494,6 +495,7 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
       - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
+      - Plugins/MySQLDriverPlugin/MySQLPartitionBound.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
       - Plugins/MySQLDriverPlugin/MySQLSystemDatabases.swift
@@ -539,6 +541,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLPartitionBound.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift

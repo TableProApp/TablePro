@@ -58,6 +58,8 @@ internal enum DatabaseTreeTypeSelect {
             return group.kind.title(tableEntityName: tableEntityName)
         case .recentTable(let ref), .table(let ref):
             return ref.table.name
+        case .partition(let ref):
+            return ref.partition.name
         case .database(let metadata):
             return metadata.name
         case .schema(_, let schema):

@@ -110,6 +110,7 @@ struct DatabaseTreeMenuSpecTests {
             showObjectIcons: true,
             showObjectComments: false,
             showSystemContainers: false,
+            showPartitions: true,
             rowSize: .matchSystem,
             canFilterDatabases: canFilterDatabases,
             hasDatabaseFilter: hasDatabaseFilter,
@@ -262,12 +263,13 @@ struct DatabaseTreeMenuSpecTests {
         #expect(entry(for: .toggleSystemContainers)?.isOn == false)
     }
 
-    @Test("View Options offers System Databases and Schemas beside Icons and Comments")
+    @Test("View Options offers System Databases and Schemas and Partitions beside Icons and Comments")
     func viewOptionsOfferSystemContainers() {
         let sections = SidebarViewOptionsMenu.sections(
             showObjectIcons: true,
             showObjectComments: true,
             showSystemContainers: true,
+            showPartitions: true,
             rowSize: .matchSystem
         )
         let items = sections.first?.items ?? []
@@ -275,9 +277,28 @@ struct DatabaseTreeMenuSpecTests {
             guard case .command(let entry) = item, entry.isOn == true else { return nil }
             return entry.command
         }
-        let expected: [SidebarMenuCommand] = [.toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers]
+        let expected: [SidebarMenuCommand] = [
+            .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions
+        ]
 
         #expect(toggles == expected)
+    }
+
+    @Test("Partitions reports its own state rather than borrowing another option's")
+    func viewOptionsReportPartitionState() {
+        let sections = SidebarViewOptionsMenu.sections(
+            showObjectIcons: true,
+            showObjectComments: true,
+            showSystemContainers: true,
+            showPartitions: false,
+            rowSize: .matchSystem
+        )
+        let states: [Bool?] = (sections.first?.items ?? []).compactMap { item in
+            guard case .command(let entry) = item, entry.command == .togglePartitions else { return nil }
+            return entry.isOn
+        }
+
+        #expect(states == [false])
     }
 
     // MARK: - Tables

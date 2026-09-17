@@ -74,7 +74,7 @@ The two `switch_` tools move what the user sees in TablePro. To run one statemen
 | `get_view_definition` | `connection_id`, `view` (`database`, `schema`) | `view`, `schema`, `definition` |
 | `list_routines` | `connection_id` (`kind`, `database`, `schema`) | `routines[]` (`name`, `kind`, `schema`, `qualified_name`, `signature`, `return_type`, `language`) |
 | `list_types` | `connection_id` (`kind`, `database`, `schema`) | `types[]` (`name`, `kind`, `schema`, `qualified_name`, `labels`, `fields`, `base_type`, `definition`), sorted by qualified name |
-| `list_partitions` | `connection_id`, `table` (`database`, `schema`) | `table`, `partitions[]`, shaped like `list_tables` entries |
+| `list_partitions` | `connection_id`, `table` (`database`, `schema`) | `table`, `partitions[]` with `name` and `type` as in `list_tables`, plus `bound`, `ordinal_position`, `row_count`, `is_separate_relation`, `is_subpartitioned` and `parent_partition` |
 | `get_table_statistics` | `connection_id`, `table` (`database`, `schema`) | `table` plus whatever the engine records: `data_size_bytes`, `index_size_bytes`, `total_size_bytes`, `average_row_length`, `row_count`, `comment`, `engine`, `collation`, `created_at`, `updated_at` |
 | `get_database_statistics` | `connection_id` (`database`) | `databases[]` (`name`, `table_count`, `size_bytes`, `is_system_database`), sorted by name |
 

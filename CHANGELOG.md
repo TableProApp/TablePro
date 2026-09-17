@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OceanBase MySQL-mode connection type on the MySQL driver. (#1748)
 - On the Server mode for a SQLite Remote Database File, editing a database on an SSH server in place with statements run on the server. (#2831)
 - **System Databases and Schemas** for the sidebar tree, in View Options and Settings > General. (#2832)
+- Partitions nested under their parent table in the sidebar, with the bound and a count on the parent. (#2523)
+- **Partitions** for the sidebar tree, in View Options and Settings > General. (#2523)
+- Partitions for MySQL, MariaDB and Oracle tables, which were listed nowhere before. (#2523)
 - Favorites and Recent sections, sorting, drag and drop into groups, inline rename and tag search tokens in the welcome window.
 - **File > New Group…**, **File > Rename** and **View > Sort Connections By** for the welcome window.
 - Favorites, Recent, nested groups, sorting and tag search tokens in the iOS connection list.
@@ -79,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Crash on launch when a pairing deep link opens the approval sheet. (#2930)
+- Wrong table dropped, truncated or opened from a PostgreSQL partition that lives in another schema. (#2523)
+- A PostgreSQL partition missing from the object list when its parent table is not readable. (#2523)
+- A PostgreSQL foreign-table partition listed twice, under Foreign Tables and under its parent. (#2523)
 - `Return` in the raw SQL filter accepting a suggestion nobody selected instead of applying the filter.
 - `Return` on a filter value replacing what was typed with the first suggestion.
 - Filter autocomplete opening a full column list where the editor's stays shut.

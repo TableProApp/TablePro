@@ -422,7 +422,7 @@ public struct ListPartitionsTool: MCPToolImplementation {
             "table": MCPToolSchema.string(String(localized: "Parent table")),
             "partitions": MCPToolSchema.array(
                 String(localized: "Direct partitions"),
-                of: MCPToolSchema.tableSummary
+                of: MCPToolSchema.partitionSummary
             )
         ],
         required: ["table", "partitions"]

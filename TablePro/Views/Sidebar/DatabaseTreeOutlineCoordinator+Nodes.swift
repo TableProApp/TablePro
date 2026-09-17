@@ -41,7 +41,11 @@ extension DatabaseTreeOutlineCoordinator {
         case .schema(let database, let schema):
             return objectNodes(database: database, schema: schema)
         case .table(let ref):
-            return ref.table.type == .partitionedTable ? partitionNodes(of: ref) : []
+            guard showsPartitions, ref.table.type == .partitionedTable else { return [] }
+            return partitionNodes(of: ref)
+        case .partition(let ref):
+            guard showsPartitions, ref.partition.isSubpartitioned else { return [] }
+            return subpartitionNodes(of: ref)
         case .objectKindSection(let kind):
             return flatObjectNodes(for: kind)
         case .containerObjectKindSection(let group):
@@ -57,6 +61,8 @@ extension DatabaseTreeOutlineCoordinator {
         }
     }
 
+    /// Only the top-level partitions. A subpartition names the partition it subdivides and is
+    /// nested under that row instead, because an engine that has them reports both in one list.
     private func partitionNodes(of ref: DatabaseTreeTableRef) -> [DatabaseTreeNode] {
         let parentId = DatabaseTreeNode.tableId(ref)
         let state = service.partitionsLoadState(
@@ -68,12 +74,36 @@ extension DatabaseTreeOutlineCoordinator {
         case .failed(let message):
             return [statusNode(parentId: parentId, status: .error(message))]
         case .loaded(let partitions):
-            if partitions.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
-            return partitions.map { partition in
-                let childRef = DatabaseTreeTableRef(database: ref.database, schema: ref.schema, table: partition)
-                return node(id: DatabaseTreeNode.tableId(childRef), kind: .table(childRef))
-            }
+            let top = partitions.filter { $0.parentPartitionName == nil }
+            if top.isEmpty { return [statusNode(parentId: parentId, status: .empty)] }
+            return top.map { partitionNode(parent: ref, partition: $0) }
         }
+    }
+
+    /// Where a subpartitioned partition's children come from differs by engine. A PostgreSQL
+    /// partition is a relation, so its own partitions are a fetch against it, the same one its
+    /// parent ran. A MySQL or Oracle partition is not, so its subpartitions arrived in the parent's
+    /// own list carrying its name.
+    private func subpartitionNodes(of ref: DatabaseTreePartitionRef) -> [DatabaseTreeNode] {
+        if let relation = ref.tableRef {
+            return partitionNodes(of: relation)
+        }
+        let parent = ref.parent
+        let state = service.partitionsLoadState(
+            connectionId: connectionId,
+            database: parent.database ?? "",
+            schema: parent.schema,
+            table: parent.table.name
+        )
+        guard case .loaded(let partitions) = state else { return [] }
+        return partitions
+            .filter { $0.parentPartitionName == ref.partition.name }
+            .map { partitionNode(parent: parent, partition: $0) }
+    }
+
+    private func partitionNode(parent: DatabaseTreeTableRef, partition: PartitionInfo) -> DatabaseTreeNode {
+        let ref = DatabaseTreePartitionRef(parent: parent, partition: partition)
+        return node(id: DatabaseTreeNode.partitionId(ref), kind: .partition(ref))
     }
 
     /// Which shape the root takes. The three sidebar modes used to be three views; they are one

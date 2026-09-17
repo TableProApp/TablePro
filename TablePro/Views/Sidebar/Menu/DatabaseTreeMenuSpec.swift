@@ -25,6 +25,8 @@ internal enum DatabaseTreeMenuSpec {
             ]
         case .table(let ref):
             return tableSections(ref, context: context)
+        case .partition(let ref):
+            return partitionSections(ref, context: context)
         case .database(let metadata):
             return containerSections(.database(metadata.name, isSystem: metadata.isSystemDatabase), context: context)
         case .schema(let database, let schema):
@@ -229,6 +231,26 @@ internal enum DatabaseTreeMenuSpec {
             title: String(localized: "Import"),
             items: formats.map { .command($0.submenuLabel, .importTables(formatId: $0.id, ref: ref)) }
         )]
+    }
+
+    /// A partition that is a relation of its own gets the full table menu, because everything on it
+    /// works: it can be opened, truncated and dropped by name. One that is not gets copy commands
+    /// alone, because every write on it goes through its parent.
+    private static func partitionSections(
+        _ ref: DatabaseTreePartitionRef,
+        context: DatabaseTreeMenuContext
+    ) -> [DatabaseTreeMenuSection] {
+        if let tableRef = ref.tableRef {
+            return tableSections(tableRef, context: context)
+        }
+        var copies: [DatabaseTreeMenuItem] = [
+            .command(String(localized: "Copy Name"), .copyText(ref.partition.name))
+        ]
+        if let bound = ref.partition.bound, !bound.isEmpty {
+            copies.append(.command(String(localized: "Copy Bound"), .copyText(bound)))
+        }
+        copies.append(.command(String(localized: "Copy Table Name"), .copyText(ref.parent.table.name)))
+        return [DatabaseTreeMenuSection(copies)]
     }
 
     private static func routineSections(_ ref: DatabaseTreeRoutineRef) -> [DatabaseTreeMenuSection] {

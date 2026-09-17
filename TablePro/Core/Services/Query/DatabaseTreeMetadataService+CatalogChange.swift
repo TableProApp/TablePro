@@ -12,12 +12,17 @@ struct CatalogTreeRefreshPlan: Equatable, Sendable {
     var refreshesDatabaseList = false
     var schemaLists: Set<DatabaseTreeMetadataService.DatabaseKey> = []
     var tables: Set<DatabaseTreeMetadataService.ObjectsKey> = []
+    /// Loaded partition lists, which are keyed per table and do not follow their parent's list. A
+    /// flat or hierarchical tree takes its tables from `SchemaService`, so a loaded partition list
+    /// can exist with no `tablesState` entry beside it, and planning from the table keys alone left
+    /// an expanded partitioned table showing its partitions from before the DDL forever.
+    var partitions: Set<DatabaseTreeMetadataService.PartitionsKey> = []
     var routines: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var triggers: Set<DatabaseTreeMetadataService.ObjectsKey> = []
     var types: Set<DatabaseTreeMetadataService.ObjectsKey> = []
 
     var isEmpty: Bool {
-        !refreshesDatabaseList && schemaLists.isEmpty && tables.isEmpty
+        !refreshesDatabaseList && schemaLists.isEmpty && tables.isEmpty && partitions.isEmpty
             && routines.isEmpty && triggers.isEmpty && types.isEmpty
     }
 }
@@ -33,6 +38,7 @@ extension DatabaseTreeMetadataService {
             hasDatabaseList: databaseList[change.connectionId] != nil,
             schemaListKeys: schemaList.keys,
             tableKeys: tablesState.keys,
+            partitionKeys: partitionsState.keys,
             routineKeys: routinesState.keys,
             triggerKeys: triggersState.keys,
             typeKeys: typesState.keys
@@ -50,6 +56,9 @@ extension DatabaseTreeMetadataService {
                 group.addTask {
                     await self.refreshTableObjects(connectionId: key.connectionId, database: key.database, schema: key.schema)
                 }
+            }
+            for key in plan.partitions {
+                group.addTask { await self.refreshPartitions(key) }
             }
             for key in plan.routines {
                 group.addTask {
@@ -76,6 +85,7 @@ extension DatabaseTreeMetadataService {
         hasDatabaseList: Bool,
         schemaListKeys: some Sequence<DatabaseKey>,
         tableKeys: some Sequence<ObjectsKey>,
+        partitionKeys: some Sequence<PartitionsKey> = EmptyCollection(),
         routineKeys: some Sequence<ObjectsKey>,
         triggerKeys: some Sequence<ObjectsKey>,
         typeKeys: some Sequence<ObjectsKey>
@@ -96,6 +106,14 @@ extension DatabaseTreeMetadataService {
             })
         }
         plan.tables = objectKeys(tableKeys, for: .tables)
+        /// A partition list is reached by its own database alone. Matching its schema too would
+        /// miss a PostgreSQL partition that lives in another schema than the table it belongs to,
+        /// which is exactly the cross-schema case the tree draws under its parent.
+        if change.kinds.contains(.tables) {
+            plan.partitions = Set(partitionKeys.filter { key in
+                key.connectionId == change.connectionId && change.reaches(database: key.database)
+            })
+        }
         plan.routines = objectKeys(routineKeys, for: .routines)
         plan.triggers = objectKeys(triggerKeys, for: .triggers)
         plan.types = objectKeys(typeKeys, for: .types)

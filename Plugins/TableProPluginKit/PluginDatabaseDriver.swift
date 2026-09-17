@@ -94,6 +94,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
+
+    /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
+    /// estimate that a `PluginTableInfo` has nowhere to put, and with each partition's own schema
+    /// rather than its parent's.
+    ///
+    /// Implement this instead of `fetchPartitions` on a new driver. The default bridges the old
+    /// requirement so a plugin built before this existed keeps answering.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
 
@@ -547,6 +555,25 @@ public extension PluginDatabaseDriver {
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
+
+    /// Bridges a driver that only answers `fetchPartitions`. It carries no bound, because that
+    /// struct has no room for one.
+    ///
+    /// Whether the row is a relation is read from the type it declares rather than assumed: the
+    /// Kafka driver answers this requirement with broker partitions typed `partition`, and calling
+    /// one of those a relation would offer to open and drop a name no server will accept.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
+        try await fetchPartitions(table: table, schema: schema).map { partition in
+            let relationType = PluginPartitionInfo.relationType(forDeclaredType: partition.type)
+            return PluginPartitionInfo(
+                name: partition.name,
+                schema: partition.schema,
+                rowCount: partition.rowCount,
+                relationType: relationType,
+                isSubpartitioned: relationType == "PARTITIONED TABLE"
+            )
+        }
+    }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }

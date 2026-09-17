@@ -105,6 +105,13 @@ struct GeneralSettingsView: View {
                         in the sidebar tree and the database filter. Switchers always list them.
                         """))
 
+                Toggle("Show partitions", isOn: $settings.showPartitions)
+                    .accessibilityIdentifier("show-partitions-toggle")
+                    .help(String(localized: """
+                        Lists a partitioned table's partitions under it in the sidebar, with how many \
+                        it holds. Turn it off to keep partitioned tables as single rows.
+                        """))
+
                 Picker("Row size:", selection: $settings.sidebarRowSize) {
                     ForEach(SidebarRowSizePreference.allCases, id: \.self) { size in
                         Text(size.title).tag(size)

@@ -95,8 +95,10 @@ protocol DatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [TableInfo]
 
-    /// Fetch the direct partitions of one partitioned table
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo]
+    /// Fetch the direct partitions of one partitioned table, with each one's bound, position and
+    /// row estimate. A partition is not a table on every engine, so this cannot answer `TableInfo`:
+    /// a MySQL or Oracle partition name is unique only within its own table.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo]
 
     /// Fetch columns for a specific table
     func fetchColumns(table: String) async throws -> [ColumnInfo]
@@ -453,7 +455,7 @@ extension DatabaseDriver {
         try await fetchCommentDDL(table: table)
     }
 
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] { [] }
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] { [] }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] { [] }
 

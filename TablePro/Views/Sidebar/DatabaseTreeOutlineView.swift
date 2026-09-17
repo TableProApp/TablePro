@@ -30,6 +30,7 @@ struct DatabaseTreeOutlineView: NSViewRepresentable {
     let selectedTables: Set<DatabaseTreeTableRef>
     let showRecentTables: Bool
     let showSystemContainers: Bool
+    let showsPartitions: Bool
     let rowSizePreference: SidebarRowSizePreference
 
     /// The size the rows are actually drawn at, which is the system's unless the user overrode it.

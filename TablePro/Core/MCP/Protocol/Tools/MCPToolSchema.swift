@@ -152,9 +152,28 @@ enum MCPToolSchema {
             "type": string(String(localized: "Object type reported by the engine")),
             "schema": string(String(localized: "Schema the object belongs to")),
             "comment": string(String(localized: "Table comment")),
-            "row_count": integer(String(localized: "Approximate row count, when requested"))
+            "row_count": integer(String(localized: "Approximate row count, when requested")),
+            "partition_count": integer(String(localized: "Number of partitions, for a partitioned table"))
         ],
         required: ["name", "type"],
+        allowsAdditional: true
+    )
+
+    static let partitionSummary: JsonValue = object(
+        properties: [
+            "name": string(String(localized: "Partition name")),
+            "type": string(String(localized: "Object type, or PARTITION when the partition is not a relation")),
+            "schema": string(String(localized: "Schema the partition belongs to, when it is a relation of its own")),
+            "bound": string(String(localized: "Partition bound as the engine spells it")),
+            "ordinal_position": integer(String(localized: "Position in the parent's declared order")),
+            "row_count": integer(String(localized: "Approximate row count reported by the engine")),
+            "is_separate_relation": boolean(
+                String(localized: "Whether the partition can be queried and dropped by name")
+            ),
+            "is_subpartitioned": boolean(String(localized: "Whether the partition holds subpartitions")),
+            "parent_partition": string(String(localized: "Partition this one subdivides"))
+        ],
+        required: ["name", "type", "is_separate_relation"],
         allowsAdditional: true
     )
 }
