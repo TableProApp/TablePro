@@ -9,7 +9,10 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
-    var updater: SoftwareUpdater
+    /// Observed, because this view reads `canCheckForUpdates`, `lastUpdateCheckDate` and the button
+    /// title off it. Held as a plain property, Last checked and Check for Updates… kept whatever they
+    /// said when Settings opened, however many checks ran behind them.
+    @ObservedObject var updater: SoftwareUpdater
     var onResetAll: () -> Void
 
     @State private var initialLanguage: AppLanguage?
