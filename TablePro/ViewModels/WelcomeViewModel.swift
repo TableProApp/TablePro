@@ -627,7 +627,7 @@ final class WelcomeViewModel: ObservableObject {
 
         if !WindowManager.shared.hasOpenWindow(for: connection.id) {
             Self.logger.info(
-                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
             return
         }
 
@@ -638,7 +638,7 @@ final class WelcomeViewModel: ObservableObject {
             return
         }
 
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
         WindowManager.shared.closeWindow(for: connection.id)
         presentConnectionFailure(error, connection: connection)
     }

@@ -71,7 +71,7 @@ actor QueryHistoryStorage {
         protectDatabaseFiles(at: dbPath)
 
         guard sqlite3_open(dbPath, &dbHandle.pointer) == SQLITE_OK else {
-            Self.logger.error("Failed to open query history database at \(dbPath, privacy: .public)")
+            Self.logger.error("Failed to open query history database at \(dbPath, privacy: .private(mask: .hash))")
             if let pointer = dbHandle.pointer {
                 sqlite3_close_v2(pointer)
             }

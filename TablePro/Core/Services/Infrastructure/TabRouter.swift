@@ -461,7 +461,7 @@ internal final class TabRouter {
                 try? String(contentsOf: url, encoding: .utf8)
             }.value
             guard let content else {
-                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .public)")
+                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 return
             }
             let payload = EditorTabPayload(

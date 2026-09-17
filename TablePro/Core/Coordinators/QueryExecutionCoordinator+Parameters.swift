@@ -72,7 +72,7 @@ extension QueryExecutionCoordinator {
             style: style
         )
 
-        paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .public) with \(conversion.values.count) parameters")
+        paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .private) with \(conversion.values.count) parameters")
 
         executeQueryInternalParameterized(
             conversion.sql,
@@ -109,7 +109,7 @@ extension QueryExecutionCoordinator {
             do {
                 try DatabaseManager.shared.cancelRunningQuery(for: parent.connectionId)
             } catch {
-                paramLog.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
+                paramLog.warning("cancelQuery failed: \(error.publicLogShape, privacy: .public)")
             }
             parent.currentQueryTask = nil
         }
@@ -484,10 +484,10 @@ extension QueryExecutionCoordinator {
             try await driver.rollbackTransaction()
         } catch {
             guard appOpenedTransaction else {
-                paramLog.debug("No open script transaction to roll back: \(error.localizedDescription, privacy: .public)")
+                paramLog.debug("No open script transaction to roll back: \(error.publicLogShape, privacy: .public)")
                 return
             }
-            paramLog.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+            paramLog.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 

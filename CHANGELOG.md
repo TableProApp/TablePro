@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
+
 ## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.

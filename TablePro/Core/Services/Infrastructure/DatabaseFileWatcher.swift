@@ -61,7 +61,7 @@ final class DatabaseFileWatcher {
 
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else {
-            Self.logger.error("Cannot open database file for watching: \(path, privacy: .public) errno=\(errno)")
+            Self.logger.error("Cannot open database file for watching: \(path, privacy: .private(mask: .hash)) errno=\(errno)")
             return
         }
 
@@ -84,7 +84,7 @@ final class DatabaseFileWatcher {
 
         activeSources[connectionId] = source
         source.resume()
-        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .public)")
+        Self.logger.info("watching connId=\(connectionId, privacy: .public) path=\(path, privacy: .private(mask: .hash))")
     }
 
     private func handleEvent(connectionId: UUID) {

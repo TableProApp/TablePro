@@ -435,7 +435,7 @@ enum ConnectionExportService {
                 do {
                     try GroupStorage.shared.addGroup(group)
                 } catch {
-                    Self.logger.error("Skipped importing group: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Skipped importing group: \(error.publicLogShape, privacy: .public)")
                 }
             }
         }
@@ -457,7 +457,7 @@ enum ConnectionExportService {
                 do {
                     try TagStorage.shared.addTag(tag)
                 } catch {
-                    Self.logger.error("Skipped importing tag: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Skipped importing tag: \(error.publicLogShape, privacy: .public)")
                 }
             }
         }

@@ -82,7 +82,7 @@ internal final class SampleDatabaseService {
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
-            Self.logger.info("Installed sample database to \(installed.path, privacy: .public)")
+            Self.logger.info("Installed sample database to \(installed.path, privacy: .private(mask: .hash))")
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
@@ -115,7 +115,7 @@ internal final class SampleDatabaseService {
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
-            Self.logger.info("Reset sample database at \(installed.path, privacy: .public)")
+            Self.logger.info("Reset sample database at \(installed.path, privacy: .private(mask: .hash))")
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }

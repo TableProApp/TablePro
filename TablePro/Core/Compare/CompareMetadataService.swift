@@ -220,7 +220,7 @@ internal struct CompareMetadataService {
                 throw CancellationError()
             } catch {
                 Self.logger.warning(
-                    "Whole-schema trigger read failed, falling back per table: \(error.localizedDescription, privacy: .public)"
+                    "Whole-schema trigger read failed, falling back per table: \(error.publicLogShape, privacy: .public)"
                 )
                 return try await Self.perTableTriggerReads(tables: tables, schema: schema, using: plugin)
             }
@@ -483,7 +483,7 @@ internal struct CompareMetadataService {
             )
         } catch {
             Self.logger.warning(
-                "Structure read failed for \(table.name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Structure read failed for \(table.name, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             return TableStructureRead(
                 table: table, columns: [], indexes: [], foreignKeys: [],

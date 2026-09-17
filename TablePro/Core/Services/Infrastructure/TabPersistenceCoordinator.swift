@@ -100,13 +100,13 @@ internal final class TabPersistenceCoordinator: ObservableObject {
     ) -> (tabs: [PersistedTab], selectedTabId: UUID?, database: String?, schema: String?)? {
         guard !tabs.isEmpty else {
             Self.logger.debug(
-                "[persist] \(path, privacy: .public) skipped empty tab set connId=\(self.connectionId, privacy: .public)"
+                "[persist] \(path, privacy: .private(mask: .hash)) skipped empty tab set connId=\(self.connectionId, privacy: .public)"
             )
             return nil
         }
         guard hasObservedTabs else {
             Self.logger.info(
-                "[persist] \(path, privacy: .public) withheld before restore connId=\(self.connectionId, privacy: .public)"
+                "[persist] \(path, privacy: .private(mask: .hash)) withheld before restore connId=\(self.connectionId, privacy: .public)"
             )
             return nil
         }
@@ -177,7 +177,7 @@ internal final class TabPersistenceCoordinator: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
-                Self.logger.fault("Failed to save tab state for connection \(connId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.fault("Failed to save tab state for connection \(connId, privacy: .public): \(error.publicLogShape, privacy: .public)")
             }
         }
     }

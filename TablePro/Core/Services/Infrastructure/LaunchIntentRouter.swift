@@ -28,7 +28,7 @@ internal final class LaunchIntentRouter {
                 try await TabRouter.shared.route(intent)
 
             case .openInspectorFile(let url):
-                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .public)))")
+                Self.logger.debug("LaunchIntentRouter.route(.openInspectorFile(\(url.lastPathComponent, privacy: .private(mask: .hash))))")
                 try await openInspectorDocument(at: url)
 
             case .importConnection(let exportable):
@@ -56,13 +56,13 @@ internal final class LaunchIntentRouter {
         } catch is CancellationError {
             Self.logger.info("Intent cancelled")
         } catch {
-            Self.logger.error("Intent failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Intent failed: \(error.publicLogShape, privacy: .public)")
             await presentError(error, for: intent)
         }
     }
 
     private func openInspectorDocument(at url: URL) async throws {
-        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .public)")
+        Self.logger.debug("LaunchIntentRouter.openInspectorDocument - calling NSDocumentController.shared (\(String(describing: Swift.type(of: NSDocumentController.shared)), privacy: .public)).openDocument for \(url.lastPathComponent, privacy: .private(mask: .hash))")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, alreadyOpen, error in
                 Self.logger.debug("LaunchIntentRouter.openInspectorDocument completion - document=\(document == nil ? "nil" : "present", privacy: .public) alreadyOpen=\(alreadyOpen, privacy: .public) error=\(error?.localizedDescription ?? "nil", privacy: .public)")
@@ -71,7 +71,7 @@ internal final class LaunchIntentRouter {
                     return
                 }
                 if document == nil {
-                    Self.logger.warning("NSDocumentController returned no document for \(url.lastPathComponent, privacy: .public)")
+                    Self.logger.warning("NSDocumentController returned no document for \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 }
                 continuation.resume()
             }

@@ -94,7 +94,7 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
             Self.logger.info("Started cloudflared access login for \(hostname, privacy: .public)")
         } catch {
             signInError = error.localizedDescription
-            Self.logger.error("cloudflared access login failed to start: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("cloudflared access login failed to start: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

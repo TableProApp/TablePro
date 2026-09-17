@@ -91,12 +91,12 @@ final class LinkedFolderWatcher: ObservableObject {
         for folder in folders where folder.isEnabled {
             let expandedPath = folder.expandedPath
             guard fm.fileExists(atPath: expandedPath) else {
-                logger.warning("Linked folder not found: \(expandedPath, privacy: .public)")
+                logger.warning("Linked folder not found: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 
             guard let contents = try? fm.contentsOfDirectory(atPath: expandedPath) else {
-                logger.warning("Cannot read linked folder: \(expandedPath, privacy: .public)")
+                logger.warning("Cannot read linked folder: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 
@@ -128,7 +128,7 @@ final class LinkedFolderWatcher: ObservableObject {
             let expandedPath = folder.expandedPath
             let fd = open(expandedPath, O_EVTONLY)
             guard fd >= 0 else {
-                Self.logger.warning("Cannot open linked folder for watching: \(expandedPath, privacy: .public)")
+                Self.logger.warning("Cannot open linked folder for watching: \(expandedPath, privacy: .private(mask: .hash))")
                 continue
             }
 

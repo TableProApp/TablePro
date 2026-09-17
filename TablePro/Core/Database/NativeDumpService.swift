@@ -320,7 +320,7 @@ final class NativeDumpService: ObservableObject {
             )
         }
 
-        Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .public)")
+        Self.logger.info("\(self.toolName, privacy: .public) started db=\(database, privacy: .private(mask: .hash))")
     }
 
     /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
@@ -581,13 +581,13 @@ final class NativeDumpService: ObservableObject {
         if result.wasCancelled {
             if kind == .backup { Self.removeDestination(fileURL) }
             setState(.cancelled)
-            Self.logger.notice("\(self.toolName, privacy: .public) cancelled db=\(database, privacy: .public)")
+            Self.logger.notice("\(self.toolName, privacy: .public) cancelled db=\(database, privacy: .private(mask: .hash))")
             return
         }
 
         if result.exitCode == 0 {
             setState(.finished(database: database, fileURL: fileURL, bytesProcessed: writtenBytes))
-            Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .public)")
+            Self.logger.info("\(self.toolName, privacy: .public) finished bytes=\(writtenBytes) db=\(database, privacy: .private(mask: .hash))")
             return
         }
 
@@ -602,7 +602,7 @@ final class NativeDumpService: ObservableObject {
             Self.logger.notice(
                 """
                 \(self.toolName, privacy: .public) finished skipping settings=\(settings, privacy: .public) \
-                db=\(database, privacy: .public)
+                db=\(database, privacy: .private(mask: .hash))
                 """
             )
             return
@@ -613,7 +613,7 @@ final class NativeDumpService: ObservableObject {
             ? String(format: String(localized: "Process exited with code %d"), Int(result.exitCode))
             : result.stderr
         setState(.failed(message: summary, targetMayBeModified: kind == .restore))
-        Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .public) stderr=\(result.stderr)")
+        Self.logger.error("\(self.toolName, privacy: .public) failed code=\(result.exitCode) db=\(database, privacy: .private(mask: .hash)) stderr=\(result.stderr)")
     }
 
     /// A DuckDB Parquet backup is a folder, so its size is the sum of what is inside it and its

@@ -236,7 +236,7 @@ internal struct ThemeEditorColorsSection: View {
                 do {
                     try engine.saveUserTheme(updated)
                 } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                 }
             }
         )
@@ -260,7 +260,7 @@ internal struct ThemeEditorColorsSection: View {
                 do {
                     try engine.saveUserTheme(updated)
                 } catch {
-                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                 }
             }
         )
@@ -283,7 +283,7 @@ internal struct ThemeEditorColorsSection: View {
                         do {
                             try engine.saveUserTheme(updated)
                         } catch {
-                            Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                            Self.logger.error("Failed to save theme: \(error.publicLogShape, privacy: .public)")
                         }
                     } label: {
                         Image(systemName: "arrow.counterclockwise")

@@ -322,6 +322,7 @@ targets:
       - TablePro/CLI/BridgeMain.swift
       - TablePro/CLI/BridgeProxy.swift
       - TablePro/CLI/Handshake.swift
+      - TablePro/Core/Diagnostics/LogRedaction.swift
       - TablePro/Core/MCP/Auth/MCPAuthChallenge.swift
       - TablePro/Core/MCP/Auth/MCPScope.swift
       - TablePro/Core/MCP/Lifecycle/MCPHandshakeFile.swift

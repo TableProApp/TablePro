@@ -42,7 +42,7 @@ internal enum FeatureTipsBootstrap {
                 .displayFrequency(resolved.visibility == .normal ? .daily : .immediate)
             ])
         } catch {
-            logger.error("Could not configure tips: \(error.localizedDescription, privacy: .public)")
+            logger.error("Could not configure tips: \(error.publicLogShape, privacy: .public)")
         }
     }
 

@@ -147,7 +147,7 @@ final class QueryExecutor {
             return bounded
         }
         let start = CFAbsoluteTimeGetCurrent()
-        queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil")")
+        queryExecutorLog.info("[executeUserQuery] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil")")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: nil)
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQuery] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
@@ -171,7 +171,7 @@ final class QueryExecutor {
         rowCap: Int?
     ) async throws -> QueryFetchResult {
         let start = CFAbsoluteTimeGetCurrent()
-        queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .public) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
+        queryExecutorLog.info("[executeUserQueryParameterized] sql=\(sql.prefix(100), privacy: .private) rowCap=\(rowCap?.description ?? "nil") params=\(parameters.count)")
         let result = try await driver.executeUserQuery(query: sql, rowCap: rowCap, parameters: parameters)
         let elapsed = CFAbsoluteTimeGetCurrent() - start
         queryExecutorLog.info("[executeUserQueryParameterized] rows=\(result.rows.count) truncated=\(result.isTruncated) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
@@ -192,7 +192,7 @@ final class QueryExecutor {
 
     static func fetchTableSchema(scope: DatabaseScope, tableName: String) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
-            "[fk] schema fetch start table=\(tableName, privacy: .public) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
+            "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
         )
         let (columns, approximateRowCount) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope
@@ -203,7 +203,7 @@ final class QueryExecutor {
         }
         let foreignKeys = await fetchForeignKeys(scope: scope, tableName: tableName)
         queryExecutorLog.info(
-            "[fk] schema fetch done table=\(tableName, privacy: .public) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
+            "[fk] schema fetch done table=\(tableName, privacy: .private(mask: .hash)) columns=\(columns.count) fks=\(foreignKeys.map { String($0.count) } ?? "failed", privacy: .public)"
         )
         return FetchedTableSchema(columns: columns, foreignKeys: foreignKeys, approximateRowCount: approximateRowCount)
     }
@@ -215,7 +215,7 @@ final class QueryExecutor {
             }
         } catch {
             queryExecutorLog.error(
-                "[fk] FK fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "[fk] FK fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             return nil
         }

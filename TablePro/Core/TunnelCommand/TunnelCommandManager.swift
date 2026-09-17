@@ -301,7 +301,7 @@ actor TunnelCommandManager: TunnelManaging {
             let data = try JSONEncoder().encode(records)
             AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
-            Self.logger.error("Failed to persist tunnel command PID records: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist tunnel command PID records: \(error.publicLogShape, privacy: .public)")
         }
     }
 

@@ -86,7 +86,7 @@ extension MainContentCoordinator {
             includeSiblings: navigationModel != .inPlace
         ) {
             navigationLogger.debug(
-                "[tableload] activateExistingTab table=\(tableName, privacy: .public)"
+                "[tableload] activateExistingTab table=\(tableName, privacy: .private(mask: .hash))"
             )
             return disposition
         }
@@ -148,7 +148,7 @@ extension MainContentCoordinator {
                 }
                 return replaced ? .currentCoordinator : nil
             } catch {
-                navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+                navigationLogger.error("openTableTab replaceTabContent failed: \(error.publicLogShape, privacy: .public)")
                 return nil
             }
         }
@@ -168,7 +168,7 @@ extension MainContentCoordinator {
 
         promotePreviewTab()
         navigationLogger.debug(
-            "[tableload] handoffToNewWindowTab table=\(tableName, privacy: .public)"
+            "[tableload] handoffToNewWindowTab table=\(tableName, privacy: .private(mask: .hash))"
         )
         TableLoadTracer.shared.noteWindowTabHandoff(connectionId: connection.id, table: tableName)
         let payload = EditorTabPayload(
@@ -259,7 +259,7 @@ extension MainContentCoordinator {
                 isPreview: createAsPreview
             )
         } catch {
-            navigationLogger.error("openTableTab tab creation failed: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("openTableTab tab creation failed: \(error.publicLogShape, privacy: .public)")
             return false
         }
         if let (tab, tabIndex) = tabManager.selectedTabAndIndex {
@@ -337,7 +337,7 @@ extension MainContentCoordinator {
                 isPreview: createAsPreview
             )
         } catch {
-            navigationLogger.error("openTableTab replaceTabContent failed: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("openTableTab replaceTabContent failed: \(error.publicLogShape, privacy: .public)")
             if let token { TableLoadTracer.shared.finish(token: token, outcome: .replaceFailed) }
             return false
         }
@@ -491,7 +491,7 @@ extension MainContentCoordinator {
             syncSidebarObjectSelection()
             return true
         } catch {
-            navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("Failed to switch database: \(error.publicLogShape, privacy: .public)")
             /// A user who dismissed the password prompt already knows why nothing happened, and
             /// telling them their own decision failed is noise, not news.
             guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return false }
@@ -606,7 +606,7 @@ extension MainContentCoordinator {
     func switchSchema(to schema: String) async {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else {
             navigationLogger.warning(
-                "switchSchema(to: \(schema, privacy: .public)) ignored: \(self.connection.type.rawValue, privacy: .public) does not support schema switching"
+                "switchSchema(to: \(schema, privacy: .private(mask: .hash))) ignored: \(self.connection.type.rawValue, privacy: .public) does not support schema switching"
             )
             AlertHelper.showErrorSheet(
                 title: String(localized: "Schema Switching Not Supported"),
@@ -636,7 +636,7 @@ extension MainContentCoordinator {
             }
             toolbarState.currentSchema = previousSchema
 
-            navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
+            navigationLogger.error("Failed to switch schema: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(format: String(localized: "%@ Switch Failed"), schemaEntityName),
                 message: error.localizedDescription,
@@ -672,7 +672,7 @@ extension MainContentCoordinator {
                 services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
-                    "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Failed to drop \(target.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
@@ -743,7 +743,7 @@ extension MainContentCoordinator {
                 try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
                 guard !Task.isCancelled else { return }
-                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.publicLogShape, privacy: .public)")
                 if let tabId = tabManager.selectedTab?.id {
                     declineTableLoad(for: tabId)
                 }

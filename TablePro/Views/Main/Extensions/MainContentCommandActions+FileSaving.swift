@@ -66,7 +66,7 @@ extension MainContentCommandActions {
     /// queue, so the batch keeps the tab open and the user answers it there.
     func saveFile(of tab: QueryTab, to url: URL) async -> Bool {
         guard !isExternallyModified(tab: tab, url: url) else {
-            Self.fileLogger.info("Batch save skipped a file changed on disk: \(url.lastPathComponent, privacy: .public)")
+            Self.fileLogger.info("Batch save skipped a file changed on disk: \(url.lastPathComponent, privacy: .private(mask: .hash))")
             return false
         }
         return await writeTabContentAwaiting(tabId: tab.id, content: tab.content.query, to: url)

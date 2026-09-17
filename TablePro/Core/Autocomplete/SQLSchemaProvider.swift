@@ -107,7 +107,7 @@ actor SQLSchemaProvider {
                 await self.setLoadedTables(fetched)
             } catch {
                 Self.logger.error(
-                    "[schema] loadSchema failed: \(error.localizedDescription, privacy: .public)"
+                    "[schema] loadSchema failed: \(error.publicLogShape, privacy: .public)"
                 )
             }
         }
@@ -159,7 +159,7 @@ actor SQLSchemaProvider {
             return columns
         } catch {
             Self.logger.error(
-                "Column fetch failed for autocomplete table=\(tableName) error=\(error.localizedDescription, privacy: .public)"
+                "Column fetch failed for autocomplete table=\(tableName) error=\(error.publicLogShape, privacy: .public)"
             )
             return []
         }

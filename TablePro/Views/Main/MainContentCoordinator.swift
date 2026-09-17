@@ -1320,7 +1320,7 @@ final class MainContentCoordinator: ObservableObject {
         )
         if let tableName {
             Self.logger.info(
-                "[fk] metadata decision table=\(tableName, privacy: .public) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
+                "[fk] metadata decision table=\(tableName, privacy: .private(mask: .hash)) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
             )
         }
         guard let scope = scope(for: tab) else {
@@ -1501,7 +1501,7 @@ final class MainContentCoordinator: ObservableObject {
         do {
             try services.databaseManager.cancelRunningQuery(for: connectionId, reach: reach)
         } catch {
-            Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("cancelQuery failed: \(error.publicLogShape, privacy: .public)")
         }
         currentQueryTask = nil
         currentQueryTaskOwner = nil

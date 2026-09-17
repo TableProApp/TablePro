@@ -312,7 +312,7 @@ final class PaginationCoordinator: ObservableObject {
 
             do {
                 let start = CFAbsoluteTimeGetCurrent()
-                progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
+                progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .private)")
                 let result = try await parent.withExecutionDriver(scope: scope, isTableTab: isTableTab) { driver in
                     try await driver.executeUserQuery(
                         query: baseQuery,
@@ -386,7 +386,7 @@ final class PaginationCoordinator: ObservableObject {
                         tab.execution.errorMessage = DatabaseWriteRejectionDiagnosis.formatted(error)
                     }
                     parent.retireQueryTask(for: nil)
-                    MainContentCoordinator.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
+                    MainContentCoordinator.logger.error("Fetch all failed: \(error.publicLogShape, privacy: .public)")
                     guard !isStale, !isCancelled else { return }
                     parent.reportOperation(
                         kind: .fetchAll,

@@ -89,7 +89,7 @@ extension QueryExecutionCoordinator {
             && tableRows.foreignKeysFetched
             && enumsReady
         helpersLogger.info(
-            "[fk] cache check table=\(tableName, privacy: .public) defaults=\(tableRows.columnDefaults.count) pks=\(tab.tableContext.primaryKeyColumns.count) fkFetched=\(tableRows.foreignKeysFetched) fks=\(tableRows.columnForeignKeys.count) enumsReady=\(enumsReady) cached=\(cached)"
+            "[fk] cache check table=\(tableName, privacy: .private(mask: .hash)) defaults=\(tableRows.columnDefaults.count) pks=\(tab.tableContext.primaryKeyColumns.count) fkFetched=\(tableRows.foreignKeysFetched) fks=\(tableRows.columnForeignKeys.count) enumsReady=\(enumsReady) cached=\(cached)"
         )
         return cached
     }
@@ -432,7 +432,7 @@ extension QueryExecutionCoordinator {
 
             let schema = try? await schemaTask?.value
             if schemaTask != nil, schema == nil {
-                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .public)")
+                helpersLogger.error("[fk] phase2 schema fetch failed or cancelled table=\(tableName, privacy: .private(mask: .hash))")
             }
 
             await MainActor.run { [weak self] in
@@ -521,7 +521,7 @@ extension QueryExecutionCoordinator {
             /// one. Dropping the metadata left it with no account of which columns the server owns,
             /// and nothing re-fetches on the way back, so the result stayed that way for good.
             applyPhase2MetadataToInactiveResult(parsed: parsed, tabId: tabId, resultSetId: resultSetId)
-            helpersLogger.info("[fk] phase2 applied to an inactive result table=\(tableName, privacy: .public)")
+            helpersLogger.info("[fk] phase2 applied to an inactive result table=\(tableName, privacy: .private(mask: .hash))")
             return
         }
         applyPhase2Metadata(parsed: parsed, tabId: tabId)
@@ -787,7 +787,7 @@ extension QueryExecutionCoordinator {
     ) {
         let message = DatabaseWriteRejectionDiagnosis.formatted(error)
         helpersLogger.error(
-            "Query failed on tab \(tabId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            "Query failed on tab \(tabId, privacy: .public): \(error.publicLogShape, privacy: .public)"
         )
         parent.tabManager.mutate(tabId: tabId) { tab in
             tab.execution.errorMessage = message
