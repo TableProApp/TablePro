@@ -60,7 +60,7 @@ struct AppServices {
         sshProfileStorage: .shared,
         credentialProfileStorage: .shared,
         licenseManager: .shared,
-        syncMetadataStorage: .shared,
+        syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         queryHistoryManager: .shared,
