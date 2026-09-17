@@ -1,6 +1,6 @@
 # Roadmap
 
-## Where we are (2026-07-27)
+## Where we are (2026-09-18)
 
 **Phase 0 is complete. Phase 1 is complete. Large parts of Phase 2 and Phase 3 are already in the tree.**
 
@@ -15,9 +15,9 @@ This is **past demo-grade**, but still **not beta-shippable**. The gap between "
 | Connection management | `DatabaseService` + `AdwTabView` workspace tabs done; one active connection at a time, multi-window still open |
 | Network security | SSH tunnelling + TLS toggle present; cert-path / verify-mode UI still thin |
 | Distribution | Flatpak manifest + metainfo + desktop + icon present; never built end-to-end on CI |
-| Internationalization | gettext + `tr!` macro + `po/` template; the template has 227 strings against 390 in the app, and `POTFILES.in` is stale |
+| Internationalization | gettext through `crates/app/src/i18n.rs` + `po/` template; extraction reaches every call site and `POTFILES.in` matches the tree. The committed template still predates that fix and needs regenerating on gettext 0.24 or newer |
 | Accessibility | Untested with Orca / keyboard nav |
-| Integration tests | Postgres, MySQL, MSSQL and ClickHouse docker suites run in CI, one nextest job per package; SQLite has none |
+| Integration tests | Postgres, MySQL, MSSQL and ClickHouse docker suites run in CI, one nextest job per package; SQLite has a value suite that needs no container |
 | Recovery | `connection_monitor` ping + reconnect loop; cancel drops the client future, the server-side query keeps running |
 
 **What "production-ready" means for this project**: a user on Fedora 41 or Ubuntu 24.04 can install from Flathub, connect to their everyday Postgres or MySQL database, browse and edit data correctly across all native types, run SQL queries, see schema, and trust the app to handle errors gracefully.
@@ -98,12 +98,12 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 - [x] TLS toggle on connect options
 - [x] SSH tunnelling via `russh` (host, port, key / password auth)
-- [ ] SSH jump host
+- [x] SSH jump host: `ProxyJump` chains resolved from the OpenSSH client configuration
 - [x] Windows integrated (Kerberos) authentication for SQL Server, from the ambient ticket cache
 - [ ] Kerberos against a service outside the client's default realm, which needs an SPN override upstream in tiberius
 - [x] Read-only mode toggle per connection
 - [x] Cancel running query: button + Esc shortcut
-- [ ] `Connection::cancel` driver method, so cancelling stops the server-side query instead of dropping the client future
+- [ ] `Connection::cancel` driver method, so cancelling stops the server-side query instead of dropping the client future (`core::OwnedCalls` carries the stop and the engine-stop contract; it is wired once `Connection` v2 lands)
 - [x] Connection lost recovery: ping monitor + reconnect loop
 - [ ] Statement timeout configurable per connection
 - [ ] TLS cert path / verify mode / SNI override UI
@@ -111,7 +111,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Integration tests (partial)
 
 - [x] `tests/integration.rs` using `testcontainers-rs` for Postgres, MySQL, MSSQL
-- [ ] SQLite suite (the crate has no `tests/` directory)
+- [x] SQLite suite (`crates/drivers/sqlite/tests/values.rs`: storage class per value, declared type, NULL against empty string)
 - [x] Connect, list_tables, fetch_columns (PK detection), pagination, value round-trip, bad SQL
 - [x] CI runs each driver docker suite through cargo-nextest, one job per package
 - [x] Run the MSSQL suite in CI
@@ -132,13 +132,14 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] Bulk delete with confirmation
 - [x] Right-click context menu (copy, copy as, set value, export, insert, duplicate, delete)
 - [x] Save column widths per (connection, table)
-- [ ] Save column order per (connection, table)
+- [ ] Save column order per (connection, table), which needs column reordering in the grid first; `GtkColumnView` does not have it turned on
 
 ### Export / import (~1 week)
 
 - [x] Export current grid to CSV / JSON from the result grid's right-click menu and the paginator (query results included)
 - [x] Export with CSV options: NULL handling, line breaks, header row, formula sanitizing, delimiter, quote style, line endings, decimal separator
-- [ ] Export as SQL INSERT / Markdown / HTML / XML / XLSX
+- [x] Export as SQL INSERT / Markdown / HTML / XML
+- [ ] Export as XLSX
 - [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
 - [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
 - [ ] Import CSV → table (with column mapping dialog)
@@ -168,7 +169,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [ ] Color tags per connection
 - [ ] Import / export connections to JSON file
 - [ ] Clone connection
-- [ ] "Test connection" button in dialog before save
+- [x] "Test connection" button in dialog before save
 
 ### Distribution scaffolding (~1 week)
 
@@ -185,7 +186,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Observability (~0.5 weeks)
 
 - [x] Structured logging via `tracing-subscriber` (env-filter)
-- [ ] JSON log layer, env-toggleable (the `json` feature is not enabled, so `.json()` is not compiled in)
+- [x] JSON log layer, env-toggleable through `TABLEPRO_LOG_FORMAT=json`
 - [ ] Crash reporter: panic hook captures backtrace, writes to log, optional anonymous upload (with explicit opt-in)
 - [ ] "Help → Report bug" UI helper that opens the issue tracker pre-filled with sanitized log excerpt
 
@@ -203,8 +204,9 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] `tr!` macro + locale bind in `i18n::init`
 - [x] `po/` scaffolding: `tablepro.pot`, `POTFILES.in`, `LINGUAS`
 - [x] Locale detection: `setlocale(LC_ALL, "")` in `i18n::init`
-- [ ] Extract all user-facing strings: 218 of the app's 390 `tr!` strings are missing from the template, and 55 of its 227 entries no longer exist in the source
-- [ ] Refresh `POTFILES.in`: it lists 3 files that no longer exist and misses 17 that call `tr!`
+- [x] Extract all user-facing strings: the extractor is pointed at `gettext`, `gettext_f`, `ngettext_f` and `pgettext_f` rather than the `tr!` macro that no longer exists
+- [ ] Regenerate `tablepro.pot`, which needs gettext 0.24 or newer: the committed template is from before the extractor was fixed
+- [x] Refresh `POTFILES.in`, generated by the `git ls-files` command in `po/README.md` so CI can diff against it
 - [ ] Build pipeline integrates `.po` → `.mo` compilation
 - [ ] Ship English-only at first; structure ready for translators
 
@@ -274,7 +276,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 - [x] Create / alter / drop table via Structure tab + DDL materialization
 - [x] Add / remove columns
-- [ ] Rename columns (`build_rename_column` exists but has no caller; needs a `RenameColumn` op in `diff_to_ops` / `materialize_ops`)
+- [x] Rename columns, through a `RenameColumn` op materialized ahead of the alter so the alter addresses a name that exists
 - [x] Add / remove indexes
 - [x] Add / remove foreign keys
 - [ ] Drag-drop column reordering with ALTER TABLE preview
