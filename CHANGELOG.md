@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Cut, Copy and Paste in the SQL editor's context menu were English in every language.
+- A statement count on a review sheet reading "1 statements".
+
 ## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.

@@ -1107,6 +1107,41 @@
         }
       }
     },
+    "(^[%lld statement](inflect: true))" : {
+      "comment" : "The number of SQL statements the review sheet is about.",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld문)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld statement)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld câu lệnh)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld条语句)"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld陳述式)"
+          }
+        }
+      }
+    },
     "(%lld active)" : {
       "extractionState" : "stale",
       "localizations" : {
