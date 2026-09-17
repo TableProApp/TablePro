@@ -217,7 +217,22 @@ public struct PluginIndexDefinition: Sendable {
     public let indexType: String?
     public let columnPrefixes: [String: Int]?
     public let whereClause: String?
+    /// The entries of `columns` that are expressions rather than column names. See
+    /// `PluginIndexInfo.expressions`.
+    public let expressions: [String]?
+    /// The columns stored beside the key, written as `INCLUDE`. See `PluginIndexInfo.includedColumns`.
+    public let includedColumns: [String]?
+    /// Everything between the table and the `WHERE` clause, as the source server spelled it. A writer
+    /// that has it emits it verbatim instead of rebuilding the method and key list from the fields.
+    /// See `PluginIndexInfo.ddlMethodAndKeys`.
+    public let ddlMethodAndKeys: String?
+    /// `whereClause` as a `CREATE INDEX` on another schema has to write it, or nil to write
+    /// `whereClause`.
+    public let ddlWhereClause: String?
 
+    /// The signature published before key expressions, `INCLUDE` columns and the DDL spellings
+    /// existed, kept byte-identical and disfavoured for the same reason as `PluginIndexInfo`'s.
+    @_disfavoredOverload
     public init(
         name: String,
         columns: [String],
@@ -232,6 +247,34 @@ public struct PluginIndexDefinition: Sendable {
         self.indexType = indexType
         self.columnPrefixes = columnPrefixes
         self.whereClause = whereClause
+        self.expressions = nil
+        self.includedColumns = nil
+        self.ddlMethodAndKeys = nil
+        self.ddlWhereClause = nil
+    }
+
+    public init(
+        name: String,
+        columns: [String],
+        isUnique: Bool = false,
+        indexType: String? = nil,
+        columnPrefixes: [String: Int]? = nil,
+        whereClause: String? = nil,
+        expressions: [String]?,
+        includedColumns: [String]?,
+        ddlMethodAndKeys: String?,
+        ddlWhereClause: String?
+    ) {
+        self.name = name
+        self.columns = columns
+        self.isUnique = isUnique
+        self.indexType = indexType
+        self.columnPrefixes = columnPrefixes
+        self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
     }
 }
 

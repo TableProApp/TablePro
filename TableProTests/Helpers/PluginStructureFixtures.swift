@@ -74,7 +74,11 @@ enum PluginStructureFixtures {
             isPrimary: primary,
             type: "type-\(suffix)",
             columnPrefixes: ["columnPrefixes-\(suffix)": prefix],
-            whereClause: "whereClause-\(suffix)"
+            whereClause: "whereClause-\(suffix)",
+            expressions: ["expressions-\(suffix)"],
+            includedColumns: ["includedColumns-\(suffix)"],
+            ddlMethodAndKeys: "ddlMethodAndKeys-\(suffix)",
+            ddlWhereClause: "ddlWhereClause-\(suffix)"
         )
     }
 
