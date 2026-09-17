@@ -25,18 +25,21 @@ struct TrailingPaneStateTests {
         state.teardown()
     }
 
-    @Test("teardown clears the assistant's session data")
+    /// Teardown releases the presentation and keeps the conversation. Window close, disconnect and
+    /// a lost session all reach it, and none of them is the user throwing a transcript away; it used
+    /// to empty `messages` with nothing written to disk.
+    @Test("teardown releases the surface and keeps the transcript")
     @MainActor
-    func teardownClearsAssistantSession() {
-        let state = TrailingPaneState()
-        let viewModel = state.assistant.activate()
-        viewModel.connection = TestFixtures.makeConnection(type: .mysql)
-        #expect(viewModel.connection != nil)
+    func teardownKeepsTheTranscript() {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = TrailingPaneState(connectionId: connection.id, sessionRegistry: Self.isolatedRegistry())
+        let viewModel = try? #require(state.assistant.activate(connection: connection))
+        viewModel?.messages.append(ChatTurn(role: .user, blocks: [.text("keep me")]))
 
         state.teardown()
 
-        #expect(viewModel.connection == nil)
-        #expect(viewModel.messages.isEmpty)
+        #expect(state.assistant.isActivated == false)
+        #expect(viewModel?.messages.isEmpty == false)
     }
 
     /// `AIChatViewModel.init` reads the stored conversations, so a window that never opens the
@@ -45,12 +48,13 @@ struct TrailingPaneStateTests {
     @Test("The assistant view model is not built until something asks for it")
     @MainActor
     func assistantIsNotBuiltUntilActivated() {
-        let state = TrailingPaneState()
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = TrailingPaneState(connectionId: connection.id, sessionRegistry: Self.isolatedRegistry())
 
         #expect(state.assistant.isActivated == false)
         #expect(state.assistant.viewModelIfActivated == nil)
 
-        state.assistant.activate()
+        state.assistant.activate(connection: connection)
 
         #expect(state.assistant.isActivated)
         #expect(state.assistant.viewModelIfActivated != nil)
@@ -59,10 +63,20 @@ struct TrailingPaneStateTests {
     @Test("Activating twice returns the same view model")
     @MainActor
     func activationIsIdempotent() {
-        let state = TrailingPaneState()
-        let first = state.assistant.activate()
-        let second = state.assistant.activate()
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let state = TrailingPaneState(connectionId: connection.id, sessionRegistry: Self.isolatedRegistry())
+        let first = state.assistant.activate(connection: connection)
+        let second = state.assistant.activate(connection: connection)
         #expect(first === second)
+    }
+
+    /// A registry of its own per test, so a session written by one case cannot be restored by the
+    /// next and nothing reaches the store the app uses.
+    @MainActor
+    private static func isolatedRegistry() -> AgentSessionRegistry {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentSessionTests-\(UUID().uuidString)", isDirectory: true)
+        return AgentSessionRegistry(store: AgentSessionStore(directory: directory))
     }
 
     @Test("The surface defaults to the inspector when nothing is stored")

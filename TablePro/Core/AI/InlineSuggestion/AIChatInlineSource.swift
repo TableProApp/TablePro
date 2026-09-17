@@ -16,6 +16,13 @@ final class AIChatInlineSource: InlineSuggestionSource {
     internal weak var schemaProvider: SQLSchemaProvider?
     internal var connectionPolicy: AIConnectionPolicy?
 
+    /// One id for this source's whole life.
+    ///
+    /// A stateful transport keeps conversation state per session id, so minting one per request
+    /// would leave a Copilot conversation behind for every inline suggestion, locally and on the
+    /// server. Inline suggestions are one long-running conversation, not a new one each keystroke.
+    private let sessionId = UUID()
+
     init(schemaProvider: SQLSchemaProvider?, connectionPolicy: AIConnectionPolicy?) {
         self.schemaProvider = schemaProvider
         self.connectionPolicy = connectionPolicy
@@ -45,7 +52,11 @@ final class AIChatInlineSource: InlineSuggestionSource {
         var accumulated = ""
         let stream = resolved.provider.streamChat(
             turns: turns,
-            options: ChatTransportOptions(model: resolved.model, systemPrompt: systemPrompt)
+            options: ChatTransportOptions(
+                model: resolved.model,
+                systemPrompt: systemPrompt,
+                sessionId: sessionId
+            )
         )
 
         for try await event in stream {

@@ -196,6 +196,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         persistOpenConnectionsForRecovery()
+        /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
+        /// mid-reply used to come back with its last turn missing.
+        AgentSessionRegistry.shared.persistSynchronouslyForTermination()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()

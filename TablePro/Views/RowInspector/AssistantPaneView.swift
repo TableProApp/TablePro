@@ -7,9 +7,12 @@ import SwiftUI
 
 /// The assistant, in the window's trailing pane.
 ///
-/// It used to be the third segment of the inspector's tab picker, sharing that pane's header with
-/// the row being inspected. It is its own surface now, with its own title, its own conversation
-/// controls and its own command, because a chat is not one of the views of a selected row.
+/// It is its own surface, with its own title, its own conversation controls and its own command,
+/// because a chat is not one of the views of a selected row.
+///
+/// What it draws is the connection's session, which the registry owns rather than this view. The
+/// same session is what Agent mode puts in the middle column, so the two are one conversation shown
+/// two ways rather than two conversations.
 internal struct AssistantPaneView: View {
     internal let connection: DatabaseConnection
     @ObservedObject internal var state: AssistantState
@@ -20,14 +23,25 @@ internal struct AssistantPaneView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            AIChatPanelView(
-                connection: connection,
-                currentQuery: state.context.currentQuery,
-                queryResults: state.context.queryResults,
-                viewModel: state.activate()
-            )
+            /// Activation happens in `.task`, never in `body`. Reading it here used to mutate the
+            /// observed object mid-update, which SwiftUI reports as "Publishing changes from within
+            /// view updates" and answers with a second layout pass across this pane and the detail
+            /// pane beside it.
+            if let viewModel = state.viewModelIfActivated {
+                AIChatPanelView(
+                    connection: connection,
+                    currentQuery: state.context.currentQuery,
+                    queryResults: state.context.queryResults,
+                    viewModel: viewModel
+                )
+            } else {
+                Color.clear
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task(id: connection.id) {
+            state.activate(connection: connection)
+        }
         .alert(
             String(localized: "Clear All Conversations?"),
             isPresented: $showsClearConfirmation

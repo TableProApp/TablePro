@@ -84,6 +84,22 @@ actor AIChatStorage {
         }
     }
 
+    /// One connection's conversations, newest first.
+    ///
+    /// A conversation stored before conversations carried a connection id has no answer, so it is
+    /// shown on every connection rather than lost.
+    func loadAll(connectionId: UUID?) -> [AIConversation] {
+        guard let connectionId else { return loadAll() }
+        return loadAll().filter { $0.connectionId == nil || $0.connectionId == connectionId }
+    }
+
+    /// One conversation by id, without reading the rest of the directory.
+    func load(id: UUID) -> AIConversation? {
+        let fileURL = directory.appendingPathComponent("\(id.uuidString).json")
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        return try? Self.decoder.decode(AIConversation.self, from: data)
+    }
+
     /// Load all conversations, sorted by updatedAt descending
     func loadAll() -> [AIConversation] {
         do {

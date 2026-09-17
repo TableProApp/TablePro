@@ -94,9 +94,37 @@ final class AIChatViewModel: ObservableObject {
 
     static let maxMessageCount = 200
 
-    init(services: AppServices = .live) {
+    /// The session this engine belongs to.
+    ///
+    /// Injected rather than minted here, because a restored session has to be the same session:
+    /// identity derived inside the engine cannot round-trip, so every guarantee keyed on it
+    /// (reopening by id, the rail's selection, per-session provider state) silently degraded to
+    /// "make another one".
+    let sessionId: UUID
+
+    /// The conversation to pull in when this engine is first looked at, if it is resuming one.
+    ///
+    /// Restore is lazy on purpose: reading every stored conversation at launch is quadratic in the
+    /// number of sessions, and `init` used to call `loadConversations()`, so opening any connection
+    /// window read the whole chat history off disk even with the assistant never revealed.
+    private var conversationToRestore: UUID?
+    private var didRestoreConversation = false
+
+    var pendingConversationToRestore: UUID? { conversationToRestore }
+    var hasRestoredConversation: Bool { didRestoreConversation }
+
+    func markConversationRestored() {
+        didRestoreConversation = true
+    }
+
+    init(
+        services: AppServices = .live,
+        sessionId: UUID = UUID(),
+        restoringConversation conversationId: UUID? = nil
+    ) {
         self.services = services
-        loadConversations()
+        self.sessionId = sessionId
+        self.conversationToRestore = conversationId
     }
 
     deinit {
@@ -221,7 +249,7 @@ final class AIChatViewModel: ObservableObject {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
-        AIProviderFactory.copilotDeleteLastTurn()
+        AIProviderFactory.copilotDeleteLastTurn(sessionId: sessionId)
         messages.remove(at: lastAssistantIndex)
         clearError()
         startStreaming()
@@ -235,7 +263,7 @@ final class AIChatViewModel: ObservableObject {
     }
 
     func startNewConversation() {
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages.removeAll()
@@ -245,7 +273,7 @@ final class AIChatViewModel: ObservableObject {
 
     func switchConversation(to id: UUID) {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages = conversation.messages.map { ChatTurn(wire: $0) }
@@ -266,7 +294,7 @@ final class AIChatViewModel: ObservableObject {
     func clearSessionData() {
         ToolApprovalCenter.shared.cancelAll()
         persistCurrentConversation()
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()

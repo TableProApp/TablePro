@@ -342,7 +342,8 @@ extension AIChatViewModel {
                 model: resolved.model,
                 systemPrompt: systemPrompt,
                 tools: toolSpecs,
-                reasoningEffort: resolved.config.reasoningEffort
+                reasoningEffort: resolved.config.reasoningEffort,
+                sessionId: sessionId
             )
         )
 

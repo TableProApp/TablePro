@@ -13,6 +13,13 @@ struct AIConversation: Codable, Equatable, Identifiable, Sendable {
     var messages: [ChatTurnWire]
     let createdAt: Date
     var updatedAt: Date
+    /// Which connection this conversation belongs to.
+    ///
+    /// Without it every window read the same flat directory and restored whichever file was newest,
+    /// so a second connection opened holding the first one's transcript and then saved over it.
+    /// Optional because conversations written before this existed have no answer, and a conversation
+    /// with no connection is shown everywhere rather than nowhere.
+    let connectionId: UUID?
     var connectionName: String?
     let schemaVersion: Int
 
@@ -22,6 +29,7 @@ struct AIConversation: Codable, Equatable, Identifiable, Sendable {
         messages: [ChatTurnWire] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
+        connectionId: UUID? = nil,
         connectionName: String? = nil,
         schemaVersion: Int = AIConversation.currentSchemaVersion
     ) {
@@ -30,6 +38,7 @@ struct AIConversation: Codable, Equatable, Identifiable, Sendable {
         self.messages = messages
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.connectionId = connectionId
         self.connectionName = connectionName
         self.schemaVersion = schemaVersion
     }
@@ -41,13 +50,14 @@ struct AIConversation: Codable, Equatable, Identifiable, Sendable {
         messages = try container.decodeIfPresent([ChatTurnWire].self, forKey: .messages) ?? []
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        connectionId = try container.decodeIfPresent(UUID.self, forKey: .connectionId)
         connectionName = try container.decodeIfPresent(String.self, forKey: .connectionName)
         let storedVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
         schemaVersion = max(storedVersion, AIConversation.currentSchemaVersion)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, messages, createdAt, updatedAt, connectionName, schemaVersion
+        case id, title, messages, createdAt, updatedAt, connectionId, connectionName, schemaVersion
     }
 
     mutating func updateTitle() {

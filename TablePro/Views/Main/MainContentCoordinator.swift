@@ -803,7 +803,7 @@ final class MainContentCoordinator: ObservableObject {
         /// The gate comes first. Activating builds the view model, whose init reads the stored
         /// conversations, and the pane would then refuse to open it anyway.
         guard AppSettingsManager.shared.ai.enabled else { return }
-        trailingPaneState?.assistant.activate()
+        trailingPaneState?.assistant.activate(connection: connection)
         trailingPaneProxy?.showAssistant()
     }
 

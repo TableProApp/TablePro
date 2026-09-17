@@ -29,9 +29,13 @@ internal final class TrailingPaneState: ObservableObject {
     }
 
     internal let inspector: RowInspectorState
-    internal let assistant = AssistantState()
+    internal let assistant: AssistantState
 
-    internal init(connectionId: UUID? = nil, defaults: UserDefaults = .standard) {
+    internal init(
+        connectionId: UUID? = nil,
+        defaults: UserDefaults = .standard,
+        sessionRegistry: AgentSessionRegistry = .shared
+    ) {
         self.connectionId = connectionId
         self.defaults = defaults
         /// Before anything reads the keys it writes. `RowInspectorState` takes its view mode in its
@@ -41,6 +45,7 @@ internal final class TrailingPaneState: ObservableObject {
             Self.migrateLegacyTabIfNeeded(connectionId: connectionId, defaults: defaults)
         }
         self.inspector = RowInspectorState(connectionId: connectionId, defaults: defaults)
+        self.assistant = AssistantState(connectionId: connectionId, registry: sessionRegistry)
         if let connectionId,
            let raw = defaults.string(forKey: Self.surfaceKey(connectionId)),
            let stored = TrailingPaneSurface(rawValue: raw) {

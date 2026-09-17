@@ -71,6 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537)
 - Query editor command bar with one control size, the container picker leading and the commands trailing.
 - Approval cards name the statement and the connection, and **Cancel** on one is now **Reject**.
+- Assistant conversations belong to one connection, and outlive the window that opened them.
 
 ### Removed
 
@@ -244,6 +245,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Return answered an arbitrary approval card when more than one was waiting.
 - A reply still arriving was lost when its window closed, its connection dropped, or its session ended.
 - The assistant held a provider and its open stream for the rest of the session when a window closed over an approval card.
+- Another connection's chat history appeared in a second connection's assistant, and could be deleted from there.
+- Two conversations on one Copilot configuration were answered with each other's context.
 
 ### Security
 
