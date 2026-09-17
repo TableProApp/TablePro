@@ -55,6 +55,11 @@ Within PostgreSQL an index is created from the server's own definition of it: ex
 operator classes, sort order, `INCLUDE` columns, storage parameters and a partial index's condition
 all arrive as they were.
 
+An index keeps its type when both ends are the same database type, so a SQL Server `CLUSTERED` index
+stays clustered. Between two database types, a PostgreSQL `gin`, `hnsw` or `bloom` index is left out
+of a copy to any engine outside PostgreSQL and named in the review step, and a Redshift `DISTKEY` or
+`SORTKEY` arrives in PostgreSQL as a b-tree index.
+
 ## When the target already has the object
 
 Chosen once, before the run, and applied to every object in it.

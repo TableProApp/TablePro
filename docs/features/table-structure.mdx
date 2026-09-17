@@ -103,7 +103,7 @@ Everything that runs goes to query history rather than the change queue.
 | Field | Description |
 |-------|-------------|
 | **Columns** | Key columns and expressions in key order, such as `tenant_id, lower(email)`. MySQL prefix lengths are written as `email(20)`. A PostgreSQL index's `INCLUDE` columns are not listed, and editing the index keeps them. An expression typed here is read as a column name, so create a new expression index in the SQL editor. Pasted into a MySQL, SQLite or other non-PostgreSQL table, an index leaves its `INCLUDE` columns behind and each expression becomes a column name the row flags until you replace it |
-| **Type** | BTREE, HASH, FULLTEXT, SPATIAL (MySQL), GIN, GIST, BRIN (PostgreSQL 9.5 and later) |
+| **Type** | The type the server reports, such as `HNSW` from pgvector or `CLUSTERED` on SQL Server. The menu lists that type beside BTREE, HASH, FULLTEXT and SPATIAL (MySQL), GIN, GIST, SPGIST (PostgreSQL 9.2 and later) and BRIN (PostgreSQL 9.5 and later). Pasted into a table on another database type, an index whose type that engine lacks becomes BTREE |
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 
@@ -220,6 +220,7 @@ MongoDB structure is read-only, and inferred from the collection's first 200 doc
 - **Changing a primary key on an existing table** works on MySQL, MariaDB, PostgreSQL, PGlite, SQL Server, DuckDB, Snowflake, and Dameng. Elsewhere the dropdown accepts the edit and the save produces nothing for it: rebuild the table by hand.
 - **Check constraints and generated columns** have no field in the grid. Both show in the DDL tab; change them by running DDL yourself.
 - **Cassandra / ScyllaDB**: add and drop column only, no index editing, no visual table creation.
+- **ClickHouse**: the Indexes tab drops a data-skipping index but cannot add or change one, because the Type menu holds no ClickHouse index type. A save or a new table that tries is refused before anything runs. Run `ALTER TABLE … ADD INDEX … TYPE bloom_filter` in the SQL editor instead.
 - **Redshift, CockroachDB, BigQuery, Spanner, Elasticsearch, Typesense, SurrealDB, Beancount**: structure is read-only.
 - **Redis, etcd, DynamoDB**: no table schema to edit.
 
