@@ -89,6 +89,11 @@ pub enum SqlEditorInput {
     /// cursor. Falls back to a status hint when the cursor is in
     /// whitespace or a leading comment with no statement around it.
     RunAtCursor,
+    /// Load a `.sql` file into the buffer, so a migration or a script
+    /// kept on disk can be run without pasting it in.
+    OpenFile,
+    /// The file came back; `None` when it could not be read as text.
+    FileLoaded(Option<String>),
     /// Ctrl+/ → toggle SQL line-comment for the selected lines (or
     /// the cursor's line). Standard IDE shortcut.
     ToggleLineComment,
@@ -159,6 +164,16 @@ impl SimpleComponent for SqlEditor {
                     add_css_class: "dim-label",
                 },
 
+                // Format had only a shortcut, and opening a file had
+                // nowhere to live. One menu gives both a place without
+                // crowding the bar that Run sits on.
+                gtk::MenuButton {
+                    set_icon_name: crate::ui::icons::VIEW_MORE,
+                    set_tooltip_text: Some(crate::i18n::gettext("Editor options").as_str()),
+                    add_css_class: "flat",
+                    set_menu_model: Some(&editor_menu()),
+                },
+
                 #[name = "cancel_button"]
                 gtk::Button {
                     set_label: &crate::i18n::gettext("Cancel"),
@@ -212,8 +227,20 @@ impl SimpleComponent for SqlEditor {
         }
     }
 
-    fn init(init: Self::Init, _root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let widgets = view_output!();
+
+        let actions = relm4::gtk::gio::SimpleActionGroup::new();
+        let open_sender = sender.clone();
+        let open = relm4::gtk::gio::ActionEntry::builder("open-file")
+            .activate(move |_, _, _| open_sender.input(SqlEditorInput::OpenFile))
+            .build();
+        let format_sender = sender.clone();
+        let format = relm4::gtk::gio::ActionEntry::builder("format")
+            .activate(move |_, _, _| format_sender.input(SqlEditorInput::Format))
+            .build();
+        actions.add_action_entries([open, format]);
+        root.insert_action_group("editor", Some(&actions));
 
         let lang_manager = sourceview5::LanguageManager::default();
         let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_string());
@@ -487,6 +514,46 @@ impl SimpleComponent for SqlEditor {
                 buffer.select_range(&from, &to);
                 self.execute_sql(text.trim().to_owned(), sender);
             }
+
+            SqlEditorInput::OpenFile => {
+                let buffer = self.source_view.buffer();
+                let (start, end) = buffer.bounds();
+                let occupied = !buffer.text(&start, &end, false).trim().is_empty();
+                if occupied {
+                    // Loading replaces what is in the tab, and the tab
+                    // is where the user's unrun work lives.
+                    let dialog = adw::AlertDialog::new(
+                        Some(&crate::i18n::gettext("Replace the editor contents?")),
+                        Some(&crate::i18n::gettext(
+                            "The file is loaded into this tab, and what is written here now is replaced.",
+                        )),
+                    );
+                    dialog.add_response("cancel", &crate::i18n::gettext("Cancel"));
+                    dialog.add_response("replace", &crate::i18n::gettext("Replace"));
+                    dialog.set_default_response(Some("cancel"));
+                    dialog.set_close_response("cancel");
+                    let ask_sender = sender.clone();
+                    dialog.connect_response(None, move |dialog, response| {
+                        dialog.close();
+                        if response == "replace" {
+                            choose_sql_file(&ask_sender);
+                        }
+                    });
+                    dialog.present(Some(&self.source_view));
+                } else {
+                    choose_sql_file(&sender);
+                }
+            }
+
+            SqlEditorInput::FileLoaded(text) => match text {
+                Some(text) => {
+                    self.source_view.buffer().set_text(&text);
+                    self.status.set_label(&crate::i18n::gettext("File loaded"));
+                }
+                None => self
+                    .status
+                    .set_label(&crate::i18n::gettext("The file could not be read as text")),
+            },
 
             SqlEditorInput::Cancel => {
                 if let Some(token) = self.cancel_token.take() {
@@ -1107,6 +1174,61 @@ pub fn derive_tab_label(query: &str) -> String {
         return cleaned;
     }
     crate::i18n::gettext("Empty query")
+}
+
+/// The editor's own menu.
+fn editor_menu() -> relm4::gtk::gio::Menu {
+    let menu = relm4::gtk::gio::Menu::new();
+    menu.append(Some(&crate::i18n::gettext("Open SQL File…")), Some("editor.open-file"));
+    menu.append(Some(&crate::i18n::gettext("Format")), Some("editor.format"));
+    menu
+}
+
+/// The most a file may be before the editor refuses it.
+///
+/// A dump can be gigabytes, and a text buffer holding one stops being
+/// an editor. Refusing is better than a window that will not paint.
+const MAX_SQL_FILE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Ask for a `.sql` file and read it off the main thread.
+fn choose_sql_file(sender: &ComponentSender<SqlEditor>) {
+    use relm4::gtk::gio;
+
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some(&crate::i18n::gettext("SQL files")));
+    filter.add_suffix("sql");
+    filter.add_mime_type("application/sql");
+    let filters = gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&filter);
+    let dialog = gtk::FileDialog::builder()
+        .title(crate::i18n::gettext("Open SQL File"))
+        .modal(true)
+        .default_filter(&filter)
+        .filters(&filters)
+        .build();
+
+    let sender = sender.clone();
+    dialog.open(gtk::Window::NONE, gio::Cancellable::NONE, move |outcome| {
+        let Ok(file) = outcome else { return };
+        let too_big = file
+            .query_info("standard::size", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
+            .map(|info| info.size() as u64 > MAX_SQL_FILE_BYTES)
+            .unwrap_or(false);
+        if too_big {
+            sender.input(SqlEditorInput::FileLoaded(None));
+            return;
+        }
+        let sender = sender.clone();
+        glib::spawn_future_local(async move {
+            // gio reads off the main thread and hands the bytes back
+            // on it, so a file on a slow disk does not freeze the UI.
+            let loaded = file.load_contents_future().await;
+            let text = loaded
+                .ok()
+                .and_then(|(bytes, _)| String::from_utf8(bytes.to_vec()).ok());
+            sender.input(SqlEditorInput::FileLoaded(text));
+        });
+    });
 }
 
 #[cfg(test)]

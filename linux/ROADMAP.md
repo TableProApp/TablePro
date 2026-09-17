@@ -143,7 +143,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [x] Copy as Rows / With Headers / JSON / CSV / Markdown / IN Clause, Show Row as JSON
 - [ ] Paste rows from clipboard; Set Value > NOW() / CURRENT_TIMESTAMP (needs raw SQL expressions in the change tracker)
 - [ ] Import CSV → table (with column mapping dialog)
-- [ ] Run SQL file (load + execute via SQL editor)
+- [x] Run SQL file: opened from the editor's menu into the tab, then run like anything else
 
 ### Schema browser (partial)
 
@@ -168,7 +168,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 - [ ] Connection groups (folders in saved-connections list)
 - [ ] Color tags per connection
 - [ ] Import / export connections to JSON file
-- [ ] Clone connection
+- [x] Clone connection, from the row's own menu, secrets carried onto the copy's id
 - [x] "Test connection" button in dialog before save
 
 ### Distribution scaffolding (~1 week)
