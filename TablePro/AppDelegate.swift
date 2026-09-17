@@ -276,7 +276,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         original.draw(in: rect)
                         return true
                     }
-                    item.image = resized
+                    item.setInformativeImage(resized)
                 }
                 submenu.addItem(item)
             }

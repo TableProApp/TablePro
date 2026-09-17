@@ -149,7 +149,7 @@ enum HighlightMenuBuilder {
             let menu = NSMenu()
             for (index, color) in colors.enumerated() {
                 let entry = ClosureMenuTarget.item(title: color.displayName) { apply(index) }
-                entry.image = Self.swatch(for: color.systemColor)
+                entry.setInformativeImage(Self.swatch(for: color.systemColor))
                 entry.state = existing?.color == color ? .on : .off
                 menu.addItem(entry)
             }
