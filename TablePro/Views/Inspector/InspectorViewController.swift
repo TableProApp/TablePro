@@ -77,6 +77,7 @@ final class InspectorViewController: NSViewController, NSUserInterfaceValidation
             onNextPage: { [weak self] in self?.goToPage(offsetBy: 1) }
         )
         let hosting = NSHostingView(rootView: rootView)
+        hosting.sizingOptions = []
         hosting.translatesAutoresizingMaskIntoConstraints = false
         let container = NSView()
         container.addSubview(hosting)

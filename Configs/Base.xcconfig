@@ -49,6 +49,12 @@ MTL_FAST_MATH = YES
 // Xcode 26 and later cache compiled output, which pays back on the workloads this repo runs most:
 // clean builds in CI and switching between the branches in .claude/worktrees.
 COMPILATION_CACHE_ENABLE_CACHING = YES
+// A `#available` check is a runtime question; the symbol still has to exist in the SDK that
+// compiles the file. CI builds with the macOS 26 SDK and this machine with the macOS 27 one, so
+// code that touches an API introduced in 27 states which SDK it needs. Xcode resolves the
+// condition per SDK, so nothing here changes what the app does at runtime.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited)
+SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=macosx27*] = $(inherited) SDK_MACOS_27
 STRING_CATALOG_GENERATE_SYMBOLS = YES
 STRINGS_FILE_OUTPUT_ENCODING = binary
 SWIFT_VERSION = 6.0

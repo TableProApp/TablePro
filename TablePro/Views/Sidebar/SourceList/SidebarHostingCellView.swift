@@ -32,6 +32,7 @@ internal class SidebarHostingCellView<Row: View>: NSTableCellView {
             return
         }
         let view = NSHostingView(rootView: rootView)
+        view.sizingOptions = []
         view.translatesAutoresizingMaskIntoConstraints = false
         addSubview(view)
         NSLayoutConstraint.activate([

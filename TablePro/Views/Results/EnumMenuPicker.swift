@@ -49,8 +49,8 @@ enum EnumMenuPicker {
             driftItem.target = ItemTarget.shared
             driftItem.action = #selector(ItemTarget.invoke(_:))
             driftItem.representedObject = ItemPayload(value: current, onCommit: onCommit)
-            driftItem.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill",
-                                      accessibilityDescription: nil)
+            driftItem.setInformativeImage(NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                  accessibilityDescription: nil))
             driftItem.toolTip = String(localized: "Value is not in the declared enum.")
             driftItem.state = .on
             menu.addItem(driftItem)
@@ -107,8 +107,8 @@ enum EnumMenuPicker {
             driftItem.action = #selector(SetSelectionCoordinator.toggle(_:))
             driftItem.representedObject = current
             driftItem.state = .on
-            driftItem.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill",
-                                      accessibilityDescription: nil)
+            driftItem.setInformativeImage(NSImage(systemSymbolName: "exclamationmark.triangle.fill",
+                                                  accessibilityDescription: nil))
             driftItem.toolTip = String(localized: "Value is not in the declared set.")
             menu.addItem(driftItem)
         }
