@@ -77,11 +77,6 @@ internal struct TableStructureSnapshot: Hashable {
     internal func droppingCatalogSpellings(ownSchema: String?) -> TableStructureSnapshot {
         var copy = self
         copy.columns = columns.map { $0.droppingCatalogSpellings(collationRelativeTo: ownSchema) }
-        copy.indexes = indexes.map { index in
-            var relative = index
-            relative.dropCatalogSpellings()
-            return relative
-        }
         return copy
     }
 

@@ -114,7 +114,44 @@ struct StructureDeclaredTypeCompareTests {
         #expect(result.changes.isEmpty)
     }
 
-    @Test("Dropping the catalog spellings clears the type, default, generation and index spellings")
+    /// The qualifier is the schema the side that read it found the type in, and the two sides do not
+    /// have to agree on one: an extension installed in `extensions` on a managed server is the same
+    /// type as the one in `public`, and a type in the table's own schema reads bare from there and
+    /// qualified from anywhere else. Compared whole, every one of those columns read as changed and
+    /// the sync wrote an `ALTER ... TYPE` naming a schema the target does not have.
+    @Test("A type compares on the name both sides share, not on the schema each found it in")
+    func typesCompareWithoutTheirSchema() throws {
+        let source = table(
+            [
+                column("g", "public.geometry(Point,4326)", classification: "geometry"),
+                column("p", "posint", classification: "INTEGER")
+            ]
+        )
+        let target = table(
+            [
+                column("g", "extensions.geometry(Point,4326)", classification: "geometry"),
+                column("p", "public.posint", classification: "INTEGER")
+            ]
+        )
+        let result = try #require(compare(source: source, target: target))
+        #expect(result.changes.isEmpty)
+    }
+
+    @Test("A different type in another schema is still a change")
+    func differentTypesStillCompareAsChanged() throws {
+        let source = table([column("p", "public.posint", classification: "INTEGER")])
+        let target = table([column("p", "public.negint", classification: "INTEGER")])
+        let result = try #require(compare(source: source, target: target))
+        #expect(modifiedColumnNames(result) == ["p"])
+    }
+
+    /// The type's own spelling is re-said as the declared type rather than dropped: a column read
+    /// from the catalog is not a column the structure editor retyped, and a DDL writer reads that
+    /// difference to decide whether the column still takes its collation. Only the default and the
+    /// generation expression go, because those are SQL text qualified against the source's path.
+    /// An index's spellings stay whole: no comparison reads them, and they are the only thing that
+    /// keeps an operator class, a sort order and a storage parameter in the index the sync creates.
+    @Test("Dropping the catalog spellings keeps the declared type and the index's own spelling")
     func droppingClearsEveryCatalogSpelling() throws {
         let index = EditableIndexDefinition(
             id: UUID(),
@@ -126,10 +163,9 @@ struct StructureDeclaredTypeCompareTests {
             comment: nil,
             whereClause: "v IS NOT NULL",
             expressions: ["lower(v)"],
-            ddlMethodAndKeys: "USING btree (public.lower(v))",
+            ddlMethodAndKeys: "USING gin (v public.gin_trgm_ops)",
             ddlWhereClause: "(v IS NOT NULL)"
         )
-        #expect(index.ddlMethodAndKeys != nil)
         let snapshot = table(
             [
                 column(
@@ -142,14 +178,33 @@ struct StructureDeclaredTypeCompareTests {
 
         let dropped = snapshot.droppingCatalogSpellings(ownSchema: "public")
         let first = try #require(dropped.columns.first)
-        #expect(first.ddlSpelling == nil)
+        #expect(first.ddlSpelling == "character varying(10)")
         #expect(first.ddlDefault == nil)
         #expect(first.ddlGenerationExpression == nil)
         #expect(first.dataType == "character varying(10)")
         #expect(first.defaultValue == "'x'::citext")
-        #expect(dropped.indexes.first?.ddlMethodAndKeys == nil)
-        #expect(dropped.indexes.first?.ddlWhereClause == nil)
+        #expect(dropped.indexes.first?.ddlMethodAndKeys == "USING gin (v public.gin_trgm_ops)")
+        #expect(dropped.indexes.first?.ddlWhereClause == "(v IS NOT NULL)")
         #expect(dropped.indexes.first?.columns == ["lower(v)"])
+    }
+
+    /// The spelling a retype clears: `ddlSpelling` answers for the type the column still holds, so a
+    /// column the structure editor typed over carries none and a DDL writer stops treating it as a
+    /// type the server already accepted this collation on.
+    @Test("Retyping a column read from the catalog clears its declared spelling")
+    func retypingClearsTheDeclaredSpelling() throws {
+        let snapshot = table(
+            [
+                column(
+                    "v", "citext", ddlSpelling: "public.citext",
+                    collation: "C", ddlCollation: #"pg_catalog."C""#
+                )
+            ]
+        )
+        var dropped = try #require(snapshot.droppingCatalogSpellings(ownSchema: "public").columns.first)
+        #expect(dropped.ddlSpelling == "citext")
+        dropped.dataType = "integer"
+        #expect(dropped.ddlSpelling == nil)
     }
 
     /// A copy writes the table somewhere else and recreates nothing the types live in, so the

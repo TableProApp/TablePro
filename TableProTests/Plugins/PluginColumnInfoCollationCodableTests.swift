@@ -29,6 +29,25 @@ struct PluginColumnInfoCollationCodableTests {
         #expect(decoded.collation == "Case Insens")
     }
 
+    /// The signature every plugin built against kit 32 carries. It has to keep resolving, and it
+    /// has to keep meaning "this driver names no classified type", or the app would classify a
+    /// column by a hint the plugin never set.
+    @Test("The initializer published before the classification hint still resolves, and sets none")
+    func initializerWithoutTheHintKeepsResolving() {
+        let column = PluginColumnInfo(
+            name: "geom",
+            dataType: "geometry",
+            generationExpression: nil,
+            generationKind: nil,
+            ddlSpelling: "public.geometry(Point,4326)",
+            ddlDefault: nil,
+            ddlGenerationExpression: nil,
+            ddlCollation: nil
+        )
+        #expect(column.classificationTypeName == nil)
+        #expect(column.typeNameForClassification == "geometry")
+    }
+
     @Test("A payload written before the collation spelling existed decodes with none")
     func payloadWithoutDDLCollationDecodesToNil() throws {
         let legacyJson = Data("""

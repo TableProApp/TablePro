@@ -246,7 +246,7 @@ enum PostgreSQLSchemaQueries {
     }
 
     static func setSearchPath(toSchema schema: String) -> String {
-        return "SET search_path TO \(quotedSchemaIdentifier(schema))"
+        "SET search_path TO \(quotedSchemaIdentifier(schema))"
     }
 
     /// Narrows `search_path` to `pg_catalog` and one schema for the statement that follows, so every

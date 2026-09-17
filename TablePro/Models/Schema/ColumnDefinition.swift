@@ -138,7 +138,11 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     func droppingCatalogSpellings(collationRelativeTo schema: String?) -> EditableColumnDefinition {
         var copy = self
         let collationSpelling = catalogCollation
+        let hadCatalogType = catalogType != nil
         copy.dropCatalogSpellings()
+        if hadCatalogType {
+            copy.catalogType = CatalogSpelling(value: dataType, spelling: dataType)
+        }
         copy.catalogCollation = collationSpelling.map {
             CatalogSpelling(value: $0.value, spelling: SchemaRelativeSpelling.of($0.spelling, ownSchema: schema))
         }
