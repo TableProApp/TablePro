@@ -12,6 +12,7 @@ import TableProPluginKit
 
 /// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let ddl: String
     @Binding var fontSize: Double
     var databaseType: DatabaseType?

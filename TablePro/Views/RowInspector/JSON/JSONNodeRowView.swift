@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct JSONNodeRowView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let row: JSONDisplayRow
     let colors: JSONRowColors
     let onToggle: () -> Void
@@ -16,7 +17,7 @@ struct JSONNodeRowView: View {
     private static let indentWidth: CGFloat = 14
     private static let controlWidth: CGFloat = 14
 
-    private var valueFont: Font { ThemeEngine.shared.valueFontSwiftUI }
+    private var valueFont: Font { themeEngine.valueFontSwiftUI }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {

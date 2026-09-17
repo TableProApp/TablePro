@@ -15,6 +15,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct RowImportSheet: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "RowImportSheet")
 
     @Binding var isPresented: Bool
@@ -641,7 +642,7 @@ struct RowImportSheet: View {
     // MARK: - Plugin
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugin(forFormat: formatId)
+        pluginManager.importPlugin(forFormat: formatId)
     }
 
     private var canImport: Bool {

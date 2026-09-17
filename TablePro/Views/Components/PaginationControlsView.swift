@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct PaginationControlsView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let pagination: PaginationState
     let loadedRowCount: Int
     /// Identity of the tab these controls describe. Not used for display: a change to it is what
@@ -188,7 +189,7 @@ struct PaginationControlsView: View {
     }
 
     private func helpText(_ label: String, for shortcut: ShortcutAction) -> String {
-        AppSettingsManager.shared.keyboard.shortcutHint(label, for: shortcut)
+        settingsManager.keyboard.shortcutHint(label, for: shortcut)
     }
 
     /// A button straight to the jump popover while rows-per-page has its own control, and a menu

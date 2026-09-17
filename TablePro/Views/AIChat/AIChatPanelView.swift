@@ -9,6 +9,7 @@ import SwiftUI
 
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
+    @ObservedObject private var slashCommandStorage = CustomSlashCommandStorage.shared
     private static let warningBackgroundOpacity: Double = 0.1
 
     let connection: DatabaseConnection
@@ -466,7 +467,7 @@ struct AIChatPanelView: View {
     }
 
     private var slashCommandMenu: some View {
-        let customCommands = CustomSlashCommandStorage.shared.commands.filter(\.isValid)
+        let customCommands = slashCommandStorage.commands.filter(\.isValid)
         return Menu {
             ForEach(SlashCommand.allCommands) { command in
                 Button {

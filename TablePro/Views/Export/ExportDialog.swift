@@ -10,6 +10,7 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct ExportDialog: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
 
     @Binding var isPresented: Bool
@@ -184,7 +185,7 @@ struct ExportDialog: View {
 
     private var availableFormats: [any ExportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        let supported = PluginManager.shared.allExportPlugins()
+        let supported = pluginManager.allExportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 if !pluginType.supportedDatabaseTypeIds.isEmpty {
@@ -203,7 +204,7 @@ struct ExportDialog: View {
     }
 
     private var currentPlugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugin(forFormat: config.formatId)
+        pluginManager.exportPlugin(forFormat: config.formatId)
     }
 
     private var currentOptionColumnCount: Int {
@@ -393,7 +394,7 @@ struct ExportDialog: View {
 
                         Picker(String(localized: "Format"), selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
-                                if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
+                                if let plugin = pluginManager.exportPlugin(forFormat: formatId) {
                                     Text(type(of: plugin).formatDisplayName).tag(formatId)
                                 }
                             }

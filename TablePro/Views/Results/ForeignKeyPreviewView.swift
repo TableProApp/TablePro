@@ -27,6 +27,7 @@ private struct FKPreviewTaskKey: Equatable {
 }
 
 struct ForeignKeyPreviewView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject var model: FKPreviewModel
     let scope: DatabaseScope
     let databaseType: DatabaseType
@@ -127,13 +128,13 @@ struct ForeignKeyPreviewView: View {
 
                             if let val = value {
                                 Text(val)
-                                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.primary)
                                     .lineLimit(3)
                                     .textSelection(.enabled)
                             } else {
                                 Text("NULL")
-                                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                                    .font(themeEngine.valueFontSwiftUI)
                                     .foregroundStyle(.tertiary)
                                     .italic()
                             }

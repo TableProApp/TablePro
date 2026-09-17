@@ -12,6 +12,7 @@ import SwiftUI
 /// statement against the server, and a popover or an inspector field that saves when it loses
 /// focus would run it on a stray click.
 struct ObjectCommentSheet: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ObjectCommentSheet")
 
     private enum Phase: Equatable {
@@ -85,7 +86,7 @@ struct ObjectCommentSheet: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $draft.text)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .focused($isEditorFocused)
                 .disabled(phase == .saving)
                 .overlay(

@@ -9,6 +9,7 @@ import TableProEditorKit
 import TableProGrammars
 
 struct AIChatCodeBlockView: View, Equatable {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let code: String
     let language: String?
     var prefersLightweightRendering: Bool = false

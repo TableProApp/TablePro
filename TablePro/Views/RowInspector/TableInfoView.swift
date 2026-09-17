@@ -19,12 +19,13 @@ import SwiftUI
 /// the pane, and a value that still does not fit wraps rather than eliding. Wrapping is what
 /// Finder's Get Info does with a long value at this width, measured.
 internal struct TableInfoView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     internal let metadata: TableMetadata
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                if AppSettingsManager.shared.general.showObjectComments,
+                if settingsManager.general.showObjectComments,
                    let comment = metadata.comment, !comment.isEmpty {
                     section(String(localized: "Comment")) {
                         Text(comment)

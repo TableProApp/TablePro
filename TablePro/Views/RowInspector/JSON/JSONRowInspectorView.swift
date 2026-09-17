@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct JSONRowInspectorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @ObservedObject var viewModel: JSONRowInspectorViewModel
 
     let snapshot: JSONRowSnapshot?
@@ -128,7 +129,7 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
+            .background(Color(nsColor: themeEngine.colors.editor.background))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }

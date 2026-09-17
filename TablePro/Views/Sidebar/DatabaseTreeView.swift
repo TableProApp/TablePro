@@ -49,6 +49,7 @@ struct DatabaseTreeUserTypeRef: Identifiable, Equatable {
 }
 
 struct DatabaseTreeView: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
 
     let connectionId: UUID
@@ -78,7 +79,7 @@ struct DatabaseTreeView: View {
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var databases: [DatabaseMetadata] {

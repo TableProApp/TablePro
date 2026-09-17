@@ -11,6 +11,7 @@ import TableProGrammars
 import TableProPluginKit
 
 struct TriggerEditorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     enum Mode {
         case create
         case edit(originalName: String, originalDefinition: String)

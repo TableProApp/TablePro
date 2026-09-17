@@ -40,6 +40,7 @@ internal final class TextViewerWindowController: ValueViewerWindowController {
 // MARK: - Window Content
 
 private struct TextViewerWindowContent: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let isEditable: Bool
     let onCommit: ((String) -> Void)?
     let onDismiss: (() -> Void)?
@@ -62,7 +63,7 @@ private struct TextViewerWindowContent: View {
         TextValueEditor(
             text: $text,
             isEditable: isEditable,
-            font: ThemeEngine.shared.valueFont,
+            font: themeEngine.valueFont,
             textContainerInset: NSSize(width: 8, height: 10)
         )
         .onChange(of: text) { _ in

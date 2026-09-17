@@ -32,6 +32,7 @@ enum UserTypeRowLogic {
 }
 
 struct UserTypeRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let type: UserDefinedTypeInfo
 
     var body: some View {
@@ -44,7 +45,7 @@ struct UserTypeRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(UserTypeRowLogic.accessibilityLabel(for: type))
         .help(UserTypeRowLogic.tooltip(for: type))

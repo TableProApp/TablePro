@@ -9,6 +9,7 @@ import SwiftUI
 /// segment away, so a binary field is still editable as hex and SVG markup is still editable as
 /// text.
 internal struct ImageFieldView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     let format: CellImageFormat
 
@@ -54,7 +55,7 @@ internal struct ImageFieldView: View {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,
-                font: ThemeEngine.shared.valueFont
+                font: themeEngine.valueFont
             )
         case .hex:
             BlobHexEditorView(context: context)

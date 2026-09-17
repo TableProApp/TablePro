@@ -12,6 +12,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct RewindReviewSheet: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Environment(\.dismiss) private var dismiss
 
     let plan: RewindPlan
@@ -79,7 +80,7 @@ struct RewindReviewSheet: View {
         Table(plan.rows) {
             TableColumn(String(localized: "Row")) { row in
                 Text(row.keyDescription)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .lineLimit(1)
             }
             TableColumn(String(localized: "Action")) { row in
@@ -104,7 +105,7 @@ struct RewindReviewSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(displayStatements.enumerated()), id: \.offset) { _, statement in
                     Text(statement)
-                        .font(Font(ThemeEngine.shared.editorFonts.font))
+                        .font(Font(themeEngine.editorFonts.font))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

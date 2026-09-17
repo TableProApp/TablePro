@@ -13,6 +13,7 @@ import SwiftUI
 /// Each edit is one statement that runs when the field commits, because `ALTER TYPE … ADD VALUE`
 /// cannot be batched into a transaction on every server that supports it.
 struct EnumLabelListView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let labels: [String]
     let canEdit: Bool
     let canRename: Bool
@@ -139,7 +140,7 @@ struct EnumLabelListView: View {
         case .draft:
             TextField(String(localized: "Label"), text: $draftText)
                 .textFieldStyle(.roundedBorder)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .focused($isDraftFocused)
                 .disabled(isApplying)
                 .onSubmit { commitDraft() }
@@ -147,7 +148,7 @@ struct EnumLabelListView: View {
                 .onAppear { isDraftFocused = true }
         case .label(let label):
             Text(label)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {

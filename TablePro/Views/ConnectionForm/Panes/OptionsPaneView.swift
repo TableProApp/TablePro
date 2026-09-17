@@ -13,10 +13,11 @@ import TableProPluginKit
 /// three sidebar panes called Customization, Advanced and AI Rules. They answer one question, so
 /// they are one tab.
 struct OptionsPaneView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var databaseType: DatabaseType { coordinator.network.type }
-    private var aiIsEnabled: Bool { AppSettingsManager.shared.ai.enabled }
+    private var aiIsEnabled: Bool { settingsManager.ai.enabled }
 
     var body: some View {
         Form {
@@ -27,7 +28,7 @@ struct OptionsPaneView: View {
             if aiIsEnabled {
                 aiRulesSection
             }
-            if AppSettingsManager.shared.sync.enabled {
+            if settingsManager.sync.enabled {
                 syncSection
             }
         }

@@ -29,6 +29,7 @@ enum TriggerRowLogic {
 }
 
 struct TriggerRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let trigger: TriggerInfo
 
     var body: some View {
@@ -50,7 +51,7 @@ struct TriggerRowView: View {
                 .selectionAwareTint(Color.accentColor)
                 .frame(width: 16)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TriggerRowLogic.accessibilityLabel(for: trigger))
         .help(TriggerRowLogic.tooltip(for: trigger))

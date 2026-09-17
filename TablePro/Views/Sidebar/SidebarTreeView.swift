@@ -2,6 +2,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarTreeView: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     @ObservedObject private var schemaService = SchemaService.shared
 
     let connectionId: UUID
@@ -21,7 +22,7 @@ struct SidebarTreeView: View {
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var systemSchemas: Set<String> {

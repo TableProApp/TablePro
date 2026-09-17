@@ -152,6 +152,7 @@ struct DatabaseTypeChooserSheet: View {
 }
 
 private struct DatabaseTypeChooserRow: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     let type: DatabaseType
     let isCurrent: Bool
 
@@ -194,6 +195,6 @@ private struct DatabaseTypeChooserRow: View {
     }
 
     private var shouldShowNotInstalledBadge: Bool {
-        type.isDownloadablePlugin && !PluginManager.shared.isDriverInstalled(for: type)
+        type.isDownloadablePlugin && !pluginManager.isDriverInstalled(for: type)
     }
 }

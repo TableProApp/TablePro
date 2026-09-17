@@ -9,6 +9,8 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarView: View {
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     @StateObject private var viewModel: SidebarViewModel
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsSchemaProgress = false
@@ -173,7 +175,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var sidebarFooter: some View {
-        if showsSchemaPicker || LicenseManager.shared.supportAudience == .prospect {
+        if showsSchemaPicker || licenseManager.supportAudience == .prospect {
             VStack(spacing: 0) {
                 Divider()
                 HStack(spacing: 8) {
@@ -325,7 +327,7 @@ struct SidebarView: View {
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var tableList: some View {

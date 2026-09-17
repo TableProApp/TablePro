@@ -26,6 +26,7 @@ internal enum HexEditorMetrics {
 }
 
 struct HexEditorBody: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let initialValue: String?
     let isEditable: Bool
     let onCommit: (String) -> Void
@@ -78,7 +79,7 @@ struct HexEditorBody: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HexDumpDisplayView(text: hexDumpText, font: ThemeEngine.shared.valueFont)
+            HexDumpDisplayView(text: hexDumpText, font: themeEngine.valueFont)
 
             if isEditable {
                 Divider()
@@ -88,7 +89,7 @@ struct HexEditorBody: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HexInputTextView(text: $editableHex, font: ThemeEngine.shared.valueFont)
+                    HexInputTextView(text: $editableHex, font: themeEngine.valueFont)
                         .frame(height: 80)
 
                     HStack(spacing: 4) {

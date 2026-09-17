@@ -3,6 +3,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct DatabaseSwitcherPopoverHost: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     weak var coordinator: MainContentCoordinator?
     /// Which container dimension this presentation switches. An engine can have both, so the caller
     /// names the one it opened rather than the popover guessing from the engine's primary target.
@@ -12,7 +13,7 @@ struct DatabaseSwitcherPopoverHost: View {
     var body: some View {
         if let coordinator {
             let connection = coordinator.connection
-            let session = DatabaseManager.shared.session(for: connection.id)
+            let session = databaseManager.session(for: connection.id)
             let switchTarget = target
                 ?? PluginManager.shared.containerSwitchTarget(for: connection.type)
                 ?? .database

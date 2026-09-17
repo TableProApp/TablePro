@@ -46,6 +46,7 @@ struct DatabaseTreeRowContext {
 }
 
 struct DatabaseTreeRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let node: DatabaseTreeNode
     let isFavorite: Bool
     let context: DatabaseTreeRowContext
@@ -128,7 +129,7 @@ struct DatabaseTreeRowView: View {
 
     private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {
         Label(context.objectKindTitle(kind), systemImage: kind.iconName)
-            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
             .lineLimit(1)
     }
 
@@ -203,7 +204,7 @@ struct DatabaseTreeRowView: View {
                     .selectionAwareTint(Color.accentColor)
                     .frame(width: 16)
             }
-            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
                 SidebarPartitionRow.accessibilityLabel(
@@ -268,7 +269,7 @@ struct DatabaseTreeRowView: View {
         } icon: {
             Image(systemName: systemImage)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .lineLimit(1)
         .sidebarRowForeground(isActive: isActive, isSystem: isSystem)
     }

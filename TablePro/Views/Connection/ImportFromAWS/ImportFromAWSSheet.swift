@@ -3,6 +3,7 @@ import TableProImport
 import TableProPluginKit
 
 struct ImportFromAWSSheet: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     var onImported: ((Int) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -167,7 +168,7 @@ struct ImportFromAWSSheet: View {
         )
         return RDSDiscoveryReconciler.markingMissingDrivers(analyzed) { typeId in
             let type = DatabaseType(rawValue: typeId)
-            guard case .notInstalled = PluginManager.shared.driverUnavailability(for: type) else { return nil }
+            guard case .notInstalled = pluginManager.driverUnavailability(for: type) else { return nil }
             return PluginManager.registryDisplayName(of: type)
         }
     }

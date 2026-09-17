@@ -13,6 +13,7 @@ import SwiftUI
 /// and invisible to anyone who does not happen to hover. It is drawn unconditionally now, which is
 /// what Postico does and what a control that is the only way to reach a command has to do.
 internal struct InspectorFieldRow: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
     internal let layout: InspectorFieldLayout
     internal let kind: FieldEditorKind

@@ -40,6 +40,7 @@ internal final class CellImageWindowController: ValueViewerWindowController {
 }
 
 private struct CellImageWindowContent: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let data: Data
     let format: CellImageFormat
     let sourceKind: CellImageSourceKind
@@ -62,7 +63,7 @@ private struct CellImageWindowContent: View {
             TextValueEditor(
                 text: .constant(String(bytes: data, encoding: .utf8) ?? ""),
                 isEditable: false,
-                font: ThemeEngine.shared.valueFont
+                font: themeEngine.valueFont
             )
         case .hex:
             HexEditorBody(

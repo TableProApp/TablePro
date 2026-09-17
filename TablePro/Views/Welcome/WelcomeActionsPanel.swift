@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct WelcomeActionsPanel: View {
+    @ObservedObject private var licenseManager = LicenseManager.shared
     let onActivateLicense: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
@@ -57,7 +58,7 @@ struct WelcomeActionsPanel: View {
 
                 VStack(spacing: 4) {
                     licenseBadge
-                    if LicenseManager.shared.supportAudience == .prospect {
+                    if licenseManager.supportAudience == .prospect {
                         SupportPromptLink()
                     }
                 }
@@ -124,7 +125,7 @@ struct WelcomeActionsPanel: View {
     /// pauses Pro features, and its owner is still not someone to ask for a purchase.
     @ViewBuilder
     private var licenseBadge: some View {
-        switch LicenseManager.shared.status {
+        switch licenseManager.status {
         case .active:
             Label(String(localized: "Pro"), systemImage: "checkmark.seal.fill")
                 .font(.subheadline.weight(.medium))

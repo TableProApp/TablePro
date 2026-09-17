@@ -16,6 +16,7 @@ import TableProPluginKit
 /// a detail of the review sheet: a second surface that picked differently would show the same
 /// `CREATE SCHEMA` two ways.
 struct SQLStatementPreview: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let prepared: SQLReviewSheet.Prepared
     let databaseType: DatabaseType
 

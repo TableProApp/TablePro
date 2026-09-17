@@ -12,6 +12,8 @@ import TableProEditorKit
 import TableProGrammars
 
 internal struct JSONCodeEditor: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
 
@@ -36,7 +38,7 @@ internal struct JSONCodeEditor: View {
         .onChange(of: colorScheme) { _ in
             rebuildConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) { _ in
+        .onChange(of: settingsManager.editor) { _ in
             rebuildConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in

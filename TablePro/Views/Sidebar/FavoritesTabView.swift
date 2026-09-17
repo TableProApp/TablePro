@@ -2,6 +2,9 @@ import SwiftUI
 import TableProImport
 
 internal struct FavoritesTabView: View {
+    @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @Environment(\.sidebarRowSize) private var systemRowSize
 
     @StateObject private var viewModel: FavoritesSidebarViewModel
@@ -203,8 +206,8 @@ internal struct FavoritesTabView: View {
     // MARK: - List
 
     private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
-        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
-        let all = TeamLibrarySyncCoordinator.shared.library.queries
+        guard licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        let all = teamLibrarySync.library.queries
         guard !searchText.isEmpty else { return all }
         return all.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) || $0.query.localizedCaseInsensitiveContains(searchText)
@@ -288,10 +291,10 @@ internal struct FavoritesTabView: View {
                 },
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryAvailable: LicenseManager.shared.isFeatureAvailable(.teamLibrary)
+                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary)
             ),
             selection: $sharedSidebarState.selectedFavorite,
-            rowSizePreference: AppSettingsManager.shared.general.sidebarRowSize,
+            rowSizePreference: settingsManager.general.sidebarRowSize,
             actions: FavoritesOutlineActions(
                 primaryAction: { handlePrimaryAction($0) },
                 deleteSelection: { deleteNode($0) },
@@ -319,7 +322,7 @@ internal struct FavoritesTabView: View {
     /// list grew with the sidebar size and the Favorites list beside it did not.
     private var resolvedRowSize: SidebarRowSize {
         SidebarRowSizeResolver.resolve(
-            preference: AppSettingsManager.shared.general.sidebarRowSize,
+            preference: settingsManager.general.sidebarRowSize,
             system: systemRowSize
         )
     }
@@ -358,12 +361,12 @@ internal struct FavoritesTabView: View {
         } icon: {
             Image(systemName: group.environment.iconName)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
     }
 
     private func favoriteDatabaseRow(_ entry: FavoriteDatabaseEntry) -> some View {
         Label(entry.database, systemImage: "cylinder")
-            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
             .lineLimit(1)
             .accessibilityLabel(String(
                 format: String(localized: "%@: %@"),
@@ -415,7 +418,7 @@ internal struct FavoritesTabView: View {
             Image(systemName: TableRowLogic.iconName(for: table.type))
                 .selectionAwareTint(Color.accentColor)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .accessibilityLabel(
             TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
         )
@@ -463,7 +466,7 @@ internal struct FavoritesTabView: View {
                 break
             }
         case .teamQuery(let id, _, _):
-            guard let query = TeamLibrarySyncCoordinator.shared.library.queries.first(where: { $0.id == id })
+            guard let query = teamLibrarySync.library.queries.first(where: { $0.id == id })
             else { return }
             coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }

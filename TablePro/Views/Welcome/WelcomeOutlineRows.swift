@@ -150,10 +150,11 @@ private struct WelcomeConnectionAccessories: View {
 }
 
 private struct WelcomeConnectionStatus: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     let connectionId: UUID
 
     var body: some View {
-        switch DatabaseManager.shared.activeSessions[connectionId]?.reportedStatus {
+        switch databaseManager.activeSessions[connectionId]?.reportedStatus {
         case .connected:
             Text("Connected")
                 .font(.caption)

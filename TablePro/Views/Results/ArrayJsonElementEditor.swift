@@ -16,6 +16,7 @@ import TableProPluginKit
 /// collapsing into one: `to_jsonb()` writes a SQL NULL element and a JSON null element both as
 /// `null`, and that distinction is the point of editing the column in place.
 internal struct ArrayJsonElementEditor: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding internal var rows: [ArrayEditorRow]
     @Binding internal var selection: UUID?
     internal let isReadOnly: Bool
@@ -62,7 +63,7 @@ internal struct ArrayJsonElementEditor: View {
                 .frame(width: 20, alignment: .trailing)
             if let summary = display.summary {
                 Text(summary)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .lineLimit(1)
                     .truncationMode(.tail)
             } else {
@@ -120,7 +121,7 @@ internal struct ArrayJsonElementEditor: View {
     private var nullPlaceholder: some View {
         Text("NULL")
             .italic()
-            .font(ThemeEngine.shared.valueFontSwiftUI)
+            .font(themeEngine.valueFontSwiftUI)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

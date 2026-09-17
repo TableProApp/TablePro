@@ -31,6 +31,7 @@ import SwiftUI
 /// tree cannot present, so giving up the Highlight Rules button would have made
 /// `View > Highlight Rules…` do nothing. See `StatusBarTier` for what a tier may give up.
 struct ResultStatusBar: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let model: ResultStatusModel
     let snapshot: StatusBarSnapshot
     let filterState: TabFilterState
@@ -367,7 +368,7 @@ struct ResultStatusBar: View {
         .statusBarLabelStyle(showsTitle: presentation.showsControlTitles)
         .toggleStyle(.button)
         .controlSize(.small)
-        .help(AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Filters"), for: .toggleFilters))
+        .help(settingsManager.keyboard.shortcutHint(String(localized: "Filters"), for: .toggleFilters))
         .accessibilityLabel(String(localized: "Filters"))
         .accessibilityValue(filtersAccessibilityValue)
         .accessibilityAddTraits(filterState.isVisible ? .isSelected : [])

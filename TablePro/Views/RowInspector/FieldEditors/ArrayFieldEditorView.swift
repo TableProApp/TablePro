@@ -14,6 +14,7 @@ import TableProPluginKit
 /// DEFAULT would have nowhere to live, since the field's binding carries a `String` and neither is
 /// one.
 internal struct ArrayFieldEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
     internal let elementEditor: ArrayElementEditor
     internal let allowedValues: [String]
@@ -40,7 +41,7 @@ internal struct ArrayFieldEditorView: View {
             }
         } label: {
             Text(displayLabel)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .foregroundStyle(context.valueState.placeholder == nil ? .primary : .secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)

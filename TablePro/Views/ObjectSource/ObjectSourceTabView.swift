@@ -120,6 +120,7 @@ final class ObjectSourceLoader: ObservableObject {
 }
 
 struct ObjectSourceTabView: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     let connectionId: UUID
     let databaseType: DatabaseType
     let objectRef: DatabaseObjectRef
@@ -153,7 +154,7 @@ struct ObjectSourceTabView: View {
     /// statement. Every other object stays read-only here and is edited in a query tab.
     private var enumEditor: EnumLabelEditor? {
         guard objectRef.kind == .userType, objectRef.typeKind == .enumeration,
-              let connection = DatabaseManager.shared.session(for: connectionId)?.connection
+              let connection = databaseManager.session(for: connectionId)?.connection
         else { return nil }
         return EnumLabelEditor(connection: connection, objectRef: objectRef)
     }

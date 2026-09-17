@@ -21,6 +21,9 @@ private struct TabLoadKey: Hashable {
 }
 
 struct MainEditorContentView: View {
+    @ObservedObject private var schemaService = SchemaService.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     /// A query tab nests its own editor/results split, whose two minimums are required constraints.
     /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
     /// satisfy a height the content it contains cannot reach.
@@ -456,7 +459,7 @@ struct MainEditorContentView: View {
                         databaseType: coordinator.connection.type,
                         databaseScope: queryScope,
                         connectionId: coordinator.connection.id,
-                        connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
+                        connectionAIPolicy: coordinator.connection.aiPolicy ?? settingsManager.ai.defaultConnectionPolicy,
                         tabID: tab.id,
                         claimFocusOnAppear: claimFocus,
                         onFocusClaimed: {
@@ -618,7 +621,7 @@ struct MainEditorContentView: View {
         if let error = tab.display.activeResultSet?.errorMessage ?? tab.execution.errorMessage {
             InlineErrorBanner(
                 message: error,
-                onFixWithAI: AppSettingsManager.shared.ai.enabled && tab.tabType == .query
+                onFixWithAI: settingsManager.ai.enabled && tab.tabType == .query
                     ? { coordinator.fixErrorWithAI(query: tab.execution.errorQuery ?? tab.content.query, error: error) }
                     : nil,
                 onDismiss: {
@@ -776,7 +779,7 @@ struct MainEditorContentView: View {
                     tabId: tab.id,
                     resultSetId: resultSet.id,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                    isUnlocked: LicenseManager.shared.isFeatureAvailable(.resultCharts)
+                    isUnlocked: licenseManager.isFeatureAvailable(.resultCharts)
                 )
             }
         case .map:
@@ -958,7 +961,7 @@ struct MainEditorContentView: View {
                 schemaName: tab.tableContext.schemaName,
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tabType: tab.tabType,
-                showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
+                showRowNumbers: settingsManager.dataGrid.showRowNumbers,
                 hiddenColumns: tab.columnLayout.hiddenColumns,
                 appliesRowSortPreferences: true,
                 editRefusalMessage: refusal?.message
@@ -1116,7 +1119,7 @@ struct MainEditorContentView: View {
                 lastTiming: coordinator.toolbarState.queryTiming(forTab: tab.id),
                 onCancel: { coordinator.cancelCurrentQuery() }
             ),
-            isRefreshingSchema: SchemaService.shared.isRefreshing(connectionId: connectionId),
+            isRefreshingSchema: schemaService.isRefreshing(connectionId: connectionId),
             viewMode: resultsViewModeBinding(for: tab),
             resultSetMenu: resultSetMenuModel(for: tab),
             onActivateResultSet: { coordinator.switchActiveResultSet(to: $0, in: tab.id) },
@@ -1183,7 +1186,7 @@ struct MainEditorContentView: View {
             hasResults: coordinator.canClearActiveQueryResults,
             explainVariants: coordinator.connection.type.explainVariants,
             shortcutHint: { label, action in
-                AppSettingsManager.shared.keyboard.shortcutHint(label, for: action)
+                settingsManager.keyboard.shortcutHint(label, for: action)
             }
         )
     }

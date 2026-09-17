@@ -13,6 +13,7 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct ImportDialog: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDialog")
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
@@ -153,7 +154,7 @@ struct ImportDialog: View {
     /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.allImportPlugins()
+        return pluginManager.allImportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 return ImportRouting.isStatementFormat(
@@ -167,7 +168,7 @@ struct ImportDialog: View {
     }
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugin(forFormat: selectedFormatId)
+        pluginManager.importPlugin(forFormat: selectedFormatId)
     }
 
     // MARK: - View Components

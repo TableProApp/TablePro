@@ -10,6 +10,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ForeignKeyPickerView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let scope: DatabaseScope
     let databaseType: DatabaseType
     let fkInfo: ForeignKeyInfo
@@ -175,11 +176,11 @@ struct ForeignKeyPickerView: View {
                     .foregroundStyle(.secondary)
                     .opacity(row.key == currentValue ? 1 : 0)
                 Text(row.key)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .lineLimit(1)
                 if let label = row.label, !label.isEmpty {
                     Text(label)
-                        .font(ThemeEngine.shared.valueFontSwiftUI)
+                        .font(themeEngine.valueFontSwiftUI)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)

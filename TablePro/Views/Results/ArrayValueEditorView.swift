@@ -9,6 +9,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ArrayValueEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let allowedValues: [String]
     let isNullable: Bool
     let delimiter: Character
@@ -154,7 +155,7 @@ struct ArrayValueEditorView: View {
             )
         )
         .textFieldStyle(.roundedBorder)
-        .font(ThemeEngine.shared.valueFontSwiftUI)
+        .font(themeEngine.valueFontSwiftUI)
         .disabled(element.wrappedValue == .null)
         Toggle("NULL", isOn: Binding(
             get: { element.wrappedValue == .null },
@@ -177,7 +178,7 @@ struct ArrayValueEditorView: View {
         ) {
             ForEach(Array(options.enumerated()), id: \.offset) { optionIndex, option in
                 Text(option)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .tag(optionIndex)
             }
             Text("NULL").italic().tag(options.count)
@@ -224,7 +225,7 @@ struct ArrayValueEditorView: View {
     private var rawTextEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
             TextEditor(text: $rawText)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .frame(minHeight: 90)
             if PostgresArrayLiteralCodec.parse(rawText, delimiter: delimiter) == nil {
                 Label {

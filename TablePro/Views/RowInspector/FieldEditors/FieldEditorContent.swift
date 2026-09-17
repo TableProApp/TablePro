@@ -105,12 +105,13 @@ internal struct FieldEditorContent: View {
 
 /// What a field shows in place of its editor once the user has asked for NULL or DEFAULT.
 internal struct PendingStatePill: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let state: FieldValueState
     internal var minHeight: CGFloat?
 
     var body: some View {
         Text(state.placeholder ?? "")
-            .font(ThemeEngine.shared.valueFontSwiftUI)
+            .font(themeEngine.valueFontSwiftUI)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
             .padding(.horizontal, 6)

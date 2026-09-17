@@ -11,6 +11,8 @@ import TableProGrammars
 
 /// Read-only SQL code preview with syntax highlighting powered by TableProEditorKit
 struct SQLCodePreview: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
 
     @State private var editorState = SourceEditorState()

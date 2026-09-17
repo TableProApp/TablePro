@@ -9,6 +9,7 @@ import TableProPluginKit
 
 /// The SQL editor, its command bar, and the banners that belong to the document it holds.
 struct QueryEditorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @Binding var queryText: String
     @Binding var cursorPositions: [CursorPosition]
     @Binding var parameters: [QueryParameter]
@@ -56,7 +57,7 @@ struct QueryEditorView: View {
                 scope: scope,
                 commands: commands,
                 isExecuting: isExecuting,
-                vimMode: AppSettingsManager.shared.editor.vimModeEnabled ? vimMode : nil,
+                vimMode: settingsManager.editor.vimModeEnabled ? vimMode : nil,
                 showsHistoryTip: showsHistoryTip,
                 onRun: onRun,
                 onRunAllStatements: onRunAllStatements,

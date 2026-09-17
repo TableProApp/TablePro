@@ -38,6 +38,7 @@ struct ConnectionSwitcherEntry: Identifiable {
 }
 
 struct ConnectionSwitcherPopover: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
     /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
     /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
@@ -58,7 +59,7 @@ struct ConnectionSwitcherPopover: View {
     static let contentSize = NSSize(width: 400, height: 460)
 
     private var activeSessions: [UUID: ConnectionSession] {
-        DatabaseManager.shared.activeSessions
+        databaseManager.activeSessions
     }
 
     private var currentConnection: DatabaseConnection? {
@@ -326,7 +327,7 @@ struct ConnectionSwitcherPopover: View {
 
         hostedWithoutSession = ConnectionSwitcherSections.hostedWithoutSession(
             workspaces: WindowManager.shared.hostedWorkspaces().map { ($0.connectionId, $0.connection) },
-            sessionIds: Set(DatabaseManager.shared.activeSessions.keys),
+            sessionIds: Set(databaseManager.activeSessions.keys),
             saved: saved
         )
     }

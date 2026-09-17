@@ -12,6 +12,7 @@ import TableProPluginKit
 /// statement: an expression this dialog rejected would have to be a dialect check for every engine
 /// TablePro speaks, and the server's own error is a better one than any of them.
 internal struct ExportRowScopeEditor: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let objectName: String
     internal let availableColumns: [String]
     @Binding internal var scope: PluginExportRowScope
@@ -39,7 +40,7 @@ internal struct ExportRowScopeEditor: View {
                 TextField("status = 'active'", text: $filter, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2 ... 4)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .accessibilityIdentifier("row-scope-filter")
                 if hasRejectedFilter {
                     Text("A filter is one expression. Remove the semicolon.")

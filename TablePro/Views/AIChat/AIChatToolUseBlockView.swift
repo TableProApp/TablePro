@@ -7,6 +7,7 @@ import AppKit
 import SwiftUI
 
 struct AIChatToolUseBlockView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let block: ToolUseBlock
 
     @State private var isExpanded: Bool = false
@@ -58,7 +59,7 @@ struct AIChatToolUseBlockView: View {
             if isPending, let proposedStatement {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(proposedStatement)
-                        .font(ThemeEngine.shared.valueFontSwiftUI)
+                        .font(themeEngine.valueFontSwiftUI)
                         .textSelection(.enabled)
                         .padding(8)
                         .frame(maxWidth: .infinity, alignment: .leading)

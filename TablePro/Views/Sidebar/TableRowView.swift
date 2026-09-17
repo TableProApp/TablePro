@@ -62,6 +62,7 @@ enum TableRowLogic {
 }
 
 struct TableRow: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let table: TableInfo
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
@@ -81,14 +82,14 @@ struct TableRow: View {
     }
 
     private var visibleComment: String? {
-        guard AppSettingsManager.shared.general.showObjectComments,
+        guard settingsManager.general.showObjectComments,
               let comment = table.comment, !comment.isEmpty
         else { return nil }
         return comment
     }
 
     private var showsObjectIcon: Bool {
-        AppSettingsManager.shared.general.showObjectIcons
+        settingsManager.general.showObjectIcons
     }
 
     private var showsLeadingIcon: Bool {
