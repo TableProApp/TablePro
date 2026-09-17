@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copying an Oracle `NUMBER` with a negative or oversized scale to another engine failing.
 - Copying `CHAR` text with accented characters into ClickHouse failing.
 - Copying a table to MySQL, SQL Server or Oracle failing when a key, foreign key or index is too wide for it.
+- Compare & Sync rewriting a column's collation while collation differences are ignored.
 
 ## [0.75.0] - 2026-09-17
 

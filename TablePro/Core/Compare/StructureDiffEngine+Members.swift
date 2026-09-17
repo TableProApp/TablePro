@@ -33,7 +33,7 @@ internal extension StructureDiffEngine {
                 continue
             }
             guard columnSignature(column) != columnSignature(existing) else { continue }
-            changes.append(.modifyColumn(old: existing, new: column))
+            changes.append(.modifyColumn(old: existing, new: modifiedColumn(column, replacing: existing)))
         }
         for column in target.columns where !sourceKeys.contains(options.matchKey(column.name)) {
             changes.append(.deleteColumn(column))
@@ -110,6 +110,18 @@ internal extension StructureDiffEngine {
 }
 
 private extension StructureDiffEngine {
+    /// A collation the comparison ignores is not a change it may make. A driver writes a modified
+    /// column's collation from the new definition, and MySQL restates the whole column to alter any
+    /// part of it, so a column that differed only in nullability had its collation rewritten to the
+    /// source's as well.
+    func modifiedColumn(
+        _ column: EditableColumnDefinition,
+        replacing existing: EditableColumnDefinition
+    ) -> EditableColumnDefinition {
+        guard options.ignoreCollationAndCharset else { return column }
+        return column.keepingCollation(of: existing)
+    }
+
     func columnSignature(_ column: EditableColumnDefinition) -> String {
         var parts: [String] = [
             options.matchKey(column.name),
