@@ -340,7 +340,7 @@ struct MainContentView: View {
             /// fields rendering changes the row under it without moving anything `InspectorTrigger`
             /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
             /// together, so the stale snapshot is only ever reached by switching to it.
-            .onChange(of: trailingPaneState.inspector.viewMode) { _ in
+            .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
             }
             /// A value window detached from a field goes on writing while the JSON rendering is the
@@ -415,7 +415,7 @@ struct MainContentView: View {
                 handleConnectionStatusChange()
             }
 
-            .onValueChange(of: coordinator.windowSidebarState.selectedTables) { oldTables, newTables in
+            .onValueChange(of: \.selectedTables, in: coordinator.windowSidebarState) { oldTables, newTables in
                 guard !coordinator.isTearingDown else {
                     Self.lifecycleLogger.debug("[switch] windowSidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
