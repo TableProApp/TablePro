@@ -11,7 +11,7 @@ pub mod settings;
 
 pub use connections::{
     ConnectionListSnapshot, ConnectionListState, ConnectionStore, RemoveOutcome, SavedConnection, SavedSshAuth,
-    SavedSshConfig,
+    SavedSshConfig, duplicate,
 };
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};

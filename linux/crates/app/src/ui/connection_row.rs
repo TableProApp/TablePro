@@ -1,5 +1,6 @@
 use relm4::adw::prelude::*;
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
+use relm4::gtk::gio;
 use relm4::{adw, gtk};
 use uuid::Uuid;
 
@@ -23,16 +24,16 @@ pub enum ConnectionRowMsg {
     /// any actual delete is dispatched — saved connections include
     /// credentials and SSH config and a misclick is unrecoverable.
     RequestDelete,
+    /// Copy the connection under a free name, so a second database on
+    /// the same server does not have to be typed out again.
+    RequestDuplicate,
 }
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
-)]
 pub enum ConnectionRowOutput {
     Open(SavedConnection),
     Delete(Uuid),
+    Duplicate(SavedConnection),
 }
 
 #[relm4::factory(pub)]
@@ -50,13 +51,15 @@ impl FactoryComponent for ConnectionRow {
             set_activatable: true,
             connect_activated => ConnectionRowMsg::Open,
 
-            add_suffix = &gtk::Button {
-                set_icon_name: crate::ui::icons::USER_TRASH,
+            // One menu rather than a button per action: the row gains
+            // actions as the app does, and a row of icons stops
+            // reading as a row.
+            add_suffix = &gtk::MenuButton {
+                set_icon_name: crate::ui::icons::VIEW_MORE,
                 set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(crate::i18n::gettext("Remove connection").as_str()),
+                set_tooltip_text: Some(crate::i18n::gettext("Connection options").as_str()),
                 add_css_class: "flat",
-                add_css_class: "destructive-action",
-                connect_clicked => ConnectionRowMsg::RequestDelete,
+                set_menu_model: Some(&row_menu()),
             },
         }
     }
@@ -75,6 +78,21 @@ impl FactoryComponent for ConnectionRow {
         let widgets = view_output!();
         // Stash for the destructive-confirm dialog in update().
         self.root = Some(root.clone().upcast::<gtk::Widget>());
+
+        // Each row owns its actions, so the menu on one row cannot
+        // act on another.
+        let actions = gio::SimpleActionGroup::new();
+        let duplicate_sender = sender.clone();
+        let duplicate = gio::ActionEntry::builder("duplicate")
+            .activate(move |_, _, _| duplicate_sender.input(ConnectionRowMsg::RequestDuplicate))
+            .build();
+        let remove_sender = sender.clone();
+        let remove = gio::ActionEntry::builder("remove")
+            .activate(move |_, _, _| remove_sender.input(ConnectionRowMsg::RequestDelete))
+            .build();
+        actions.add_action_entries([duplicate, remove]);
+        root.insert_action_group("connection", Some(&actions));
+
         widgets
     }
 
@@ -82,6 +100,9 @@ impl FactoryComponent for ConnectionRow {
         match msg {
             ConnectionRowMsg::Open => {
                 let _ = sender.output(ConnectionRowOutput::Open(self.saved.clone()));
+            }
+            ConnectionRowMsg::RequestDuplicate => {
+                let _ = sender.output(ConnectionRowOutput::Duplicate(self.saved.clone()));
             }
             ConnectionRowMsg::RequestDelete => {
                 // GNOME HIG: destructive actions need explicit
@@ -123,6 +144,17 @@ fn subtitle_for(saved: &SavedConnection) -> String {
         AuthMode::Kerberos => format!("{} · {}:{}", saved.driver_id, saved.host, saved.port),
         AuthMode::Password => format!("{} · {}@{}:{}", saved.driver_id, saved.username, saved.host, saved.port),
     }
+}
+
+/// The row's own menu. Remove sits in its own section so a destructive
+/// action is never the neighbour of an ordinary one.
+fn row_menu() -> gio::Menu {
+    let menu = gio::Menu::new();
+    menu.append(Some(&crate::i18n::gettext("Duplicate")), Some("connection.duplicate"));
+    let danger = gio::Menu::new();
+    danger.append(Some(&crate::i18n::gettext("Remove…")), Some("connection.remove"));
+    menu.append_section(None, &danger);
+    menu
 }
 
 #[cfg(test)]

@@ -15,26 +15,20 @@ pub struct WelcomeView {
 }
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
-)]
 pub enum WelcomeViewInput {
     SetConnections(Vec<SavedConnection>),
     OpenConnect,
     OpenSaved(SavedConnection),
     Delete(Uuid),
+    Duplicate(SavedConnection),
 }
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "relm4 moves each message once through a channel, so boxing would only add an allocation"
-)]
 pub enum WelcomeViewOutput {
     OpenConnect,
     OpenSaved(SavedConnection),
     Delete(Uuid),
+    Duplicate(SavedConnection),
 }
 
 #[derive(Debug, Default)]
@@ -62,6 +56,7 @@ impl SimpleComponent for WelcomeView {
             .forward(sender.input_sender(), |out| match out {
                 ConnectionRowOutput::Open(saved) => WelcomeViewInput::OpenSaved(saved),
                 ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
+                ConnectionRowOutput::Duplicate(saved) => WelcomeViewInput::Duplicate(saved),
             });
 
         // Empty page — no saved connections yet. GNOME convention is
@@ -182,6 +177,9 @@ impl SimpleComponent for WelcomeView {
             }
             WelcomeViewInput::Delete(id) => {
                 let _ = sender.output(WelcomeViewOutput::Delete(id));
+            }
+            WelcomeViewInput::Duplicate(saved) => {
+                let _ = sender.output(WelcomeViewOutput::Duplicate(saved));
             }
         }
     }

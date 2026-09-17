@@ -325,6 +325,7 @@ pub enum AppMsg {
     SecretDeleteFailed(Uuid),
     OpenSaved(SavedConnection),
     DeleteConnection(Uuid),
+    DuplicateConnection(SavedConnection),
     /// "+ New query" button or Ctrl+T → append a new editor tab.
     NewEditorTab,
     /// Ctrl+W → close active workspace tab (browse or editor).
@@ -1123,6 +1124,7 @@ impl SimpleComponent for App {
             .forward(sender.input_sender(), |out| match out {
                 ConnectionRowOutput::Open(saved) => AppMsg::OpenSaved(saved),
                 ConnectionRowOutput::Delete(id) => AppMsg::DeleteConnection(id),
+                ConnectionRowOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
             });
 
         // The SplitButton's tooltip already labels the popover, so we drop
@@ -1193,6 +1195,7 @@ impl SimpleComponent for App {
                     WelcomeViewOutput::OpenConnect => AppMsg::OpenConnect,
                     WelcomeViewOutput::OpenSaved(saved) => AppMsg::OpenSaved(saved),
                     WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
+                    WelcomeViewOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
                 });
 
         let model = App {
@@ -1453,6 +1456,7 @@ impl SimpleComponent for App {
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
+            AppMsg::DuplicateConnection(saved) => self.on_duplicate_connection(saved, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
             AppMsg::ReopenClosedTab => self.on_reopen_closed_tab(sender),
             AppMsg::ShowFilterDialog => self.on_show_filter_dialog(),

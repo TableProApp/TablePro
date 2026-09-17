@@ -288,9 +288,100 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
     crate::document::decode_document::<ConnectionsDocument>(path, &bytes).map(|document| document.connections)
 }
 
+/// A copy of `source` under a name no other connection holds.
+///
+/// The copy is a new connection, not a second reference to the same
+/// one: it takes a fresh id, so its secrets are its own and deleting
+/// either leaves the other alone.
+pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedConnection {
+    SavedConnection {
+        id: Uuid::new_v4(),
+        name: copy_name(&source.name, &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>()),
+        // A copy has never been opened, whatever the original did, so
+        // it sorts by name rather than claiming the original's recency.
+        last_opened_at: None,
+        ..source.clone()
+    }
+}
+
+/// `name (copy)`, then `name (copy 2)` and on, until one is free.
+fn copy_name(name: &str, taken: &[&str]) -> String {
+    let first = format!("{name} (copy)");
+    if !taken.contains(&first.as_str()) {
+        return first;
+    }
+    // A name is short and the list is a person's own connections, so
+    // counting up from two is bounded by how many copies they made.
+    (2..)
+        .map(|n| format!("{name} (copy {n})"))
+        .find(|candidate| !taken.contains(&candidate.as_str()))
+        .unwrap_or(first)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc as StdArc;
+
+    fn saved(name: &str) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            driver_id: "postgres".to_owned(),
+            host: "db.internal".to_owned(),
+            port: 5432,
+            database: "app".to_owned(),
+            username: "postgres".to_owned(),
+            use_tls: true,
+            read_only: false,
+            auth_mode: AuthMode::Password,
+            ssh: None,
+            last_opened_at: Some(Utc::now()),
+        }
+    }
+
+    #[test]
+    fn a_copy_keeps_everything_that_says_where_to_connect() {
+        let source = saved("production");
+
+        let copy = duplicate(&source, std::slice::from_ref(&source));
+
+        assert_eq!(copy.host, source.host);
+        assert_eq!(copy.port, source.port);
+        assert_eq!(copy.database, source.database);
+        assert_eq!(copy.username, source.username);
+        assert_eq!(copy.use_tls, source.use_tls);
+        assert_eq!(copy.driver_id, source.driver_id);
+    }
+
+    #[test]
+    fn a_copy_is_its_own_connection_not_a_second_name_for_one() {
+        let source = saved("production");
+
+        let copy = duplicate(&source, std::slice::from_ref(&source));
+
+        assert_ne!(copy.id, source.id, "the copy shares the original's secrets");
+        assert_eq!(copy.last_opened_at, None, "the copy claimed the original's recency");
+    }
+
+    #[test]
+    fn copies_count_up_rather_than_colliding() {
+        let first = saved("production");
+        let mut taken = vec![first.clone()];
+
+        for expected in ["production (copy)", "production (copy 2)", "production (copy 3)"] {
+            let copy = duplicate(&first, &taken);
+            assert_eq!(copy.name, expected);
+            taken.push(copy);
+        }
+    }
+
+    #[test]
+    fn a_free_numbered_name_is_taken_before_counting_past_it() {
+        let source = saved("db");
+        let taken = vec![source.clone(), saved("db (copy)"), saved("db (copy 3)")];
+
+        assert_eq!(duplicate(&source, &taken).name, "db (copy 2)");
+    }
 
     use tempfile::TempDir;
 

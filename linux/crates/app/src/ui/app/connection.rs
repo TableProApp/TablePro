@@ -236,6 +236,55 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
+    /// Copy a saved connection so a second database on the same server
+    /// does not have to be typed out again.
+    ///
+    /// The copy takes a new id, so it carries its own secrets rather
+    /// than sharing the original's: removing either then leaves the
+    /// other able to connect.
+    pub(super) fn on_duplicate_connection(&self, source: SavedConnection, sender: ComponentSender<Self>) {
+        self.connections_popover.popdown();
+        let copy = tablepro_storage::duplicate(&source, &self.saved_connections);
+        let name = copy.name.clone();
+        let connections = self.storage.connections().clone();
+        let secrets = self.storage.secrets().clone();
+        let tasks = self.tasks.clone();
+        let sender_clone = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let copy_id = copy.id;
+                    let saved = tasks
+                        .spawn_blocking_task({
+                            let connections = connections.clone();
+                            move || connections.upsert_blocking(copy)
+                        })
+                        .await;
+                    if let Ok(Err(error)) = saved {
+                        tracing::warn!(%error, "could not save the duplicated connection");
+                        sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
+                            "The connection could not be duplicated.",
+                        )));
+                        return;
+                    }
+                    // A copy with no password still connects once the
+                    // user types one, so a keyring that refuses is
+                    // reported rather than undoing the copy.
+                    let carried = copy_secrets(secrets.as_ref(), source.id, copy_id, &name).await;
+                    sender_clone.input(AppMsg::ReloadConnections);
+                    sender_clone.input(AppMsg::ShowToast(if carried {
+                        crate::i18n::gettext_f("Duplicated as {name}", &[("name", &name)])
+                    } else {
+                        crate::i18n::gettext_f(
+                            "Duplicated as {name}. Its password could not be copied, so enter it again.",
+                            &[("name", &name)],
+                        )
+                    }));
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         self.set_loading_page(
@@ -340,6 +389,38 @@ impl App {
 /// Performs the actual disk + keyring teardown for a saved connection.
 /// Extracted from `on_delete_connection` so the confirm-yes branch and
 /// the prefs-disabled branch share one implementation.
+/// Move every secret the original holds onto the copy's own id.
+///
+/// Returns whether all of them made it: a keyring that is locked or
+/// absent is a reason to tell the user, not to refuse the copy.
+async fn copy_secrets(
+    secrets: &dyn tablepro_core::credentials::SecretVault,
+    from: Uuid,
+    to: Uuid,
+    label: &str,
+) -> bool {
+    use tablepro_core::credentials::{SecretKind, SecretLookup};
+
+    let mut carried = true;
+    for kind in SecretKind::ALL {
+        match secrets.load(from, kind).await {
+            Ok(SecretLookup::Found(secret)) => {
+                if let Err(error) = secrets.store(to, kind, &secret, label).await {
+                    tracing::warn!(%error, ?kind, "could not copy a secret onto the duplicate");
+                    carried = false;
+                }
+            }
+            // Nothing stored for this kind, so nothing to carry.
+            Ok(SecretLookup::NotStored) => {}
+            Err(error) => {
+                tracing::warn!(%error, ?kind, "could not read a secret to duplicate");
+                carried = false;
+            }
+        }
+    }
+    carried
+}
+
 fn execute_delete_connection(
     connections: tablepro_storage::ConnectionStore,
     secrets: std::sync::Arc<dyn tablepro_core::credentials::SecretVault>,
