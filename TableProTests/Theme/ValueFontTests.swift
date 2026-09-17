@@ -123,9 +123,13 @@ struct ValueFontTests {
             "TablePro/Views/Results/PhpViewerView.swift",
         ]
 
+        /// Either spelling names the value font. A view reads it through the `themeEngine` it
+        /// observes, so a change in Settings redraws it; a static helper, which has no instance to
+        /// observe through, reads the shared engine directly.
         var offenders: [String] = []
         for path in paths {
-            if try !source(of: path).contains("ThemeEngine.shared.valueFont") {
+            let text = try source(of: path)
+            if !text.contains("ThemeEngine.shared.valueFont"), !text.contains("themeEngine.valueFont") {
                 offenders.append(path)
             }
         }
@@ -167,7 +171,11 @@ struct ValueFontTests {
         let source = try source(of: "TablePro/Views/Results/JSONCodeEditor.swift")
 
         #expect(source.contains("onChange(of: colorScheme)"))
-        #expect(source.contains("onChange(of: AppSettingsManager.shared.editor)"))
+        /// Observed, not read off the shared instance. The value `onChange(of:)` compares is read
+        /// while the body is built, and a body that does not observe the settings is never rebuilt
+        /// when they change, so `onChange(of: AppSettingsManager.shared.editor)` never fired.
+        #expect(source.contains("@ObservedObject private var settingsManager = AppSettingsManager.shared"))
+        #expect(source.contains("onChange(of: settingsManager.editor)"))
         #expect(source.contains("onReceive(AppEvents.shared.themeChanged)"))
         #expect(source.contains("onReceive(AppEvents.shared.accessibilityTextSizeChanged)"))
     }
