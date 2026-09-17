@@ -239,6 +239,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The AI assistant refuses statements that read or write files or run server-side code (ATTACH, LOAD, VACUUM INTO), matching the MCP server. (#2831)
 - Remote `VACUUM INTO` snapshot created world-readable beside a database with stricter permissions.
 - AWS SSO access token cached world-readable in `~/.aws/sso/cache`.
+- The AI assistant could write to a connection other than the one it was attached to, with that connection's Safe Mode skipped.
+- The AI assistant could read the schema and DDL of any saved connection by id, including one with AI access turned off.
 
 ## [0.74.0] - 2026-09-13
 

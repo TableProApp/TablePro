@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 
 extension AIChatViewModel {
     func confirmAIAccess() {
@@ -23,11 +24,22 @@ extension AIChatViewModel {
         }
     }
 
+    /// The blocks with their settled approval state, and which of them the user answered by hand.
+    ///
+    /// Provenance cannot be read back off `ToolApprovalState`: `.approved` is reached both by a
+    /// click and by a standing grant, and only the click has shown the user this statement and this
+    /// connection. It travels alongside the blocks because one `ChatToolContext` is built per
+    /// streaming round and shared by every block in it.
+    struct ResolvedToolApprovals {
+        let blocks: [ToolUseBlock]
+        let explicitlyApproved: Set<String>
+    }
+
     func resolveAndAwaitApprovals(
         assembledBlocks: [ToolUseBlock],
         assistantID: UUID,
         registry: ChatToolRegistry? = nil
-    ) async -> [ToolUseBlock] {
+    ) async -> ResolvedToolApprovals {
         let initialBlocks = await MainActor.run { [weak self] () -> [ToolUseBlock] in
             guard let self else { return assembledBlocks }
             let initial = assembledBlocks.map { block -> ToolUseBlock in
@@ -41,10 +53,21 @@ extension AIChatViewModel {
                 )
             }
             self.appendPendingToolUseBlocks(initial, assistantID: assistantID)
+            ToolApprovalCenter.shared.expect(
+                initial.compactMap { block in
+                    guard case .pending = block.approvalState else { return nil }
+                    return block.id
+                }
+            )
             return initial
+        }
+        defer {
+            let ids = initialBlocks.map(\.id)
+            Task { @MainActor in ToolApprovalCenter.shared.forget(ids) }
         }
 
         var resolved: [ToolUseBlock] = []
+        var explicitlyApproved: Set<String> = []
         for block in initialBlocks {
             guard case .pending = block.approvalState else {
                 resolved.append(block)
@@ -55,11 +78,13 @@ extension AIChatViewModel {
             switch decision {
             case .run:
                 finalState = .approved
+                explicitlyApproved.insert(block.id)
             case .alwaysAllow:
                 await MainActor.run { [weak self] in
                     self?.persistAlwaysAllowed(toolName: block.name)
                 }
                 finalState = .approved
+                explicitlyApproved.insert(block.id)
             case .cancel:
                 finalState = .cancelled
             }
@@ -74,7 +99,7 @@ extension AIChatViewModel {
                 providerMetadata: block.providerMetadata
             ))
         }
-        return resolved
+        return ResolvedToolApprovals(blocks: resolved, explicitlyApproved: explicitlyApproved)
     }
 
     @MainActor
@@ -143,18 +168,29 @@ extension AIChatViewModel {
         }
     }
 
+    /// Records an Always Allow grant as a read-modify-write of the one field it changes.
+    ///
+    /// It used to save the whole `DatabaseConnection` the view model was holding. That record is
+    /// read once, in `AIChatPanelView`'s `onAppear` and again only when the connection's id changes,
+    /// so a Safe Mode level raised in the toolbar while the pane stayed mounted was still the old
+    /// one here, and the grant wrote it back and silently undid the change.
+    ///
+    /// A destructive operation is never granted: each DROP, TRUNCATE and ALTER...DROP is confirmed
+    /// on its own.
     @MainActor
     func persistAlwaysAllowed(toolName: String) {
-        // Refuse to persist Always Allow for destructive operations.
-        // Each DROP/TRUNCATE/ALTER...DROP must be confirmed individually.
         if ChatToolRegistry.shared.tool(named: toolName)?.mode == .agentOnly {
             return
         }
-        guard var current = connection else { return }
-        guard !current.aiAlwaysAllowedTools.contains(toolName) else { return }
-        current.aiAlwaysAllowedTools.insert(toolName)
-        connection = current
-        services.connectionStorage.updateConnection(current)
+        guard let connectionId = connection?.id else { return }
+        guard connection?.aiAlwaysAllowedTools.contains(toolName) == false else { return }
+        guard services.connectionStorage.mutateConnections(ids: [connectionId], { stored in
+            stored.aiAlwaysAllowedTools.insert(toolName)
+        }) else {
+            Self.logger.error("Could not record Always Allow for \(toolName, privacy: .public)")
+            return
+        }
+        connection?.aiAlwaysAllowedTools.insert(toolName)
     }
 
     func dispatchCopilotInvocation(
@@ -190,16 +226,23 @@ extension AIChatViewModel {
             providerMetadata: block.providerMetadata
         )
         appendPendingToolUseBlocks([pendingBlock], assistantID: assistantID)
+        if case .pending = initialState {
+            ToolApprovalCenter.shared.expect([block.id])
+        }
+        defer { ToolApprovalCenter.shared.forget([block.id]) }
 
         let finalState: ToolApprovalState
+        var approvalWasExplicit = false
         if case .pending = initialState {
             let decision = await ToolApprovalCenter.shared.awaitDecision(for: block.id)
             switch decision {
             case .run:
                 finalState = .approved
+                approvalWasExplicit = true
             case .alwaysAllow:
                 persistAlwaysAllowed(toolName: block.name)
                 finalState = .approved
+                approvalWasExplicit = true
             case .cancel:
                 finalState = .cancelled
             }
@@ -207,6 +250,7 @@ extension AIChatViewModel {
         } else {
             finalState = initialState
         }
+        let callContext = context.carrying(approvalWasExplicit: approvalWasExplicit)
 
         let result: ChatToolResult
         switch finalState {
@@ -224,7 +268,7 @@ extension AIChatViewModel {
                 break
             }
             do {
-                result = try await tool.execute(input: block.input, context: context)
+                result = try await tool.execute(input: block.input, context: callContext)
             } catch {
                 result = ChatToolResult(content: "Error: \(error.localizedDescription)", isError: true)
             }

@@ -253,7 +253,19 @@ final class AIChatViewModel: ObservableObject {
         clearError()
     }
 
+    /// Releases everything this conversation holds, keeping what the user typed.
+    ///
+    /// Window close, disconnect and a lost session all reach here, and none of them is the user
+    /// throwing a conversation away. It used to empty `messages` with nothing written to disk while
+    /// `cancelStream()` next door persisted first, so the three ordinary ways a window goes away
+    /// each dropped a reply that was still arriving.
+    ///
+    /// Cancelling the task is also not enough on its own to release a turn parked on an approval
+    /// card: a `CheckedContinuation` is not resumed by cancellation, so the suspended turn held the
+    /// provider and its open stream for the life of the process.
     func clearSessionData() {
+        ToolApprovalCenter.shared.cancelAll()
+        persistCurrentConversation()
         AIProviderFactory.resetCopilotConversation()
         prepTask?.cancel()
         prepTask = nil

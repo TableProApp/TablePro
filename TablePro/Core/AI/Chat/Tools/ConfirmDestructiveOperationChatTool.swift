@@ -15,18 +15,16 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "The destructive query to execute"),
             "confirmation_phrase": ChatToolSchemaBuilder.string(
                 description: "Must be exactly: I understand this is irreversible"
             )
         ],
-        required: ["connection_id", "query", "confirmation_phrase"]
+        required: ["query", "confirmation_phrase"]
     )
     let mode: ChatToolMode = .agentOnly
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let confirmationPhrase = try ChatToolArgumentDecoder.requireString(input, key: "confirmation_phrase")
 
@@ -36,6 +34,13 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
                 isError: true
             )
         }
+
+        let connectionId = try await ChatToolTarget.authorized(
+            context: context,
+            input: input,
+            tool: name,
+            sql: query
+        )
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
         guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
@@ -57,7 +62,7 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+            capabilities: context.writeCapabilities
         )
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }

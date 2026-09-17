@@ -60,10 +60,13 @@ final class ChatToolRegistry {
         return tool.mode.requiresApproval
     }
 
+    /// A name nothing registered is refused in every mode.
+    ///
+    /// Agent mode used to answer `true` here so a tool registered later in the turn still ran. That
+    /// made an unknown name a capability rather than a mistake, which is the wrong default for a
+    /// registry an outside MCP server can add entries to.
     func isToolAllowed(name: String, in mode: AIChatMode) -> Bool {
-        guard let tool = tools[name] else {
-            return mode == .agent
-        }
+        guard let tool = tools[name] else { return false }
         return tool.mode.isAllowed(in: mode)
     }
 }

@@ -14,7 +14,6 @@ struct ExecuteQueryChatTool: ChatTool {
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "SQL or NoSQL query text"),
             "max_rows": ChatToolSchemaBuilder.integer(
                 description: "Maximum rows to return, capped at the server's configured maximum row limit. Pass null to use the configured default row limit.",
@@ -37,7 +36,6 @@ struct ExecuteQueryChatTool: ChatTool {
     let mode: ChatToolMode = .write
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
@@ -45,6 +43,13 @@ struct ExecuteQueryChatTool: ChatTool {
         guard (query as NSString).length <= 102_400 else {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
+
+        let connectionId = try await ChatToolTarget.authorized(
+            context: context,
+            input: input,
+            tool: name,
+            sql: query
+        )
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
@@ -97,7 +102,7 @@ struct ExecuteQueryChatTool: ChatTool {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+            capabilities: context.writeCapabilities
         )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)

@@ -4,8 +4,8 @@
 //
 
 import Foundation
-import TableProPluginKit
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("ChatToolRegistry mode gating")
@@ -92,12 +92,15 @@ struct ChatToolRegistryModeTests {
         #expect(registry.tool(named: "list_tables", in: .ask)?.name == "list_tables")
     }
 
-    @Test("Unknown tool names are not allowed in any mode except agent")
-    func unknownToolsBlockedOutsideAgent() {
+    /// Agent mode used to answer `true` for a name nothing had registered, which made an unknown
+    /// name a capability rather than a mistake. A registry an outside MCP server can add entries to
+    /// has to fail closed.
+    @Test("Unknown tool names are not allowed in any mode")
+    func unknownToolsBlockedInEveryMode() {
         let registry = ChatToolRegistry()
-        #expect(registry.isToolAllowed(name: "future_tool", in: .ask) == false)
-        #expect(registry.isToolAllowed(name: "future_tool", in: .edit) == false)
-        #expect(registry.isToolAllowed(name: "future_tool", in: .agent) == true)
+        for mode in AIChatMode.allCases {
+            #expect(registry.isToolAllowed(name: "future_tool", in: mode) == false)
+        }
     }
 
     @Test("requiresApproval reflects the registered tool mode")
