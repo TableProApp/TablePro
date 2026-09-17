@@ -2,8 +2,9 @@
 //  MySQLStorageWidthTests.swift
 //  TableProTests
 //
-//  Every boundary here was measured on MariaDB 12.3.3 (utf8mb4, ROW_FORMAT=DYNAMIC, 16 KB pages,
-//  innodb_strict_mode on): the side that fits was created and the side that does not was refused.
+//  Every boundary here was measured on MySQL 8.4.11 and MariaDB 12.3.3 (utf8mb4, ROW_FORMAT=DYNAMIC,
+//  16 KB pages, innodb_strict_mode on): the side that fits was created and the side that does not
+//  was refused.
 //
 
 @testable import TablePro
@@ -59,50 +60,100 @@ final class MySQLStorageWidthTests: XCTestCase {
     func testTheRowLimitCountsLengthPrefixesAndTheNullBitmap() {
         XCTAssertEqual(Width.rowBytes(of: [column(varchar(16_383), nullable: false)]), 65_534)
         XCTAssertEqual(Width.rowBytes(of: [column(varchar(16_383))]), 65_535)
-        XCTAssertNil(Width.exceededLimit(of: [column(varchar(16_383))], hasPrimaryKey: false))
+        XCTAssertNil(Width.exceededLimit(of: [column(varchar(16_383))], hasPrimaryKey: false, flavor: .mysql))
 
         let over = [column(varchar(16_383)), column(.integer(bytes: 1), nullable: false)]
         XCTAssertEqual(Width.rowBytes(of: over), 65_536)
-        XCTAssertEqual(Width.exceededLimit(of: over, hasPrimaryKey: false), .row)
+        XCTAssertEqual(Width.exceededLimit(of: over, hasPrimaryKey: false, flavor: .mysql), .row)
+        XCTAssertEqual(Width.exceededLimit(of: over, hasPrimaryKey: false, flavor: .mariadb), .row)
     }
 
-    /// A `CHAR` in utf8mb4 has no length prefix in the row but is variable length in InnoDB.
-    func testAFixedLengthTextCountsDifferentlyInTheRowAndTheRecord() {
+    /// Both servers count the row the same way: `VARCHAR(63)` 253, `VARCHAR(64)` 258, `CHAR(50)` 200
+    /// and `LONGTEXT` 12.
+    func testBothServersCountTheRowAlike() {
+        XCTAssertEqual(Width.rowBytes(varchar(63)), 253)
+        XCTAssertEqual(Width.rowBytes(varchar(64)), 258)
         XCTAssertEqual(Width.rowBytes(.text(length: 50, isFixed: true)), 200)
-        XCTAssertEqual(Width.recordBytes(.text(length: 50, isFixed: true)), 201)
-        XCTAssertEqual(Width.rowBytes(varchar(50)), 201)
-    }
-
-    /// A column over 255 bytes, and any `TEXT`, can leave the page, so the record counts 41 for it.
-    func testALongColumnCountsOnlyWhatStaysInTheRecord() {
-        XCTAssertEqual(Width.recordBytes(varchar(63)), 253)
-        XCTAssertEqual(Width.recordBytes(varchar(64)), 41)
-        XCTAssertEqual(Width.recordBytes(.text(length: nil, isFixed: false)), 41)
         XCTAssertEqual(Width.rowBytes(varchar(1_000)), 4_002)
         XCTAssertEqual(Width.rowBytes(.text(length: nil, isFixed: false)), 12)
     }
 
-    /// A `BIGINT` primary key, 31 nullable `VARCHAR(63)` and 252 `TINYINT NOT NULL` columns were
-    /// created at 8,125 bytes; one more `TINYINT` was refused with ERROR 1118.
-    func testTheRecordLimitIsHalfAPage() {
-        let key = column(.integer(bytes: 8), nullable: false)
-        let texts = Array(repeating: column(varchar(63)), count: 31)
-        let bytes = Array(repeating: column(.integer(bytes: 1), nullable: false), count: 252)
-        let fits = [key] + texts + bytes
-        XCTAssertEqual(Width.recordBytes(of: fits, hasPrimaryKey: true), 8_125)
-        XCTAssertNil(Width.exceededLimit(of: fits, hasPrimaryKey: true))
+    // MARK: - Records
 
-        let over = fits + [column(.integer(bytes: 1), nullable: false)]
-        XCTAssertEqual(Width.recordBytes(of: over, hasPrimaryKey: true), 8_126)
-        XCTAssertEqual(Width.exceededLimit(of: over, hasPrimaryKey: true), .record)
+    /// MySQL counts a variable column, a utf8mb4 `CHAR` and a `TEXT` alike once it passes 40 bytes.
+    func testMySQLCountsAVariableColumnPast40BytesAs41() {
+        XCTAssertEqual(Width.recordBytes(varchar(5), flavor: .mysql), 21)
+        XCTAssertEqual(Width.recordBytes(varchar(10), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(varchar(11), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(varchar(1_000), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(.text(length: 50, isFixed: true), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(.binary(length: 255, isFixed: false), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(.text(length: nil, isFixed: false), flavor: .mysql), 41)
+        XCTAssertEqual(Width.recordBytes(.binary(length: 100, isFixed: true), flavor: .mysql), 100)
+    }
+
+    /// MariaDB counts a variable column of up to 255 bytes whole, and a longer one and every `TEXT`
+    /// as 21.
+    func testMariaDBCountsAColumnOfUpTo255BytesWhole() {
+        XCTAssertEqual(Width.recordBytes(varchar(11), flavor: .mariadb), 45)
+        XCTAssertEqual(Width.recordBytes(varchar(63), flavor: .mariadb), 253)
+        XCTAssertEqual(Width.recordBytes(varchar(64), flavor: .mariadb), 21)
+        XCTAssertEqual(Width.recordBytes(.text(length: 50, isFixed: true), flavor: .mariadb), 201)
+        XCTAssertEqual(Width.recordBytes(.binary(length: 255, isFixed: false), flavor: .mariadb), 256)
+        XCTAssertEqual(Width.recordBytes(.binary(length: 256, isFixed: false), flavor: .mariadb), 21)
+        XCTAssertEqual(Width.recordBytes(.text(length: nil, isFixed: false), flavor: .mariadb), 21)
+        XCTAssertEqual(Width.recordBytes(.binary(length: 100, isFixed: true), flavor: .mariadb), 100)
+    }
+
+    /// An `INT` primary key, ten `VARCHAR(50) NOT NULL` and 7,693 bytes of `BINARY NOT NULL` were
+    /// created on MySQL at 8,125 bytes, and one more byte was refused with ERROR 1118. MariaDB
+    /// refused the same table.
+    func testTheRecordLimitIsHalfAPage() {
+        let key = column(.integer(bytes: 4), nullable: false)
+        let texts = Array(repeating: column(varchar(50), nullable: false), count: 10)
+        let filler = Array(repeating: column(.binary(length: 255, isFixed: true), nullable: false), count: 30)
+            + [column(.binary(length: 43, isFixed: true), nullable: false)]
+        let fits = [key] + texts + filler
+        XCTAssertEqual(Width.recordBytes(of: fits, hasPrimaryKey: true, flavor: .mysql), 8_125)
+        XCTAssertNil(Width.exceededLimit(of: fits, hasPrimaryKey: true, flavor: .mysql))
+        XCTAssertEqual(Width.exceededLimit(of: fits, hasPrimaryKey: true, flavor: .mariadb), .record)
+
+        let over = fits + [column(.binary(length: 1, isFixed: true), nullable: false)]
+        XCTAssertEqual(Width.recordBytes(of: over, hasPrimaryKey: true, flavor: .mysql), 8_126)
+        XCTAssertEqual(Width.exceededLimit(of: over, hasPrimaryKey: true, flavor: .mysql), .record)
+    }
+
+    /// A `BIGINT` primary key and 41 nullable `VARCHAR(50)` columns were created on MySQL and refused
+    /// by MariaDB; 40 were created on both.
+    func testTheSameTableFitsOneServerAndNotTheOther() {
+        let key = column(.integer(bytes: 8), nullable: false)
+        let fortyOne = [key] + Array(repeating: column(varchar(50)), count: 41)
+        XCTAssertNil(Width.exceededLimit(of: fortyOne, hasPrimaryKey: true, flavor: .mysql))
+        XCTAssertEqual(Width.exceededLimit(of: fortyOne, hasPrimaryKey: true, flavor: .mariadb), .record)
+
+        let forty = [key] + Array(repeating: column(varchar(50)), count: 40)
+        XCTAssertNil(Width.exceededLimit(of: forty, hasPrimaryKey: true, flavor: .mariadb))
     }
 
     /// Without a primary key InnoDB adds a six-byte row id.
     func testATableWithoutAPrimaryKeyCountsTheRowId() {
         let columns = [column(.integer(bytes: 4))]
         XCTAssertEqual(
-            Width.recordBytes(of: columns, hasPrimaryKey: false) - Width.recordBytes(of: columns, hasPrimaryKey: true),
+            Width.recordBytes(of: columns, hasPrimaryKey: false, flavor: .mysql)
+                - Width.recordBytes(of: columns, hasPrimaryKey: true, flavor: .mysql),
             6
         )
+    }
+
+    // MARK: - Flavor
+
+    /// A MariaDB server is often reached through a connection typed MySQL, so the banner decides.
+    func testTheServersBannerDecidesTheFlavor() {
+        XCTAssertEqual(Width.Flavor.of(.mysql, serverVersion: "8.4.11"), .mysql)
+        XCTAssertEqual(Width.Flavor.of(.mysql, serverVersion: "12.3.3-MariaDB"), .mariadb)
+        XCTAssertEqual(Width.Flavor.of(.mariadb, serverVersion: "5.5.5-10.11.6-MariaDB-log"), .mariadb)
+        XCTAssertEqual(Width.Flavor.of(DatabaseType(rawValue: "TiDB"), serverVersion: "8.0.11-TiDB-v7.5.0"), .mysql)
+        XCTAssertEqual(Width.Flavor.of(.mariadb, serverVersion: nil), .mariadb)
+        XCTAssertEqual(Width.Flavor.of(.mysql, serverVersion: nil), .mysql)
     }
 }

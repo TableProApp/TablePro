@@ -82,9 +82,18 @@ internal enum CrossEngineStructureTranslator {
                 family: targetFamily
             )
         }
-        CrossEngineKeyWidth.boundPrimaryKey(&drafts, keyColumns: keyColumns, family: targetFamily)
+        let foreignKeys = snapshot.foreignKeys.map(\.columns)
+        CrossEngineKeyWidth.boundKeys(
+            &drafts, primaryKey: snapshot.primaryKeyColumns, foreignKeys: foreignKeys, family: targetFamily
+        )
         if targetFamily == .mysql {
-            CrossEngineRowSize.fitMySQLRow(&drafts, keyColumns: keyColumns, indexedColumns: indexedColumns)
+            CrossEngineRowSize.fitMySQLRow(
+                &drafts,
+                keyColumns: keyColumns,
+                referencingColumns: Set(foreignKeys.joined().map { $0.lowercased() }),
+                indexedColumns: indexedColumns,
+                flavor: MySQLStorageWidth.Flavor.of(target, serverVersion: targetServerVersion)
+            )
         }
 
         var notes: [CrossEngineConversionNote] = []

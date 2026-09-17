@@ -11,10 +11,12 @@
 //  bytes, or one InnoDB could not fit in half of a 16 KB page, with ERROR
 //  1118. Each limit counts different bytes, so each has its own measure here.
 //
-//  Measured on MariaDB 12.3.3 (utf8mb4, ROW_FORMAT=DYNAMIC, 16 KB pages,
-//  innodb_strict_mode on), where 600 random tables and the exact boundary of
-//  each limit all agreed with these sums. MySQL documents the same three
-//  limits and the same defaults.
+//  Measured on MySQL 8.4.11 and MariaDB 12.3.3 (utf8mb4, ROW_FORMAT=DYNAMIC,
+//  16 KB pages, innodb_strict_mode on), each boundary found by growing a table
+//  one byte at a time until the server refused it. The key and row limits are
+//  the same on both. The record limit is not: the two servers count a variable
+//  column differently, so the same table can be created on one and refused on
+//  the other.
 //
 //  Every character is four bytes, because a translated column carries no
 //  character set and the table's default is utf8mb4.
@@ -28,6 +30,34 @@ internal enum MySQLStorageWidth {
     /// InnoDB refuses a record whose worst case reaches half of a 16 KB page, 8,126 bytes.
     internal static let maximumRecordBytes = 8_125
     internal static let bytesPerCharacter = 4
+
+    /// Which server's InnoDB counts the record.
+    internal enum Flavor: Sendable {
+        /// Counts a variable column past its first 40 bytes as 41, the most it keeps in place with
+        /// its length. Forty-one `VARCHAR(50)` columns take 1,681 bytes.
+        case mysql
+        /// Counts a variable column of up to 255 bytes whole, and a longer one as 21, the pointer
+        /// that replaces it off the page. Forty-one `VARCHAR(50)` columns take 8,241 bytes.
+        case mariadb
+
+        /// The server's own banner decides, because a MariaDB server is often reached through a
+        /// connection typed MySQL. TiDB and OceanBase count no InnoDB record and take the
+        /// laxer reading.
+        internal static func of(_ type: DatabaseType, serverVersion: String?) -> Flavor {
+            guard let serverVersion else { return type == .mariadb ? .mariadb : .mysql }
+            return serverVersion.range(of: "mariadb", options: .caseInsensitive) == nil ? .mysql : .mariadb
+        }
+
+        fileprivate func recordBytes(variableUpTo maximumBytes: Int?) -> Int {
+            switch self {
+            case .mysql:
+                return min(maximumBytes ?? Int.max, 40) + 1
+            case .mariadb:
+                guard let maximumBytes, maximumBytes <= 255 else { return 21 }
+                return maximumBytes + 1
+            }
+        }
+    }
 
     internal struct Column: Sendable {
         internal let kind: CanonicalTypeKind
@@ -47,9 +77,11 @@ internal enum MySQLStorageWidth {
     // MARK: - Tables
 
     /// The limit the table passes first, or nil when it fits both.
-    internal static func exceededLimit(of columns: [Column], hasPrimaryKey: Bool) -> Limit? {
+    internal static func exceededLimit(of columns: [Column], hasPrimaryKey: Bool, flavor: Flavor) -> Limit? {
         if rowBytes(of: columns) > maximumRowBytes { return .row }
-        if recordBytes(of: columns, hasPrimaryKey: hasPrimaryKey) > maximumRecordBytes { return .record }
+        if recordBytes(of: columns, hasPrimaryKey: hasPrimaryKey, flavor: flavor) > maximumRecordBytes {
+            return .record
+        }
         return nil
     }
 
@@ -60,9 +92,9 @@ internal enum MySQLStorageWidth {
 
     /// InnoDB's worst case for one clustered index record: a five-byte header, the null bitmap, the
     /// transaction and rollback pointers, a row id when there is no primary key, and each column.
-    internal static func recordBytes(of columns: [Column], hasPrimaryKey: Bool) -> Int {
+    internal static func recordBytes(of columns: [Column], hasPrimaryKey: Bool, flavor: Flavor) -> Int {
         let header = 5 + nullBitmapBytes(columns) + 13 + (hasPrimaryKey ? 0 : 6)
-        return columns.reduce(header) { $0 + recordBytes($1.kind) }
+        return columns.reduce(header) { $0 + recordBytes($1.kind, flavor: flavor) }
     }
 
     private static func nullBitmapBytes(_ columns: [Column]) -> Int {
@@ -80,14 +112,14 @@ internal enum MySQLStorageWidth {
         }
     }
 
-    /// A variable column over 255 bytes, and every `TEXT` or `BLOB`, may be moved off the page, so
-    /// the record counts only the 40 bytes it can keep in place and a length byte.
-    internal static func recordBytes(_ kind: CanonicalTypeKind) -> Int {
+    /// A fixed column is counted whole on both servers. A `CHAR` in utf8mb4 is not fixed in InnoDB,
+    /// so it is counted like a `VARCHAR`, and a `TEXT` or `BLOB` like a variable column of no limit.
+    internal static func recordBytes(_ kind: CanonicalTypeKind, flavor: Flavor) -> Int {
         switch storage(kind) {
         case .fixed(let bytes): return bytes
         case .padded(let maximumBytes), .variable(let maximumBytes):
-            return maximumBytes > 255 ? offPageRecordBytes : maximumBytes + 1
-        case .outOfRow: return offPageRecordBytes
+            return flavor.recordBytes(variableUpTo: maximumBytes)
+        case .outOfRow: return flavor.recordBytes(variableUpTo: nil)
         }
     }
 
@@ -108,7 +140,6 @@ internal enum MySQLStorageWidth {
     }
 
     private static let outOfRowPointerBytes = 12
-    private static let offPageRecordBytes = 41
 
     private static func shorter(_ length: Int?, _ prefix: Int?) -> Int? {
         guard let length else { return prefix }

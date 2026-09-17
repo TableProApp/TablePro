@@ -81,6 +81,18 @@ internal enum CrossEngineIndexTranslator {
             return nil
         }
 
+        /// Without prefixes an index too wide for the engine can only be left out. Oracle refuses one
+        /// outright with ORA-01450, and SQL Server one whose fixed-length columns pass its limit.
+        if !supportsKeyPrefixes(family), let budget = CrossEngineKeyBudget.of(family),
+           let bytes = budget.checkedBytes(index.columns.compactMap { columnKinds[$0.lowercased()] }),
+           bytes > budget.indexBytes {
+            notes.append(dropped(index, table: table, reason: String(
+                format: String(localized: "Its columns pass the %@ bytes this engine can index."),
+                budget.indexBytes.formatted()
+            )))
+            return nil
+        }
+
         var translated = index
         translated.type = type
         /// Carried to an engine without key prefixes the number is ignored by its driver, so it is

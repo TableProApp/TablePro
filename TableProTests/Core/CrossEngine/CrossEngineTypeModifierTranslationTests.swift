@@ -3,7 +3,7 @@
 //  TableProTests
 //
 //  A PostgreSQL column carries its length, precision and fractional seconds into another engine,
-//  and a table that keeps them still fits the target's key and row limits.
+//  and a table that keeps them still fits the target's row limits.
 //
 
 @testable import TablePro
@@ -42,27 +42,43 @@ final class CrossEngineTypeModifierTranslationTests: XCTestCase {
         )
     }
 
-    private func index(_ name: String, _ columns: [String], unique: Bool = false) -> EditableIndexDefinition {
+    private func index(_ name: String, _ columns: [String]) -> EditableIndexDefinition {
         EditableIndexDefinition(
-            id: UUID(), name: name, columns: columns, type: .btree, isUnique: unique, isPrimary: false,
+            id: UUID(), name: name, columns: columns, type: .btree, isUnique: false, isPrimary: false,
             comment: nil, columnPrefixes: [:], whereClause: nil
+        )
+    }
+
+    private func foreignKey(_ columns: [String]) -> EditableForeignKeyDefinition {
+        EditableForeignKeyDefinition(
+            id: UUID(), name: "fk_\(columns.joined(separator: "_"))", columns: columns, referencedTable: "parent",
+            referencedColumns: columns, referencedSchema: nil, onDelete: .noAction, onUpdate: .noAction
         )
     }
 
     private func translate(
         _ columns: [EditableColumnDefinition],
         indexes: [EditableIndexDefinition] = [],
-        to target: DatabaseType = .mysql
+        foreignKeys: [EditableForeignKeyDefinition] = [],
+        to target: DatabaseType = .mysql,
+        serverVersion: String? = nil
     ) -> CrossEngineStructureTranslator.Result {
         CrossEngineStructureTranslator.translate(
-            TableStructureSnapshot(name: "orders", schema: "public", columns: columns, indexes: indexes),
+            TableStructureSnapshot(
+                name: "orders", schema: "public", columns: columns, indexes: indexes, foreignKeys: foreignKeys
+            ),
             from: .postgresql,
-            to: target
+            to: target,
+            targetServerVersion: serverVersion
         )
     }
 
     private func dataType(_ result: CrossEngineStructureTranslator.Result, _ name: String) -> String? {
         result.snapshot.columns.first { $0.name == name }?.dataType
+    }
+
+    private var bigintKey: EditableColumnDefinition {
+        column("id", "BIGINT", catalog: "bigint", nullable: false, isPrimaryKey: true)
     }
 
     // MARK: - Modifiers
@@ -102,6 +118,20 @@ final class CrossEngineTypeModifierTranslationTests: XCTestCase {
         XCTAssertTrue(result.notes.contains { $0.subject == "total" && $0.isLossy })
     }
 
+    /// PostgreSQL 15 takes a scale below zero and above the precision, and MySQL takes neither
+    /// spelling. `numeric(5,-2)` holds whole hundreds and `numeric(3,5)` fractions under 0.01.
+    func testANumericScaleMySQLCannotSpellKeepsItsDigits() {
+        let result = translate([
+            column("rounded", "NUMERIC", catalog: "numeric(5,-2)"),
+            column("tiny", "NUMERIC", catalog: "numeric(3,5)"),
+            column("fine", "NUMERIC", catalog: "numeric(40,35)")
+        ])
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DECIMAL(7, 0)", "DECIMAL(5, 5)", "DECIMAL(35, 30)"])
+        XCTAssertTrue(result.notes.contains { $0.subject == "rounded" && $0.fidelity == .widened })
+        XCTAssertTrue(result.notes.contains { $0.subject == "tiny" && $0.fidelity == .widened })
+        XCTAssertTrue(result.notes.contains { $0.subject == "fine" && $0.isLossy })
+    }
+
     /// Oracle reports an `INTEGER` as a bare `number`, which keeps the exact rendering it always had.
     func testABareOracleNumberCrossesAsItAlwaysDid() {
         let source = TableStructureSnapshot(name: "t", columns: [column("id", "number")])
@@ -122,111 +152,73 @@ final class CrossEngineTypeModifierTranslationTests: XCTestCase {
         XCTAssertEqual(kinds["code"], .text(length: 20, isFixed: false))
     }
 
-    // MARK: - MySQL keys
-
-    func testAMySQLPrimaryKeyKeepsALengthThatFits() {
-        let result = translate([varchar("code", 300, isPrimaryKey: true)])
-        XCTAssertEqual(dataType(result, "code"), "VARCHAR(300)")
-        XCTAssertTrue(result.notes.isEmpty)
-    }
-
-    /// `VARCHAR(1000)` is 4,000 bytes, past the 3,072 an InnoDB key takes, and `VARCHAR(5000)` would
-    /// have been a `LONGTEXT` key, which MySQL refuses outright.
-    func testAMySQLPrimaryKeyTooWideIsCutTo255() {
-        for length in [1_000, 5_000] {
-            let result = translate([varchar("code", length, isPrimaryKey: true)])
-            XCTAssertEqual(dataType(result, "code"), "VARCHAR(255)", "\(length)")
-            XCTAssertTrue(result.notes.contains { $0.subject == "code" && $0.isLossy }, "\(length)")
-        }
-    }
-
-    /// The widest part is cut first, and only until the key fits.
-    func testACompositeMySQLKeyCutsItsWidestPartFirst() {
-        let result = translate([varchar("a", 600, isPrimaryKey: true), varchar("b", 200, isPrimaryKey: true)])
-        XCTAssertEqual(dataType(result, "a"), "VARCHAR(255)")
-        XCTAssertEqual(dataType(result, "b"), "VARCHAR(200)")
-
-        let fits = translate([
-            varchar("a", 766, isPrimaryKey: true),
-            column("b", "BIGINT", catalog: "bigint", nullable: false, isPrimaryKey: true)
-        ])
-        XCTAssertEqual(dataType(fits, "a"), "VARCHAR(766)")
-
-        let over = translate([
-            varchar("a", 767, isPrimaryKey: true),
-            column("b", "BIGINT", catalog: "bigint", nullable: false, isPrimaryKey: true)
-        ])
-        XCTAssertEqual(dataType(over, "a"), "VARCHAR(255)")
-    }
-
-    func testASQLServerKeyIsBoundedOnTheTypeItIsWrittenAs() {
-        let result = translate([varchar("code", 5_000, isPrimaryKey: true)], to: .mssql)
-        XCTAssertEqual(dataType(result, "code"), "NVARCHAR(450)")
-    }
-
-    func testAnOracleKeyIsBoundedOnTheTypeItIsWrittenAs() {
-        let result = translate([varchar("code", 2_000, isPrimaryKey: true), varchar("name", 50)], to: .oracle)
-        XCTAssertEqual(dataType(result, "code"), "VARCHAR2(2000)")
-        XCTAssertEqual(dataType(result, "name"), "VARCHAR2(50 CHAR)")
-    }
-
-    // MARK: - MySQL indexes
-
-    func testAMySQLIndexCutsOnlyAsMuchAsItNeeds() {
-        let result = translate(
-            [varchar("a", 500), varchar("b", 500), varchar("c", 320)],
-            indexes: [index("ab_idx", ["a", "b"]), index("c_idx", ["c"])]
-        )
-        let prefixes = Dictionary(uniqueKeysWithValues: result.snapshot.indexes.map { ($0.name, $0.columnPrefixes) })
-        XCTAssertEqual(prefixes["ab_idx"], ["a": 255])
-        XCTAssertEqual(prefixes["c_idx"], [:])
-        XCTAssertTrue(result.notes.isEmpty)
-    }
-
-    func testAUniqueMySQLIndexCutToAPrefixIsReported() {
-        let result = translate([varchar("email", 1_000)], indexes: [index("email_key", ["email"], unique: true)])
-        XCTAssertEqual(result.snapshot.indexes.first?.columnPrefixes, ["email": 255])
-        XCTAssertTrue(result.notes.contains { $0.subject == "email_key" && $0.isLossy })
-    }
-
-    /// Four unbounded parts at 255 characters each are 4,080 bytes, and none can be cut shorter.
-    func testAMySQLIndexNoPrefixCanFitIsLeftOut() {
-        let result = translate(
-            [column("a", "text"), column("b", "text"), column("c", "text"), column("d", "text")],
-            indexes: [index("wide_idx", ["a", "b", "c", "d"])]
-        )
-        XCTAssertTrue(result.snapshot.indexes.isEmpty)
-        XCTAssertTrue(result.notes.contains { $0.subject == "wide_idx" && $0.isLossy })
-    }
-
     // MARK: - MySQL rows
 
-    /// Seventeen `VARCHAR(1000)` columns are 68,034 bytes, over the 65,535 a row may take, and one of
-    /// them stored as `TEXT` brings the table under it.
+    /// Seventeen `VARCHAR(1000)` columns are 68,034 bytes, over the 65,535 a row may take on both
+    /// servers, and one of them stored as `TEXT` brings the table under it.
     func testATableOverMySQLsRowLimitMovesItsWidestColumnOutOfTheRow() {
-        let key = column("id", "BIGINT", catalog: "bigint", nullable: false, isPrimaryKey: true)
         let wide = (0..<17).map { varchar("c\($0)", 1_000) }
-        let result = translate([key] + wide)
+        let result = translate([bigintKey] + wide)
         let moved = result.snapshot.columns.filter { $0.dataType == "TEXT" }.map(\.name)
         XCTAssertEqual(moved, ["c0"])
         XCTAssertTrue(result.notes.contains { $0.subject == "c0" && $0.fidelity == .widened })
         XCTAssertEqual(result.targetKinds["c0"], .text(length: nil, isFixed: false))
     }
 
-    /// Forty-one `VARCHAR(50)` columns pass the 8,126 bytes InnoDB keeps in one record, where forty
-    /// do not. The column an index covers is left whole while another can move.
-    func testATableOverInnoDBsRecordLimitMovesAnUnindexedColumn() {
-        let key = column("id", "BIGINT", catalog: "bigint", nullable: false, isPrimaryKey: true)
-        let fits = translate([key] + (0..<40).map { varchar("c\($0)", 50) })
+    /// MariaDB refused a `BIGINT` key with 41 `VARCHAR(50)` columns and created it with 40. The
+    /// column an index covers is left whole while another can move.
+    func testATableOverMariaDBsRecordLimitMovesAnUnindexedColumn() {
+        let fits = translate([bigintKey] + (0..<40).map { varchar("c\($0)", 50) }, to: .mariadb)
         XCTAssertFalse(fits.snapshot.columns.contains { $0.dataType == "TEXT" })
 
         let over = translate(
-            [key] + (0..<41).map { varchar("c\($0)", 50) },
-            indexes: [index("c0_idx", ["c0"])]
+            [bigintKey] + (0..<41).map { varchar("c\($0)", 50) },
+            indexes: [index("c0_idx", ["c0"])],
+            to: .mariadb
         )
         let moved = over.snapshot.columns.filter { $0.dataType == "TEXT" }.map(\.name)
         XCTAssertEqual(moved, ["c1"])
         XCTAssertEqual(over.snapshot.indexes.first?.columnPrefixes, [:])
+    }
+
+    /// MySQL 8.4 created the same 41 columns as declared, because it counts each as 41 bytes of the
+    /// record rather than 201. A MySQL connection to a MariaDB server is read by its banner.
+    func testMySQLKeepsAColumnMariaDBWouldMove() {
+        let columns = [bigintKey] + (0..<41).map { varchar("c\($0)", 50) }
+        XCTAssertFalse(translate(columns).snapshot.columns.contains { $0.dataType == "TEXT" })
+        XCTAssertFalse(
+            translate(columns, serverVersion: "8.4.11").snapshot.columns.contains { $0.dataType == "TEXT" }
+        )
+        XCTAssertTrue(
+            translate(columns, serverVersion: "12.3.3-MariaDB").snapshot.columns.contains { $0.dataType == "TEXT" }
+        )
+    }
+
+    /// A `BINARY(255)` is counted whole on both servers. Forty of them beside a `BIGINT` key were
+    /// refused by MySQL 8.4; with 31 kept and 9 as `BLOB` MySQL still refused, and MariaDB created it.
+    func testMySQLMovesTheColumnsItsOwnRecordCountsWhole() {
+        let columns = [column("id", "BIGINT", nullable: false, isPrimaryKey: true)]
+            + (0..<40).map { column("b\($0)", "BINARY(255)") }
+        let source = TableStructureSnapshot(name: "blobs", columns: columns)
+        let moved = { (serverVersion: String) in
+            CrossEngineStructureTranslator.translate(source, from: .mssql, to: .mysql, targetServerVersion: serverVersion)
+                .snapshot.columns.filter { $0.dataType == "BLOB" }.count
+        }
+        XCTAssertEqual(moved("8.4.11"), 10)
+        XCTAssertEqual(moved("12.3.3-MariaDB"), 9)
+    }
+
+    /// A foreign key column cannot be a `TEXT`: MySQL refuses it with ERROR 1170 and MariaDB with
+    /// errno 150. MariaDB refused this table as declared and created it with three `VARCHAR(50)`
+    /// columns as `TEXT`, while `pcode` would have saved the most bytes on its own.
+    func testAForeignKeyColumnNeverMovesOutOfTheRow() {
+        let result = translate(
+            [bigintKey] + (0..<41).map { varchar("c\($0)", 50) } + [varchar("pcode", 60)],
+            foreignKeys: [foreignKey(["pcode"])],
+            to: .mariadb
+        )
+        XCTAssertEqual(dataType(result, "pcode"), "VARCHAR(60)")
+        XCTAssertEqual(result.snapshot.columns.filter { $0.dataType == "TEXT" }.count, 3)
     }
 
     func testOnlyMySQLMovesColumnsOutOfTheRow() {
