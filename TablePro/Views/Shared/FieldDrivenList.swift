@@ -436,6 +436,7 @@ internal final class FieldDrivenCellView<Row: View>: NSTableCellView {
             return
         }
         let view = FieldDrivenCellHostingView(rootView: rootView)
+        view.sizingOptions = []
         view.translatesAutoresizingMaskIntoConstraints = false
         addSubview(view)
         NSLayoutConstraint.activate([
