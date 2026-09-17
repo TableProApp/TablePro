@@ -45,7 +45,6 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
     var standardConformingStrings: Bool { libpqConnection?.standardConformingStrings ?? true }
-    var isInsideTransactionBlock: Bool { libpqConnection?.isInsideTransactionBlock ?? false }
 
     init(
         config: DriverConnectionConfig,
@@ -141,6 +140,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         let pqConn = try connection()
         let startTime = Date()
         let result = try await pqConn.executeQuery(query)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
+    func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeTransactionScopedRead(statement)
         return PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,

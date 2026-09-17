@@ -128,7 +128,10 @@ private extension PluginColumnInfo {
             isGenerated: isGenerated,
             allowedValues: allowedValues,
             generationExpression: generationExpression,
-            generationKind: generationKind
+            generationKind: generationKind,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression
         )
     }
 }

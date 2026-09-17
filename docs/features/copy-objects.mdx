@@ -201,6 +201,12 @@ A copy from PostgreSQL into an older PostgreSQL passes its types through the sam
 column is refused by a server before 9.4. Create the target table first with `json` or `text`, then
 use **Add rows to it**.
 
+A PostgreSQL column that uses an extension or user-defined type or function, such as a PostGIS
+`geometry`, an enum, or a `DEFAULT` that calls `ST_GeomFromText`, is created naming each one in the
+schema it lives in on the source: `public.geometry(Point,4326)`. A target database without them in
+that schema refuses the table with `type "…" does not exist` or `function … does not exist`. Install
+the extension or create the type there first, in the same schema.
+
 Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
 the sheet names the engine that cannot rather than failing part way in.
 

@@ -169,6 +169,9 @@ internal enum CrossEngineStructureTranslator {
         translated.charset = nil
         translated.collation = nil
         translated.extra = nil
+        /// The source server's own spellings name types and functions the target does not have, so
+        /// they are dropped even where a rendered name happens to read the same.
+        translated.dropCatalogSpellings()
         /// `ON UPDATE CURRENT_TIMESTAMP` is MySQL's alone; no other engine has a column-level one.
         translated.onUpdate = targetFamily == .mysql ? column.onUpdate : nil
 

@@ -42,6 +42,28 @@ public struct PluginColumnInfo: Codable, Sendable {
     public let allowedValues: [String]?
     public let generationExpression: String?
     public let generationKind: GenerationKind?
+    /// The type as this server writes it after the column name in `CREATE TABLE`, or nil where the
+    /// driver has nothing more exact than `dataType`.
+    ///
+    /// `dataType` is the spelling the app classifies, and it cannot also be this one. PostgreSQL
+    /// reports an enum column as `ENUM`, which is what gives the column its value picker, and a
+    /// PostGIS column as `geometry`, which names neither the schema the type lives in nor its SRID.
+    /// Replayed into a `CREATE TABLE` on a connection whose `search_path` is another schema, both
+    /// failed with "type does not exist". This spelling is schema-qualified wherever the name would
+    /// not resolve on its own, carries the type modifier, and quotes its identifiers, so a DDL writer
+    /// emits it verbatim.
+    public let ddlSpelling: String?
+    /// `defaultValue` as a `CREATE TABLE` on another schema has to write it, or nil to write
+    /// `defaultValue`.
+    ///
+    /// A default names types and functions the same way a column type does, so `'new'::status` and
+    /// `st_geomfromtext(...)` failed under a target `search_path` just as `geometry` did. A default
+    /// that reads a sequence stays nil on purpose: a copy recreates that sequence beside the table,
+    /// and `nextval('orders_id_seq')` has to bind to the new one rather than to the source's.
+    public let ddlDefault: String?
+    /// `generationExpression` as a `CREATE TABLE` on another schema has to write it, or nil to write
+    /// `generationExpression`.
+    public let ddlGenerationExpression: String?
 
     public var isIdentity: Bool { identityKind != nil }
 
@@ -78,8 +100,14 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.allowedValues = allowedValues
         self.generationExpression = nil
         self.generationKind = nil
+        self.ddlSpelling = nil
+        self.ddlDefault = nil
+        self.ddlGenerationExpression = nil
     }
 
+    /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
+    /// for the same reason as the one above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -110,5 +138,46 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.allowedValues = allowedValues
         self.generationExpression = generationExpression
         self.generationKind = generationKind
+        self.ddlSpelling = nil
+        self.ddlDefault = nil
+        self.ddlGenerationExpression = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        isPrimaryKey: Bool = false,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        identityKind: IdentityKind? = nil,
+        isGenerated: Bool = false,
+        allowedValues: [String]? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.identityKind = identityKind
+        self.isGenerated = isGenerated
+        self.allowedValues = allowedValues
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
     }
 }

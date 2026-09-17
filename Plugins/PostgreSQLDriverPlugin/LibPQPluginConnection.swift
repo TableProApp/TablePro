@@ -550,6 +550,56 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    /// Runs a read whose statement changes session settings with `SET LOCAL`, and confines those
+    /// settings to the read whether or not the session has a transaction block open.
+    ///
+    /// With no block open, the settings and the read are one implicit transaction that ends with it.
+    /// Inside a block they would outlast the read, so a savepoint scopes them and is rolled back
+    /// straight after. The status check and every statement run in one block on this connection's
+    /// queue. Split into separate dispatches, another caller sharing the session could run between
+    /// the savepoint and its rollback, and the rollback silently undid that caller's work. PGlite has
+    /// no pooled connection, so a query tab and the metadata reads share one session.
+    ///
+    /// The `ROLLBACK TO` is its own `PQexec`, because `PQexec` returns only a string's last result
+    /// and the rows are the read's. A rollback that fails after a read that succeeded is reported
+    /// rather than the rows: the session would otherwise keep the read's settings for the rest of
+    /// the user's transaction.
+    func executeTransactionScopedRead(_ statement: String) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            guard isInsideTransactionBlockOnQueue() else {
+                return try executeQuerySync(statementToRun)
+            }
+            _ = try executeQuerySync(Self.scopedReadSavepoint)
+            let result: LibPQPluginQueryResult
+            do {
+                result = try executeQuerySync(statementToRun)
+            } catch {
+                _ = try? executeQuerySync(Self.scopedReadRollback)
+                throw error
+            }
+            _ = try executeQuerySync(Self.scopedReadRollback)
+            return result
+        }
+    }
+
+    private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"
+    private static let scopedReadRollback = "ROLLBACK TO SAVEPOINT tablepro_scoped_read; RELEASE SAVEPOINT tablepro_scoped_read"
+
+    /// Whether the session is inside a transaction block, including one a failed statement has
+    /// aborted, so a statement sent now joins it. Called on the connection's queue only: one `PGconn`
+    /// may not be used from two threads at once, and the lock guards the pointer rather than the call.
+    private func isInsideTransactionBlockOnQueue() -> Bool {
+        stateLock.lock()
+        let conn = self.conn
+        stateLock.unlock()
+        guard let conn else { return false }
+        let status = PQtransactionStatus(conn)
+        return status == PQTRANS_INTRANS || status == PQTRANS_INERROR
+    }
+
     func boundedQuery(_ query: String, rowCap: Int) async throws -> LibPQPluginQueryResult {
         let queryToRun = String(query)
         let cap = max(rowCap, 1)
@@ -578,22 +628,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     func serverVersionNumber() -> Int32 {
         _cachedServerVersionNumber
-    }
-
-    /// Whether the session is inside a transaction block, including one a failed statement has
-    /// aborted. A statement sent now joins that block rather than running on its own.
-    ///
-    /// Read on the connection's own queue, like every other libpq call here: one `PGconn` may not
-    /// be used from two threads at once, and the lock alone guards the pointer rather than the call.
-    var isInsideTransactionBlock: Bool {
-        stateLock.lock()
-        let conn = self.conn
-        stateLock.unlock()
-        guard let conn else { return false }
-        return queue.sync {
-            let status = PQtransactionStatus(conn)
-            return status == PQTRANS_INTRANS || status == PQTRANS_INERROR
-        }
     }
 
     func currentDatabase() -> String {

@@ -27,6 +27,40 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isPrimaryKey: Bool
 
+    /// A spelling read from the catalog, with the value of the field it spells.
+    struct CatalogSpelling: Hashable {
+        let value: String
+        let spelling: String
+
+        func spelling(for current: String?) -> String? {
+            current == value ? spelling : nil
+        }
+    }
+
+    /// The server's own spellings of `dataType`, `defaultValue` and `generationExpression` for a
+    /// `CREATE TABLE`, carried from the catalog read.
+    ///
+    /// Each applies only while its field still holds the value it was read with. An edit in the
+    /// structure editor changes the field, and a spelling that outlived it would recreate the column
+    /// as it used to be. The pair is stored rather than cleared on edit, so changing a type and
+    /// changing it back restores the spelling and leaves the column equal to the one loaded: cleared,
+    /// that column stayed staged as a change no statement could express, and the save was refused.
+    ///
+    /// Not encoded. A column pasted from the clipboard can come from another connection, where a
+    /// `public.geometry` names a schema this one may not have.
+    var ddlSpelling: String? { catalogType?.spelling(for: dataType) }
+    var ddlDefault: String? { catalogDefault?.spelling(for: defaultValue) }
+    var ddlGenerationExpression: String? { catalogGeneration?.spelling(for: generationExpression) }
+
+    private var catalogType: CatalogSpelling?
+    private var catalogDefault: CatalogSpelling?
+    private var catalogGeneration: CatalogSpelling?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, dataType, isNullable, defaultValue, autoIncrement, unsigned, comment, collation
+        case onUpdate, charset, extra, generationExpression, generationKind, isPrimaryKey
+    }
+
     static let currentTimestampExpression = "CURRENT_TIMESTAMP"
 
     /// Spelled out rather than left to the memberwise init so the two generation fields can carry
@@ -47,7 +81,10 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         extra: String?,
         generationExpression: String? = nil,
         generationKind: GenerationKind? = nil,
-        isPrimaryKey: Bool
+        isPrimaryKey: Bool,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -64,6 +101,22 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.generationExpression = generationExpression
         self.generationKind = generationKind
         self.isPrimaryKey = isPrimaryKey
+        self.catalogType = ddlSpelling.map { CatalogSpelling(value: dataType, spelling: $0) }
+        self.catalogDefault = Self.catalogSpelling(value: defaultValue, spelling: ddlDefault)
+        self.catalogGeneration = Self.catalogSpelling(value: generationExpression, spelling: ddlGenerationExpression)
+    }
+
+    private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling? {
+        guard let value, let spelling else { return nil }
+        return CatalogSpelling(value: value, spelling: spelling)
+    }
+
+    /// For a column said again in another engine's words, where none of this server's spellings
+    /// name anything the target has.
+    mutating func dropCatalogSpellings() {
+        catalogType = nil
+        catalogDefault = nil
+        catalogGeneration = nil
     }
 
     /// Create a placeholder column for adding new columns
@@ -111,7 +164,10 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             extra: columnInfo.extra,
             generationExpression: columnInfo.generationExpression,
             generationKind: columnInfo.generationKind,
-            isPrimaryKey: columnInfo.isPrimaryKey
+            isPrimaryKey: columnInfo.isPrimaryKey,
+            ddlSpelling: columnInfo.ddlSpelling,
+            ddlDefault: columnInfo.ddlDefault,
+            ddlGenerationExpression: columnInfo.ddlGenerationExpression
         )
     }
 
@@ -127,7 +183,10 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             name: name, dataType: dataType, isNullable: isNullable, defaultValue: defaultValue,
             isPrimaryKey: isPrimaryKey, autoIncrement: autoIncrement, comment: comment,
             unsigned: unsigned, onUpdate: onUpdate, charset: charset, collation: collation,
-            generationExpression: generationExpression, generationKind: generationKind
+            generationExpression: generationExpression, generationKind: generationKind,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression
         )
     }
 
@@ -145,7 +204,10 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             comment: comment,
             isGenerated: isGenerated,
             generationExpression: generationExpression,
-            generationKind: generationKind
+            generationKind: generationKind,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression
         )
     }
 

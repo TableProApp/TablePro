@@ -8,36 +8,52 @@ import TableProPluginKit
 
 extension PostgreSQLPluginDriver {
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        let resolvedSchema = schema ?? core.currentSchema
         let catalog = try await fetchTypeCatalog()
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: schema ?? core.currentSchema,
+            schema: resolvedSchema,
             table: table,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
         let result = try await execute(query: query)
+        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: table)[table] ?? [:]
         return result.rows.compactMap { row in
-            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog)
+            mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog, columnDDL: columnDDL)
         }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
+        let resolvedSchema = schema ?? core.currentSchema
         let catalog = try await fetchTypeCatalog()
         let query = PostgreSQLSchemaQueries.columnsQuery(
-            schema: schema ?? core.currentSchema,
+            schema: resolvedSchema,
             table: nil,
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
         let result = try await execute(query: query)
+        let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: nil)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard row.count >= 5, let tableName = row[0].asText else { continue }
-            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog) {
+            let tableDDL = columnDDL[tableName] ?? [:]
+            if let column = mapPgColumnRow(row, tableNameOffset: 1, catalog: catalog, columnDDL: tableDDL) {
                 allColumns[tableName, default: []].append(column)
             }
         }
         return allColumns
+    }
+
+    fileprivate func fetchColumnDDL(
+        schema: String,
+        table: String?
+    ) async throws -> [String: [String: PostgreSQLCatalogColumnDDL]] {
+        let query = PostgreSQLSchemaQueries.columnDDLQuery(
+            schema: schema, table: table, capabilities: versionedCapabilities
+        )
+        let result = try await executeQualifiedRead(query)
+        return PostgreSQLSchemaQueries.columnDDL(rows: result.rows)
     }
 
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
@@ -97,7 +113,8 @@ extension PostgreSQLPluginDriver {
     fileprivate func mapPgColumnRow(
         _ row: [PluginCellValue],
         tableNameOffset: Int,
-        catalog: PostgresTypeCatalog
+        catalog: PostgresTypeCatalog,
+        columnDDL: [String: PostgreSQLCatalogColumnDDL]
     ) -> PluginColumnInfo? {
         let nameIdx = tableNameOffset
         let typeIdx = tableNameOffset + 1
@@ -156,7 +173,10 @@ extension PostgreSQLPluginDriver {
             allowedValues: allowedValues,
             generationExpression: row.count > generationExpressionIdx
                 ? row[generationExpressionIdx].asText.flatMap { $0.nilIfEmpty } : nil,
-            generationKind: pgGenerationKind(attgenerated)
+            generationKind: pgGenerationKind(attgenerated),
+            ddlSpelling: columnDDL[name]?.typeSpelling,
+            ddlDefault: columnDDL[name]?.defaultExpression,
+            ddlGenerationExpression: columnDDL[name]?.generationExpression
         )
     }
 

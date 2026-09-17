@@ -300,6 +300,69 @@ enum PostgreSQLSchemaQueries {
         WHERE arr.typelem <> 0 AND el.typarray = arr.oid
         """
 
+    /// Each column's type, default and generation expression as the server writes them for a
+    /// `CREATE TABLE` on another schema. `format_type` is the one spelling of a type that keeps its
+    /// schema, its modifier and its quoting: `information_schema.columns` reports
+    /// `public.geometry(Point,4326)` as `USER-DEFINED` and `geometry`, and `varchar(50)` as
+    /// `character varying`. Both `format_type` and `pg_get_expr` leave out the schema of anything the
+    /// reading session resolves without one, so the caller runs this with `search_path` narrowed
+    /// (see `PostgreSQLViewDefinition.qualifiedReadPrefix`).
+    ///
+    /// A query of its own rather than columns of `columnsQuery`, because a narrowed path would
+    /// change what that query reports for display and comparison, and because a default that reads
+    /// a sequence has to stay relative: a copy recreates the sequence beside the table, and a
+    /// qualified `nextval('public.orders_id_seq')` bound the copy to the source's sequence, so both
+    /// tables handed out the same keys. `reads_sequence` is that dependency from `pg_depend`, which
+    /// is exact where scanning the expression text is not. The relation kinds are the ones
+    /// `information_schema.columns` covers plus materialized views.
+    static func columnDDLQuery(schema: String, table: String?, capabilities: PostgreSQLCapabilities) -> String {
+        let tableFilter = table.map { "\n  AND c.relname = \(PostgreSQLObjectQueries.quoteLiteral($0))" } ?? ""
+        let generatedProjection = capabilities.hasGeneratedColumns ? "a.attgenerated::text" : "''"
+        return """
+            SELECT
+                c.relname,
+                a.attname,
+                pg_catalog.format_type(a.atttypid, a.atttypmod),
+                pg_catalog.pg_get_expr(ad.adbin, ad.adrelid),
+                \(generatedProjection),
+                EXISTS (
+                    SELECT 1
+                    FROM pg_catalog.pg_depend dep
+                    JOIN pg_catalog.pg_class seq ON seq.oid = dep.refobjid
+                    WHERE dep.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass
+                      AND dep.objid = ad.oid
+                      AND dep.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
+                      AND seq.relkind = 'S'
+                ) AS reads_sequence
+            FROM pg_catalog.pg_attribute a
+            JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+            WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))\(tableFilter)
+              AND c.relkind IN ('r', 'v', 'f', 'p', 'm')
+              AND a.attnum > 0
+              AND NOT a.attisdropped
+            """
+    }
+
+    /// Keyed by relation, then by column, with exact spellings: PostgreSQL allows quoted `Orders`
+    /// and `orders` side by side, so folding case here would hand one table the other's types.
+    static func columnDDL(rows: [[PluginCellValue]]) -> [String: [String: PostgreSQLCatalogColumnDDL]] {
+        var columns: [String: [String: PostgreSQLCatalogColumnDDL]] = [:]
+        for row in rows {
+            guard let table = row[safe: 0]?.asText,
+                  let column = row[safe: 1]?.asText,
+                  let spelling = row[safe: 2]?.asText?.nilIfEmpty else { continue }
+            columns[table, default: [:]][column] = PostgreSQLCatalogColumnDDL(
+                typeSpelling: spelling,
+                expression: row[safe: 3]?.asText?.nilIfEmpty,
+                isGenerated: row[safe: 4]?.asText?.nilIfEmpty != nil,
+                readsSequence: PostgreSQLCatalogBoolean.isTrue(row[safe: 5]?.asText)
+            )
+        }
+        return columns
+    }
+
     /// `conkey` carries the attribute numbers the constraint touches, so the columns involved come
     /// from the catalog rather than from parsing the expression. `pg_get_constraintdef` is the only
     /// supported way to read the text: `consrc` was removed in PostgreSQL 12.
@@ -488,5 +551,18 @@ enum PostgreSQLSchemaQueries {
           AND (pg_catalog.pg_has_role(mvc.relowner, 'USAGE')
                OR pg_catalog.has_column_privilege(mvc.oid, mva.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'))
         """
+    }
+}
+
+/// One column's clauses as the server spells them, read under a narrowed `search_path`.
+struct PostgreSQLCatalogColumnDDL: Equatable {
+    let typeSpelling: String
+    let defaultExpression: String?
+    let generationExpression: String?
+
+    init(typeSpelling: String, expression: String?, isGenerated: Bool, readsSequence: Bool) {
+        self.typeSpelling = typeSpelling
+        self.generationExpression = isGenerated ? expression : nil
+        self.defaultExpression = isGenerated || readsSequence ? nil : expression
     }
 }

@@ -893,18 +893,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
-        var dataType = col.dataType
-        if col.autoIncrement {
-            let upper = dataType.uppercased()
-            if upper == "BIGINT" || upper == "INT8" {
-                dataType = "BIGSERIAL"
-            } else {
-                dataType = "SERIAL"
-            }
-        }
-
-        var def = "\(quoteIdentifier(col.name)) \(dataType)"
-        if let expression = col.generationExpression?.nilIfEmpty {
+        var def = "\(quoteIdentifier(col.name)) \(PostgreSQLColumnClauses.type(for: col))"
+        if let expression = PostgreSQLColumnClauses.generationExpression(for: col) {
             def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
             if !col.isNullable { def += " NOT NULL" }
             // PostgreSQL allows a primary key on a generated column, and the caller relies on the
@@ -919,7 +909,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 def += " NOT NULL"
             }
         }
-        if let defaultValue = col.defaultValue {
+        if let defaultValue = PostgreSQLColumnClauses.defaultExpression(for: col) {
             def += " DEFAULT \(defaultValue)"
         }
         if inlinePK && col.isPrimaryKey {
@@ -941,9 +931,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let oldExpression = old.generationExpression?.nilIfEmpty
         let newExpression = new.generationExpression?.nilIfEmpty
         guard oldExpression != newExpression || old.generationKind != new.generationKind else { return nil }
-        guard let newExpression, oldExpression != nil else { return nil }
-        guard versionedCapabilities.hasSetGeneratedExpression else { return nil }
-        return "ALTER TABLE \(qt) ALTER COLUMN \(colName) SET EXPRESSION AS (\(newExpression))"
+        guard newExpression != nil, oldExpression != nil else { return nil }
+        guard versionedCapabilities.hasSetGeneratedExpression,
+              let expression = PostgreSQLColumnClauses.generationExpression(for: new) else { return nil }
+        return "ALTER TABLE \(qt) ALTER COLUMN \(colName) SET EXPRESSION AS (\(expression))"
     }
 
     /// Never emitted bare: PostgreSQL 17 and earlier reject VIRTUAL outright and require STORED,
@@ -1032,7 +1023,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let colName = quoteIdentifier(newColumn.name)
 
         if oldColumn.dataType.uppercased() != newColumn.dataType.uppercased() {
-            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(newColumn.dataType)")
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(PostgreSQLColumnClauses.alteredType(for: newColumn))")
         }
 
         if oldColumn.isNullable != newColumn.isNullable {
@@ -1041,7 +1032,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         }
 
         if oldColumn.defaultValue != newColumn.defaultValue {
-            if let defaultValue = newColumn.defaultValue {
+            if let defaultValue = PostgreSQLColumnClauses.defaultExpression(for: newColumn) {
                 stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(defaultValue)")
             } else {
                 stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) DROP DEFAULT")

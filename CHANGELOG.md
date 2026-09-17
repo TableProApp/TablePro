@@ -91,6 +91,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong table dropped, truncated or opened from a PostgreSQL partition that lives in another schema. (#2523)
 - A PostgreSQL partition missing from the object list when its parent table is not readable. (#2523)
 - A PostgreSQL foreign-table partition listed twice, under Foreign Tables and under its parent. (#2523)
+- PostgreSQL to PostgreSQL Copy To failing on enum, composite and PostGIS columns, and dropping type lengths and precision. (#2934)
 - `Return` in the raw SQL filter accepting a suggestion nobody selected instead of applying the filter.
 - `Return` on a filter value replacing what was typed with the first suggestion.
 - Filter autocomplete opening a full column list where the editor's stays shut.

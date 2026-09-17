@@ -310,7 +310,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 isGenerated: col.isGenerated,
                 allowedValues: col.allowedValues,
                 generationExpression: col.generationExpression,
-                generationKind: col.generationKind
+                generationKind: col.generationKind,
+                ddlSpelling: col.ddlSpelling,
+                ddlDefault: col.ddlDefault,
+                ddlGenerationExpression: col.ddlGenerationExpression
             )
         }
     }
