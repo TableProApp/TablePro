@@ -99,6 +99,13 @@ jobs:
       - name: Check shared plugin sources are explicitly isolated for iOS
         run: python3 scripts/ci/check-ios-shared-isolation.py
 
+      # The plugin targets build with MemberImportVisibility, so a file that logs needs the import
+      # that defines the log methods. Compiling every plugin catches it, but only once both sides
+      # are merged: the pull request that turned the feature on and the pull request that added the
+      # file were each green alone, and main broke on the merge of the second.
+      - name: Check plugin sources that log import the module that defines it
+        run: python3 scripts/ci/check-plugin-os-import.py
+
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
