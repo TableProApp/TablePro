@@ -26,6 +26,23 @@ import appcast_feed  # noqa: E402
 PREFIX = "https://github.com/TableProApp/TablePro/releases/download/v0.75.0/"
 
 
+def prefix_for(version):
+    return PREFIX.replace("v0.75.0", f"v{version}")
+
+
+def unpublished_release(base):
+    """A version and build the published feed cannot already carry.
+
+    `check_base` refuses a version the feed advertises and a build the feed does not sit below, so a
+    test that merges into the real feed has to read both off it. Pinned to the release being cut,
+    these two tests passed until that release was published and failed on every branch after it.
+    """
+    items = merge_appcast.channel_items(merge_appcast.parse_text(base), "published feed")
+    builds = [int(build) for build in map(merge_appcast.item_bundle_version, items) if build]
+    major = int(merge_appcast.item_short_version(items[0]).split(".")[0])
+    return f"{major + 1}.0.0", max(builds) + 1
+
+
 def item(version, build, arch, notes="Fixed a thing.", deltas=(), prefix=None):
     prefix = PREFIX if prefix is None else prefix
     hardware = (
@@ -76,9 +93,11 @@ BASE = feed(item("0.74.0", 130, "arm64"), item("0.74.0", 130, None), item("0.73.
 
 
 class MergeAppcastTests(unittest.TestCase):
-    def merge(self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX, keep_releases=0):
-        arm64 = feed(item(version, 131, "arm64")) if arm64 is None else arm64
-        x86_64 = feed(item(version, 131, None)) if x86_64 is None else x86_64
+    def merge(
+        self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX, keep_releases=0, build=131
+    ):
+        arm64 = feed(item(version, build, "arm64", prefix=prefix)) if arm64 is None else arm64
+        x86_64 = feed(item(version, build, None, prefix=prefix)) if x86_64 is None else x86_64
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             (work / "base.xml").write_text(base, encoding="utf-8")
@@ -194,10 +213,12 @@ class MergeAppcastTests(unittest.TestCase):
 
     def test_the_published_feed_is_a_valid_base(self):
         published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
-        merged = self.merge(base=published.read_text(encoding="utf-8"))
+        base = published.read_text(encoding="utf-8")
+        version, build = unpublished_release(base)
+        merged = self.merge(base=base, version=version, prefix=prefix_for(version), build=build)
         versions = self.versions(merged)
-        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
-        self.assertGreater(len(versions), 100)
+        self.assertEqual(versions[:2], [version, version])
+        self.assertEqual(versions[2:], self.versions(base))
 
     def test_keeps_every_release_when_pruning_is_off(self):
         self.assertEqual(self.versions(self.merge(keep_releases=0)), ["0.75.0", "0.75.0", "0.74.0", "0.74.0", "0.73.0"])
@@ -228,11 +249,19 @@ class MergeAppcastTests(unittest.TestCase):
     def test_pruning_the_published_feed_bounds_its_size(self):
         published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
         base = published.read_text(encoding="utf-8")
-        merged = self.merge(base=base, keep_releases=merge_appcast.DEFAULT_KEEP_RELEASES)
+        version, build = unpublished_release(base)
+        merged = self.merge(
+            base=base,
+            version=version,
+            prefix=prefix_for(version),
+            build=build,
+            keep_releases=merge_appcast.DEFAULT_KEEP_RELEASES,
+        )
+        unpruned = self.merge(base=base, version=version, prefix=prefix_for(version), build=build)
         versions = self.versions(merged)
-        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
+        self.assertEqual(versions[:2], [version, version])
         self.assertEqual(len(dict.fromkeys(versions)), merge_appcast.DEFAULT_KEEP_RELEASES)
-        self.assertLess(len(merged), len(base) // 3)
+        self.assertLess(len(merged), len(unpruned))
 
 
 if __name__ == "__main__":
