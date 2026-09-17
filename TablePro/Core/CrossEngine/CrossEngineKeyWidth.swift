@@ -24,12 +24,13 @@ internal enum CrossEngineKeyWidth {
     ///
     /// A part with no length at all gets a bounded spelling first, because MySQL refuses to key a
     /// `LONGTEXT`, SQL Server an `NVARCHAR(MAX)` and Oracle a `CLOB`, and a foreign key has to match
-    /// the key it references. Then, while the key is wider than the engine counts at CREATE, the
-    /// widest part is cut to that same bounded length. What is still too wide is settled the
-    /// engine's way: MySQL and Oracle share the bytes left between the parts, and SQL Server, which
+    /// the key it references. Then, while the key's declared width passes the limit, the widest part
+    /// longer than that bounded length is cut to it. What the engine would still refuse is settled
+    /// its own way: MySQL and Oracle share the bytes left between the parts, and SQL Server, which
     /// refuses only fixed-length parts past its limit, gives the widest of those a variable
     /// spelling. A row whose key no longer fits is refused on insert, which is why every respelling
-    /// is a note.
+    /// is a note. A foreign key is held to a width only on MySQL, the one engine of the three that
+    /// builds an index for it.
     internal static func boundKeys(
         _ columns: inout [CrossEngineColumnDraft],
         primaryKey: [String],
