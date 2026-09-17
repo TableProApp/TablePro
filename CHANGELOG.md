@@ -35,9 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL `INCLUDE` columns shown, copied and recreated as index key columns.
 - PostgreSQL Copy To failing on a `gin_trgm_ops` index, or a partial index naming a type or function in another schema.
 - PostgreSQL Copy To and index renames losing an index's operator classes, collation, sort order and storage parameters.
-- PostgreSQL SP-GiST, HNSW, IVFFlat, BLOOM and other index types copied as B-tree.
+- PostgreSQL SP-GiST, HNSW, IVFFlat and BLOOM indexes shown as BTREE on the Indexes tab and rebuilt as B-tree by an index edit.
+- Compare & Sync treating two PostgreSQL indexes that differ only in type as the same index.
 - SQL Server clustered indexes recreated as nonclustered by Copy To or an index edit.
 - ClickHouse data-skipping indexes dropped by an index edit on the Indexes tab.
+- Copy To from Redshift, Snowflake or BigQuery creating indexes from table keys and failing on a second table in one schema.
 
 ## [0.75.0] - 2026-09-17
 
