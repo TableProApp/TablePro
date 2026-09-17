@@ -65,11 +65,25 @@ struct IndexTypePasteTests {
         #expect(Self.index("SORTKEY").pasted(from: .redshift, into: .postgresql).type == .btree)
     }
 
-    @Test("A PostgreSQL access method keeps its name within the family and is a b-tree elsewhere")
+    @Test("A PostgreSQL access method keeps its name within the family, and a b-tree stays a b-tree")
     func accessMethodFollowsTheTarget() {
         #expect(Self.index("hnsw").pasted(from: .postgresql, into: .pglite).type.rawValue == "HNSW")
-        #expect(Self.index("hnsw").pasted(from: .postgresql, into: .mysql).type == .btree)
-        #expect(Self.index("gin").pasted(from: .postgresql, into: .mysql).type == .btree)
+        #expect(Self.index("btree").pasted(from: .postgresql, into: .mysql).type == .btree)
+        #expect(Self.index("hash").pasted(from: .postgresql, into: .sqlite).type == .btree)
+    }
+
+    /// A paste used to turn such a type into BTREE, which took the refusal away: PostgreSQL 17.11
+    /// then created `USING btree` over a text column, and refused a 6.4 KB row later with "index row
+    /// size 6416 exceeds btree version 4 maximum 2704".
+    @Test("A type the target has no index of is kept, so PostgreSQL refuses a pasted FULLTEXT before saving")
+    func typeWithoutEquivalentIsKeptForTheTargetToJudge() {
+        let fulltext = Self.index("FULLTEXT").pasted(from: .mysql, into: .postgresql)
+        #expect(fulltext.type == .fulltext)
+        #expect(PostgreSQLVersionedStatements.refusal(
+            for: .addIndex(fulltext.toPlugin()), capabilities: PostgreSQLCapabilities(serverVersion: 170_011)
+        ) == "PostgreSQL has no FULLTEXT index type.")
+        #expect(Self.index("hnsw").pasted(from: .postgresql, into: .mysql).type.rawValue == "HNSW")
+        #expect(Self.index("gin").pasted(from: .postgresql, into: .mysql).type == .gin)
     }
 
     @Test("Within one database type the reported type is kept")

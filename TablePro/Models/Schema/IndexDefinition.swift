@@ -270,12 +270,14 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
     /// does. A `nil` source is a copy made by a build that wrote neither field.
     ///
     /// The type is decided the way Copy To decides it whenever the database types differ, so a
-    /// Redshift `DISTKEY` never reaches a PostgreSQL `USING` clause. Where Copy To would leave the
-    /// index out, the paste stages it as a b-tree, which the Type cell shows before anything is saved.
+    /// Redshift `DISTKEY` never reaches a PostgreSQL `USING` clause. Where the target has no index of
+    /// that kind the copied type stays, so the target's driver judges it at save: PostgreSQL refuses
+    /// `FULLTEXT` before anything runs, where a b-tree over the same text column is created and then
+    /// refuses every row whose key outgrows a b-tree entry.
     func pasted(from source: DatabaseType?, into target: DatabaseType) -> EditableIndexDefinition {
         var copy = withNewIdentity()
         if let source {
-            copy.type = CrossEngineIndexTranslator.resolvedType(type, from: source, to: target) ?? .btree
+            copy.type = CrossEngineIndexTranslator.resolvedType(type, from: source, to: target) ?? type
         }
         if let source, !SQLTypeFamily.needsTranslation(from: source, to: target) {
             return copy
