@@ -22,8 +22,8 @@ import TableProPluginKit
 final class LibPQPluginConnection: @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro.PostgreSQLDriver", category: "LibPQPluginConnection")
 
-    private static let connectTimeoutMicroseconds: Int64 = 10_000_000
-    private static let pollSliceMicroseconds: Int64 = 100_000
+    private static let connectTimeoutMicroseconds: pg_usec_time_t = 10_000_000
+    private static let pollSliceMicroseconds: pg_usec_time_t = 100_000
 
     private var conn: OpaquePointer?
     private let queue = DispatchQueue(label: "com.TablePro.libpq.plugin", qos: .userInitiated)
