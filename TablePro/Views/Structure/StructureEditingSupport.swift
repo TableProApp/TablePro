@@ -61,9 +61,14 @@ enum StructureEditingSupport {
         switch colIndex {
         case 0: index.name = value
         case 1:
+            let previousExpressions = Set(index.expressions)
             var prefixes: [String: Int] = [:]
-            index.columns = value.split(separator: ",").map { part in
-                let trimmed = part.trimmingCharacters(in: .whitespaces)
+            var expressions: [String] = []
+            index.columns = indexKeyParts(value).map { trimmed in
+                if previousExpressions.contains(trimmed) {
+                    expressions.append(trimmed)
+                    return trimmed
+                }
                 if let parenStart = trimmed.firstIndex(of: "("),
                    let parenEnd = trimmed.firstIndex(of: ")"),
                    let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
@@ -74,6 +79,7 @@ enum StructureEditingSupport {
                 return trimmed
             }
             index.columnPrefixes = prefixes
+            index.expressions = expressions
         case 2:
             if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
                 index.type = indexType
@@ -82,6 +88,38 @@ enum StructureEditingSupport {
         case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
         }
+    }
+
+    /// The entries of an index's Columns cell, split at the commas that separate key parts.
+    ///
+    /// A comma inside parentheses or quotes belongs to its entry, so `tenant_id, coalesce(a, b)` is
+    /// two parts rather than three. An entry that was an expression before the edit stays one, and
+    /// an entry the user typed is a column name, with `email(20)` still read as a prefix.
+    static func indexKeyParts(_ value: String) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        var depth = 0
+        var quote: Character?
+        for character in value {
+            if let open = quote {
+                if character == open { quote = nil }
+            } else if character == "'" || character == "\"" {
+                quote = character
+            } else if character == "(" {
+                depth += 1
+            } else if character == ")" {
+                depth = max(depth - 1, 0)
+            } else if character == ",", depth == 0 {
+                parts.append(current)
+                current = ""
+                continue
+            }
+            current.append(character)
+        }
+        parts.append(current)
+        return parts
+            .filter { !$0.isEmpty }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
     static func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {

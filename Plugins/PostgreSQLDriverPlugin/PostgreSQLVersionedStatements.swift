@@ -151,6 +151,9 @@ internal enum PostgreSQLVersionedStatements {
     }
 
     static func indexRefusal(_ index: PluginIndexDefinition, capabilities: PostgreSQLCapabilities) -> String? {
+        if index.includedColumns?.isEmpty == false, !capabilities.hasCoveringIndexes {
+            return String(localized: "INCLUDE columns need PostgreSQL 11 or later.")
+        }
         guard let type = index.indexType?.uppercased(), !type.isEmpty else { return nil }
         if mySQLOnlyIndexTypes.contains(type) {
             return String(format: String(localized: "PostgreSQL has no %@ index type."), type)

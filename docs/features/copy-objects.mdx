@@ -51,6 +51,10 @@ Within one engine, generated and computed columns are dropped from the write. Th
 them, and every engine that has them rejects an `INSERT` that names one. Crossing to another engine
 they arrive as ordinary columns carrying the values they held on the source.
 
+Within PostgreSQL an index is created from the server's own definition of it: expression keys,
+operator classes, sort order, `INCLUDE` columns, storage parameters and a partial index's condition
+all arrive as they were.
+
 ## When the target already has the object
 
 Chosen once, before the run, and applied to every object in it.
@@ -225,8 +229,9 @@ Copying is SQL only. MongoDB, Redis, DynamoDB, Elasticsearch, Typesense, Kafka, 
 end of a copy may be one of them.
 
 A crossing translates types, defaults and indexes, and nothing else. Check constraints, partitioning,
-table options and anything the source expressed as an expression stay behind. A copied table is a
-table with the same columns and the same rows, not a replica of the original.
+table options, an index's `INCLUDE` columns and anything the source expressed as an expression,
+including an index over one, stay behind. A copied table is a table with the same columns and the
+same rows, not a replica of the original.
 
 Redshift takes PostgreSQL's type names and not all of PostgreSQL's types. A copy from PostgreSQL
 into it is treated as one engine and passes its types through, so a `jsonb`, `uuid` or array column
@@ -242,11 +247,13 @@ A PostgreSQL column typed with a domain crosses as the domain's base type withou
 `varchar(20)` as `LONGTEXT`. Create the target table with the types you want, then use **Add rows to
 it**.
 
-A PostgreSQL column that uses an extension or user-defined type or function, such as a PostGIS
-`geometry`, an enum, or a `DEFAULT` that calls `ST_GeomFromText`, is created naming each one in the
-schema it lives in on the source: `public.geometry(Point,4326)`. A target database without them in
-that schema refuses the table with `type "…" does not exist` or `function … does not exist`. Install
-the extension or create the type there first, in the same schema.
+A PostgreSQL column or index that uses an extension or user-defined type, operator class or function,
+such as a PostGIS `geometry`, an enum, a `gin_trgm_ops` index, or a `DEFAULT` or index condition that
+calls `ST_GeomFromText`, is created naming each one in the schema it lives in on the source:
+`public.geometry(Point,4326)`, `email public.gin_trgm_ops`. A target database without them in that
+schema refuses the table with `type "…" does not exist`, `function … does not exist` or
+`operator class "…" does not exist for access method "…"`. Install the extension or create the type
+there first, in the same schema.
 
 A PostgreSQL column declared with a collation of its own keeps it, named with its schema:
 `COLLATE pg_catalog."C"`, `COLLATE app."Case Insens"`. Collation names differ between operating

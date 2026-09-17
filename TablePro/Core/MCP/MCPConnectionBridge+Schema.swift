@@ -475,6 +475,12 @@ extension MCPConnectionBridge {
         if let whereClause = index.whereClause, !whereClause.isEmpty {
             fields["where_clause"] = .string(whereClause)
         }
+        if let expressions = index.expressions, !expressions.isEmpty {
+            fields["expressions"] = .array(expressions.map { .string($0) })
+        }
+        if let includedColumns = index.includedColumns, !includedColumns.isEmpty {
+            fields["included_columns"] = .array(includedColumns.map { .string($0) })
+        }
         return .object(fields)
     }
 

@@ -448,9 +448,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         /// a rename in the same save leaves that name stale in the working copy without the user
         /// having done anything wrong: every engine's `RENAME COLUMN` carries the dependency over
         /// itself. Checking those rows would refuse a rename that works today. What this catches is
-        /// a row the user is *editing* into a state the database will reject.
+        /// a row the user is *editing* into a state the database will reject. An expression key names
+        /// no column of its own, so an index is checked by its column names alone.
         for index in workingIndexes where isStaged(.index(index.id)) && index.isValid {
-            for columnName in index.columns where !namesAColumn(columnName, in: columnNames) {
+            for columnName in index.referencedColumnNames where !namesAColumn(columnName, in: columnNames) {
                 validationErrors[.index(index.id)] = String(
                     format: String(localized: "Index references a column that does not exist: %@"), columnName
                 )

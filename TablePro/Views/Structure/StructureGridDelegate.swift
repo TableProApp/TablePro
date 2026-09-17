@@ -741,12 +741,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 structureChangeManager.addColumn(copy.withNewIdentity())
             case .indexes:
                 guard row < structureChangeManager.workingIndexes.count else { continue }
-                let copy = structureChangeManager.workingIndexes[row]
-                structureChangeManager.addIndex(EditableIndexDefinition(
-                    id: UUID(), name: copy.name, columns: copy.columns,
-                    type: copy.type, isUnique: copy.isUnique, isPrimary: false, comment: copy.comment,
-                    columnPrefixes: copy.columnPrefixes, whereClause: copy.whereClause
-                ))
+                var copy = structureChangeManager.workingIndexes[row].withNewIdentity()
+                copy.isPrimary = false
+                structureChangeManager.addIndex(copy)
             case .foreignKeys:
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let copy = structureChangeManager.workingForeignKeys[row]

@@ -542,6 +542,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCommentStatements.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift

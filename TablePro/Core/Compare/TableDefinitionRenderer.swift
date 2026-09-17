@@ -26,6 +26,9 @@ internal enum TableDefinitionRenderer {
             .sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
             let unique = index.isUnique ? "UNIQUE " : ""
             var line = "  \(unique)INDEX \(index.name) (\(index.columns.joined(separator: ", "))) USING \(index.type.rawValue)"
+            if !index.includedColumns.isEmpty {
+                line += " INCLUDE (\(index.includedColumns.joined(separator: ", ")))"
+            }
             if let whereClause = index.whereClause, !whereClause.isEmpty {
                 line += " WHERE \(whereClause)"
             }

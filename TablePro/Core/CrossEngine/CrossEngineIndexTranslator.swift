@@ -62,6 +62,16 @@ internal enum CrossEngineIndexTranslator {
             return nil
         }
 
+        /// An expression is written in the source engine's SQL, with its functions, casts and
+        /// operators, and nothing here can say it in the target's.
+        guard index.expressions.isEmpty else {
+            notes.append(dropped(index, table: table, reason: String(
+                format: String(localized: "Its key includes %@, an expression in the source engine's SQL."),
+                index.expressions.joined(separator: ", ")
+            )))
+            return nil
+        }
+
         guard let type = translatedType(index.type, family: family) else {
             notes.append(dropped(index, table: table, reason: String(
                 format: String(localized: "A %@ index has no equivalent on this engine."),
@@ -94,6 +104,7 @@ internal enum CrossEngineIndexTranslator {
         }
 
         var translated = index
+        translated.dropCatalogSpellings()
         translated.type = type
         /// Carried to an engine without key prefixes the number is ignored by its driver, so it is
         /// not carried at all.
@@ -112,6 +123,23 @@ internal enum CrossEngineIndexTranslator {
             if !cut.isEmpty, index.isUnique {
                 notes.append(uniqueOnPrefix(index, table: table, columns: cut))
             }
+        }
+        /// The columns an index stores beside its key only save a table read. Leaving them out
+        /// changes neither the key nor what a unique index refuses.
+        if !index.includedColumns.isEmpty {
+            translated.includedColumns = []
+            notes.append(CrossEngineConversionNote(
+                table: table,
+                subject: index.name,
+                summary: String(
+                    format: String(localized: "%@ no longer stores its INCLUDE columns"), index.name
+                ),
+                reason: String(
+                    format: String(localized: "The copy writes no INCLUDE clause here, so %@ are left out of the index."),
+                    index.includedColumns.joined(separator: ", ")
+                ),
+                fidelity: .approximated
+            ))
         }
         /// A partial index is PostgreSQL's, SQLite's and DuckDB's syntax. Elsewhere the clause is
         /// dropped and the index becomes a full one, which indexes more rather than less.

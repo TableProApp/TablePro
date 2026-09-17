@@ -158,12 +158,15 @@ private extension StructureDiffEngine {
         return parts.joined(separator: "\u{1F}")
     }
 
+    /// `INCLUDE` columns are compared on their own: they are stored in the index without being part
+    /// of its key, so `(a) INCLUDE (b)` and `(a, b)` are different indexes.
     func indexSignature(_ index: EditableIndexDefinition) -> String {
         var parts: [String] = [
             options.columnListKey(index.columns),
             String(index.isUnique),
             options.matchKey(index.type.rawValue),
-            options.normalizedText(index.whereClause) ?? ""
+            options.normalizedText(index.whereClause) ?? "",
+            options.columnListKey(index.includedColumns)
         ]
         let prefixes = index.columnPrefixes
             .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
