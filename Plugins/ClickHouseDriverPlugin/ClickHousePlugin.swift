@@ -800,9 +800,18 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    /// Nil for a type that names no data skipping index. A changed index is a drop and an add, and
+    /// the app builds every statement before it runs one, so declining here keeps the index the table
+    /// has rather than dropping it ahead of an add the server refuses.
+    ///
+    /// Not a `schemaOperationRefusal`: that also answers for the indexes of a copied `CREATE TABLE`,
+    /// which this driver leaves out of the statement, and refusing those would refuse the whole copy.
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        guard let indexType = ClickHouseSkippingIndexType.clause(for: index.indexType) else {
+            Self.logger.warning("Declining an index whose type names no ClickHouse data skipping index")
+            return nil
+        }
         let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let indexType = index.indexType ?? "minmax"
         return "ALTER TABLE \(quoteIdentifier(table)) ADD INDEX \(quoteIdentifier(index.name)) (\(cols)) TYPE \(indexType) GRANULARITY 1"
     }
 
