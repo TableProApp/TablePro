@@ -68,11 +68,37 @@ final class OracleSchemaQueriesTests: XCTestCase {
     /// `HIGH_VALUE` is a LONG column OracleNIO cannot decode, so it must never be selected.
     func testPartitionQueriesNeverReadHighValue() {
         let partitions = OracleSchemaQueries.partitions(schema: "HR", table: "ORDERS")
-        let subpartitions = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS", partition: "P1")
+        let subpartitions = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS")
         XCTAssertFalse(partitions.lowercased().contains("high_value"))
         XCTAssertFalse(subpartitions.lowercased().contains("high_value"))
         XCTAssertTrue(partitions.contains("p.table_owner = 'HR'"))
-        XCTAssertTrue(subpartitions.contains("s.partition_name = 'P1'"))
+        XCTAssertTrue(subpartitions.contains("s.table_name = 'ORDERS'"))
+    }
+
+    /// Every subpartition of the table in one statement, carrying its parent's name so the rows
+    /// group in memory. Asking per partition was one round trip each, and one timeout among
+    /// hundreds discarded the whole answer.
+    func testSubpartitionsAreFetchedForTheWholeTableAtOnce() {
+        let sql = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS")
+        XCTAssertTrue(sql.contains("s.partition_name"))
+        XCTAssertFalse(sql.contains("s.partition_name = '"))
+        XCTAssertTrue(sql.contains("ORDER BY s.partition_name, s.subpartition_position"))
+    }
+
+    func testParseSubpartitionRowCarriesItsParentName() {
+        let parsed = OracleSchemaQueries.parseSubpartitionRow([
+            .string("P1"), .string("P1_SP2"), .string("2"), .string("40")
+        ])
+        XCTAssertEqual(parsed?.parent, "P1")
+        XCTAssertEqual(parsed?.row.name, "P1_SP2")
+        XCTAssertEqual(parsed?.row.position, 2)
+        XCTAssertEqual(parsed?.row.rowCount, 40)
+        XCTAssertEqual(parsed?.row.isSubpartitioned, false)
+    }
+
+    func testParseSubpartitionRowNeedsBothNames() {
+        XCTAssertNil(OracleSchemaQueries.parseSubpartitionRow([.string("P1")]))
+        XCTAssertNil(OracleSchemaQueries.parseSubpartitionRow([.null, .string("P1_SP1")]))
     }
 
     func testParsePartitionRowReadsSubpartitionCount() {
