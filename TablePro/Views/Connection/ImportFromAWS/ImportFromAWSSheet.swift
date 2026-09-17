@@ -6,7 +6,7 @@ struct ImportFromAWSSheet: View {
     var onImported: ((Int) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var session = AWSDiscoverySession()
+    @StateObject private var session = AWSDiscoverySession()
     @State private var step: Step = .configure
     @State private var discoveryToken = 0
 

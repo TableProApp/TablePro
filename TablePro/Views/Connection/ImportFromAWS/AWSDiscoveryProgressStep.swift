@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct AWSDiscoveryProgressStep: View {
-    let session: AWSDiscoverySession
+    /// Observed, because every row reads `regionProgress` and the discovery writes it region by
+    /// region while this step is on screen. Held as a plain property the rows were drawn once, as
+    /// pending, and stayed that way until the step was replaced.
+    @ObservedObject var session: AWSDiscoverySession
     let onCancel: () -> Void
 
     var body: some View {
