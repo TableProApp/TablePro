@@ -214,7 +214,7 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
         let fileURL = fileURL(forKey: key)
 
         guard !filters.isEmpty else {
-            lastFiltersCache.removeValue(forKey: key)
+            lastFiltersCache[key] = PersistedFilterState(filters: [])
             ioQueue.async {
                 try? FileManager.default.removeItem(at: fileURL)
             }
@@ -250,7 +250,10 @@ final class FilterSettingsStorage: TableScopedSettingsStore {
             schemaName: schemaName
         )
         let fileURL = fileURL(forKey: key)
-        lastFiltersCache.removeValue(forKey: key)
+        /// Cached as empty rather than removed. The delete runs on `ioQueue`, so a load between this
+        /// call and that work finds no cache entry, reads the file that is still there, and hands
+        /// back the filters the user just cleared.
+        lastFiltersCache[key] = PersistedFilterState(filters: [])
         ioQueue.async {
             try? FileManager.default.removeItem(at: fileURL)
         }
