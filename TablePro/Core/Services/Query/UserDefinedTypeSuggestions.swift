@@ -78,7 +78,7 @@ enum UserDefinedTypeSuggestions {
         } catch is CancellationError {
             return []
         } catch {
-            logger.warning("user-defined type fetch failed: \(error.localizedDescription, privacy: .public)")
+            logger.warning("user-defined type fetch failed: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }

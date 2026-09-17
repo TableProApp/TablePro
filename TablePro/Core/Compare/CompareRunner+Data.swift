@@ -216,8 +216,8 @@ internal extension CompareRunner {
             guard let targetColumn = targetColumns[column.name.lowercased()] else { return nil }
             return CompareColumn(
                 name: column.name,
-                sourceType: column.dataType,
-                targetType: targetColumn.dataType,
+                sourceType: column.typeNameForClassification,
+                targetType: targetColumn.typeNameForClassification,
                 collation: column.collation,
                 isGeneratedOnTarget: targetColumn.isGenerated,
                 targetIdentity: targetColumn.identityKind

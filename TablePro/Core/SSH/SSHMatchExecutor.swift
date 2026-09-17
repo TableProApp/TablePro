@@ -38,7 +38,7 @@ enum SSHMatchExecutor {
         do {
             try process.run()
         } catch {
-            logger.warning("Match exec failed to start: \(error.localizedDescription, privacy: .public)")
+            logger.warning("Match exec failed to start: \(error.publicLogShape, privacy: .public)")
             return false
         }
 

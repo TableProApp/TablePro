@@ -31,7 +31,7 @@ final class AIImageCache: @unchecked Sendable {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
-                Self.logger.error("Failed to write image: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to write image: \(error.publicLogShape, privacy: .public)")
             }
         }
         return filename

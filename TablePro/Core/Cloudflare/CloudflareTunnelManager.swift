@@ -297,7 +297,7 @@ actor CloudflareTunnelManager: TunnelManaging {
             let data = try JSONEncoder().encode(records)
             AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
-            Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist cloudflared PID records, leaked processes may survive to next launch: \(error.publicLogShape, privacy: .public)")
         }
     }
 

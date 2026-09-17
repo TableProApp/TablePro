@@ -29,7 +29,8 @@ extension ColumnInfo {
             ddlSpelling: column.ddlSpelling,
             ddlDefault: column.ddlDefault,
             ddlGenerationExpression: column.ddlGenerationExpression,
-            ddlCollation: column.ddlCollation
+            ddlCollation: column.ddlCollation,
+            classificationTypeName: column.classificationTypeName
         )
     }
 }

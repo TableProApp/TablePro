@@ -61,13 +61,13 @@ extension MainContentCoordinator {
                     try await driver.fetchColumns(table: tableName, schema: scope.schema)
                 }
                 guard !columns.isEmpty else {
-                    columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .public); cannot scope")
+                    columnScopeLog.error("loadSchemaColumns: 0 columns for table=\(tableName, privacy: .private(mask: .hash)); cannot scope")
                     return nil
                 }
                 return SchemaColumnStore.Entry(fetchedColumns: columns)
             } catch {
                 guard !DatabaseCancellationDiagnosis.isCancellation(error) else { return nil }
-                columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                columnScopeLog.error("loadSchemaColumns: fetchColumns failed for table=\(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 return nil
             }
         }

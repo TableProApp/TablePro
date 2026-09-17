@@ -136,7 +136,7 @@ internal struct HelperProcessSvgRenderer: SvgImageRendering {
         do {
             try process.run()
         } catch {
-            logger.error("could not start the image renderer: \(error.localizedDescription, privacy: .public)")
+            logger.error("could not start the image renderer: \(error.publicLogShape, privacy: .public)")
             return nil
         }
 

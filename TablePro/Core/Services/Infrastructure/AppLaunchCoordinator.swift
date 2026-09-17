@@ -54,7 +54,7 @@ internal final class AppLaunchCoordinator: ObservableObject {
                 Self.logger.warning("Unrecognized URL: \(url.sanitizedForLogging, privacy: .public)")
                 return nil
             case .some(.failure(let error)):
-                Self.logger.error("URL parse failed: \(error.localizedDescription, privacy: .public) for \(url.sanitizedForLogging, privacy: .public)")
+                Self.logger.error("URL parse failed: \(error.publicLogShape, privacy: .public) for \(url.sanitizedForLogging, privacy: .public)")
                 return nil
             case .some(.success(let intent)):
                 return intent

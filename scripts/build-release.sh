@@ -190,9 +190,6 @@ build_for_arch() {
         CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         CODE_SIGN_STYLE=Manual \
         DEVELOPMENT_TEAM="$TEAM_ID" \
-        GCC_OPTIMIZATION_LEVEL=s \
-        SWIFT_OPTIMIZATION_LEVEL=-O \
-        LLVM_LTO=YES_THIN \
         CLANG_COVERAGE_MAPPING=NO \
         ENABLE_CODE_COVERAGE=NO \
         ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} \

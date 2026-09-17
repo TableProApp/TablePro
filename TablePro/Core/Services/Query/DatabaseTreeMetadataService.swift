@@ -139,7 +139,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch {
             guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             databaseList[connectionId] = .failed(error.localizedDescription)
-            Self.logger.warning("databases load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("databases load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -173,7 +173,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch {
             guard schemaListFence.isCurrent(token, for: key) else { return }
             schemaList[key] = .failed(error.localizedDescription)
-            Self.logger.warning("schemas load failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("schemas load failed db=\(database, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -205,7 +205,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             guard tablesFence.isCurrent(token, for: key) else { return }
             tablesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "tables load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "tables load failed db=\(database, privacy: .private(mask: .hash)) schema=\(schema ?? "nil", privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -230,7 +230,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             guard routinesFence.isCurrent(token, for: key) else { return }
             routinesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "routines load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "routines load failed db=\(database, privacy: .private(mask: .hash)) schema=\(schema ?? "nil", privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -264,7 +264,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             guard triggersFence.isCurrent(token, for: key) else { return }
             triggersState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "triggers load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "triggers load failed db=\(database, privacy: .private(mask: .hash)) schema=\(schema ?? "nil", privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -317,7 +317,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             guard typesFence.isCurrent(token, for: key) else { return }
             typesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "types load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "types load failed db=\(database, privacy: .private(mask: .hash)) schema=\(schema ?? "nil", privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -361,7 +361,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
             guard partitionsFence.isCurrent(token, for: key) else { return }
             partitionsState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
-                "partitions load failed db=\(database, privacy: .public) table=\(table, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "partitions load failed db=\(database, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -387,7 +387,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "databases refresh failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "databases refresh failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -410,7 +410,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "schemas refresh failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "schemas refresh failed db=\(database, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -476,7 +476,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "types refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "types refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -496,7 +496,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -516,7 +516,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "routines refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "routines refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -536,7 +536,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "triggers refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "triggers refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -592,7 +592,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "tables refresh failed db=\(key.database, privacy: .public) schema=\(key.schema ?? "nil", privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -640,7 +640,7 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
-                "partitions refresh failed db=\(key.database, privacy: .public) table=\(key.table, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "partitions refresh failed db=\(key.database, privacy: .public) table=\(key.table, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
         }
     }

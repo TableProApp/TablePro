@@ -66,7 +66,7 @@ final class GeminiProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Gemini model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Gemini model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
             return Self.offlineModels
         }
 
@@ -317,7 +317,7 @@ final class GeminiProvider: ChatTransport {
             let data = try JSONSerialization.data(withJSONObject: args)
             return String(data: data, encoding: .utf8) ?? "{}"
         } catch {
-            Self.logger.warning("Gemini functionCall args serialization failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Gemini functionCall args serialization failed: \(error.publicLogShape, privacy: .public)")
             return "{}"
         }
     }

@@ -122,7 +122,7 @@ extension MainContentCoordinator {
                 }
             } catch {
                 Self.logger.info(
-                    "[fk] schema foreign key prefetch failed: \(error.localizedDescription, privacy: .public)"
+                    "[fk] schema foreign key prefetch failed: \(error.publicLogShape, privacy: .public)"
                 )
                 return nil
             }
@@ -166,7 +166,7 @@ extension MainContentCoordinator {
             guard tabManager.selectedTabId == tab.id else { return }
             tableMetadata = metadata
         } catch {
-            Self.logger.error("Failed to load table metadata: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load table metadata: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

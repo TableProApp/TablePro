@@ -229,7 +229,7 @@ public struct ExportDataTool: MCPToolImplementation {
 
         try MCPExportDestination.write(documents.joined(separator: "\n\n"), to: destination)
         payload["path"] = .string(destination.path)
-        Self.logger.debug("export_data wrote \(destination.lastPathComponent, privacy: .public)")
+        Self.logger.debug("export_data wrote \(destination.lastPathComponent, privacy: .private(mask: .hash))")
 
         return .structured(
             .object(payload),

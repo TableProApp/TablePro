@@ -67,7 +67,7 @@ final class AnthropicProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Anthropic model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
             return Self.offlineModels
         }
 

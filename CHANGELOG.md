@@ -9,8 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL column types shown without their length, precision, enum name or domain name.
+- Compare & Sync missing a PostgreSQL column's length, precision or type change.
+- Compare & Sync missing a MySQL or MariaDB fractional seconds, enum label or precision change.
+- MySQL and MariaDB integer display width changes held back by Compare & Sync as data loss.
+- iCloud sync stopping for good once 250 records were waiting to upload.
+- Cassandra `date` values reading as a Buddhist or Japanese year in the grid, on the clipboard and in exports.
+- Menu rows that only a colour or a glyph tells apart reading as identical on macOS 27.
+- A UI test run writing sync bookkeeping into the real defaults instead of its sandbox.
+- Extra layout measurement on every sidebar, inspector, outline and field-list row.
 - Cut, Copy and Paste in the SQL editor's context menu were English in every language.
 - A statement count on a review sheet reading "1 statements".
+
+### Changed
+
+- Every plugin bundle compiled under the same concurrency settings as the app that loads it.
+- Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
+
+### Security
+
+- Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
+- The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
 
 ## [0.75.0] - 2026-09-18
 

@@ -285,7 +285,7 @@ extension DatabaseManager {
                         try await adapter.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
-                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.publicLogShape, privacy: .public)")
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
@@ -316,7 +316,7 @@ extension DatabaseManager {
                         try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
                         activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
-                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.publicLogShape, privacy: .public)")
                     }
                 }
             }
@@ -375,7 +375,7 @@ extension DatabaseManager {
         Self.logger.info(
             """
             switchDatabase landed conn=\(connectionId, privacy: .public) \
-            database=\(database, privacy: .public) \
+            database=\(database, privacy: .private(mask: .hash)) \
             browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
             """
         )
@@ -453,7 +453,7 @@ extension DatabaseManager {
             try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
-                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.publicLogShape, privacy: .public)"
             )
         }
     }

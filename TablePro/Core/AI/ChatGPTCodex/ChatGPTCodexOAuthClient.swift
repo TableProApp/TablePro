@@ -81,7 +81,7 @@ final class ChatGPTCodexOAuthClient: ChatGPTCodexTokenRefreshing {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("ChatGPT token request failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("ChatGPT token request failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(error.localizedDescription)
         }
 

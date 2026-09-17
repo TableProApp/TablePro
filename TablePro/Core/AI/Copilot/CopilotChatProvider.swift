@@ -170,7 +170,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
             Self.logger.info("Registered \(info.count) Copilot tools")
         } catch {
             Self.logger.warning(
-                "Copilot tools registration failed (likely older language server): \(error.localizedDescription, privacy: .public)"
+                "Copilot tools registration failed (likely older language server): \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -207,7 +207,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
             let envelope = try JSONDecoder().decode(InvokeClientToolEnvelope.self, from: data)
             params = envelope.params
         } catch {
-            Self.logger.error("Failed to decode invokeClientTool params: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode invokeClientTool params: \(error.publicLogShape, privacy: .public)")
             if let raw = String(data: data, encoding: .utf8) {
                 Self.logger.error("Raw invokeClientTool payload: \(raw, privacy: .public)")
             }
@@ -252,7 +252,7 @@ final class CopilotChatProvider: ChatTransport, @unchecked Sendable {
         do {
             try await client.sendInvokeClientToolResponse(id: requestId, result: lspResult)
         } catch {
-            Self.logger.error("Failed to reply to invokeClientTool: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to reply to invokeClientTool: \(error.publicLogShape, privacy: .public)")
         }
     }
 

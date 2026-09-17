@@ -189,7 +189,7 @@ internal final class FavoriteDatabasesStorage {
         do {
             defaults.set(try JSONEncoder().encode(favorites), forKey: Self.storageKey)
         } catch {
-            Self.logger.error("Failed to encode favorite databases: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to encode favorite databases: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

@@ -172,7 +172,7 @@ extension MainContentView {
                     )
                 } catch {
                     MainContentView.lifecycleLogger.error(
-                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        "[open] buildBaseTableQuery failed for restored tab table=\(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
                     )
                 }
             }

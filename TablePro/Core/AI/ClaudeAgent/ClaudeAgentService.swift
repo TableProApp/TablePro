@@ -59,7 +59,7 @@ final class ClaudeAgentService: ObservableObject {
             }
             state = .signedIn(account: status.accountDescription, plan: status.planDescription)
         } catch {
-            Self.logger.error("Claude Agent status check failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Claude Agent status check failed: \(error.publicLogShape, privacy: .public)")
             state = .notInstalled
         }
     }

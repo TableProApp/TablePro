@@ -85,7 +85,7 @@ enum BackupScopeLoader {
                 return tables.filter { $0.type == .table }.map { NativeDumpObject(name: $0.name) }
             }
         } catch {
-            logger.warning("object list failed for \(database, privacy: .public)")
+            logger.warning("object list failed for \(database, privacy: .private(mask: .hash))")
             return []
         }
     }

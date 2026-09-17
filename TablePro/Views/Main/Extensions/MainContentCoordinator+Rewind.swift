@@ -146,7 +146,7 @@ extension MainContentCoordinator {
             rewindPlan = plan
             activeSheet = .rewind
         } catch {
-            Self.rewindLogger.error("Could not plan a rewind: \(error.localizedDescription, privacy: .public)")
+            Self.rewindLogger.error("Could not plan a rewind: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Prepare the Restore"),
                 message: error.localizedDescription,
