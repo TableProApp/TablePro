@@ -86,6 +86,12 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # A build script that writes the deployment target down itself goes stale the next time the
+      # app's floor moves, and the result is an archive built for a newer macOS than the app that
+      # links it. That shipped: #2874 moved the app to macOS 13 and five copies of "14.0" stayed.
+      - name: Check no build script hardcodes the deployment target
+        run: bash scripts/ci/check-deployment-target.sh
+
       # The iOS app compiles source files that belong to macOS plugin targets, and it alone sets
       # SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, so one unmarked declaration in a shared file is
       # @MainActor on iOS and nonisolated in the plugin. The macOS suite cannot see it and the iOS
