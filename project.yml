@@ -98,6 +98,11 @@ targetTemplates:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.${target_name}
         PRODUCT_NAME: $(TARGET_NAME)
         SKIP_INSTALL: YES
+        # The app, both helper tools and both test bundles compile under these. A plugin bundle is
+        # loaded into that same process, so without them one nonisolated async function has two
+        # execution semantics depending on which target compiled it.
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         WRAPPER_EXTENSION: tableplugin
 
 targets:
