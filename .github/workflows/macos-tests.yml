@@ -156,12 +156,16 @@ jobs:
   # unit step spent 12 of its 15.3 minutes compiling and the UI step could not start until the
   # unit step had finished. All 12,662 unit cases execute in 206 seconds, so the build was almost
   # all of the cost and none of it was parallel.
+  #
+  # The limit is 60 minutes, measured rather than rounded: four runs on 2026-09-17 took 38, 39, 43
+  # and 44 minutes, and the v0.75.0 release run hit a 45 minute limit mid-build and skipped the
+  # release for it.
   build:
     name: Build for testing
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -458,6 +462,35 @@ jobs:
         with:
           name: macos-ui-test-results-${{ matrix.shard }}
           path: UITestResults.xcresult
+          retention-days: 7
+
+      # XCTest reports a crash of the app under test as "crashed in <external symbol>" and attaches
+      # nothing when it cannot match a report, so a crash only the runner's macOS reproduces leaves
+      # nothing to read. On v0.75.0 two suites hung the app after an editor tab change and then
+      # crashed it, both times with no report attached. Whatever the system wrote is kept here:
+      # crash, hang and spin reports, and the app's own unified log for the run.
+      - name: Collect app diagnostics
+        if: ${{ failure() }}
+        continue-on-error: true
+        run: |
+          mkdir -p app-diagnostics
+          for dir in "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports; do
+            [ -d "$dir" ] || continue
+            find "$dir" -maxdepth 2 -iname '*TablePro*' -exec cp {} app-diagnostics/ \;
+          done
+          log show --last 3h --style compact --info --predicate 'process == "TablePro"' \
+            > app-diagnostics/tablepro-unified.log 2>&1 || true
+          gzip -f app-diagnostics/tablepro-unified.log
+          ls -la app-diagnostics
+
+      - name: Upload app diagnostics
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-ui-app-diagnostics-${{ matrix.shard }}
+          path: app-diagnostics
+          if-no-files-found: ignore
           retention-days: 7
 
   # The one check to mark required on main. It reports on every pull request, so a docs-only

@@ -286,36 +286,12 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
         let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
-        return mapPluginColumns(pluginColumns)
+        return pluginColumns.map(ColumnInfo.init)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: schema ?? pluginDriver.currentSchema)
-        return mapPluginColumns(pluginColumns)
-    }
-
-    private func mapPluginColumns(_ pluginColumns: [PluginColumnInfo]) -> [ColumnInfo] {
-        pluginColumns.map { col in
-            ColumnInfo(
-                name: col.name,
-                dataType: col.dataType,
-                isNullable: col.isNullable,
-                isPrimaryKey: col.isPrimaryKey,
-                defaultValue: col.defaultValue,
-                extra: col.extra,
-                charset: col.charset,
-                collation: col.collation,
-                comment: col.comment,
-                identityKind: col.identityKind,
-                isGenerated: col.isGenerated,
-                allowedValues: col.allowedValues,
-                generationExpression: col.generationExpression,
-                generationKind: col.generationKind,
-                ddlSpelling: col.ddlSpelling,
-                ddlDefault: col.ddlDefault,
-                ddlGenerationExpression: col.ddlGenerationExpression
-            )
-        }
+        return pluginColumns.map(ColumnInfo.init)
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] {
@@ -326,35 +302,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let pluginIndexes = try await pluginDriver.fetchIndexes(
             table: table, schema: schema ?? pluginDriver.currentSchema
         )
-        return pluginIndexes.map(Self.mapPluginIndex)
-    }
-
-    nonisolated private static func mapPluginIndex(_ index: PluginIndexInfo) -> IndexInfo {
-        IndexInfo(
-            name: index.name,
-            columns: index.columns,
-            isUnique: index.isUnique,
-            isPrimary: index.isPrimary,
-            type: index.type,
-            columnPrefixes: index.columnPrefixes,
-            whereClause: index.whereClause
-        )
-    }
-
-    nonisolated private static func mapPluginTableMetadata(_ metadata: PluginTableMetadata) -> TableMetadata {
-        TableMetadata(
-            tableName: metadata.tableName,
-            dataSize: metadata.dataSize,
-            indexSize: metadata.indexSize,
-            totalSize: metadata.totalSize,
-            avgRowLength: metadata.avgRowLength,
-            rowCount: metadata.rowCount,
-            comment: metadata.comment,
-            engine: metadata.engine,
-            collation: metadata.collation,
-            createTime: metadata.createTime,
-            updateTime: metadata.updateTime
-        )
+        return pluginIndexes.map(IndexInfo.init)
     }
 
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
@@ -365,18 +313,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let pluginFKs = try await pluginDriver.fetchForeignKeys(
             table: table, schema: schema ?? pluginDriver.currentSchema
         )
-        return pluginFKs.map { fk in
-            ForeignKeyInfo(
-                name: fk.name,
-                column: fk.column,
-                referencedTable: fk.referencedTable,
-                referencedColumn: fk.referencedColumn,
-                referencedDatabase: fk.referencedDatabase,
-                referencedSchema: fk.referencedSchema,
-                onDelete: fk.onDelete,
-                onUpdate: fk.onUpdate
-            )
-        }
+        return pluginFKs.map(ForeignKeyInfo.init)
     }
 
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] {
@@ -387,14 +324,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         let pluginConstraints = try await pluginDriver.fetchCheckConstraints(
             table: table, schema: schema ?? pluginDriver.currentSchema
         )
-        return pluginConstraints.map { constraint in
-            CheckConstraintInfo(
-                name: constraint.name,
-                expression: constraint.expression,
-                columns: constraint.columns,
-                isValidated: constraint.isValidated
-            )
-        }
+        return pluginConstraints.map(CheckConstraintInfo.init)
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] {
@@ -507,7 +437,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             table: tableName,
             schema: pluginDriver.currentSchema
         )
-        return Self.mapPluginTableMetadata(pluginMeta)
+        return TableMetadata(pluginMeta)
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -639,28 +569,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
-        var result: [String: [ColumnInfo]] = [:]
-        for (table, cols) in pluginResult {
-            result[table] = mapPluginColumns(cols)
-        }
-        return result
+        return pluginResult.mapValues { $0.map(ColumnInfo.init) }
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
-        var result: [String: [ForeignKeyInfo]] = [:]
-        for (table, fks) in pluginResult {
-            result[table] = fks.map { fk in
-                ForeignKeyInfo(name: fk.name, column: fk.column, referencedTable: fk.referencedTable,
-                               referencedColumn: fk.referencedColumn,
-                               referencedDatabase: fk.referencedDatabase,
-                               referencedSchema: fk.referencedSchema,
-                               onDelete: fk.onDelete, onUpdate: fk.onUpdate)
-            }
-        }
-        return result
+        return pluginResult.mapValues { $0.map(ForeignKeyInfo.init) }
     }
 
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
