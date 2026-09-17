@@ -31,8 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Column collation dropped by PostgreSQL Copy To, table DDL, column type changes and column reorder scripts.
 - PostgreSQL Copy To failing on a column default that passes a sequence to a function or casts it to a type.
 - Compare & Sync rewriting a column's collation while collation differences are ignored.
-- PostgreSQL Copy To recreating an expression index without its expressions.
-- PostgreSQL Copy To failing on a partial index whose condition calls a function outside the target schema.
+- PostgreSQL expression indexes missing from the Indexes tab and Copy To, or shown without their expression keys.
+- PostgreSQL `INCLUDE` columns shown, copied and recreated as index key columns.
+- PostgreSQL Copy To failing on a `gin_trgm_ops` index, or a partial index naming a type or function in another schema.
+- PostgreSQL Copy To and index renames losing an index's operator classes, collation, sort order and storage parameters.
 
 ## [0.75.0] - 2026-09-17
 
