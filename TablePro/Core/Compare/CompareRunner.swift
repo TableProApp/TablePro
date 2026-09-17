@@ -298,8 +298,12 @@ internal struct CompareRunner {
         let sourceTables = sourceReads.filter { CompareTableKindClassifier.kind(of: $0.table) == .table }
         let targetTables = targetReads.filter { CompareTableKindClassifier.kind(of: $0.table) == .table }
 
-        let sourceSnapshots = sourceTables.compactMap { $0.snapshot }
-        let targetSnapshots = targetTables.compactMap { $0.snapshot }
+        let sourceSnapshots = sourceTables.compactMap {
+            $0.snapshot?.droppingCatalogSpellings(ownSchema: context.source.schema)
+        }
+        let targetSnapshots = targetTables.compactMap {
+            $0.snapshot?.droppingCatalogSpellings(ownSchema: context.target.schema)
+        }
 
         let engine = StructureDiffEngine(options: session.structureOptions)
         let tableReport = engine.compare(source: sourceSnapshots, target: targetSnapshots)

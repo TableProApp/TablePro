@@ -67,6 +67,24 @@ internal struct TableStructureSnapshot: Hashable {
         )
     }
 
+    /// The same structure said in the spellings a target schema resolves, which is the one
+    /// vocabulary a comparison, its definitions, its change guard and its script all read.
+    ///
+    /// A catalog spelling names the schema it was read from, so comparing two schemas' own types
+    /// reported every one of them as changed, and writing one bound the target's column to the
+    /// source's type. The declared spellings are already relative to the schema each side was read
+    /// from, which is the rule a copy applies to a reference to the source's own schema.
+    internal func droppingCatalogSpellings(ownSchema: String?) -> TableStructureSnapshot {
+        var copy = self
+        copy.columns = columns.map { $0.droppingCatalogSpellings(collationRelativeTo: ownSchema) }
+        copy.indexes = indexes.map { index in
+            var relative = index
+            relative.dropCatalogSpellings()
+            return relative
+        }
+        return copy
+    }
+
     /// The same structure with every definition under one shared `id`, so two reads of a table
     /// nobody touched compare equal. Replacing the three arrays on a copy, rather than rebuilding
     /// the snapshot, keeps every other field in the comparison.

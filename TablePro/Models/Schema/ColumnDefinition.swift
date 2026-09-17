@@ -127,6 +127,24 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         catalogCollation = nil
     }
 
+    /// The same column with the catalog's own spellings dropped and its collation said the way
+    /// another schema resolves it: the one name a comparison still has to write.
+    ///
+    /// `dataType`, `defaultValue` and `generationExpression` are already schema-relative on the side
+    /// they were read from, so the catalog spellings, which name the source's schema, would bind the
+    /// target's column to the source's types. A collation has no such spelling to fall back on:
+    /// dropped outright, `ALTER ... TYPE` resets the column to its type's default collation, which
+    /// changes sort order and uniqueness on a column the comparison reported as matching.
+    func droppingCatalogSpellings(collationRelativeTo schema: String?) -> EditableColumnDefinition {
+        var copy = self
+        let collationSpelling = catalogCollation
+        copy.dropCatalogSpellings()
+        copy.catalogCollation = collationSpelling.map {
+            CatalogSpelling(value: $0.value, spelling: SchemaRelativeSpelling.of($0.spelling, ownSchema: schema))
+        }
+        return copy
+    }
+
     /// The same column holding `other`'s character set and collation, with the catalog spelling
     /// that goes with them.
     ///
