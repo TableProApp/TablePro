@@ -6,9 +6,9 @@
 import Foundation
 import os
 
-/// The type names one connection has learned and the PostGIS types its probe found. The connection's
-/// queue reads them while a result arrives and the driver writes them from its own task, so they
-/// carry a lock of their own. A learned name wins over the built-in table, and an oid neither knows is
+/// The type names one connection has learned and the PostGIS types its probe found. They are read and
+/// written both on the connection's queue and off it, so they carry a lock of their own. A learned
+/// name wins over the built-in table, and an oid neither knows is
 /// `PostgreSQLCatalogTypeNames.unresolved`. An oid learned as unresolved counts as learned, so the
 /// catalog is asked about it once.
 final class LibPQTypeNameRegistry: Sendable {
