@@ -41,6 +41,9 @@ internal extension MainSplitViewController {
             AgentSessionRegistry.shared.resolveSession(for: connectionId, startingIfNeeded: true)
         }
 
+        /// The floor follows the mode in both directions, and writes nothing to the connection: the
+        /// level the user chose is handed straight back on the way out.
+        AgentModeSafeModeFloor.reapply(for: connectionId)
         applyContentMode(for: workspace)
     }
 

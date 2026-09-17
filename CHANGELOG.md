@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Network Encryption** on the Oracle connection form, matching `SQLNET.ENCRYPTION_CLIENT`. (#2919)
 - **Agent** mode, giving one session the whole connection window: its sessions, its conversation, and what it ran.
 - **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
+- Agent mode holds its connection at Safe Mode **Alert** while it is on, and hands back the level you set on the way out.
 
 ### Changed
 

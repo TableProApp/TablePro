@@ -652,13 +652,26 @@ extension DatabaseManager {
         setSafeModeLevel(level, for: connectionId)
     }
 
+    /// Recomputes the level in force without touching the user's own choice.
+    ///
+    /// Agent mode raises a floor, and a floor is never written into the stored setting: leaving the
+    /// mode hands the user's level back with nothing to undo. The session's cached level is what the
+    /// execution gate reads, so it is the one thing that has to be refreshed.
+    func refreshSafeModeFloor(for connectionId: UUID) {
+        guard var session = activeSessions[connectionId] else { return }
+        let resolved = AgentModeSafeModeFloor.level(for: session.connection)
+        guard session.safeModeLevel != resolved else { return }
+        session.safeModeLevel = resolved
+        setSession(session, for: connectionId)
+    }
+
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard var session = activeSessions[connectionId] else { return }
         guard session.connection.preferredSafeModeLevel != level
             || session.safeModeLevel != session.connection.safeModeLevel
         else { return }
         session.connection.preferredSafeModeLevel = level
-        session.safeModeLevel = session.connection.safeModeLevel
+        session.safeModeLevel = AgentModeSafeModeFloor.level(for: session.connection)
         setSession(session, for: connectionId)
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
