@@ -41,6 +41,10 @@ internal enum CrossEngineIndexTranslator {
                 kept.append(index)
                 continue
             }
+            if let note = tableKeyNote(index, table: table, from: source, to: target) {
+                notes.append(note)
+                continue
+            }
             guard let translated = translate(
                 index,
                 table: table,
@@ -70,6 +74,10 @@ internal enum CrossEngineIndexTranslator {
                 kept.append(index)
                 continue
             }
+            if let note = tableKeyNote(index, table: table, from: source, to: target) {
+                notes.append(note)
+                continue
+            }
             guard let type = resolvedType(index.type, from: source, to: target) else {
                 notes.append(droppedForType(index, table: table))
                 continue
@@ -89,7 +97,8 @@ internal enum CrossEngineIndexTranslator {
     /// `USING` clause names. So a type outside `knownTypes` keeps its name only when the source
     /// reports its access method and the target is in PostgreSQL's family, and becomes a b-tree
     /// when the source reports something else, which is what every such type became before the
-    /// vocabulary was opened.
+    /// vocabulary was opened. A copied table leaves Redshift's keys out before asking; a pasted row
+    /// gets the b-tree.
     internal static func resolvedType(
         _ type: EditableIndexDefinition.IndexType,
         from source: DatabaseType,
@@ -115,6 +124,26 @@ internal enum CrossEngineIndexTranslator {
     /// The database types whose index type is the server's own access method, read from `pg_am`, so
     /// `BLOOM`, `HNSW` or `IVFFLAT` names something a PostgreSQL `USING` clause can write.
     private static let accessMethodSources: Set<DatabaseType> = [.postgresql, .pglite]
+
+    /// The database types whose indexes, past the primary key, are keys of the table itself:
+    /// Redshift's `DISTKEY` and `SORTKEY`, Snowflake's clustering key, and BigQuery's clustering and
+    /// partitioning. None is an index anywhere else, and each carries the same name on every table,
+    /// so written as a b-tree the second table copied into one PostgreSQL schema was refused with
+    /// `relation "DISTKEY" already exists`.
+    private static let tableKeySources: Set<DatabaseType> = [.redshift, .snowflake, .bigQuery]
+
+    private static func tableKeyNote(
+        _ index: EditableIndexDefinition,
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType
+    ) -> CrossEngineConversionNote? {
+        guard source != target, tableKeySources.contains(source) else { return nil }
+        return dropped(index, table: table, reason: String(
+            format: String(localized: "On %@ this is a key of the table, not an index."),
+            source.displayName
+        ))
+    }
 
     private static func translate(
         _ index: EditableIndexDefinition,

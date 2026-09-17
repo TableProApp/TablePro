@@ -70,15 +70,49 @@ struct CrossEngineIndexTypeTests {
         #expect(index.ddlMethodAndKeys == "USING hnsw (a vector_l2_ops)")
     }
 
-    @Test("A Redshift DISTKEY and SORTKEY reach PostgreSQL as b-trees, though the two share a family")
-    func redshiftKeysBecomeBtrees() {
+    @Test("A Redshift DISTKEY and SORTKEY are left out of a PostgreSQL copy, though the two share a family")
+    func redshiftKeysAreLeftOut() {
         let result = CrossEngineStructureTranslator.translate(
             Self.snapshot([Self.index("DISTKEY", type: "DISTKEY"), Self.index("SORTKEY", type: "SORTKEY")]),
             from: .redshift,
             to: .postgresql
         )
         #expect(!result.translated)
-        #expect(result.snapshot.indexes.map(\.type) == [.btree, .btree])
+        #expect(result.snapshot.indexes.isEmpty)
+        #expect(result.notes.map(\.subject) == ["DISTKEY", "SORTKEY"])
+        #expect(result.notes.allSatisfy { $0.reason == "On Redshift this is a key of the table, not an index." })
+    }
+
+    @Test("Snowflake and BigQuery table keys are left out of a copy to any engine, and the primary key stays")
+    func warehouseTableKeysAreLeftOut() {
+        let primaryKey = EditableIndexDefinition.from(IndexInfo(
+            name: "PRIMARY KEY", columns: ["a"], isUnique: true, isPrimary: true, type: "CONSTRAINT"
+        ))
+        let snowflake = CrossEngineStructureTranslator.translate(
+            Self.snapshot([primaryKey, Self.index("CLUSTERING KEY", type: "CLUSTERING")]),
+            from: .snowflake,
+            to: .mysql
+        )
+        #expect(snowflake.snapshot.indexes.map(\.name) == ["PRIMARY KEY"])
+        #expect(snowflake.notes.map(\.subject).filter { $0 != "a" } == ["CLUSTERING KEY"])
+
+        let bigQuery = CrossEngineStructureTranslator.translate(
+            Self.snapshot([
+                Self.index("CLUSTERING", type: "CLUSTERING"),
+                Self.index("TIME_PARTITIONING", type: "PARTITION (DAY)")
+            ]),
+            from: .bigQuery,
+            to: .postgresql
+        )
+        #expect(bigQuery.snapshot.indexes.isEmpty)
+        #expect(bigQuery.notes.map(\.subject).filter { $0 != "a" } == ["CLUSTERING", "TIME_PARTITIONING"])
+    }
+
+    @Test("A copy from Redshift to Redshift keeps its keys")
+    func redshiftToRedshiftKeepsItsKeys() {
+        let source = Self.snapshot([Self.index("DISTKEY", type: "DISTKEY")])
+        let result = CrossEngineStructureTranslator.translate(source, from: .redshift, to: .redshift)
+        #expect(result.snapshot == source)
         #expect(result.notes.isEmpty)
     }
 
@@ -113,15 +147,19 @@ struct CrossEngineIndexTypeTests {
         #expect(resolve(.spgist, .postgresql, .cockroachdb) == .spgist)
     }
 
-    /// Redshift and PostgreSQL share a family, so nothing translated the table, and a kept `DISTKEY`
-    /// reaches the index writer as `USING distkey`. Measured on PostgreSQL 17.11, that is refused with
-    /// `access method "distkey" does not exist`, and the `USING btree` below is created.
-    @Test("A Redshift table copied to PostgreSQL writes its keys as b-tree indexes")
-    func redshiftCopyWritesBtree() throws {
+    /// Every Redshift table with a distribution key reports it under the name `DISTKEY`, and a
+    /// PostgreSQL index name is unique within its schema. Written as a b-tree, measured on
+    /// PostgreSQL 17.11, the second table's `CREATE INDEX "DISTKEY"` was refused with
+    /// `relation "DISTKEY" already exists`.
+    @Test("A Redshift table copied to PostgreSQL creates no index from its keys and names them in the review")
+    func redshiftCopyWritesNoKeyIndex() throws {
         let read = TableStructureRead(
             table: PluginTableInfo(name: "events", type: "TABLE", schema: "public", comment: nil),
             columns: [PluginColumnInfo(name: "user_id", dataType: "integer")],
-            indexes: [PluginIndexInfo(name: "DISTKEY", columns: ["user_id"], type: "DISTKEY")],
+            indexes: [
+                PluginIndexInfo(name: "DISTKEY", columns: ["user_id"], type: "DISTKEY"),
+                PluginIndexInfo(name: "SORTKEY", columns: ["user_id"], type: "SORTKEY")
+            ],
             foreignKeys: [],
             metadata: nil,
             failure: nil
@@ -144,12 +182,8 @@ struct CrossEngineIndexTypeTests {
                 existingPolicy: .skip
             )
         )
-        let index = try #require(draft.targetStructure.indexes.first)
-        #expect(index.type == .btree)
-        #expect(
-            PostgreSQLIndexClauses.createStatement(for: index.toPlugin(), qualifiedTable: #""public"."events""#)
-                == #"CREATE INDEX "DISTKEY" ON "public"."events" USING btree ("user_id")"#
-        )
+        #expect(draft.targetStructure.indexes.isEmpty)
+        #expect(draft.conversionNotes.map(\.subject) == ["DISTKEY", "SORTKEY"])
     }
 
     private static func endpoint(_ type: DatabaseType) -> DatabaseEndpoint {

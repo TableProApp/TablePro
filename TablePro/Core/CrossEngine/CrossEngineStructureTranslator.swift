@@ -13,7 +13,7 @@
 //  kind. Translating exactly those is what turns a refusal into a copy.
 //
 //  Same-family pairs return the snapshot they were given, byte for byte, apart
-//  from an index type the target cannot name. A MySQL to MariaDB copy runs the
+//  from an index the target cannot write. A MySQL to MariaDB copy runs the
 //  path it always ran, which is the only way a change this wide can be trusted
 //  not to move what already worked.
 //
@@ -53,8 +53,8 @@ internal enum CrossEngineStructureTranslator {
         let targetFamily = SQLTypeFamily.of(target)
         guard SQLTypeFamily.needsTranslation(from: source, to: target) else {
             let kinds = kinds(of: snapshot, family: targetFamily)
-            /// A family shares type spellings, not index types: Redshift reports `DISTKEY` and
-            /// `SORTKEY`, and PostgreSQL writes an index type it does not know into `USING`.
+            /// A family shares type spellings, not indexes: Redshift reports its `DISTKEY` and
+            /// `SORTKEY` as indexes, and PostgreSQL writes an index type it does not know into `USING`.
             let indexOutcome = CrossEngineIndexTranslator.retyped(
                 snapshot.indexes, table: snapshot.name, from: source, to: target
             )
