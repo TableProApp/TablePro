@@ -346,7 +346,7 @@ struct MainContentView: View {
             /// A value window detached from a field goes on writing while the JSON rendering is the
             /// one on screen, and it moves nothing the trigger above watches. Debounced, because it
             /// commits per keystroke and rebuilding the JSON tree cancels the reader's fetches.
-            .onChange(of: coordinator.inspectorRowContentRevision) { _ in
+            .onReceive(coordinator.inspectorRowContentChanged) { _ in
                 scheduleInspectorContextRefresh()
             }
             .onAppear {

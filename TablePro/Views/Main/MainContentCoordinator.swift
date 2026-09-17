@@ -232,10 +232,15 @@ final class MainContentCoordinator: ObservableObject {
     /// AppKit object reached through observation-ignored hops, so it cannot invalidate a view.
     @Published var gridDisplayRevision: Int = 0
 
-    /// Bumped when an inspector edit rewrites the selected row's values, so the inspector's JSON
+    /// Sent when an inspector edit rewrites the selected row's values, so the inspector's JSON
     /// rendering re-reads the row. Apart from `gridDisplayRevision`, which drives a full rebuild of
     /// the field list and takes first responder out of whatever is being typed into.
-    var inspectorRowContentRevision: Int = 0
+    ///
+    /// An event rather than a published counter. The counter it replaces was not published, so the
+    /// `onChange` that read it never fired and the JSON rendering went stale. Publishing it would
+    /// have redrawn every view that observes this coordinator on each keystroke a detached value
+    /// window commits, and only one of them wants to know.
+    let inspectorRowContentChanged = PassthroughSubject<Void, Never>()
 
     /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
     weak var dataTabDelegate: DataTabGridDelegate?
