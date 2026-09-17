@@ -20,7 +20,8 @@ struct PluginColumnInfoCollationCodableTests {
             ddlSpelling: "text",
             ddlDefault: nil,
             ddlGenerationExpression: nil,
-            ddlCollation: #"app."Case Insens""#
+            ddlCollation: #"app."Case Insens""#,
+            classificationTypeName: "ENUM"
         )
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(PluginColumnInfo.self, from: data)

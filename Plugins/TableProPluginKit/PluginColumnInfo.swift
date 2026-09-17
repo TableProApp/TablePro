@@ -18,6 +18,12 @@ public enum GenerationKind: String, Codable, Sendable, CaseIterable {
 
 public struct PluginColumnInfo: Codable, Sendable {
     public let name: String
+    /// The type as the server declares it, which is what every display of the column shows.
+    ///
+    /// It carries the modifier and names the type the way the server writes it relative to the
+    /// table's own schema: `character varying(50)`, `numeric(10,2)`, an enum by its name, a type
+    /// from another schema qualified. A driver whose catalog reports a classified name instead sets
+    /// `classificationTypeName`, because this one is no longer the name the app classifies.
     public let dataType: String
     public let isNullable: Bool
     public let isPrimaryKey: Bool
@@ -74,8 +80,20 @@ public struct PluginColumnInfo: Codable, Sendable {
     /// schema. This spelling is qualified and quoted, and set only when the column declares a
     /// collation its type does not, so a DDL writer emits it verbatim.
     public let ddlCollation: String?
+    /// The name the app classifies the column by, or nil to classify `dataType`.
+    ///
+    /// A declared spelling says what the column holds only where the app knows the type. PostgreSQL
+    /// spells an enum column by the enum's name, a domain column by the domain's name and a PostGIS
+    /// column `public.geometry(Point,4326)`, and none of those names a kind: classified, they all
+    /// read as text, which takes the value picker off an enum and the spatial rendering off a
+    /// geometry. This is the classified name for exactly those columns, `ENUM`, `INTEGER`,
+    /// `geometry`, and nil wherever the declared spelling classifies the same.
+    public let classificationTypeName: String?
 
     public var isIdentity: Bool { identityKind != nil }
+
+    /// What a classifier reads: the hint where the driver set one, the declared type otherwise.
+    public var typeNameForClassification: String { classificationTypeName ?? dataType }
 
     /// The signature published before generated-column detail existed. Kept byte-identical and
     /// disfavoured so plugins built against an older PluginKit keep resolving their own mangled
@@ -114,6 +132,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
         self.ddlCollation = nil
+        self.classificationTypeName = nil
     }
 
     /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
@@ -153,6 +172,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
         self.ddlCollation = nil
+        self.classificationTypeName = nil
     }
 
     /// The signature published before `ddlCollation` existed, kept byte-identical and disfavoured for
@@ -195,8 +215,12 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = nil
+        self.classificationTypeName = nil
     }
 
+    /// The signature published before `classificationTypeName` existed, kept byte-identical and
+    /// disfavoured for the same reason as the ones above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -235,5 +259,48 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
+        self.classificationTypeName = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        isPrimaryKey: Bool = false,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        identityKind: IdentityKind? = nil,
+        isGenerated: Bool = false,
+        allowedValues: [String]? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?,
+        ddlCollation: String?,
+        classificationTypeName: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.identityKind = identityKind
+        self.isGenerated = isGenerated
+        self.allowedValues = allowedValues
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
+        self.classificationTypeName = classificationTypeName
     }
 }

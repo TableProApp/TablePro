@@ -68,7 +68,8 @@ struct StructureCollationSpellingTests {
             ddlSpelling: "text",
             ddlDefault: nil,
             ddlGenerationExpression: nil,
-            ddlCollation: #"pg_catalog."C""#
+            ddlCollation: #"pg_catalog."C""#,
+            classificationTypeName: nil
         )
         let snapshot = TableStructureSnapshot.from(
             table: PluginTableInfo(name: "orders", schema: "sales", comment: nil),

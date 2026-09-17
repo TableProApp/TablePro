@@ -247,7 +247,7 @@ final class QueryExecutor {
         for col in schema.columns {
             if let values = col.allowedValues, !values.isEmpty {
                 enumValues[col.name] = values
-            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.dataType), !values.isEmpty {
+            } else if let values = EnumValueParser.parseMySQLEnumOrSet(from: col.typeNameForClassification), !values.isEmpty {
                 enumValues[col.name] = values
             }
             if let comment = col.comment?.nilIfEmpty {
@@ -281,7 +281,7 @@ final class QueryExecutor {
     static func columns(in columns: [ColumnInfo], typedAnyOf typePrefixes: [String]) -> Set<String> {
         guard !typePrefixes.isEmpty else { return [] }
         return Set(columns.filter { column in
-            let dataType = column.dataType.uppercased()
+            let dataType = column.typeNameForClassification.uppercased()
             return typePrefixes.contains { dataType.hasPrefix($0) }
         }.map(\.name))
     }

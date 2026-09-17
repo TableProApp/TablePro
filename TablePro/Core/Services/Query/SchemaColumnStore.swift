@@ -126,7 +126,7 @@ extension SchemaColumnStore.Entry {
             columns: fetchedColumns.map(\.name),
             primaryKeys: fetchedColumns.filter(\.isPrimaryKey).map(\.name),
             columnTypes: Dictionary(
-                fetchedColumns.map { ($0.name, classifier.classify(rawTypeName: $0.dataType)) },
+                fetchedColumns.map { ($0.name, classifier.classify(rawTypeName: $0.typeNameForClassification)) },
                 uniquingKeysWith: { first, _ in first }
             )
         )
