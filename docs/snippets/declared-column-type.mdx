@@ -1,0 +1,4 @@
+A column's type reads the way the server declares it, with its length, precision and type name:
+`character varying(50)`, `numeric(10,2)`, `timestamp(3) with time zone`, an enum or a domain under
+its own name. On PostgreSQL a type from another schema is qualified, and so is a type an extension
+owns wherever the table lives, so a PostGIS column reads `public.geometry(Point,4326)`.

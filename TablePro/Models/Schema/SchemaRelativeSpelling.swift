@@ -19,6 +19,17 @@ internal enum SchemaRelativeSpelling {
         return split.rest
     }
 
+    /// The type name with any schema off it, which is what two schemas of one database and two
+    /// servers that installed an extension in different schemas have in common.
+    ///
+    /// Only a qualifier before the type's own parameters is one: `numeric(10,2)` has no schema, and
+    /// the separator inside `geometry(Point,4326)` belongs to the parameter list.
+    internal static func unqualified(_ type: String) -> String {
+        let head = type.prefix { $0 != "(" && $0 != "[" }
+        guard let split = splitQualifier(String(head)) else { return type }
+        return split.rest + type.dropFirst(head.count)
+    }
+
     private static func splitQualifier(_ qualified: String) -> (schema: String, rest: String)? {
         var characters = Array(qualified)
         guard let first = characters.first else { return nil }

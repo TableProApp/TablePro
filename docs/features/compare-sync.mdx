@@ -42,7 +42,7 @@ Nothing is written until **Apply**. Until then the strip along the top reads **C
 
 Tables are never compared as DDL text. Driver-rendered DDL varies by formatting and by system-generated constraint names, which reports identical tables as different. A routine has no parsed form to compare instead, so its body is the definition, and the normalizer folds line endings, trailing semicolons and, when the options say so, whitespace and identifier case.
 
-A column's type is compared as the server declares it, so `character varying(10)` against `character varying(50)` and `numeric(10,2)` against `numeric(12,4)` are differences, and so are two different enum types. On PostgreSQL a type in the table's own schema matches the other side's type of the same name: two schemas that each carry their own `status` enum compare equal. A type an extension owns is compared qualified on both sides, so a PostGIS column in `public` matches one in `staging`. A type the source's schema has and the target's does not is reported as a difference, and its `ALTER … TYPE` fails on the target with `type "…" does not exist`.
+A column's type is compared as the server declares it, so `character varying(10)` against `character varying(50)` and `numeric(10,2)` against `numeric(12,4)` are differences, and so are two different enum types. The schema a type was found in is not part of the comparison: two schemas that each carry their own `status` enum compare equal, and a PostGIS column matches whichever schema each side installed the extension into. A type the target does not have at all is still written, and its `ALTER … TYPE` fails there with `type "…" does not exist`.
 
 ### What is ignored
 
