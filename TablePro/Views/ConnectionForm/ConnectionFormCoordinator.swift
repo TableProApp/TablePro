@@ -61,6 +61,8 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     @Published private var temporaryTestIds: Set<UUID> = []
 
+    private var childChangeForwarding: AnyCancellable?
+
     let services: AppServices
     var storage: ConnectionStorage { services.connectionStorage }
     @Published var dismissAction: (() -> Void)?
@@ -137,6 +139,38 @@ final class ConnectionFormCoordinator: ObservableObject {
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+
+        childChangeForwarding = forwardChildChanges()
+    }
+
+    /// Every pane observes this coordinator and reads its values through a child, as in
+    /// `coordinator.network.type`. `@Published` on a child only fires when the reference is
+    /// replaced, never when a value inside it changes, so without this a pane stayed as it was
+    /// drawn: picking Sentinel left the Redis mode picker on Standalone with the host field still
+    /// showing. The send is synchronous because SwiftUI needs `objectWillChange` before the value
+    /// lands, and `switchToLatest` moves the subscription to a replacement child.
+    private func forwardChildChanges() -> AnyCancellable {
+        Publishers.MergeMany([
+            Self.changes(of: $network),
+            Self.changes(of: $auth),
+            Self.changes(of: $ssh),
+            Self.changes(of: $remoteFile),
+            Self.changes(of: $cloudflareTunnel),
+            Self.changes(of: $cloudSQLProxy),
+            Self.changes(of: $socksProxy),
+            Self.changes(of: $tunnelCommand),
+            Self.changes(of: $ssl),
+            Self.changes(of: $customization),
+            Self.changes(of: $advanced),
+            Self.changes(of: $aiRules),
+        ])
+        .sink { [weak self] in self?.objectWillChange.send() }
+    }
+
+    private static func changes<Child: ObservableObject>(
+        of child: Published<Child>.Publisher
+    ) -> AnyPublisher<Void, Never> where Child.ObjectWillChangePublisher == ObservableObjectPublisher {
+        child.map(\.objectWillChange).switchToLatest().eraseToAnyPublisher()
     }
 
     /// Performs the one-time side-effecting setup: applying initial type
