@@ -103,7 +103,7 @@ Everything that runs goes to query history rather than the change queue.
 | Field | Description |
 |-------|-------------|
 | **Columns** | Key columns and expressions in key order, such as `tenant_id, lower(email)`. MySQL prefix lengths are written as `email(20)`. A PostgreSQL index's `INCLUDE` columns are not listed, and editing the index keeps them. An expression typed here is read as a column name, so create a new expression index in the SQL editor. Pasted into a MySQL, SQLite or other non-PostgreSQL table, an index leaves its `INCLUDE` columns behind and each expression becomes a column name the row flags until you replace it |
-| **Type** | The type the server reports, such as `HNSW` from pgvector or `CLUSTERED` on SQL Server. The menu lists that type beside BTREE, HASH, FULLTEXT and SPATIAL (MySQL), GIN, GIST, SPGIST (PostgreSQL 9.2 and later) and BRIN (PostgreSQL 9.5 and later). Pasted into a table on another database type, an index whose type that engine lacks becomes BTREE |
+| **Type** | The type the server reports, such as `HNSW` from pgvector or `CLUSTERED` on SQL Server. The menu lists that type beside BTREE, HASH, FULLTEXT and SPATIAL (MySQL), GIN, GIST, SPGIST (PostgreSQL 9.2 and later) and BRIN (PostgreSQL 9.5 and later). A SQL Server table has one clustered index, so a duplicated or pasted `CLUSTERED` index becomes `NONCLUSTERED` when the table already has one. Pasted into a table on another database type, an index whose type that engine lacks becomes BTREE |
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | `WHERE` predicate for partial indexes (PostgreSQL, SQLite, libSQL, Cloudflare D1) |
 

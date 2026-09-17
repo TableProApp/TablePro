@@ -88,10 +88,18 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         static let gist = IndexType(rawValue: "GIST")
         static let brin = IndexType(rawValue: "BRIN")
         static let spgist = IndexType(rawValue: "SPGIST")
+        static let clustered = IndexType(rawValue: "CLUSTERED")
+        static let nonclustered = IndexType(rawValue: "NONCLUSTERED")
 
         /// The types the structure editor offers for a new index, before a driver takes out the
         /// ones its server lacks.
         static let knownTypes: [IndexType] = [.btree, .hash, .fulltext, .spatial, .gin, .gist, .brin, .spgist]
+
+        /// Whether the index is the one SQL Server keeps the table's rows in, `CLUSTERED` or
+        /// `CLUSTERED COLUMNSTORE`. A table has at most one.
+        var ordersTableRows: Bool {
+            self == .clustered || rawValue.hasPrefix("CLUSTERED ")
+        }
     }
 
     init(
@@ -234,6 +242,21 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
         var copy = self
         copy.id = UUID()
         return copy
+    }
+
+    /// This index added to a table that keeps `remaining`, the indexes it will still have when the
+    /// add runs.
+    ///
+    /// A SQL Server table keeps its rows in the order of one clustered index, and its primary key is
+    /// that index unless it says otherwise. So a `CLUSTERED` copy beside one, which is what Duplicate
+    /// and a paste into the same table stage, is written `NONCLUSTERED`: the type the server reports
+    /// for every other index. Kept, the save wrote `CREATE CLUSTERED INDEX` and the server refused it
+    /// with "Cannot create more than one clustered index on table".
+    func addedBeside(_ remaining: [EditableIndexDefinition]) -> EditableIndexDefinition {
+        guard type == .clustered, remaining.contains(where: \.type.ordersTableRows) else { return self }
+        var added = self
+        added.type = .nonclustered
+        return added
     }
 
     /// A copy under a fresh identity for a paste into a table on `target`, copied from a table on
