@@ -36,7 +36,7 @@
 
 /* MONGOC_USER_SET_CFLAGS is set from config based on what compiler flags were
  * used to compile mongoc */
-#define MONGOC_USER_SET_CFLAGS "-mmacosx-version-min=14.0"
+#define MONGOC_USER_SET_CFLAGS "-mmacosx-version-min=13.0"
 
 #define MONGOC_USER_SET_LDFLAGS ""
 
