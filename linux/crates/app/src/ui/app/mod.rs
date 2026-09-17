@@ -353,6 +353,7 @@ pub enum AppMsg {
     ExportResults {
         result: QueryResult,
         name: String,
+        target: Option<super::export_dialog::SqlTarget>,
     },
     CopyToClipboard(String),
     CopyRowAsInsert {
@@ -1446,8 +1447,8 @@ impl SimpleComponent for App {
                 &self.tasks,
             )
             .present(Some(&self.window)),
-            AppMsg::ExportResults { result, name } => {
-                super::export_dialog::present(&self.window, &self.toast_overlay, result, name, &self.settings)
+            AppMsg::ExportResults { result, name, target } => {
+                super::export_dialog::present(&self.window, &self.toast_overlay, result, name, target, &self.settings)
             }
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),

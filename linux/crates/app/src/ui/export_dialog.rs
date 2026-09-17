@@ -7,6 +7,16 @@ use relm4::{adw, gtk};
 use tablepro_core::QueryResult;
 use tablepro_core::export::{self, CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 
+/// What a result needs to be written back as `INSERT` statements.
+///
+/// A browse tab knows both; a query result does not, because it may
+/// join several tables or none, so SQL is not offered for one.
+#[derive(Debug, Clone)]
+pub struct SqlTarget {
+    pub table: String,
+    pub driver_id: String,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Format {
     Csv,
@@ -14,10 +24,28 @@ enum Format {
     Markdown,
     Html,
     Xml,
+    Sql,
 }
 
 impl Format {
+    /// Every format a query result can take. A browse tab adds SQL,
+    /// which needs a table to insert into.
     const ALL: [Format; 5] = [Format::Csv, Format::Json, Format::Markdown, Format::Html, Format::Xml];
+    const ALL_WITH_SQL: [Format; 6] = [
+        Format::Csv,
+        Format::Json,
+        Format::Markdown,
+        Format::Html,
+        Format::Xml,
+        Format::Sql,
+    ];
+
+    fn offered(target: Option<&SqlTarget>) -> &'static [Format] {
+        match target {
+            Some(_) => &Self::ALL_WITH_SQL,
+            None => &Self::ALL,
+        }
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -26,6 +54,7 @@ impl Format {
             Format::Markdown => "Markdown",
             Format::Html => "HTML",
             Format::Xml => "XML",
+            Format::Sql => "SQL",
         }
     }
 
@@ -36,6 +65,7 @@ impl Format {
             Format::Markdown => "md",
             Format::Html => "html",
             Format::Xml => "xml",
+            Format::Sql => "sql",
         }
     }
 
@@ -46,6 +76,7 @@ impl Format {
             Format::Markdown => "text/markdown",
             Format::Html => "text/html",
             Format::Xml => "application/xml",
+            Format::Sql => "application/sql",
         }
     }
 }
@@ -117,12 +148,14 @@ pub fn present(
     toast_overlay: &adw::ToastOverlay,
     result: QueryResult,
     name: String,
+    target: Option<SqlTarget>,
     settings: &Rc<tablepro_storage::AppSettings>,
 ) {
+    let formats = Format::offered(target.as_ref());
     let page = adw::PreferencesPage::new();
 
     let format_group = adw::PreferencesGroup::new();
-    let format_labels: Vec<&str> = Format::ALL.iter().map(|f| f.label()).collect();
+    let format_labels: Vec<&str> = formats.iter().map(|f| f.label()).collect();
     let format_row = combo_row(&crate::i18n::gettext("Format"), &format_labels);
     let rows_label = crate::i18n::ngettext_f(
         "{n} row",
@@ -214,7 +247,7 @@ pub fn present(
 
     let csv_group_for_format = csv_group.clone();
     format_row.connect_selected_notify(move |row| {
-        csv_group_for_format.set_visible(pick(&Format::ALL, row.selected()) == Format::Csv);
+        csv_group_for_format.set_visible(pick(formats, row.selected()) == Format::Csv);
     });
 
     let reset_button = gtk::Button::builder()
@@ -260,23 +293,42 @@ pub fn present(
     let toast_overlay = toast_overlay.clone();
     let dialog_for_export = dialog.clone();
     export_button.connect_clicked(move |_| {
-        let format = pick(&Format::ALL, format_row.selected());
+        let format = pick(formats, format_row.selected());
         let options = rows.read();
         dialog_for_export.close();
-        save_with_file_dialog(&window, &toast_overlay, format, &name, result.clone(), options);
+        save_with_file_dialog(
+            &window,
+            &toast_overlay,
+            Export {
+                format,
+                name: name.clone(),
+                target: target.clone(),
+                result: result.clone(),
+                options,
+            },
+        );
     });
 
     dialog.present(Some(parent));
 }
 
-fn save_with_file_dialog(
-    parent: &adw::ApplicationWindow,
-    toast_overlay: &adw::ToastOverlay,
+/// One export, as the dialog left it.
+struct Export {
     format: Format,
-    name: &str,
+    name: String,
+    target: Option<SqlTarget>,
     result: QueryResult,
     options: CsvOptions,
-) {
+}
+
+fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::ToastOverlay, export: Export) {
+    let Export {
+        format,
+        name,
+        target,
+        result,
+        options,
+    } = export;
     let filter = gtk::FileFilter::new();
     filter.set_name(Some(&crate::i18n::gettext_f(
         "{format} files",
@@ -298,7 +350,7 @@ fn save_with_file_dialog(
     let toast_overlay = toast_overlay.clone();
     // The HTML document titles itself after the export, and the
     // callback outlives this call, so it carries its own copy.
-    let title = name.to_owned();
+    let title = name.clone();
     file_dialog.save(Some(parent), gio::Cancellable::NONE, move |outcome| {
         let Ok(file) = outcome else { return };
         let Some(path) = file.path() else { return };
@@ -308,6 +360,17 @@ fn save_with_file_dialog(
             Format::Markdown => Ok(export::render_markdown(&result.columns, &result.rows)),
             Format::Html => Ok(export::render_html(&result.columns, &result.rows, &title)),
             Format::Xml => Ok(export::render_xml(&result.columns, &result.rows)),
+            Format::Sql => match target.as_ref() {
+                Some(target) => Ok(export::render_sql_insert(
+                    tablepro_core::dialect::dialect_for(&target.driver_id),
+                    &target.table,
+                    &result.columns,
+                    &result.rows,
+                )),
+                // The format is only offered with a target, so this is
+                // unreachable through the dialog.
+                None => Err(crate::i18n::gettext("This result has no table to insert into.")),
+            },
         };
         let written = encoded.and_then(|text| std::fs::write(&path, text).map_err(|e| e.to_string()));
         match written {

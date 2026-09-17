@@ -1,7 +1,6 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 
-use tablepro_core::column::ColumnType;
 use tablepro_core::{DriverError, Value};
 use uuid::Uuid;
 
@@ -115,21 +114,9 @@ impl App {
             return;
         };
         let dialect = tablepro_core::dialect::dialect_for(&driver_id);
-        let cols: Vec<String> = columns.iter().map(|c| dialect.quote_identifier(&c.name)).collect();
-        let values: Vec<String> = row
-            .iter()
-            .enumerate()
-            .map(|(index, value)| match columns.get(index) {
-                Some(column) => format_sql_literal(dialect, value, &column.column_type),
-                None => "NULL".to_owned(),
-            })
-            .collect();
-        let sql = format!(
-            "INSERT INTO {} ({}) VALUES ({});",
-            dialect.quote_identifier(&table),
-            cols.join(", "),
-            values.join(", "),
-        );
+        let result_columns: Vec<_> = columns.iter().map(|column| column.result_column()).collect();
+        let sql = tablepro_core::export::render_sql_insert(dialect, &table, &result_columns, std::slice::from_ref(row));
+        let sql = sql.trim_end().to_owned();
         self.window.clipboard().set_text(&sql);
         self.show_toast(&crate::i18n::gettext("INSERT statement copied"));
     }
@@ -174,19 +161,6 @@ fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[
         "{n} rows could not be located. They may have been changed by another session. Refresh and review.",
         &[("n", &total.to_string())],
     ))
-}
-
-/// A value as a SQL literal for the "Copy row as INSERT" clipboard
-/// helper, in the dialect of the connection it came from.
-///
-/// A blob is left out with a comment rather than guessed at: its
-/// literal spelling differs on every engine, and getting it wrong
-/// writes the wrong bytes instead of failing.
-fn format_sql_literal(dialect: &dyn tablepro_core::dialect::SqlDialect, v: &Value, column_type: &ColumnType) -> String {
-    match dialect.literal(v, column_type) {
-        Ok(text) => text,
-        Err(_) => "/* omitted */ NULL".into(),
-    }
 }
 
 #[cfg(test)]

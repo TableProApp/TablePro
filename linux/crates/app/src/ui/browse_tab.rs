@@ -300,7 +300,11 @@ pub enum BrowseTabOutput {
     CopyToClipboard(String),
     /// "Export Results…" from the grid menu or the paginator button.
     /// Carries the rows to write and a suggested file name stem.
-    ExportResults { result: QueryResult, name: String },
+    ExportResults {
+        result: QueryResult,
+        name: String,
+        target: Option<crate::ui::export_dialog::SqlTarget>,
+    },
     /// Column-name vocabulary for editor autocomplete; App merges across tabs.
     SchemaWordsChanged(Vec<String>),
     /// Show a generic info dialog for "Cannot edit / select exactly one row".
@@ -329,6 +333,15 @@ pub enum BrowseTabOutput {
 impl BrowseTab {
     pub fn snapshot(&self) -> Option<QueryResult> {
         self.current_result.clone()
+    }
+
+    /// The table a browse tab's rows came from, so an export can
+    /// write them back as `INSERT` statements.
+    fn sql_target(&self) -> crate::ui::export_dialog::SqlTarget {
+        crate::ui::export_dialog::SqlTarget {
+            table: self.table.clone(),
+            driver_id: self.driver_id.clone(),
+        }
     }
 
     fn export_name(&self) -> String {
@@ -2299,6 +2312,7 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::ExportResults {
                     result,
                     name: self.export_name(),
+                    target: Some(self.sql_target()),
                 });
             }
             BrowseTabInput::ExportCurrentPage => {
@@ -2309,6 +2323,7 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::ExportResults {
                     result,
                     name: self.export_name(),
+                    target: Some(self.sql_target()),
                 });
             }
             BrowseTabInput::GridDeleteRowAt { row_position } => {
