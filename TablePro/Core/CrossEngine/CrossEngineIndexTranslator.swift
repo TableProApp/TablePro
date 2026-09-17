@@ -7,9 +7,10 @@
 //  An index is the part of a copy that fails loudest. A `GIN` index arrives at
 //  MySQL as a plain `INDEX` over a column that is now `JSON`, and MySQL refuses
 //  the whole `CREATE TABLE` for it; an index over a column that became
-//  `LONGTEXT` is refused with "used in key specification without a key length".
-//  Both take the table down with them, so an index that cannot be written is
-//  dropped here and named in the review instead.
+//  `LONGTEXT` is refused with "used in key specification without a key length",
+//  and one over two `VARCHAR(500)` columns with "Specified key was too long".
+//  Each takes the table down with it, so an index that cannot be written as it
+//  was is cut to prefixes or dropped here, and named in the review instead.
 //
 
 import Foundation
@@ -21,15 +22,12 @@ internal enum CrossEngineIndexTranslator {
         internal let notes: [CrossEngineConversionNote]
     }
 
-    /// The length a text key is cut to where the engine needs one. 255 is what MySQL's own
-    /// tooling uses and it fits inside the 3072-byte limit of a four-byte character set.
-    private static let textKeyPrefix = 255
-
+    /// `columnKinds` is what each column holds on the target, keyed by its name in lowercase.
     internal static func translate(
         _ indexes: [EditableIndexDefinition],
         table: String,
         to family: SQLTypeFamily,
-        unboundedColumns: Set<String>
+        columnKinds: [String: CanonicalTypeKind]
     ) -> Result {
         var kept: [EditableIndexDefinition] = []
         var notes: [CrossEngineConversionNote] = []
@@ -43,7 +41,7 @@ internal enum CrossEngineIndexTranslator {
                 continue
             }
             guard let translated = translate(
-                index, table: table, to: family, unboundedColumns: unboundedColumns, notes: &notes
+                index, table: table, to: family, columnKinds: columnKinds, notes: &notes
             ) else { continue }
             kept.append(translated)
         }
@@ -54,7 +52,7 @@ internal enum CrossEngineIndexTranslator {
         _ index: EditableIndexDefinition,
         table: String,
         to family: SQLTypeFamily,
-        unboundedColumns: Set<String>,
+        columnKinds: [String: CanonicalTypeKind],
         notes: inout [CrossEngineConversionNote]
     ) -> EditableIndexDefinition? {
         guard supportsSecondaryIndexes(family) else {
@@ -72,7 +70,7 @@ internal enum CrossEngineIndexTranslator {
             return nil
         }
 
-        let unbounded = index.columns.filter { unboundedColumns.contains($0.lowercased()) }
+        let unbounded = index.columns.filter { CrossEngineKeyWidth.isUnbounded(columnKinds[$0.lowercased()]) }
         if !unbounded.isEmpty, !supportsKeyPrefixes(family) {
             notes.append(dropped(index, table: table, reason: String(
                 format: String(
@@ -85,28 +83,23 @@ internal enum CrossEngineIndexTranslator {
 
         var translated = index
         translated.type = type
-        translated.columnPrefixes = keyPrefixes(
-            index, family: family, unboundedColumns: unboundedColumns
-        )
-        /// A prefix on a unique index is not the same constraint. Two rows differing only after the
-        /// prefix collide, so the copy fails part way through the data phase on a table the source
-        /// considered valid, and where the rows do fit the target enforces less than the source did.
-        if !unbounded.isEmpty, index.isUnique {
-            notes.append(CrossEngineConversionNote(
-                table: table,
-                subject: index.name,
-                summary: String(
-                    format: String(localized: "%1$@ becomes unique on the first %2$lld characters"),
-                    index.name, textKeyPrefix
-                ),
-                reason: String(
-                    format: String(
-                        localized: "%@ is unbounded text here, which this engine indexes only by a prefix. Rows differing only past that are refused as duplicates."
-                    ),
-                    unbounded.joined(separator: ", ")
-                ),
-                fidelity: .approximated
-            ))
+        /// Carried to an engine without key prefixes the number is ignored by its driver, so it is
+        /// not carried at all.
+        translated.columnPrefixes = [:]
+        if supportsKeyPrefixes(family) {
+            guard let prefixes = CrossEngineKeyWidth.mysqlPrefixes(
+                columns: index.columns, declared: index.columnPrefixes, kinds: columnKinds
+            ) else {
+                notes.append(dropped(index, table: table, reason: String(
+                    localized: "Its columns pass the 3,072 bytes this engine can index, even with each cut to a prefix."
+                )))
+                return nil
+            }
+            translated.columnPrefixes = prefixes
+            let cut = index.columns.filter { prefixes[$0] != index.columnPrefixes[$0] }
+            if !cut.isEmpty, index.isUnique {
+                notes.append(uniqueOnPrefix(index, table: table, columns: cut))
+            }
         }
         /// A partial index is PostgreSQL's, SQLite's and DuckDB's syntax. Elsewhere the clause is
         /// dropped and the index becomes a full one, which indexes more rather than less.
@@ -125,6 +118,31 @@ internal enum CrossEngineIndexTranslator {
             ))
         }
         return translated
+    }
+
+    /// A prefix on a unique index is not the same constraint. Two rows differing only after the
+    /// prefix collide, so the copy fails part way through the data phase on a table the source
+    /// considered valid, and where the rows do fit the target enforces less than the source did.
+    private static func uniqueOnPrefix(
+        _ index: EditableIndexDefinition,
+        table: String,
+        columns: [String]
+    ) -> CrossEngineConversionNote {
+        CrossEngineConversionNote(
+            table: table,
+            subject: index.name,
+            summary: String(
+                format: String(localized: "%1$@ becomes unique on the first %2$lld characters"),
+                index.name, CrossEngineKeyWidth.prefixLength
+            ),
+            reason: String(
+                format: String(
+                    localized: "%@ is too wide for this engine to index whole, so only a prefix is indexed. Rows differing only past it are refused as duplicates."
+                ),
+                columns.joined(separator: ", ")
+            ),
+            fidelity: .approximated
+        )
     }
 
     private static func dropped(
@@ -171,21 +189,5 @@ internal enum CrossEngineIndexTranslator {
         case .gin, .gist, .brin:
             return family == .postgres ? type : nil
         }
-    }
-
-    /// A prefix is kept only where the engine has them, and one is added for a column the crossing
-    /// made unbounded. Carried to an engine without them the number is ignored by the driver, but
-    /// carrying a MySQL prefix into a MySQL copy of a bounded column is still what the source meant.
-    private static func keyPrefixes(
-        _ index: EditableIndexDefinition,
-        family: SQLTypeFamily,
-        unboundedColumns: Set<String>
-    ) -> [String: Int] {
-        guard supportsKeyPrefixes(family) else { return [:] }
-        var prefixes = index.columnPrefixes
-        for column in index.columns where unboundedColumns.contains(column.lowercased()) {
-            prefixes[column] = min(prefixes[column] ?? textKeyPrefix, textKeyPrefix)
-        }
-        return prefixes
     }
 }

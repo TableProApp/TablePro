@@ -44,13 +44,20 @@ internal extension SQLTypeParser {
         }
     }
 
+    /// PostgreSQL's omitted modifiers are values rather than defaults to guess at. A `numeric` with
+    /// none has no precision limit at all, and a `time` or `timestamp` with none keeps microseconds,
+    /// which `information_schema.columns.datetime_precision` reports as 6. Read as undeclared, a
+    /// `numeric` crossed to MySQL as `DECIMAL(38)` and rounded every fraction away, and a `timestamp`
+    /// crossed as `DATETIME` and dropped its microseconds.
     static func postgresKind(base: String, params: String?) -> CanonicalTypeKind {
         switch base {
         case "BOOL", "BOOLEAN": return .boolean
         case "INT2", "SMALLINT", "SMALLSERIAL", "SERIAL2": return .integer(bytes: 2)
         case "INT4", "INT", "INTEGER", "SERIAL", "SERIAL4": return .integer(bytes: 4)
         case "INT8", "BIGINT", "BIGSERIAL", "SERIAL8": return .integer(bytes: 8)
-        case "NUMERIC", "DECIMAL": return decimalKind(params)
+        case "NUMERIC", "DECIMAL":
+            let numbers = integers(in: params)
+            return .decimal(precision: numbers.first, scale: numbers.count > 1 ? numbers[1] : nil)
         case "FLOAT4", "REAL": return .floatingPoint(bits: 32)
         case "FLOAT8", "DOUBLE PRECISION": return .floatingPoint(bits: 64)
         case "MONEY": return .money
@@ -59,12 +66,14 @@ internal extension SQLTypeParser {
         case "TEXT", "NAME", "CITEXT": return .text(length: nil, isFixed: false)
         case "BYTEA": return .binary(length: nil, isFixed: false)
         case "DATE": return .date
-        case "TIME", "TIME WITHOUT TIME ZONE": return .time(precision: length(params), hasTimeZone: false)
-        case "TIMETZ", "TIME WITH TIME ZONE": return .time(precision: length(params), hasTimeZone: true)
+        case "TIME", "TIME WITHOUT TIME ZONE":
+            return .time(precision: postgresSecondsPrecision(params), hasTimeZone: false)
+        case "TIMETZ", "TIME WITH TIME ZONE":
+            return .time(precision: postgresSecondsPrecision(params), hasTimeZone: true)
         case "TIMESTAMP", "TIMESTAMP WITHOUT TIME ZONE":
-            return .timestamp(precision: length(params), hasTimeZone: false)
+            return .timestamp(precision: postgresSecondsPrecision(params), hasTimeZone: false)
         case "TIMESTAMPTZ", "TIMESTAMP WITH TIME ZONE":
-            return .timestamp(precision: length(params), hasTimeZone: true)
+            return .timestamp(precision: postgresSecondsPrecision(params), hasTimeZone: true)
         case "INTERVAL": return .interval
         case "UUID": return .uuid
         case "JSON", "JSONB": return .json
@@ -72,8 +81,14 @@ internal extension SQLTypeParser {
         case "BIT", "VARBIT", "BIT VARYING": return .bitString(length: length(params))
         case "GEOMETRY", "GEOGRAPHY", "BOX", "CIRCLE", "LINE", "LSEG", "PATH", "POINT", "POLYGON":
             return .spatial
-        default: return .unsupported
+        /// `format_type` names an interval's fields: `interval hour to minute`,
+        /// `interval day to second(3)`.
+        default: return base.hasPrefix("INTERVAL ") ? .interval : .unsupported
         }
+    }
+
+    private static func postgresSecondsPrecision(_ params: String?) -> Int {
+        length(params) ?? 6
     }
 
     /// SQLite declares an affinity, not a type, and stores whatever spelling the `CREATE TABLE`
@@ -137,8 +152,8 @@ internal extension SQLTypeParser {
         case "INT", "INTEGER", "SMALLINT": return .integer(bytes: 4)
         case "FLOAT", "BINARY_DOUBLE", "DOUBLE PRECISION": return .floatingPoint(bits: 64)
         case "BINARY_FLOAT": return .floatingPoint(bits: 32)
-        case "CHAR", "NCHAR": return .text(length: length(params), isFixed: true)
-        case "VARCHAR", "VARCHAR2", "NVARCHAR2": return .text(length: length(params), isFixed: false)
+        case "CHAR", "NCHAR": return .text(length: oracleLength(params), isFixed: true)
+        case "VARCHAR", "VARCHAR2", "NVARCHAR2": return .text(length: oracleLength(params), isFixed: false)
         case "CLOB", "NCLOB", "LONG": return .text(length: nil, isFixed: false)
         case "ROWID", "UROWID": return .text(length: 18, isFixed: false)
         case "BLOB", "LONG RAW", "BFILE": return .binary(length: nil, isFixed: false)
@@ -154,6 +169,13 @@ internal extension SQLTypeParser {
         default:
             return base.hasPrefix("INTERVAL") ? .interval : .unsupported
         }
+    }
+
+    /// `VARCHAR2(50 CHAR)` and `VARCHAR2(50 BYTE)` name the unit after the number, and read as a
+    /// whole the parameter is no integer at all, so the column looked unbounded.
+    private static func oracleLength(_ params: String?) -> Int? {
+        guard let number = params?.split(separator: " ").first else { return nil }
+        return Int(number)
     }
 
     static func clickHouseKind(base: String, params: String?) -> CanonicalTypeKind {

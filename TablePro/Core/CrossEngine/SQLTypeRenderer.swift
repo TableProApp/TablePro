@@ -92,7 +92,9 @@ internal enum SQLTypeRenderer {
         scale: Int?,
         precisionCeiling: Int
     ) -> RenderedColumnType {
-        let requested = precision ?? 38
+        guard let requested = precision else {
+            return unconstrainedDecimal(name, precisionCeiling: precisionCeiling)
+        }
         let resolved = min(requested, precisionCeiling)
         let spelling: String
         if let scale {
@@ -109,6 +111,26 @@ internal enum SQLTypeRenderer {
                     localized: "This engine holds %1$lld digits, not %2$lld, so the extra ones are lost."
                 ),
                 resolved, requested
+            )
+        )
+    }
+
+    /// A decimal with no declared limit, on an engine whose decimals all have one.
+    ///
+    /// The engine's widest, with room for 20 digits before the point so every 64-bit integer fits,
+    /// and at most 30 after it, which is MySQL's ceiling and more than the 20 PostgreSQL's own
+    /// division produces. A narrower guess rounds silently: MariaDB stores `1234.56` in a
+    /// `DECIMAL(38)` as `1235` with only a note, even in strict mode.
+    internal static func unconstrainedDecimal(_ name: String, precisionCeiling: Int) -> RenderedColumnType {
+        let scale = min(30, precisionCeiling - 20)
+        return RenderedColumnType(
+            spelling: "\(name)(\(precisionCeiling), \(scale))",
+            fidelity: .approximated,
+            reason: String(
+                format: String(
+                    localized: "With no precision on the source, the column keeps %1$lld digits, %2$lld after the point. A value with more is rounded or refused."
+                ),
+                precisionCeiling, scale
             )
         )
     }

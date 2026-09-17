@@ -120,7 +120,17 @@ internal extension SQLTypeRenderer {
         case .integer(let bytes):
             let digits = decimalDigits(forIntegerBytes: bytes, isUnsigned: type.isUnsigned, ceiling: 38)
             return RenderedColumnType(spelling: "NUMBER(\(digits))")
+        /// A bare `NUMBER` has no declared precision either, and keeps 38 significant digits
+        /// wherever the point falls.
         case .decimal(let precision, let scale):
+            guard precision != nil else {
+                return RenderedColumnType(
+                    spelling: "NUMBER", fidelity: .approximated,
+                    reason: String(
+                        localized: "With no precision on the source, the column keeps 38 significant digits. A longer value is rounded."
+                    )
+                )
+            }
             return decimalSpelling(
                 "NUMBER", precision: precision, scale: scale, precisionCeiling: 38
             )
@@ -153,7 +163,7 @@ internal extension SQLTypeRenderer {
             return RenderedColumnType(spelling: "XMLTYPE")
         case .enumeration(let values):
             return RenderedColumnType(
-                spelling: "VARCHAR2(\(longestLabel(in: values)))",
+                spelling: "VARCHAR2(\(longestLabel(in: values)) CHAR)",
                 fidelity: .approximated, reason: enumBecomesText
             )
         case .money:
@@ -166,18 +176,23 @@ internal extension SQLTypeRenderer {
         }
     }
 
+    /// Oracle measures a declared length in bytes unless the declaration says `CHAR`, so a length
+    /// copied from an engine that counts characters refuses any row whose text is multibyte. The
+    /// length says `CHAR`, and a column whose worst case of four bytes a character passes the 2,000
+    /// bytes of a `CHAR` or the 4,000 of a `VARCHAR2` goes to the next type up.
     private static func oracleText(length: Int?, isFixed: Bool) -> RenderedColumnType {
-        if isFixed, let length, length <= 2_000 {
-            return RenderedColumnType(spelling: "CHAR(\(length))")
+        let maximumBytesPerCharacter = 4
+        if isFixed, let length, length * maximumBytesPerCharacter <= 2_000 {
+            return RenderedColumnType(spelling: "CHAR(\(length) CHAR)")
         }
-        guard let length, length <= 4_000 else {
+        guard let length, length * maximumBytesPerCharacter <= 4_000 else {
             return RenderedColumnType(
                 spelling: "CLOB",
                 fidelity: length == nil ? .exact : .widened,
                 reason: length == nil ? nil : widenedTo("CLOB")
             )
         }
-        return RenderedColumnType(spelling: "VARCHAR2(\(length))")
+        return RenderedColumnType(spelling: "VARCHAR2(\(length) CHAR)")
     }
 
     // MARK: - ClickHouse

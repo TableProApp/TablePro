@@ -3,8 +3,8 @@
 //  TableProTests
 //
 
-import XCTest
 @testable import TablePro
+import XCTest
 
 final class SQLTypeRendererTests: XCTestCase {
     private func rendered(
@@ -124,7 +124,7 @@ final class SQLTypeRendererTests: XCTestCase {
         let result = rendered("timestamptz", from: .postgres, to: .mysql)
         XCTAssertEqual(result.fidelity, .approximated)
         XCTAssertNotNil(result.reason)
-        XCTAssertEqual(result.spelling, "DATETIME")
+        XCTAssertEqual(result.spelling, "DATETIME(6)")
     }
 
     func testAWideningCarriesItsReasonAndKeepsEveryValue() {

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A batch whose transaction failed to start reported as a failed commit of its first statement.
 - No tables listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Tables and routines of the previous database, or none, shown with no error when a newly opened database fails to load.
+- PostgreSQL columns copied to another engine losing length, precision, scale and fractional seconds.
 
 ## [0.75.0] - 2026-09-17
 

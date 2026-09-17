@@ -65,40 +65,50 @@ internal enum CrossEngineStructureTranslator {
         let jsonColumnType = PostgreSQLServerVersion.jsonColumnType(
             for: target, serverVersion: targetServerVersion
         )
+        let keyColumns = Set(snapshot.primaryKeyColumns.map { $0.lowercased() })
+        let indexedColumns = Set(
+            snapshot.indexes.filter { !$0.isPrimary }.flatMap(\.columns).map { $0.lowercased() }
+        )
+
+        var drafts = snapshot.columns.map { column in
+            let canonical = SQLTypeParser.parse(
+                column.dataType, catalogSpelling: column.ddlSpelling, family: sourceFamily
+            )
+            return CrossEngineColumnDraft(
+                name: column.name,
+                isNullable: column.isNullable,
+                source: canonical,
+                rendered: SQLTypeRenderer.render(canonical, family: targetFamily, jsonColumnType: jsonColumnType),
+                family: targetFamily
+            )
+        }
+        CrossEngineKeyWidth.boundPrimaryKey(&drafts, keyColumns: keyColumns, family: targetFamily)
+        if targetFamily == .mysql {
+            CrossEngineRowSize.fitMySQLRow(&drafts, keyColumns: keyColumns, indexedColumns: indexedColumns)
+        }
+
         var notes: [CrossEngineConversionNote] = []
         var sourceKindsByColumn: [String: CanonicalTypeKind] = [:]
         var kindsByColumn: [String: CanonicalTypeKind] = [:]
-        let keyColumns = Set(snapshot.primaryKeyColumns.map { $0.lowercased() })
-        let indexed = Set(
-            snapshot.indexes.flatMap(\.columns).map { $0.lowercased() }
-        ).union(keyColumns)
-
         var columns: [EditableColumnDefinition] = []
-        for column in snapshot.columns {
-            let outcome = translate(
-                column,
-                table: snapshot.name,
-                from: sourceFamily,
-                to: targetFamily,
-                jsonColumnType: jsonColumnType,
-                isKeyColumn: keyColumns.contains(column.name.lowercased())
-            )
+        for (column, draft) in zip(snapshot.columns, drafts) {
+            let outcome = translate(column, draft: draft, table: snapshot.name, to: targetFamily)
             columns.append(outcome.column)
-            sourceKindsByColumn[outcome.column.name] = outcome.sourceKind
-            kindsByColumn[outcome.column.name] = outcome.targetKind
+            sourceKindsByColumn[column.name] = draft.source.kind
+            kindsByColumn[column.name] = draft.targetKind
             notes += outcome.notes
         }
+        if targetFamily == .mssql, let note = utf16LengthNote(for: drafts, table: snapshot.name) {
+            notes.append(note)
+        }
 
-        let unboundedIndexColumns = Set(
-            columns
-                .filter { indexed.contains($0.name.lowercased()) && isUnbounded(kindsByColumn[$0.name]) }
-                .map { $0.name.lowercased() }
-        )
+        var kindsByLowercasedName: [String: CanonicalTypeKind] = [:]
+        for draft in drafts { kindsByLowercasedName[draft.name.lowercased()] = draft.targetKind }
         let indexOutcome = CrossEngineIndexTranslator.translate(
             snapshot.indexes,
             table: snapshot.name,
             to: targetFamily,
-            unboundedColumns: unboundedIndexColumns
+            columnKinds: kindsByLowercasedName
         )
         notes += indexOutcome.notes
 
@@ -131,7 +141,9 @@ internal enum CrossEngineStructureTranslator {
     ) -> [String: CanonicalTypeKind] {
         var kinds: [String: CanonicalTypeKind] = [:]
         for column in snapshot.columns {
-            kinds[column.name] = SQLTypeParser.parse(column.dataType, family: family).kind
+            kinds[column.name] = SQLTypeParser.parse(
+                column.dataType, catalogSpelling: column.ddlSpelling, family: family
+            ).kind
         }
         return kinds
     }
@@ -140,30 +152,21 @@ internal enum CrossEngineStructureTranslator {
 
     private struct ColumnOutcome {
         let column: EditableColumnDefinition
-        let sourceKind: CanonicalTypeKind
-        let targetKind: CanonicalTypeKind
         let notes: [CrossEngineConversionNote]
     }
 
     private static func translate(
         _ column: EditableColumnDefinition,
+        draft: CrossEngineColumnDraft,
         table: String,
-        from sourceFamily: SQLTypeFamily,
-        to targetFamily: SQLTypeFamily,
-        jsonColumnType: PostgreSQLJSONColumnType,
-        isKeyColumn: Bool
+        to targetFamily: SQLTypeFamily
     ) -> ColumnOutcome {
-        let canonical = SQLTypeParser.parse(column.dataType, family: sourceFamily)
-        var rendered = SQLTypeRenderer.render(canonical, family: targetFamily, jsonColumnType: jsonColumnType)
+        let rendered = draft.rendered
         var notes: [CrossEngineConversionNote] = []
-
-        if isKeyColumn, let bounded = boundedKeyType(rendered, kind: canonical.kind, family: targetFamily) {
-            rendered = bounded
-        }
 
         var translated = column
         translated.dataType = rendered.spelling
-        translated.unsigned = targetFamily == .mysql && canonical.isUnsigned
+        translated.unsigned = targetFamily == .mysql && draft.source.isUnsigned
         /// Both name a source-side object. A `utf8mb4_0900_ai_ci` collation does not exist anywhere
         /// but MySQL 8, and a character set clause is MySQL syntax outright.
         translated.charset = nil
@@ -175,11 +178,13 @@ internal enum CrossEngineStructureTranslator {
         /// `ON UPDATE CURRENT_TIMESTAMP` is MySQL's alone; no other engine has a column-level one.
         translated.onUpdate = targetFamily == .mysql ? column.onUpdate : nil
 
+        /// Named by the spelling the source was read from, which is the one carrying its length:
+        /// `character varying(5000)` says why a key was cut where `CHARACTER VARYING` does not.
         if rendered.fidelity != .exact, let reason = rendered.reason {
             notes.append(CrossEngineConversionNote(
                 table: table,
                 subject: column.name,
-                summary: "\(column.name): \(column.dataType) → \(rendered.spelling)",
+                summary: "\(column.name): \(draft.source.sourceSpelling) → \(rendered.spelling)",
                 reason: reason,
                 fidelity: rendered.fidelity
             ))
@@ -205,7 +210,7 @@ internal enum CrossEngineStructureTranslator {
         }
 
         let defaultOutcome = CrossEngineDefaultValue.translate(
-            column.defaultValue, kind: canonical.kind, to: targetFamily
+            column.defaultValue, kind: draft.source.kind, to: targetFamily
         )
         switch defaultOutcome {
         case .none:
@@ -226,61 +231,36 @@ internal enum CrossEngineStructureTranslator {
             ))
         }
 
-        /// Read back out of what was actually written, not carried over from what was read. The
-        /// renderer is the only thing that knows what it chose, and a spelling that lost a time
-        /// zone or turned an array into JSON has to say so or the coercer works from the wrong
-        /// side of the crossing.
-        let targetKind = SQLTypeParser.parse(rendered.spelling, family: targetFamily).kind
-        return ColumnOutcome(
-            column: translated, sourceKind: canonical.kind, targetKind: targetKind, notes: notes
-        )
+        return ColumnOutcome(column: translated, notes: notes)
     }
 
-    // MARK: - Keys
-
-    /// A key column cannot be unbounded text on the engines whose index entries are size-limited.
-    /// MySQL refuses `PRIMARY KEY` on a `LONGTEXT` outright, SQL Server caps a key at 900 bytes and
-    /// Oracle cannot index a `CLOB` at all, so the `CREATE TABLE` fails rather than the copy losing
-    /// anything. A bounded spelling is used for those columns instead, which is why it is a note.
-    private static func boundedKeyType(
-        _ rendered: RenderedColumnType,
-        kind: CanonicalTypeKind,
-        family: SQLTypeFamily
-    ) -> RenderedColumnType? {
-        guard isUnbounded(kind) else { return nil }
-        let spelling: String
-        switch family {
-        case .mysql:
-            spelling = isBinary(kind) ? "VARBINARY(255)" : "VARCHAR(255)"
-        case .mssql:
-            spelling = isBinary(kind) ? "VARBINARY(450)" : "NVARCHAR(450)"
-        case .oracle:
-            spelling = isBinary(kind) ? "RAW(2000)" : "VARCHAR2(2000)"
-        case .postgres, .sqlite, .clickhouse, .duckdb, .generic:
-            return nil
+    /// SQL Server measures an `NVARCHAR(n)` in UTF-16 code units, and a character outside the Basic
+    /// Multilingual Plane, most emoji among them, takes two. Every other engine counts it as one, so
+    /// a value that fills its declared length with such characters is refused where it was valid.
+    /// The length is kept rather than doubled, because doubling pads every `NCHAR` value to twice its
+    /// width and changes what the column accepts for text that never uses one, so the table carries
+    /// one note naming the columns instead of one per column.
+    private static func utf16LengthNote(
+        for drafts: [CrossEngineColumnDraft],
+        table: String
+    ) -> CrossEngineConversionNote? {
+        let bounded = drafts.filter { draft in
+            guard case .text(let sourceLength?, _) = draft.source.kind,
+                  case .text(let targetLength?, _) = draft.targetKind else { return false }
+            return sourceLength == targetLength
         }
-        return RenderedColumnType(
-            spelling: spelling,
-            fidelity: .approximated,
+        guard !bounded.isEmpty else { return nil }
+        return CrossEngineConversionNote(
+            table: table,
+            subject: "",
+            summary: String(
+                format: String(localized: "Lengths counted in UTF-16 units: %@"),
+                bounded.map(\.name).joined(separator: ", ")
+            ),
             reason: String(
-                format: String(
-                    localized: "A key column cannot be unbounded here, so it is created as %@."
-                ),
-                spelling
-            )
+                localized: "SQL Server counts most emoji as two characters toward an NVARCHAR length, so a value that fills its length with them is refused."
+            ),
+            fidelity: .approximated
         )
-    }
-
-    private static func isUnbounded(_ kind: CanonicalTypeKind?) -> Bool {
-        switch kind {
-        case .text(let length, _), .binary(let length, _): return length == nil
-        case .json, .xml, .spatial, .array: return true
-        default: return false
-        }
-    }
-
-    private static func isBinary(_ kind: CanonicalTypeKind) -> Bool {
-        guard case .binary = kind else { return false }
-        return true
     }
 }
