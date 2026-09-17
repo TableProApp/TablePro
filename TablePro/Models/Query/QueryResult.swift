@@ -253,11 +253,13 @@ struct ColumnInfo: Identifiable, Hashable {
     let allowedValues: [String]?
     let generationExpression: String?
     let generationKind: GenerationKind?
-    /// The server's own spellings of `dataType`, `defaultValue` and `generationExpression` for a
-    /// `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` says why they differ.
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` and
+    /// `PluginColumnInfo.ddlCollation` say why they differ.
     let ddlSpelling: String?
     let ddlDefault: String?
     let ddlGenerationExpression: String?
+    let ddlCollation: String?
 
     init(
         name: String,
@@ -276,7 +278,8 @@ struct ColumnInfo: Identifiable, Hashable {
         generationKind: GenerationKind? = nil,
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
-        ddlGenerationExpression: String? = nil
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -295,6 +298,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.ddlSpelling = ddlSpelling
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 }
 
@@ -327,6 +331,14 @@ struct IndexInfo: Identifiable, Hashable {
     let type: String  // BTREE, HASH, FULLTEXT, etc.
     let columnPrefixes: [String: Int]?
     let whereClause: String?
+    /// The entries of `columns` that are expressions. `PluginIndexInfo.expressions` says why a writer
+    /// needs to know.
+    let expressions: [String]?
+    let includedColumns: [String]?
+    /// The server's own spellings for a `CREATE INDEX` on another schema.
+    /// `PluginIndexInfo.ddlMethodAndKeys` says why they differ from the fields.
+    let ddlMethodAndKeys: String?
+    let ddlWhereClause: String?
 
     init(
         name: String,
@@ -335,7 +347,11 @@ struct IndexInfo: Identifiable, Hashable {
         isPrimary: Bool,
         type: String,
         columnPrefixes: [String: Int]? = nil,
-        whereClause: String? = nil
+        whereClause: String? = nil,
+        expressions: [String]? = nil,
+        includedColumns: [String]? = nil,
+        ddlMethodAndKeys: String? = nil,
+        ddlWhereClause: String? = nil
     ) {
         self.name = name
         self.columns = columns
@@ -344,6 +360,10 @@ struct IndexInfo: Identifiable, Hashable {
         self.type = type
         self.columnPrefixes = columnPrefixes
         self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
     }
 }
 

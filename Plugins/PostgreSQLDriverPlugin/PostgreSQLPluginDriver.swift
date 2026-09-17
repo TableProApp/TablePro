@@ -283,9 +283,22 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     /// schemas holding a table of the same name returned each other's indexes merged into one list,
     /// which a comparison between those two schemas reports as neither side differing.
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
-        let query = PostgreSQLIndexQueries.indexList(schema: schema ?? core.currentSchema, table: table)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = PostgreSQLIndexQueries.indexList(
+            schema: resolvedSchema, table: table, capabilities: catalogCapabilities
+        )
         let result = try await execute(query: query)
-        return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0)?.index }
+        let ddl = try await fetchIndexSpellings(schema: resolvedSchema, table: table)
+        return result.rows.compactMap { PostgreSQLIndexRow.index(from: $0, ddl: ddl)?.index }
+    }
+
+    func fetchIndexSpellings(
+        schema: String,
+        table: String?
+    ) async throws -> [String: [String: PostgreSQLCatalogIndexDDL]] {
+        let query = PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table)
+        let result = try await executeQualifiedRead(query)
+        return PostgreSQLIndexQueries.indexDDL(rows: result.rows)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
@@ -386,6 +399,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let columnsQuery = """
             SELECT
                 quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+                \(PostgreSQLSchemaQueries.columnCollateClause) ||
                 \(identityClause)
                 \(generatedClause)
                 CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END ||
@@ -883,7 +897,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         var indexStatements: [String] = []
         for index in definition.indexes {
-            indexStatements.append(pgIndexDefinition(index, qualifiedTable: qualifiedTable))
+            indexStatements.append(PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTable))
         }
         if !indexStatements.isEmpty {
             sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
@@ -894,6 +908,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(PostgreSQLColumnClauses.type(for: col))"
+        if let collation = PostgreSQLColumnClauses.collation(for: col) {
+            def += " COLLATE \(collation)"
+        }
         if let expression = PostgreSQLColumnClauses.generationExpression(for: col) {
             def += " GENERATED ALWAYS AS (\(expression)) \(pgGenerationKeyword(col.generationKind))"
             if !col.isNullable { def += " NOT NULL" }
@@ -944,21 +961,6 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         return (kind ?? .virtual).rawValue
     }
 
-    private func pgIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let unique = index.isUnique ? "UNIQUE " : ""
-        var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable)"
-        if let type = index.indexType?.uppercased(),
-           PostgreSQLVersionedStatements.postgreSQLIndexMethods.contains(type) {
-            def += " USING \(type.lowercased())"
-        }
-        def += " (\(cols))"
-        if let whereClause = index.whereClause, !whereClause.isEmpty {
-            def += " WHERE \(whereClause)"
-        }
-        return def
-    }
-
     private func pgForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
@@ -992,7 +994,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
         guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
         let qualifiedTable = tableName.map { quoteIdentifier($0) } ?? "\"table\""
-        return pgIndexDefinition(index, qualifiedTable: qualifiedTable)
+        return PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTable)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
@@ -1022,8 +1024,8 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
         let colName = quoteIdentifier(newColumn.name)
 
-        if oldColumn.dataType.uppercased() != newColumn.dataType.uppercased() {
-            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(PostgreSQLColumnClauses.alteredType(for: newColumn))")
+        if let type = PostgreSQLColumnClauses.alterType(old: oldColumn, new: newColumn) {
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(type)")
         }
 
         if oldColumn.isNullable != newColumn.isNullable {
@@ -1058,7 +1060,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         guard schemaOperationRefusal(.addIndex(index)) == nil else { return nil }
-        return pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
+        return PostgreSQLIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTableName(table))
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

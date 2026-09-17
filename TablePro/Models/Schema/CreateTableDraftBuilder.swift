@@ -192,7 +192,10 @@ enum CreateTableDraftBuilder {
                 ))
                 continue
             }
-            if let unknown = columns.first(where: { !columnNames.contains($0) }) {
+            var normalized = index
+            normalized.name = name
+            normalized.columns = columns
+            if let unknown = normalized.referencedColumnNames.first(where: { !columnNames.contains($0) }) {
                 issues.append(SchemaDraftIssue(
                     tab: .indexes, row: row,
                     message: String(
@@ -201,9 +204,6 @@ enum CreateTableDraftBuilder {
                 ))
                 continue
             }
-            var normalized = index
-            normalized.name = name
-            normalized.columns = columns
             resolved.append(normalized)
             sourceRows.append(row)
         }

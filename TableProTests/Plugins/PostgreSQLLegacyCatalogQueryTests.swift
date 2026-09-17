@@ -26,8 +26,10 @@ struct PostgreSQLLegacyCatalogQueryTests {
         let queries = [
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: "orders", capabilities: legacy),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: "public", table: nil, capabilities: legacy),
-            PostgreSQLIndexQueries.indexList(schema: "public", table: "orders"),
-            PostgreSQLIndexQueries.indexList(schema: "public", table: nil),
+            PostgreSQLIndexQueries.indexList(schema: "public", table: "orders", capabilities: legacy),
+            PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: legacy),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: "orders"),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: "public", table: nil),
             PostgreSQLObjectQueries.triggerList(schema: "public", table: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: "public", identity: nil, capabilities: legacy),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: "public", table: "t"),
@@ -159,18 +161,23 @@ struct PostgreSQLForeignKeyQueryTests {
 
 @Suite("PostgreSQL index catalog read")
 struct PostgreSQLIndexQueryTests {
-    @Test("Key order comes from the key position, found without array_position")
-    func keyOrderWithoutArrayPosition() {
-        let sql = PostgreSQLIndexQueries.indexList(schema: "public", table: nil)
-        #expect(sql.contains("FROM pg_catalog.generate_subscripts(ix.indkey, 1) AS k"))
-        #expect(sql.contains("WHERE ix.indkey[k] = a.attnum"))
-        #expect(sql.contains("a.attnum = ANY(ix.indkey)"))
+    private static let modern = PostgreSQLCapabilities(serverVersion: 170_011)
+
+    /// The spec changed with expression keys: the read used to join `pg_attribute` on
+    /// `attnum = ANY(indkey)`, which no expression key (attribute number 0) can satisfy, so every
+    /// expression was dropped from the list.
+    @Test("Key parts are read by position, so an expression key is not dropped by an attribute join")
+    func keyPartsReadByPosition() {
+        let sql = PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: Self.modern)
+        #expect(!sql.contains("a.attnum = ANY(ix.indkey)"))
+        #expect(sql.contains("WHEN ix.indkey[k.n - 1] = 0 THEN pg_catalog.pg_get_indexdef(ix.indexrelid, k.n, true)"))
+        #expect(sql.contains("ORDER BY k.n"))
     }
 
     @Test("The per-table read adds one predicate to the whole-schema read")
     func perTableAddsOnePredicate() {
-        let single = PostgreSQLIndexQueries.indexList(schema: "public", table: "orders")
-        let bulk = PostgreSQLIndexQueries.indexList(schema: "public", table: nil)
+        let single = PostgreSQLIndexQueries.indexList(schema: "public", table: "orders", capabilities: Self.modern)
+        let bulk = PostgreSQLIndexQueries.indexList(schema: "public", table: nil, capabilities: Self.modern)
         #expect(single.contains("AND t.relname = 'orders'"))
         #expect(!bulk.contains("t.relname ="))
     }
@@ -179,9 +186,9 @@ struct PostgreSQLIndexQueryTests {
     func quotedColumnNamesStayWhole() throws {
         let row: [PluginCellValue] = [
             .text("idx_t"), .text("idx_weird"), .text(#"{"d,e",b,"first name"}"#), .text("false"), .text("false"),
-            .text("btree"), .null
+            .text("btree"), .null, .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.table == "idx_t")
         #expect(decoded.index.columns == ["d,e", "b", "first name"])
         #expect(decoded.index.type == "BTREE")
@@ -192,9 +199,9 @@ struct PostgreSQLIndexQueryTests {
     func flagsAndPredicate() throws {
         let row: [PluginCellValue] = [
             .text("orders"), .text("orders_big_amount"), .text("{amount}"), .text("true"), .text("false"),
-            .text("btree"), .text("(amount > (100)::numeric)")
+            .text("btree"), .text("(amount > (100)::numeric)"), .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.index.columns == ["amount"])
         #expect(decoded.index.isUnique)
         #expect(!decoded.index.isPrimary)
@@ -418,9 +425,10 @@ struct PostgreSQLCatalogBooleanTests {
     @Test("A primary key index decoded from the driver's boolean text is unique and primary")
     func primaryKeyIndexKeepsItsFlags() throws {
         let row: [PluginCellValue] = [
-            .text("orders"), .text("orders_pkey"), .text("{id}"), .text("true"), .text("true"), .text("btree"), .null
+            .text("orders"), .text("orders_pkey"), .text("{id}"), .text("true"), .text("true"), .text("btree"), .null,
+            .text("{}"), .text("{}")
         ]
-        let decoded = try #require(PostgreSQLIndexRow.index(from: row))
+        let decoded = try #require(PostgreSQLIndexRow.index(from: row, ddl: [:]))
         #expect(decoded.index.isUnique)
         #expect(decoded.index.isPrimary)
     }

@@ -51,6 +51,15 @@ Within one engine, generated and computed columns are dropped from the write. Th
 them, and every engine that has them rejects an `INSERT` that names one. Crossing to another engine
 they arrive as ordinary columns carrying the values they held on the source.
 
+Within PostgreSQL an index is created from the server's own definition of it: expression keys,
+operator classes, sort order, `INCLUDE` columns, storage parameters and a partial index's condition
+all arrive as they were.
+
+An index keeps its type when both ends are the same database type, so a SQL Server `CLUSTERED` index
+stays clustered. Between two database types, a PostgreSQL `gin`, `hnsw` or `bloom` index is left out
+of a copy to any engine outside PostgreSQL and named in the review step. So are a Redshift `DISTKEY`
+and `SORTKEY`, a Snowflake clustering key, and BigQuery clustering and partitioning.
+
 ## When the target already has the object
 
 Chosen once, before the run, and applied to every object in it.
@@ -91,10 +100,46 @@ reshaped where the source and the target spell a value differently. `TINYINT(1)`
 `LONGTEXT` as `text`, `INT UNSIGNED` as `BIGINT`, and a PostgreSQL `t` arrives in a MySQL
 `TINYINT(1)` as `1`.
 
+Lengths, precision, scale and fractional seconds cross with the type. From PostgreSQL to MySQL,
+`character varying(50)` arrives as `VARCHAR(50)`, `numeric(10,2)` as `DECIMAL(10, 2)` and
+`timestamp(3) with time zone` as `DATETIME(3)`. A PostgreSQL `timestamp` or `time` declared without a
+precision stores microseconds, so it arrives with 6: `DATETIME(6)` on MySQL, `DATETIME2(6)` on SQL
+Server. ClickHouse counts no characters, so text of any declared length arrives there as `String`.
+
+A scale the target cannot declare keeps the digits the values have. `numeric(5,-2)` holds whole
+hundreds and arrives on MySQL as `DECIMAL(7, 0)`, and `numeric(3,5)` holds fractions under 0.01 and
+arrives as `DECIMAL(5, 5)`, both marked widened. Oracle declares both as written. MySQL keeps at most
+30 digits after the point, so `numeric(40,35)` arrives as `DECIMAL(35, 30)`, marked approximated.
+
+A PostgreSQL `numeric` declared without a precision has no limit, and most engines need one. It
+arrives at the target's widest, marked approximated: `DECIMAL(65, 30)` on MySQL, `DECIMAL(38, 18)` on
+SQL Server and DuckDB, `Decimal(76, 30)` on ClickHouse, a bare `NUMBER` on Oracle. A value with more
+digits than that is rounded or refused. To keep it exact, declare the precision on the source before
+copying, or create the target table yourself and use **Add rows to it**.
+
 Nothing is dropped for want of a type. A type the target does not have becomes its widest text
 column, so the values arrive as text rather than the column going missing. The target server's
 version counts too: a JSON column crossing into PostgreSQL arrives as `jsonb` from 9.4, `json` on 9.2
 and 9.3, and `text` on 9.1.
+
+A kept length can pass a limit the source does not have. Each change in this table is a line in the
+review step.
+
+| Target | Limit | What the copy does |
+|---|---|---|
+| MySQL, MariaDB | A primary key, foreign key or index over 3,072 bytes, counting 4 bytes a character | Cuts the widest key column to `VARCHAR(255)`, then divides the 3,072 bytes between the key's text columns. An index column gets a 255-character prefix instead, and an index that still does not fit is left out |
+| MySQL, MariaDB | A row over 65,535 bytes, or an InnoDB record over 8,126. MySQL counts a text column in the record as 41 bytes at most, MariaDB counts one of up to 63 characters whole | Creates the widest column as `TEXT` until the table fits. Primary and foreign key columns never move, and indexed columns move last |
+| SQL Server | A primary key over 900 bytes, an index over 1,700, counting 2 bytes a character | Cuts a primary key column over 450 characters to `NVARCHAR(450)`, and turns `NCHAR` key columns that pass the limit together into `NVARCHAR`. An index whose `NCHAR` columns pass 1,700 bytes is left out |
+| SQL Server | `NVARCHAR(n)` counts UTF-16 units, so most emoji count as two | Keeps `n`. One line per table names the columns where a value full of emoji can be refused |
+| Oracle | 4,000 bytes in a `VARCHAR2`, 2,000 in a `CHAR` | Counts lengths in characters, `VARCHAR2(50 CHAR)`. A column over 1,000 characters becomes a `CLOB` |
+| Oracle | A primary key or index over 6,398 bytes at the default 8 KB block, counting 4 bytes a character and 1 a column | Divides the 6,398 bytes between the primary key's text columns. An index that does not fit is left out |
+
+A key column cut shorter refuses a row whose key is longer, and a unique index cut to a prefix refuses
+two rows that agree for their first 255 characters. SQL Server creates a key of `NVARCHAR` columns
+longer than 900 bytes and refuses a row whose key passes that. MySQL creates a table its record count
+allows and refuses a row that fills it: 41 `VARCHAR(50)` columns each holding 50 emoji pass 8,126
+bytes. If your data holds such rows, create the target table yourself with types that fit, then use
+**Add rows to it**.
 
 The review step lists every column and index the crossing changed, one line each. It is the only
 place those conversions appear, and it is shown before **Copy** does anything.
@@ -113,7 +158,9 @@ names something only the source engine has. A MySQL `0000-00-00` is written as `
 value the rest accept for it.
 
 MySQL and MariaDB count as one engine, and so do PostgreSQL, Redshift, CockroachDB and PGlite. A copy
-between two of those runs unchanged and reports no conversions.
+between two of those writes every column as the source declares it and reports no conversion for any
+of them. Its indexes follow the [index rules](#what-each-object-carries) for two database types, so a
+copy from Redshift leaves out `DISTKEY` and `SORTKEY` and names both in the review step.
 
 ## When both sides are one connection
 
@@ -189,8 +236,9 @@ Copying is SQL only. MongoDB, Redis, DynamoDB, Elasticsearch, Typesense, Kafka, 
 end of a copy may be one of them.
 
 A crossing translates types, defaults and indexes, and nothing else. Check constraints, partitioning,
-table options and anything the source expressed as an expression stay behind. A copied table is a
-table with the same columns and the same rows, not a replica of the original.
+table options, an index's `INCLUDE` columns and anything the source expressed as an expression,
+including an index over one, stay behind. A copied table is a table with the same columns and the
+same rows, not a replica of the original.
 
 Redshift takes PostgreSQL's type names and not all of PostgreSQL's types. A copy from PostgreSQL
 into it is treated as one engine and passes its types through, so a `jsonb`, `uuid` or array column
@@ -201,11 +249,25 @@ A copy from PostgreSQL into an older PostgreSQL passes its types through the sam
 column is refused by a server before 9.4. Create the target table first with `json` or `text`, then
 use **Add rows to it**.
 
-A PostgreSQL column that uses an extension or user-defined type or function, such as a PostGIS
-`geometry`, an enum, or a `DEFAULT` that calls `ST_GeomFromText`, is created naming each one in the
-schema it lives in on the source: `public.geometry(Point,4326)`. A target database without them in
-that schema refuses the table with `type "…" does not exist` or `function … does not exist`. Install
-the extension or create the type there first, in the same schema.
+A PostgreSQL column typed with a domain crosses as the domain's base type without its modifier. A
+`price` domain over `numeric(12,2)` arrives on MySQL as `DECIMAL(65, 30)`, and a domain over
+`varchar(20)` as `LONGTEXT`. Create the target table with the types you want, then use **Add rows to
+it**.
+
+A PostgreSQL column or index that uses an extension or user-defined type, operator class or function,
+such as a PostGIS `geometry`, an enum, a `gin_trgm_ops` index, or a `DEFAULT` or index condition that
+calls `ST_GeomFromText`, is created naming each one in the schema it lives in on the source:
+`public.geometry(Point,4326)`, `email public.gin_trgm_ops`. A target database without them in that
+schema refuses the table with `type "…" does not exist`, `function … does not exist` or
+`operator class "…" does not exist for access method "…"`. Install the extension or create the type
+there first, in the same schema.
+
+A PostgreSQL column declared with a collation of its own keeps it, named with its schema:
+`COLLATE pg_catalog."C"`, `COLLATE app."Case Insens"`. Collation names differ between operating
+systems and between builds with and without ICU, so a target that lacks one refuses the table with
+`collation "…" for encoding "UTF8" does not exist`, or `schema "…" does not exist` for a collation
+created in a schema the target does not have. Create the collation on the target first, in the same
+schema.
 
 Duplicate Database needs a driver that creates one. Where it does not, the command still appears and
 the sheet names the engine that cannot rather than failing part way in.
@@ -215,10 +277,13 @@ declared `GENERATED ALWAYS AS IDENTITY`, the server refuses an explicit value an
 appears in the result. Copy the structure, then the data with the identity column removed from the
 target, or use **Add rows to it** against a table whose key is plain.
 
-A PostgreSQL `SERIAL` column's default names a sequence. Within PostgreSQL the sequence is copied
-ahead of the table. Crossing to another engine there is no sequence to copy, so the column is created
-with that engine's own auto-increment and the counter starts where the target starts it, not where
-the source left off.
+A PostgreSQL `SERIAL` column's default names a sequence. Within PostgreSQL a sequence in the table's
+own schema is copied ahead of the table, and the copied default reads the copy, including a default
+that passes the sequence to a function. A sequence in any other schema is not copied: the default
+keeps naming it there, and a target database without it refuses the table with
+`relation "…" does not exist`. Create that sequence on the target first. Crossing to another engine
+there is no sequence to copy, so the column is created with that engine's own auto-increment and the
+counter starts where the target starts it, not where the source left off.
 
 Two databases on one connection can be copied between only where the driver opens a second
 connection of its own. DuckDB and PGlite hold their database inside the driver instance, so the

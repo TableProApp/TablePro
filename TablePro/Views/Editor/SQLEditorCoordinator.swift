@@ -290,7 +290,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         didDestroy = true
         focusClaimPending = false
 
-        uninstallVimKeyInterceptor()
+        removeVimKeyInterceptor()
 
         if let tabID, let sync = copilotDocumentSync {
             let id = tabID
@@ -607,12 +607,25 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     private func uninstallVimKeyInterceptor() {
+        removeVimKeyInterceptor()
+        vimMode = .normal
+    }
+
+    /// Takes Vim out of the editor without touching `vimMode`, which is what teardown needs.
+    ///
+    /// `destroy()` runs from `dismantleNSViewController`, and when the editor goes because its
+    /// `NSHostingView` is deallocated, SwiftUI calls that while `GraphHost.invalidate()` holds exclusive
+    /// access to the host. A `@Published` write there reaches a view in the same host, whose subscriber
+    /// asks that host for a transaction, and Swift aborts with "Fatal access conflict detected". That
+    /// shipped as a crash on switching away from a query tab on macOS 26, where the write happened even
+    /// with Vim mode off because `@Published` notifies on every assignment. Nothing reads the mode of an
+    /// editor that is being destroyed.
+    private func removeVimKeyInterceptor() {
         vimKeyInterceptor?.uninstall()
         vimCursorManager?.uninstall()
         vimCursorManager = nil
         vimKeyInterceptor = nil
         vimEngine = nil
-        vimMode = .normal
     }
 
     private func handleVimSettingsChange(controller: TextViewController) {

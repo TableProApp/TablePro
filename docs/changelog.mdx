@@ -4,7 +4,7 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
-<Update label="v0.75.0" description="September 17, 2026">
+<Update label="v0.75.0" description="September 18, 2026">
   ### New Features
 
   - **macOS 13 Ventura**: TablePro now runs on macOS 13.0 and later
@@ -28,6 +28,8 @@ rss: true
   - **Oracle Network Encryption**: On the connection form, matching `SQLNET.ENCRYPTION_CLIENT` ([#2919](https://github.com/TableProApp/TablePro/issues/2919))
   - **SQL Server types**: Alias, table and CLR types in the sidebar's **Types** section, each with its `CREATE TYPE` statement
   - **Delete for Kafka topics and DynamoDB tables**, and `DROP TOPIC` in the Kafka query editor
+  - **No Database Selected**: The sidebar says so for a MySQL, MariaDB, TiDB or OceanBase connection opened without a database
+  - **Favorite databases sync**: The databases you star in the sidebar reach your other Macs, alongside credential profiles
 
   ### Improvements
 
@@ -39,6 +41,7 @@ rss: true
   - The connection switcher lists Favorites, Recent and groups at every depth, and connection rows drop their colored dots
   - Approval cards in the assistant name the statement and the connection, and **Cancel** is now **Reject**
   - SQL Server sessions open with the ANSI settings the server expects
+  - A script that opens its own `BEGIN` or `START TRANSACTION` runs without a second transaction around it
 
   ### Removed
 
@@ -81,6 +84,14 @@ rss: true
   - Clicks and drags landing on the wrong table or plan step once a diagram was zoomed, and `Cmd+scroll` not zooming diagrams
   - AWS profiles backed by IAM Identity Center failing to authenticate, and AWS unreachable in the China and GovCloud partitions
   - Stutter and slow typing in the SQL editor on very long lines, with word wrap on, or while Find highlights many matches
+  - `START TRANSACTION READ WRITE` failing on MySQL and MariaDB 5.5 when saving, importing or running several statements, and a batch whose transaction never started reported as a failed commit of its first statement
+  - No tables listed for a MySQL server whose `information_schema` answers with nothing or an error, the previous database's tables left on screen when a newly opened database fails to load, and indexes listed in a different order each time a table's structure loads
+  - Copy To losing column length, precision, scale, fractional seconds and collation, failing on an Oracle `NUMBER` with a negative scale, on accented `CHAR` text into ClickHouse, on a default that passes a sequence to a function, and on a key or index too wide for MySQL, SQL Server or Oracle
+  - PostgreSQL expression indexes missing from the Indexes tab, `INCLUDE` columns shown as key columns, and operator classes, collation, sort order and storage parameters lost by Copy To and index renames
+  - SP-GiST, HNSW, IVFFlat and BLOOM indexes shown as BTREE and rebuilt as B-tree by an index edit, SQL Server clustered indexes recreated as nonclustered, and ClickHouse data-skipping indexes dropped by an index edit
+  - Compare & Sync rewriting a column's collation while collation differences are ignored, treating two indexes that differ only in type as the same, and refusing structure sync scripts for tables that had not changed since they were compared
+  - A data race on the cached server version of a PostgreSQL, Redshift or CockroachDB connection while it closes
+  - Filters cleared on a table coming back the next time that table is read
 </Update>
 
 <Update label="v0.74.0" description="September 13, 2026">

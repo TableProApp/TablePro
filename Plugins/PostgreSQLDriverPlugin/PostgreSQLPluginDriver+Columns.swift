@@ -176,7 +176,8 @@ extension PostgreSQLPluginDriver {
             generationKind: pgGenerationKind(attgenerated),
             ddlSpelling: columnDDL[name]?.typeSpelling,
             ddlDefault: columnDDL[name]?.defaultExpression,
-            ddlGenerationExpression: columnDDL[name]?.generationExpression
+            ddlGenerationExpression: columnDDL[name]?.generationExpression,
+            ddlCollation: columnDDL[name]?.collation
         )
     }
 

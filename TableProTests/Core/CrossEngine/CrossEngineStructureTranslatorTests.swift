@@ -345,7 +345,7 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         let source = snapshot(columns: [column("flag", "TINYINT(1)"), column("made", "DATETIME")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
         XCTAssertEqual(result.targetKinds["flag"], .boolean)
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
     }
 
     /// The kinds describe what was written, not what was read. Carrying the source's answer over
@@ -360,12 +360,12 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
 
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME", "JSON", "TINYINT(1)"])
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME(6)", "JSON", "TINYINT(1)"])
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
         XCTAssertEqual(result.targetKinds["tags"], .json)
         XCTAssertEqual(result.targetKinds["live"], .boolean)
 
-        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: nil, hasTimeZone: true))
+        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: 6, hasTimeZone: true))
         XCTAssertEqual(result.sourceKinds["tags"], .array(element: .integer(bytes: 4)))
         XCTAssertEqual(result.sourceKinds["live"], .boolean)
     }

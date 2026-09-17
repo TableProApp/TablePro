@@ -3,8 +3,8 @@
 //  TableProTests
 //
 
-import XCTest
 @testable import TablePro
+import XCTest
 
 final class SQLTypeParserTests: XCTestCase {
     private func kind(_ spelling: String, _ family: SQLTypeFamily) -> CanonicalTypeKind {
@@ -98,7 +98,7 @@ final class SQLTypeParserTests: XCTestCase {
         XCTAssertEqual(kind("NUMBER(18,0)", .oracle), .integer(bytes: 8))
         XCTAssertEqual(kind("NUMBER(38,0)", .oracle), .integer(bytes: 16))
         XCTAssertEqual(kind("NUMBER(10,2)", .oracle), .decimal(precision: 10, scale: 2))
-        XCTAssertEqual(kind("NUMBER", .oracle), .decimal(precision: nil, scale: nil))
+        XCTAssertEqual(kind("NUMBER", .oracle), .decimal(precision: 38, scale: nil))
     }
 
     // MARK: - Unknowns

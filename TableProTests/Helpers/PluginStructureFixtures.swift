@@ -61,7 +61,8 @@ enum PluginStructureFixtures {
             generationKind: generation,
             ddlSpelling: "ddlSpelling-\(suffix)",
             ddlDefault: "ddlDefault-\(suffix)",
-            ddlGenerationExpression: "ddlGenerationExpression-\(suffix)"
+            ddlGenerationExpression: "ddlGenerationExpression-\(suffix)",
+            ddlCollation: "ddlCollation-\(suffix)"
         )
     }
 
@@ -73,7 +74,11 @@ enum PluginStructureFixtures {
             isPrimary: primary,
             type: "type-\(suffix)",
             columnPrefixes: ["columnPrefixes-\(suffix)": prefix],
-            whereClause: "whereClause-\(suffix)"
+            whereClause: "whereClause-\(suffix)",
+            expressions: ["expressions-\(suffix)"],
+            includedColumns: ["includedColumns-\(suffix)"],
+            ddlMethodAndKeys: "ddlMethodAndKeys-\(suffix)",
+            ddlWhereClause: "ddlWhereClause-\(suffix)"
         )
     }
 

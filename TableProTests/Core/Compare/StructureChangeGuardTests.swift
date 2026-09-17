@@ -157,7 +157,8 @@ final class StructureChangeGuardTests: XCTestCase {
     private func ordersRead(
         totalType: String = "decimal(10,2)",
         shapeSpelling: String = "public.geometry(Point,4326)",
-        extraColumns: [PluginColumnInfo] = []
+        extraColumns: [PluginColumnInfo] = [],
+        extraIndexes: [PluginIndexInfo] = []
     ) -> TableStructureRead {
         TableStructureRead(
             table: PluginTableInfo(name: "orders", schema: "shop", comment: nil),
@@ -179,7 +180,7 @@ final class StructureChangeGuardTests: XCTestCase {
             indexes: [
                 PluginIndexInfo(name: "orders_pkey", columns: ["id"], isUnique: true, isPrimary: true),
                 PluginIndexInfo(name: "orders_region_idx", columns: ["region_id", "country"])
-            ],
+            ] + extraIndexes,
             foreignKeys: [
                 PluginForeignKeyInfo(
                     name: "orders_region_fkey", column: "region_id", referencedTable: "regions",
@@ -291,6 +292,93 @@ final class StructureChangeGuardTests: XCTestCase {
         )
 
         XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
+    }
+
+    func testACreateWhoseSecondReadSpellsACollationDifferentlyIsRefused() {
+        let collatedRead = { (spelling: String) in
+            self.ordersRead(extraColumns: [
+                PluginColumnInfo(
+                    name: "code", dataType: "text", collation: "Case Insens", generationExpression: nil,
+                    generationKind: nil, ddlSpelling: "text", ddlDefault: nil, ddlGenerationExpression: nil,
+                    ddlCollation: spelling
+                )
+            ])
+        }
+        let expected = inputs(comparing: [collatedRead(#"app."Case Insens""#)], with: [], action: .create)
+        let unchanged = inputs(comparing: [collatedRead(#"app."Case Insens""#)], with: [], action: .create)
+        let respelled = inputs(comparing: [collatedRead(#"shared."Case Insens""#)], with: [], action: .create)
+
+        XCTAssertEqual(expected.values.first?.sourceSnapshot?.columns.last?.ddlCollation, #"app."Case Insens""#)
+        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: unchanged))
+        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: respelled))
+    }
+
+    func testACreateWhoseSecondReadDescribesAnIndexDifferentlyIsRefused() {
+        let keys = "USING btree (lower((country)::text))"
+        let predicate = "(total > (0)::numeric)"
+        let expressions = ["lower(country)"]
+        let included = ["total"]
+        let indexedRead = { (keySpelling: String, whereSpelling: String, keyExpressions: [String], stored: [String]) in
+            self.ordersRead(extraIndexes: [
+                PluginIndexInfo(
+                    name: "orders_country_idx", columns: ["lower(country)"], whereClause: "total > 0",
+                    expressions: keyExpressions, includedColumns: stored,
+                    ddlMethodAndKeys: keySpelling, ddlWhereClause: whereSpelling
+                )
+            ])
+        }
+        let expected = inputs(
+            comparing: [indexedRead(keys, predicate, expressions, included)], with: [], action: .create
+        )
+        let unchanged = inputs(
+            comparing: [indexedRead(keys, predicate, expressions, included)], with: [], action: .create
+        )
+        let collatedKeys = #"USING btree (lower((country)::text) COLLATE "C")"#
+        let differingReads: [(String, TableStructureRead)] = [
+            ("key spelling", indexedRead(collatedKeys, predicate, expressions, included)),
+            ("predicate spelling", indexedRead(keys, "(total > 0::numeric)", expressions, included)),
+            ("expressions", indexedRead(keys, predicate, [], included)),
+            ("INCLUDE columns", indexedRead(keys, predicate, expressions, included + ["region_id"]))
+        ]
+
+        let index = expected.values.first?.sourceSnapshot?.indexes.last
+        XCTAssertEqual(index?.expressions, expressions)
+        XCTAssertEqual(index?.includedColumns, included)
+        XCTAssertEqual(index?.ddlMethodAndKeys, keys)
+        XCTAssertEqual(index?.ddlWhereClause, predicate)
+        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: unchanged))
+        for (label, read) in differingReads {
+            let actual = inputs(comparing: [read], with: [], action: .create)
+            XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual), label)
+        }
+    }
+
+    func testASyncWhoseSecondReadReportsAnotherIndexTypeIsRefused() {
+        let typedRead = { (type: String) in
+            self.ordersRead(extraIndexes: [
+                PluginIndexInfo(name: "orders_country_idx", columns: ["country"], type: type)
+            ])
+        }
+        let expectedCreate = inputs(comparing: [typedRead("hnsw")], with: [], action: .create)
+        let expectedAlter = inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
+
+        XCTAssertEqual(expectedCreate.values.first?.sourceSnapshot?.indexes.last?.type.rawValue, "HNSW")
+        XCTAssertNil(StructureChangeGuard.refusal(
+            expected: expectedCreate,
+            actual: inputs(comparing: [typedRead("HNSW")], with: [], action: .create)
+        ))
+        XCTAssertNotNil(StructureChangeGuard.refusal(
+            expected: expectedCreate,
+            actual: inputs(comparing: [typedRead("ivfflat")], with: [], action: .create)
+        ))
+        XCTAssertNil(StructureChangeGuard.refusal(
+            expected: expectedAlter,
+            actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("ivfflat")], action: .alter)
+        ))
+        XCTAssertNotNil(StructureChangeGuard.refusal(
+            expected: expectedAlter,
+            actual: inputs(comparing: [typedRead("hnsw")], with: [typedRead("bloom")], action: .alter)
+        ))
     }
 
     func testAnAlterWhoseTargetColumnMovedBetweenReadsIsRefused() {

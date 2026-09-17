@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL backup of a partitioned table writing an empty table.
 - System views, sequences and external tables listed as ordinary tables on iPhone and iPad.
 
-## [0.75.0] - 2026-09-17
+## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.
 Credential profiles: one saved login shared by any number of connections.
@@ -86,7 +86,8 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833, #2902 by @datlechin)
 - **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904, #2916 by @datlechin)
 - **Network Encryption** on the Oracle connection form, matching `SQLNET.ENCRYPTION_CLIENT`. (#2919, #2935 by @datlechin)
-
+- **No Database Selected** in the sidebar for a MySQL, MariaDB, TiDB or OceanBase connection with no database open. (#2950 by @datlechin)
+- Favorite databases synced through iCloud.
 ### Changed
 
 - Pairing approval in a window of its own when no window can host it as a sheet. (#2933 by @datlechin)
@@ -111,7 +112,7 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - Compared columns in data Compare & Sync chosen per table, and saved with each table's key, filter and row limit. (#2537, #2854 by @datlechin)
 - Query editor command bar with one control size, the container picker leading and the commands trailing. (#2892 by @datlechin)
 - Approval cards name the statement and the connection, with **Reject** in place of **Cancel**. (#2936 by @datlechin)
-
+- Scripts with their own `BEGIN` or `START TRANSACTION` run without a second transaction wrapped around them. (#2949 by @datlechin)
 ### Removed
 
 - CodeEditSymbols, a dependency the editor linked and never called, from the app and from Acknowledgements. (#2873 by @datlechin)
@@ -122,6 +123,8 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - `Escape` shortcut for Clear Selection in Settings > Keyboard. (#2918 by @datlechin)
 
 ### Fixed
+
+- Filters cleared on a table coming back the next time that table is read.
 
 - Oracle login hanging until the server gave up when it declined the network encryption negotiation. (#2919, #2935 by @datlechin)
 - Oracle login timeout that never fired, leaving the connecting spinner up past its deadline. (#2919, #2935 by @datlechin)
@@ -286,7 +289,29 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - Return answered an arbitrary approval card when more than one was waiting. (#2936 by @datlechin)
 - A reply still arriving was lost when its window closed, its connection dropped, or its session ended. (#2936 by @datlechin)
 - The assistant keeping a provider and its open stream for the session after a window closed over an approval card. (#2936 by @datlechin)
-
+- Data race on the server version of a PostgreSQL, Redshift or CockroachDB connection while it closes. (#2947 by @datlechin)
+- Structure sync scripts refused for tables that had not changed since they were compared. (#2946 by @datlechin)
+- MySQL and MariaDB indexes listed in a different order each time a table's structure loads. (#2946 by @datlechin)
+- `START TRANSACTION READ WRITE` syntax error on MySQL and MariaDB 5.5 when saving, importing or running several statements. (#2949 by @datlechin)
+- A batch whose transaction failed to start reported as a failed commit of its first statement. (#2949 by @datlechin)
+- No tables listed for a MySQL server that answers `information_schema` with nothing or an error. (#2950 by @datlechin)
+- Tables and routines of the previous database, or none, shown with no error when a newly opened database fails to load. (#2950 by @datlechin)
+- PostgreSQL columns copied to another engine losing length, precision, scale and fractional seconds. (#2951 by @datlechin)
+- Copying an Oracle `NUMBER` with a negative or oversized scale to another engine failing. (#2951 by @datlechin)
+- Copying `CHAR` text with accented characters into ClickHouse failing. (#2951 by @datlechin)
+- Copying a table to MySQL, SQL Server or Oracle failing when a key, foreign key or index is too wide for it. (#2951 by @datlechin)
+- Column collation dropped by PostgreSQL Copy To, table DDL, column type changes and column reorder scripts. (#2952 by @datlechin)
+- PostgreSQL Copy To failing on a column default that passes a sequence to a function or casts it to a type. (#2952 by @datlechin)
+- Compare & Sync rewriting a column's collation while collation differences are ignored. (#2952 by @datlechin)
+- PostgreSQL expression indexes missing from the Indexes tab and Copy To, or shown without their expression keys. (#2953 by @datlechin)
+- PostgreSQL `INCLUDE` columns shown, copied and recreated as index key columns. (#2953 by @datlechin)
+- PostgreSQL Copy To failing on a `gin_trgm_ops` index, or a partial index naming a type or function in another schema. (#2953 by @datlechin)
+- PostgreSQL Copy To and index renames losing an index's operator classes, collation, sort order and storage parameters. (#2953 by @datlechin)
+- PostgreSQL SP-GiST, HNSW, IVFFlat and BLOOM indexes shown as BTREE on the Indexes tab and rebuilt as B-tree by an index edit. (#2953 by @datlechin)
+- Compare & Sync treating two PostgreSQL indexes that differ only in type as the same index. (#2953 by @datlechin)
+- SQL Server clustered indexes recreated as nonclustered by Copy To or an index edit. (#2953 by @datlechin)
+- ClickHouse data-skipping indexes dropped by an index edit on the Indexes tab. (#2953 by @datlechin)
+- Copy To from Redshift, Snowflake or BigQuery creating indexes from table keys and failing on a second table in one schema. (#2953 by @datlechin)
 ### Security
 
 - Oracle login continuing in clear text when the server picked an encryption algorithm but sent no key material. (#2919, #2935 by @datlechin)

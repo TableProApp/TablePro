@@ -62,7 +62,9 @@ public enum FavoriteDatabaseSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .environment, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 public enum SQLFavoriteSyncField: String, SyncSchemaField {
@@ -106,10 +108,6 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
 /// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives
 /// as `prompt` on a second Mac until its owner re-authors it there.
 ///
-/// Empty on purpose, like `FavoriteDatabaseSyncField`. `CredentialProfile` is not in
-/// `CloudKit/production-schema.ckdb` yet, so the record type is declared and inert. Flip this set
-/// and `SyncRecordType.verifiedInProduction` together in the commit that carries the refreshed
-/// schema snapshot.
 public enum CredentialProfileSyncField: String, SyncSchemaField {
     case profileId
     case name
@@ -120,7 +118,10 @@ public enum CredentialProfileSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .profileId, .name, .username, .passwordMode,
+        .secureFieldIdsJson, .sortOrder, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 public enum SSHProfileSyncField: String, SyncSchemaField {

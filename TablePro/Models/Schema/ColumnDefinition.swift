@@ -27,8 +27,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
 
     var isPrimaryKey: Bool
 
-    /// The server's own spellings of `dataType`, `defaultValue` and `generationExpression` for a
-    /// `CREATE TABLE`, carried from the catalog read.
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`, carried from the catalog read.
     ///
     /// Each applies only while its field still holds the value it was read with. An edit in the
     /// structure editor changes the field, and a spelling that outlived it would recreate the column
@@ -41,10 +41,15 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     var ddlSpelling: String? { catalogType?.spelling(for: dataType) }
     var ddlDefault: String? { catalogDefault?.spelling(for: defaultValue) }
     var ddlGenerationExpression: String? { catalogGeneration?.spelling(for: generationExpression) }
+    /// Paired with a `collation` that can be nil: PostgreSQL shows no collation name for a column
+    /// declared `COLLATE "default"` over a type whose own collation is `C`, and that column still
+    /// has one to write.
+    var ddlCollation: String? { catalogCollation?.spelling(for: collation) }
 
     private var catalogType: CatalogSpelling<String>?
     private var catalogDefault: CatalogSpelling<String>?
     private var catalogGeneration: CatalogSpelling<String>?
+    private var catalogCollation: CatalogSpelling<String?>?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, dataType, isNullable, defaultValue, autoIncrement, unsigned, comment, collation
@@ -74,7 +79,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         isPrimaryKey: Bool,
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
-        ddlGenerationExpression: String? = nil
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -94,6 +100,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.catalogType = ddlSpelling.map { CatalogSpelling(value: dataType, spelling: $0) }
         self.catalogDefault = Self.catalogSpelling(value: defaultValue, spelling: ddlDefault)
         self.catalogGeneration = Self.catalogSpelling(value: generationExpression, spelling: ddlGenerationExpression)
+        self.catalogCollation = ddlCollation.map { CatalogSpelling(value: collation, spelling: $0) }
     }
 
     private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling<String>? {
@@ -107,6 +114,23 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         catalogType = nil
         catalogDefault = nil
         catalogGeneration = nil
+        catalogCollation = nil
+    }
+
+    /// The same column holding `other`'s character set and collation, with the catalog spelling
+    /// that goes with them.
+    ///
+    /// For a comparison that reports no collation difference: a column changed for some other reason
+    /// is rewritten whole on engines that restate the column to alter it, and with the source's
+    /// collation in it that rewrite changed a collation the comparison had left alone. Only for a
+    /// column of `other`'s type: a collation is read on its type, and `INT CHARACTER SET utf8mb4` is
+    /// a syntax error.
+    func keepingCollation(of other: EditableColumnDefinition) -> EditableColumnDefinition {
+        var copy = self
+        copy.charset = other.charset
+        copy.collation = other.collation
+        copy.catalogCollation = other.catalogCollation
+        return copy
     }
 
     /// Create a placeholder column for adding new columns
@@ -157,7 +181,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             isPrimaryKey: columnInfo.isPrimaryKey,
             ddlSpelling: columnInfo.ddlSpelling,
             ddlDefault: columnInfo.ddlDefault,
-            ddlGenerationExpression: columnInfo.ddlGenerationExpression
+            ddlGenerationExpression: columnInfo.ddlGenerationExpression,
+            ddlCollation: columnInfo.ddlCollation
         )
     }
 
@@ -176,7 +201,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             generationExpression: generationExpression, generationKind: generationKind,
             ddlSpelling: ddlSpelling,
             ddlDefault: ddlDefault,
-            ddlGenerationExpression: ddlGenerationExpression
+            ddlGenerationExpression: ddlGenerationExpression,
+            ddlCollation: ddlCollation
         )
     }
 
@@ -197,7 +223,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             generationKind: generationKind,
             ddlSpelling: ddlSpelling,
             ddlDefault: ddlDefault,
-            ddlGenerationExpression: ddlGenerationExpression
+            ddlGenerationExpression: ddlGenerationExpression,
+            ddlCollation: ddlCollation
         )
     }
 

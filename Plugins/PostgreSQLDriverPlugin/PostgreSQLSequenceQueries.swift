@@ -140,6 +140,18 @@ enum PostgreSQLSequenceQueries {
         }
     }
 
+    /// A `pg_depend` row recording that a column default names a relation. `pg_get_expr` never says
+    /// which sequences a default reads, and this row does, for `nextval`, `currval` and every other
+    /// `regclass` constant alike. The column DDL read and the dependent-sequence listing both start
+    /// from it, so the sequences a copy recreates are the ones whose names a copied default writes
+    /// relative. Each caller adds its own correlation and its own same-schema rule.
+    static func columnDefaultDependency(alias: String) -> String {
+        """
+        \(alias).classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass
+                            AND \(alias).refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
+        """
+    }
+
     private static func dependencyPredicate(schemaLiteral: String, table: String) -> String {
         """
 
@@ -147,9 +159,8 @@ enum PostgreSQLSequenceQueries {
                         SELECT 1
                         FROM pg_catalog.pg_attrdef ad
                         JOIN pg_catalog.pg_depend d
-                            ON d.classid = 'pg_catalog.pg_attrdef'::pg_catalog.regclass
+                            ON \(columnDefaultDependency(alias: "d"))
                             AND d.objid = ad.oid
-                            AND d.refclassid = 'pg_catalog.pg_class'::pg_catalog.regclass
                             AND d.refobjid = c.oid
                         JOIN pg_catalog.pg_class t ON t.oid = ad.adrelid
                         JOIN pg_catalog.pg_namespace tn ON tn.oid = t.relnamespace
