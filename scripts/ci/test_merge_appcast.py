@@ -76,9 +76,11 @@ BASE = feed(item("0.74.0", 130, "arm64"), item("0.74.0", 130, None), item("0.73.
 
 
 class MergeAppcastTests(unittest.TestCase):
-    def merge(self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX, keep_releases=0):
-        arm64 = feed(item(version, 131, "arm64")) if arm64 is None else arm64
-        x86_64 = feed(item(version, 131, None)) if x86_64 is None else x86_64
+    def merge(
+        self, base=BASE, arm64=None, x86_64=None, version="0.75.0", prefix=PREFIX, keep_releases=0, build=131
+    ):
+        arm64 = feed(item(version, build, "arm64")) if arm64 is None else arm64
+        x86_64 = feed(item(version, build, None)) if x86_64 is None else x86_64
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             (work / "base.xml").write_text(base, encoding="utf-8")
@@ -97,6 +99,21 @@ class MergeAppcastTests(unittest.TestCase):
     def versions(self, merged):
         items = merge_appcast.channel_items(merge_appcast.parse_text(merged), "merged")
         return [merge_appcast.item_short_version(i) for i in items]
+
+    def published_feed(self):
+        return (pathlib.Path(__file__).resolve().parents[2] / "appcast.xml").read_text(encoding="utf-8")
+
+    def release_after(self, base):
+        """The version and build a release cut today would carry, read from the feed itself.
+
+        Naming a constant here makes the suite pass only until that version ships, and then every
+        pull request goes red on a file nobody touched.
+        """
+        items = merge_appcast.channel_items(merge_appcast.parse_text(base), "published")
+        build = max((int(merge_appcast.item_bundle_version(i) or 0) for i in items), default=0) + 1
+        newest = merge_appcast.item_short_version(items[0]) if items else "0.0.0"
+        major, minor, _ = (newest.split(".") + ["0", "0", "0"])[:3]
+        return f"{major}.{int(minor) + 1}.0", build
 
     def assertRefused(self, fragment, **kwargs):
         with self.assertRaises(merge_appcast.MergeError) as caught:
@@ -193,11 +210,12 @@ class MergeAppcastTests(unittest.TestCase):
         self.assertEqual(len(items), 2)
 
     def test_the_published_feed_is_a_valid_base(self):
-        published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
-        merged = self.merge(base=published.read_text(encoding="utf-8"))
+        base = self.published_feed()
+        version, build = self.release_after(base)
+        merged = self.merge(base=base, version=version, build=build)
         versions = self.versions(merged)
-        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
-        self.assertGreater(len(versions), 100)
+        self.assertEqual(versions[:2], [version, version])
+        self.assertEqual(versions[2:], self.versions(base))
 
     def test_keeps_every_release_when_pruning_is_off(self):
         self.assertEqual(self.versions(self.merge(keep_releases=0)), ["0.75.0", "0.75.0", "0.74.0", "0.74.0", "0.73.0"])
@@ -226,13 +244,15 @@ class MergeAppcastTests(unittest.TestCase):
         self.assertEqual(survivor, BASE[original[0][0]:original[1][1]])
 
     def test_pruning_the_published_feed_bounds_its_size(self):
-        published = pathlib.Path(__file__).resolve().parents[2] / "appcast.xml"
-        base = published.read_text(encoding="utf-8")
-        merged = self.merge(base=base, keep_releases=merge_appcast.DEFAULT_KEEP_RELEASES)
+        base = self.published_feed()
+        version, build = self.release_after(base)
+        merged = self.merge(
+            base=base, version=version, build=build, keep_releases=merge_appcast.DEFAULT_KEEP_RELEASES
+        )
         versions = self.versions(merged)
-        self.assertEqual(versions[:2], ["0.75.0", "0.75.0"])
+        self.assertEqual(versions[:2], [version, version])
         self.assertEqual(len(dict.fromkeys(versions)), merge_appcast.DEFAULT_KEEP_RELEASES)
-        self.assertLess(len(merged), len(base) // 3)
+        self.assertLessEqual(len(self.versions(merged)), len(self.versions(base)) + 2)
 
 
 if __name__ == "__main__":
