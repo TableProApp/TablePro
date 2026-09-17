@@ -6,7 +6,7 @@ name: TablePro
 
 options:
   minimumXcodeGenVersion: "2.46.0"
-  projectFormat: xcode16_0
+  projectFormat: xcode16_3
   defaultConfig: Release
   developmentLanguage: en
   createIntermediateGroups: true
