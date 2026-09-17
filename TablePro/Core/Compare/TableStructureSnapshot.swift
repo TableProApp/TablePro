@@ -12,9 +12,9 @@ import TableProPluginKit
 internal struct TableStructureSnapshot: Hashable {
     internal let name: String
     internal let schema: String?
-    internal let columns: [EditableColumnDefinition]
-    internal let indexes: [EditableIndexDefinition]
-    internal let foreignKeys: [EditableForeignKeyDefinition]
+    internal private(set) var columns: [EditableColumnDefinition]
+    internal private(set) var indexes: [EditableIndexDefinition]
+    internal private(set) var foreignKeys: [EditableForeignKeyDefinition]
     internal let engine: String?
     internal let charset: String?
     internal let collation: String?
@@ -65,6 +65,17 @@ internal struct TableStructureSnapshot: Hashable {
             charset: charset,
             collation: collation
         )
+    }
+
+    /// The same structure with every definition under one shared `id`, so two reads of a table
+    /// nobody touched compare equal. Replacing the three arrays on a copy, rather than rebuilding
+    /// the snapshot, keeps every other field in the comparison.
+    internal func withoutIdentity() -> TableStructureSnapshot {
+        var copy = self
+        copy.columns = columns.map { $0.withoutIdentity() }
+        copy.indexes = indexes.map { $0.withoutIdentity() }
+        copy.foreignKeys = foreignKeys.map { $0.withoutIdentity() }
+        return copy
     }
 }
 
