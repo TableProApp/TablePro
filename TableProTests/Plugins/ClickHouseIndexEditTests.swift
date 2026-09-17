@@ -51,4 +51,26 @@ struct ClickHouseIndexEditTests {
             try generator.generate(changes: [.modifyIndex(old: read, new: renamed)])
         }
     }
+
+    /// The issue used to say the database "does not create indexes with a statement", while the
+    /// ClickHouse docs send the reader to `ALTER TABLE … ADD INDEX`, which is one.
+    @Test("Create Table creates the table and says it cannot add the index")
+    func createTableNamesTheIndexItCannotAdd() {
+        let plan = CreateTablePlan(
+            definition: PluginCreateTableDefinition(
+                tableName: "events",
+                columns: [PluginColumnDefinition(name: "user_id", dataType: "UInt64", isNullable: false)],
+                primaryKeyColumns: []
+            ),
+            indexes: [PluginIndexDefinition(name: "ix_user", columns: ["user_id"], indexType: "BTREE")],
+            issues: []
+        )
+
+        let composed = CreateTableStatementComposer.compose(plan: plan, driver: driver)
+
+        #expect(composed.statements.count == 1)
+        #expect(composed.issues.map(\.message) == ["Create Table cannot add an index on this database."])
+        #expect(composed.issues.first?.tab == .indexes)
+        #expect(composed.issues.first?.row == 0)
+    }
 }
