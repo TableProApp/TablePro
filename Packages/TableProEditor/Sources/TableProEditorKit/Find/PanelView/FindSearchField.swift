@@ -63,14 +63,7 @@ struct FindSearchField: View {
                             mode: $viewModel.mode,
                             wrapAround: $viewModel.wrapAround
                         )
-                        .background(GeometryReader { geometry in
-                            Color.clear.onAppear {
-                                findModePickerWidth = geometry.size.width
-                            }
-                            .onChange(of: geometry.size.width) { newWidth in
-                                findModePickerWidth = newWidth
-                            }
-                        })
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { findModePickerWidth = $0 }
                         .focusable(false)
                         Divider()
                     }
