@@ -32,17 +32,27 @@ jobs:
       run:
         working-directory: linux
     steps:
+      # Before the checkout, not after: actions/checkout falls back to
+      # downloading a tarball when git is missing, which leaves no .git
+      # for `meson dist` to read. The workspace is owned by the host's
+      # runner user and every step here runs as root, so git also needs
+      # to be told the checkout is not a stranger's.
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
       - name: Install system dependencies
-        # ubuntu:26.04 is minimal: git for Swatinem/rust-cache key
-        # generation and the meson version suffix, curl +
-        # ca-certificates for rust-toolchain's rustup install, then the
-        # meson toolchain, the -dev packages the workspace links, and
-        # the runtime pieces the test suites need (xvfb, dbus,
-        # gnome-keyring for the Secret Service step, openssh-client for
-        # the SSH transport).
+        # ubuntu:26.04 is minimal: curl + ca-certificates for
+        # rust-toolchain's rustup install, then the meson toolchain, the
+        # -dev packages the workspace links, and the runtime pieces the
+        # test suites need (xvfb, dbus, gnome-keyring for the Secret
+        # Service step, openssh-client for the SSH transport). git is
+        # already in from the step above.
         # No sudo (container runs as root by default).
         run: |
           apt-get update
@@ -50,7 +60,6 @@ jobs:
             build-essential \
             ca-certificates \
             curl \
-            git \
             pkgconf \
             meson \
             ninja-build \
@@ -115,19 +124,26 @@ jobs:
       run:
         working-directory: linux
     steps:
+      # Same reason as the fast job: without git, actions/checkout
+      # downloads a tarball and every `git` below has no repository to
+      # read.
+      - name: Install git
+        run: |
+          dnf install -y --setopt=install_weak_deps=False git
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        working-directory: /
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'schedule' && 'linux' || github.ref }}
       - name: Install system dependencies
         run: |
           dnf install -y --setopt=install_weak_deps=False \
-            gcc pkgconf meson ninja-build gettext git \
+            gcc pkgconf meson ninja-build gettext \
             desktop-file-utils appstream glib2-devel \
             gtk4-devel libadwaita-devel gtksourceview5-devel \
             sqlite-devel krb5-devel clang-devel cargo rust
       - name: POTFILES.in is current
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git ls-files 'crates/app/src/*.rs' 'data/resources/*.ui' 'data/*.desktop.in.in' \
             'data/*.gschema.xml' 'data/*.metainfo.xml.in.in' > po/POTFILES.in
           git diff --exit-code po/POTFILES.in
