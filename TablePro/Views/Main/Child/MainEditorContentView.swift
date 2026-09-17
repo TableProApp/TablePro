@@ -70,6 +70,11 @@ struct MainEditorContentView: View {
     @State private var dataTabDelegate = DataTabGridDelegate()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
+    /// A table's highlight rules live in this store, not on the tab, and `body` reads them for both
+    /// the grid and the status bar popover. Without observing it here a rule added to a table tab was
+    /// written and never shown: Add Rule did nothing visible, while a query result's rules, kept on
+    /// the tab, updated as expected.
+    @ObservedObject private var highlightRuleStorage = HighlightRuleStorage.shared
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
 

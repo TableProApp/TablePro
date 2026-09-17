@@ -37,8 +37,7 @@ final class HighlightRuleStorage: ObservableObject, TableScopedSettingsStore {
     }
 
     func rules(for scope: TableScope) -> [HighlightRule] {
-        _ = revision
-        return loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
+        loadEntries(for: scope.connectionId)[scope.storageComponent] ?? []
     }
 
     func setRules(_ rules: [HighlightRule], for scope: TableScope) {
