@@ -293,6 +293,25 @@ final class StructureChangeGuardTests: XCTestCase {
         XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: actual))
     }
 
+    func testACreateWhoseSecondReadSpellsACollationDifferentlyIsRefused() {
+        let collatedRead = { (spelling: String) in
+            self.ordersRead(extraColumns: [
+                PluginColumnInfo(
+                    name: "code", dataType: "text", collation: "Case Insens", generationExpression: nil,
+                    generationKind: nil, ddlSpelling: "text", ddlDefault: nil, ddlGenerationExpression: nil,
+                    ddlCollation: spelling
+                )
+            ])
+        }
+        let expected = inputs(comparing: [collatedRead(#"app."Case Insens""#)], with: [], action: .create)
+        let unchanged = inputs(comparing: [collatedRead(#"app."Case Insens""#)], with: [], action: .create)
+        let respelled = inputs(comparing: [collatedRead(#"shared."Case Insens""#)], with: [], action: .create)
+
+        XCTAssertEqual(expected.values.first?.sourceSnapshot?.columns.last?.ddlCollation, #"app."Case Insens""#)
+        XCTAssertNil(StructureChangeGuard.refusal(expected: expected, actual: unchanged))
+        XCTAssertNotNil(StructureChangeGuard.refusal(expected: expected, actual: respelled))
+    }
+
     func testAnAlterWhoseTargetColumnMovedBetweenReadsIsRefused() {
         let expected = inputs(comparing: [ordersRead()], with: [legacyOrdersRead()], action: .alter)
         let actual = inputs(
