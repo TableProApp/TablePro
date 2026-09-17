@@ -11,7 +11,7 @@ The driver speaks TNS in pure Swift, so Instant Client and the rest of Oracle's 
 Oracle 10g and earlier cannot connect. Their O3LOGON handshake is not implemented, and there is no setting that works around it.
 </Info>
 
-A RAC SCAN listener, a shared server, or a load balancer in front of the database needs no configuration. Neither does a server that requires Native Network Encryption: AES with a SHA-2 checksum is offered on every connect, and the server turns it on when it wants it.
+A RAC SCAN listener, a shared server, or a load balancer in front of the database needs no configuration. Neither does Native Network Encryption: the server says in its accept packet whether it wants the negotiation, and when it does, AES with a SHA-2 checksum is offered. Set **Network Encryption** to change what TablePro offers.
 
 <RegistryPlugin name="Oracle" plugin="Oracle Driver" />
 
@@ -25,6 +25,7 @@ A RAC SCAN listener, a shared server, or a load balancer in front of the databas
 | **Service Name** | - | **Required**. `lsnrctl services` on the server lists what the listener answers for |
 | **Username** | - | Username and password only. There is no OS auth |
 | **Role** | Normal | SYSDBA or SYSOPER for an administrative logon. The account needs the matching privilege, and the session runs as `SYS` rather than as the user you signed in with |
+| **Network Encryption** | Accepted | Matches `SQLNET.ENCRYPTION_CLIENT`, and sets the data-integrity checksum to the same level because the driver negotiates both in one exchange. Accepted offers AES without insisting, which is what Oracle's own clients send. Rejected skips the negotiation, Requested prefers it, Required refuses to connect without it |
 
 There is no Database field. Each user is a schema, and `Cmd+K` or the **Schema** toolbar button switches the active one. Oracle's own schemas, such as `SYS`, `SYSTEM` and `XDB`, sit at the end of the schema switcher, and the sidebar lists them only with [**Show system databases and schemas**](/customization/general-settings#tabs-and-sidebar) on, or when one is the schema in use. A tab binds to a schema rather than a database, so nothing reconnects when you switch.
 
@@ -119,8 +120,10 @@ The Oracle driver is compiled into TablePro Mobile, with no plugin to install. B
 
 **Server Version Not Supported**: the server is 10g or earlier. Nothing on this side helps; the database has to be 11.1 or later.
 
-**Login Handshake Timed Out**: TCP connected but the login never finished, so the attempt stops after 30 seconds. Look for a firewall, VPN, or proxy that stalls traffic once the TCP handshake is done.
+**Login Handshake Timed Out**: TCP connected but the login never finished, so the attempt stops after 30 seconds. The dialog names the step the server stopped answering at. If that step is network encryption, set **Network Encryption** to Rejected and connect again. Otherwise confirm the host and port reach the listener, and look for a firewall, VPN, or proxy that stalls traffic once the TCP handshake is done.
 
 **Connection Dropped During Handshake**: the server closed the connection mid-login, and the dialog names the phase it stopped at (`advancedNegotiation`, `dataTypeNegotiation`, `authentication`). Look for a firewall, VPN, or proxy that resets traffic, and confirm the host and port reach the listener itself.
 
 **Native Network Encryption Not Completed**: the server requires an encryption or checksum algorithm the driver does not offer. Ask the DBA which ones are set and file an issue with the reason the dialog shows. TLS is the alternative: set an SSL mode instead.
+
+**Native Network Encryption Required**: the server requires the negotiation but did not offer it on this connection. Ask the DBA to enable it for this client, or set an SSL mode and use TLS instead.

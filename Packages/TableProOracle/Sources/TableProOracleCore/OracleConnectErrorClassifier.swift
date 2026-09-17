@@ -6,6 +6,8 @@ public enum OracleConnectFailure: Sendable, Equatable {
     case connectionDropped
     case connectionFailed
     case advancedNegotiationFailed
+    case advancedNegotiationRequired
+    case loginHandshakeTimedOut
 }
 
 public enum OracleConnectErrorClassifier {
@@ -20,6 +22,10 @@ public enum OracleConnectErrorClassifier {
             return .versionNotSupported
         case "advancedNegotiationFailed":
             return .advancedNegotiationFailed
+        case "advancedNegotiationRequired":
+            return .advancedNegotiationRequired
+        case "loginHandshakeTimedOut":
+            return .loginHandshakeTimedOut
         default:
             return .connectionFailed
         }
@@ -32,11 +38,11 @@ public enum OracleConnectErrorClassifier {
     ) -> Bool {
         guard nativeNetworkEncryptionEnabled else { return false }
         switch failure {
-        case .advancedNegotiationFailed:
+        case .advancedNegotiationFailed, .advancedNegotiationRequired:
             return true
         case .connectionDropped, .connectionFailed:
             return timedOut
-        case .verifierUnsupported, .versionNotSupported:
+        case .verifierUnsupported, .versionNotSupported, .loginHandshakeTimedOut:
             return false
         }
     }

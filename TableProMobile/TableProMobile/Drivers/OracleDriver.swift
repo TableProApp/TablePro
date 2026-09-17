@@ -43,7 +43,8 @@ nonisolated final class OracleDriver: DatabaseDriver, @unchecked Sendable {
             serviceName: connection.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: connection.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
             role: OracleConnectionOptions.role(from: connection.additionalFields),
-            tls: ssl.oracleTLSDescription
+            tls: ssl.oracleTLSDescription,
+            networkEncryption: OracleConnectionOptions.networkEncryption(from: connection.additionalFields)
         ))
         host = connection.host
         fallbackSchema = connection.username.uppercased()

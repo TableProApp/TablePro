@@ -341,6 +341,16 @@ struct ConnectionFormView: View {
                 Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
                 Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
             }
+
+            Picker(
+                String(localized: "Network Encryption"),
+                selection: $viewModel.oracleNetworkEncryption
+            ) {
+                Text(String(localized: "Accepted")).tag(OracleConnectionOptions.NetworkEncryption.accepted)
+                Text(String(localized: "Rejected")).tag(OracleConnectionOptions.NetworkEncryption.rejected)
+                Text(String(localized: "Requested")).tag(OracleConnectionOptions.NetworkEncryption.requested)
+                Text(String(localized: "Required")).tag(OracleConnectionOptions.NetworkEncryption.required)
+            }
         }
     }
 

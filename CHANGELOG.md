@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Array element editor in the row inspector.
 - **Keyword case** in Settings > Editor: completed keywords and functions follow the case you type. (#2833)
 - **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904)
+- **Network Encryption** on the Oracle connection form, matching `SQLNET.ENCRYPTION_CLIENT`. (#2919)
 
 ### Changed
 
@@ -78,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle login hanging until the server gave up when it declined the network encryption negotiation. (#2919)
+- Oracle login timeout that never fired, leaving the connecting spinner up past its deadline. (#2919)
+- Crash from an Oracle server sending a marker packet, or an accept packet under 32 bytes, during login. (#2919)
 - Crash on launch when a pairing deep link opens the approval sheet. (#2930)
 - `Return` in the raw SQL filter accepting a suggestion nobody selected instead of applying the filter.
 - `Return` on a filter value replacing what was typed with the first suggestion.
@@ -232,6 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Oracle login continuing in clear text when the server picked an encryption algorithm but sent no key exchange material. (#2919)
 - Pairing approval never showed the address the one-time code is delivered to. (#2930)
 - A pairing link whose connection allowlist failed to parse widened the request to every connection. (#2930)
 - Sparkle 2.10.0, carrying installer fixes for a symlink attack and a privilege escalation under root.

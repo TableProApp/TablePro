@@ -11,6 +11,30 @@ final class OracleConnectErrorClassifierTests: XCTestCase {
         XCTAssertEqual(OracleConnectErrorClassifier.classify("uncleanShutdown"), .connectionDropped)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("serverVersionNotSupported"), .versionNotSupported)
         XCTAssertEqual(OracleConnectErrorClassifier.classify("advancedNegotiationFailed"), .advancedNegotiationFailed)
+        XCTAssertEqual(
+            OracleConnectErrorClassifier.classify("advancedNegotiationRequired"),
+            .advancedNegotiationRequired
+        )
+        XCTAssertEqual(
+            OracleConnectErrorClassifier.classify("loginHandshakeTimedOut"),
+            .loginHandshakeTimedOut
+        )
+    }
+
+    func testStalledLoginIsNotBlamedOnEncryption() {
+        XCTAssertFalse(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .loginHandshakeTimedOut,
+            nativeNetworkEncryptionEnabled: true,
+            timedOut: true
+        ))
+    }
+
+    func testRequiredNegotiationIsAnEncryptionSignal() {
+        XCTAssertTrue(OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
+            failure: .advancedNegotiationRequired,
+            nativeNetworkEncryptionEnabled: true,
+            timedOut: false
+        ))
     }
 
     func testUnknownCodeFallsBackToConnectionFailed() {

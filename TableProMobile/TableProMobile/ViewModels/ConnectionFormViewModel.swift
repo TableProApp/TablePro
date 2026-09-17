@@ -56,6 +56,7 @@ final class ConnectionFormViewModel {
     var oracleServiceName = ""
     var oracleSID = ""
     var oracleRole: OracleConnectionOptions.Role = .normal
+    var oracleNetworkEncryption: OracleConnectionOptions.NetworkEncryption = .accepted
 
     // Organization
     var groupId: UUID?
@@ -113,6 +114,7 @@ final class ConnectionFormViewModel {
         oracleServiceName = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? ""
         oracleSID = conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? ""
         oracleRole = OracleConnectionOptions.role(from: conn.additionalFields)
+        oracleNetworkEncryption = OracleConnectionOptions.networkEncryption(from: conn.additionalFields)
         sshEnabled = conn.sshEnabled
         groupId = conn.groupId
         tagId = conn.tagId
@@ -449,6 +451,8 @@ final class ConnectionFormViewModel {
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] = oracleSID
             conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.role] = oracleRole.rawValue
+            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.networkEncryption] =
+                oracleNetworkEncryption.rawValue
         }
         conn.safeModeLevel = safeModeLevel
         conn.isReadOnly = safeModeLevel.blocksWrites

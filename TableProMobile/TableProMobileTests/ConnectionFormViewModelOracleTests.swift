@@ -45,6 +45,33 @@ struct ConnectionFormViewModelOracleTests {
         #expect(viewModel.oracleSID.isEmpty)
     }
 
+    @Test("Network encryption hydrates from additionalFields")
+    func hydratesNetworkEncryption() {
+        let connection = makeOracleConnection(additionalFields: [
+            OracleConnectionOptions.AdditionalFieldKey.networkEncryption: "rejected"
+        ])
+        let viewModel = ConnectionFormViewModel(editing: connection)
+        #expect(viewModel.oracleNetworkEncryption == .rejected)
+    }
+
+    @Test("Network encryption defaults to accepted when absent")
+    func defaultsNetworkEncryption() {
+        let viewModel = ConnectionFormViewModel(editing: makeOracleConnection(additionalFields: [:]))
+        #expect(viewModel.oracleNetworkEncryption == .accepted)
+    }
+
+    @Test("Saving writes the network encryption level")
+    func savesNetworkEncryption() {
+        let viewModel = ConnectionFormViewModel()
+        viewModel.type = .oracle
+        viewModel.host = "db.example.com"
+        viewModel.username = "scott"
+        viewModel.oracleNetworkEncryption = .required
+
+        let built = viewModel.buildConnection()
+        #expect(built.additionalFields["oracleNetworkEncryption"] == "required")
+    }
+
     @Test("SID connections hydrate from additionalFields")
     func hydratesSID() {
         let connection = makeOracleConnection(additionalFields: [

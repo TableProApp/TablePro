@@ -44,6 +44,10 @@ private actor UnsupportedTypeWarner {
 public final class OracleCoreConnection: @unchecked Sendable {
     private static let connectionCounter = OSAllocatedUnfairLock(initialState: 0)
     private static let pingTimeoutSeconds: Double = 10
+    /// How far behind the driver's own login deadline the app's backstop sits. The
+    /// driver ends a stalled handshake itself and names the phase it stalled in, so
+    /// the backstop only has to catch a driver that never returns at all.
+    private static let loginTimeoutGraceSeconds: Double = 5
 
     private let options: OracleConnectionOptions
     private let queryGate = QueryGate()
@@ -85,6 +89,14 @@ public final class OracleCoreConnection: @unchecked Sendable {
             tls: tls
         )
         configuration.mode = Self.authenticationMode(for: options.role)
+        configuration.nativeNetworkEncryption = Self.encryptionLevel(for: options.networkEncryption)
+        // The driver owns the channel, so it is the only thing that can end a login the
+        // server has stopped answering, and it names the handshake phase when it does.
+        // The wrapper below stays a grace period behind it as a backstop for a driver
+        // that never returns at all.
+        configuration.options.loginTimeout = .milliseconds(
+            Int64((options.loginTimeoutSeconds * 1_000).rounded())
+        )
         let connectConfig = configuration
         let connectLogger = nioLogger
 
@@ -93,13 +105,26 @@ public final class OracleCoreConnection: @unchecked Sendable {
             return counter
         }
 
+        let attempt = OSAllocatedUnfairLock(initialState: false)
+
         do {
-            let connection = try await withOracleTimeout(seconds: options.loginTimeoutSeconds) {
-                try await OracleNIO.OracleConnection.connect(
+            let connection = try await withOracleTimeout(
+                seconds: options.loginTimeoutSeconds + Self.loginTimeoutGraceSeconds,
+                onTimeout: { attempt.withLock { $0 = true } }
+            ) {
+                let connection = try await OracleNIO.OracleConnection.connect(
                     configuration: connectConfig,
                     id: connectionId,
                     logger: connectLogger
                 )
+                // A connect that lands after the backstop fired has already been given
+                // up on, and nothing downstream will ever see this handle. It closes its
+                // own socket rather than leaking one per abandoned attempt.
+                guard !attempt.withLock({ $0 }) else {
+                    try? await connection.close()
+                    throw OracleCoreError.loginTimedOut
+                }
+                return connection
             }
 
             state.withLock { current in
@@ -141,6 +166,17 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
     }
 
+    static func encryptionLevel(
+        for level: OracleConnectionOptions.NetworkEncryption
+    ) -> OracleNIO.NativeNetworkEncryptionLevel {
+        switch level {
+        case .rejected: return .rejected
+        case .accepted: return .accepted
+        case .requested: return .requested
+        case .required: return .required
+        }
+    }
+
     private func connectError(from sqlError: OracleSQLError) -> OracleCoreError {
         let detail = Self.connectFailureDetail(sqlError)
         let phase = sqlError.handshakePhase
@@ -151,11 +187,15 @@ public final class OracleCoreConnection: @unchecked Sendable {
             return .tlsHandshakeFailed(kind: kind, serverMessage: detail)
         }
         let failure = OracleConnectErrorClassifier.classify(sqlError.code.description)
-        // Native network encryption is always offered at ACCEPTED, so a non-timeout
-        // advanced-negotiation failure is the one definitive encryption signal.
+        if case .loginHandshakeTimedOut = failure {
+            return .loginHandshakeStalled(phase: phase)
+        }
+        if case .advancedNegotiationRequired = failure {
+            return .nativeEncryptionRequired
+        }
         if OracleConnectErrorClassifier.isLikelyNativeEncryptionFailure(
             failure: failure,
-            nativeNetworkEncryptionEnabled: true,
+            nativeNetworkEncryptionEnabled: options.networkEncryption != .rejected,
             timedOut: false
         ) {
             return .nativeEncryptionFailed(detail: detail)
@@ -169,6 +209,10 @@ public final class OracleCoreConnection: @unchecked Sendable {
             return .authConnectionDropped(phase: phase)
         case .advancedNegotiationFailed:
             return .nativeEncryptionFailed(detail: detail)
+        case .advancedNegotiationRequired:
+            return .nativeEncryptionRequired
+        case .loginHandshakeTimedOut:
+            return .loginHandshakeStalled(phase: phase)
         case .connectionFailed:
             return .connectionFailed(detail)
         }
