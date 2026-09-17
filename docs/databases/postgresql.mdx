@@ -74,6 +74,10 @@ Tables using the older `INHERITS` inheritance are listed normally, each child on
 
 ## Column types
 
+A column's type reads the way the server declares it: `character varying(50)`, `numeric(10,2)`, `timestamp(3) with time zone`, an enum or a domain by its own name. A type from another schema is qualified, and so is a type an extension owns, wherever the table lives: a PostGIS column on a table in `public` reads `public.geometry(Point,4326)`. That is what the Structure tab shows, what the [MCP tools](/external-api/mcp-tools) report as `data_type`, and what the AI context and autocomplete carry.
+
+An enum column keeps its value picker, and a domain column keeps the editor, formatting and sorting of the type underneath it.
+
 `jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 
 An array column opens one of three editors, decided by its element type:
