@@ -1,5 +1,6 @@
 mod browse;
 mod connection;
+mod ran_statements;
 mod row_ops;
 mod status_pages;
 mod structure;

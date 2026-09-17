@@ -159,7 +159,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 - [x] SQLite FTS5 store at `$XDG_STATE_HOME/tablepro/history.db`, versioned with embedded sqlx migrations
 - [x] SQL editor runs recorded with timestamp, duration, success, connection name
-- [ ] Record the SQL the app runs outside the editor (Structure tab DDL saves, grid row saves)
+- [x] Record the SQL the app runs outside the editor (Structure tab DDL saves, grid row saves)
 - [x] History pane with full-text search
 - [ ] Saved queries: name + SQL, organized by connection
 

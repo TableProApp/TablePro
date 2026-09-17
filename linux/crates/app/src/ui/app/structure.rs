@@ -295,6 +295,9 @@ impl App {
 
         self.in_flight_saves.set(self.in_flight_saves.get() + 1);
         let sender_for_cmd = sender.clone();
+        // Structure edits change the database too, so the history
+        // shows the DDL that did it and not only editor statements.
+        let ran = super::ran_statements::RanStatements::starting(self.history.store(), statements.clone());
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
@@ -309,18 +312,25 @@ impl App {
                         let batch: Vec<(String, Vec<Value>)> =
                             statements.iter().map(|sql| (sql.clone(), Vec::new())).collect();
                         if let Err(e) = conn.execute_in_transaction(&batch).await {
-                            sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, error_text::driver_message(&e)));
+                            let message = error_text::driver_message(&e);
+                            ran.finished(None, tablepro_storage::query_history::Outcome::Error(message.clone()))
+                                .await;
+                            sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, message));
                             return;
                         }
                     } else {
                         for sql in &statements {
                             if let Err(e) = conn.execute(sql).await {
-                                sender_for_cmd
-                                    .input(AppMsg::StructureSaveFailed(tab_id, error_text::driver_message(&e)));
+                                let message = error_text::driver_message(&e);
+                                ran.finished(None, tablepro_storage::query_history::Outcome::Error(message.clone()))
+                                    .await;
+                                sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, message));
                                 return;
                             }
                         }
                     }
+                    ran.finished(None, tablepro_storage::query_history::Outcome::Success)
+                        .await;
                     sender_for_cmd.input(AppMsg::StructureSaveCompleted {
                         tab_id,
                         new_table_name: new_table_name.clone(),

@@ -8,6 +8,7 @@ use crate::services::change_tracker::StatementSource;
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::error_text;
 
+use super::ran_statements::RanStatements;
 use super::{App, AppMsg};
 
 impl App {
@@ -48,6 +49,12 @@ impl App {
         // outcome.
         self.in_flight_saves.set(self.in_flight_saves.get() + 1);
         let sender_for_cmd = sender.clone();
+        // A row save changes the database, so it belongs in the same
+        // history as a statement run from the editor.
+        let ran = RanStatements::starting(
+            self.history.store(),
+            statements.iter().map(|(sql, _)| sql.clone()).collect::<Vec<_>>(),
+        );
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
@@ -66,6 +73,12 @@ impl App {
                             let warning = reports_rows_affected
                                 .then(|| compute_concurrency_warning(&statements, &affected))
                                 .flatten();
+                            let touched = affected.iter().copied().sum::<u64>();
+                            ran.finished(
+                                i64::try_from(touched).ok(),
+                                tablepro_storage::query_history::Outcome::Success,
+                            )
+                            .await;
                             sender_for_cmd.input(AppMsg::RowOpStarted);
                             sender_for_cmd.input(AppMsg::WorkspaceSchemaWordsChanged);
                             sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id, warning));
@@ -83,6 +96,8 @@ impl App {
                                 sender_for_cmd.input(AppMsg::FlashErrorRowForTab(tab_id, source));
                             }
                             let msg = error_text::driver_message(&e);
+                            ran.finished(None, tablepro_storage::query_history::Outcome::Error(msg.clone()))
+                                .await;
                             sender_for_cmd.input(AppMsg::SaveFailedForTab(tab_id, msg));
                         }
                     }
