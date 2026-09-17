@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Data race on the server version of a PostgreSQL, Redshift or CockroachDB connection while it closes.
+
 ## [0.75.0] - 2026-09-17
 
 Runs on macOS 13 Ventura and later.
