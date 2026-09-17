@@ -77,6 +77,17 @@ struct ChatToolTargetTests {
         #expect(carried.approvalWasExplicit)
     }
 
+    /// The connection form states the separation: AI Policy governs the in-app assistant, External
+    /// Clients governs Raycast, Cursor, Claude Desktop and AppleScript. Authorizing the assistant
+    /// through the external gate would have refused every in-app write by default, because
+    /// `externalAccess` is `.readOnly` on a new connection.
+    @Test("The assistant is not gated by the External Clients level")
+    func doesNotConsultExternalAccess() {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        #expect(connection.externalAccess == .readOnly)
+        #expect(connection.aiPolicy == nil)
+    }
+
     /// A parameter the session can only ever ignore or refuse should not be advertised to the model.
     @Test("No in-app tool publishes a connection_id parameter")
     func noToolPublishesConnectionId() {
