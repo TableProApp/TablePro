@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - PostgreSQL column types shown without their length, precision, enum name or domain name.
 - Compare & Sync missing a PostgreSQL column's length, precision or type change.
+- Compare & Sync missing a MySQL or MariaDB fractional seconds, enum label or precision change.
+- MySQL and MariaDB integer display width changes held back by Compare & Sync as data loss.
 
 ## [0.75.0] - 2026-09-18
 

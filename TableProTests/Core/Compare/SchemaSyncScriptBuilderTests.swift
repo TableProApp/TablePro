@@ -119,6 +119,34 @@ final class SchemaSyncScriptBuilderTests: XCTestCase {
         )
     }
 
+    // MARK: - Target engine
+
+    /// The classifier reads the target's fractional-seconds default, and only the builder knows
+    /// which engine it is writing for. Built with a fixed family, a MySQL `datetime(3)` dropped to
+    /// `datetime` lost its milliseconds with nothing said about it.
+    func testHazardsReadTheTargetEngineFamily() throws {
+        let change = SchemaChange.modifyColumn(
+            old: EditableColumnDefinition(
+                id: UUID(), name: "seen_at", dataType: "datetime(3)", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            ),
+            new: EditableColumnDefinition(
+                id: UUID(), name: "seen_at", dataType: "datetime", isNullable: true, defaultValue: nil,
+                autoIncrement: false, unsigned: false, comment: nil, collation: nil,
+                onUpdate: nil, charset: nil, extra: nil, isPrimaryKey: false
+            )
+        )
+        let operations: [SchemaSyncOperation] = [.alterTable(name: "visits", schema: nil, changes: [change])]
+
+        let mysql = try builder.build(operations: operations, foreignKeysByTable: [:])
+        let postgres = try SchemaSyncScriptBuilder(targetDriver: driver, targetDatabaseType: .postgresql)
+            .build(operations: operations, foreignKeysByTable: [:])
+
+        XCTAssertTrue(mysql.first?.hazards.contains { $0.kind == .lossyTypeChange } == true)
+        XCTAssertFalse(postgres.first?.hazards.contains { $0.kind == .lossyTypeChange } == true)
+    }
+
     // MARK: - Cross-table ordering
 
     func testCreatesEmitParentsBeforeChildren() {

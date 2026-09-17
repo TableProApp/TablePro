@@ -105,6 +105,37 @@ struct TypeWidthComparisonTests {
         #expect(mysql("set('a','b','c')", "set('a','c')") == .narrowing)
     }
 
+    /// `TINYINT(1)` is how MySQL stores a boolean and `TINYINT(4)` is what MariaDB prints for the
+    /// same column, so the two readings meet on one column more often than anywhere else. Read as
+    /// two kinds, the width fell through to the display-width comparison and a sync refused the
+    /// column as truncating.
+    @Test("A MySQL display width is not a value change, whichever kind each side parses to")
+    func mysqlDisplayWidthIsNotAChange() {
+        #expect(mysql("tinyint(1)", "tinyint(4)") == .equivalent)
+        #expect(mysql("tinyint(4)", "tinyint(1)") == .equivalent)
+        #expect(mysql("tinyint", "tinyint(1)") == .equivalent)
+        #expect(mysql("int(11)", "int") == .equivalent)
+        #expect(mysql("int", "int(10)") == .equivalent)
+    }
+
+    @Test("A set's labels are read in the case the type wrote them, as an enum's are")
+    func setLabelsKeepTheirCase() {
+        #expect(mysql("set('A','B')", "set('A','B')") == .equivalent)
+        #expect(mysql("enum('A','B')", "enum('A','B')") == .equivalent)
+        #expect(mysql("set('A','B')", "set('A','B','C')") == .widening)
+    }
+
+    /// Two servers need not have installed an extension in the same schema, and a type in the
+    /// table's own schema reads bare from there and qualified from anywhere else. Compared whole,
+    /// the same type read as a different one and the sync refused the column.
+    @Test("A type compares on the name both sides share, not the schema each found it in")
+    func qualifiedTypesCompareOnTheirName() {
+        #expect(postgres("public.geometry(Point,4326)", "extensions.geometry(Point,4326)") == .equivalent)
+        #expect(postgres("posint", "public.posint") == .equivalent)
+        #expect(postgres("public.citext", "citext") == .equivalent)
+        #expect(postgres("public.posint", "public.negint") == .narrowing)
+    }
+
     @Test("The MySQL types a sync already allowed stay unchanged")
     func mysqlEveryDayChangesKeepTheirOutcome() {
         #expect(mysql("varchar(255)", "varchar(255)") == .equivalent)

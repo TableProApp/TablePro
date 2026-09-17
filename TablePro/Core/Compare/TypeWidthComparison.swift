@@ -22,11 +22,16 @@ internal enum TypeWidthComparison {
     }
 
     internal static func classify(from oldType: String, to newType: String, family: SQLTypeFamily) -> Outcome {
+        let oldType = SchemaRelativeSpelling.unqualified(oldType)
+        let newType = SchemaRelativeSpelling.unqualified(newType)
         let old = Spelling(oldType)
         let new = Spelling(newType)
         guard old.base == new.base else { return .narrowing }
         if old.base == setTypeName {
-            return labelOutcome(from: SQLTypeParser.labels(in: old.params), to: SQLTypeParser.labels(in: new.params))
+            return labelOutcome(
+                from: SQLTypeParser.labels(in: Spelling.parameters(of: oldType)),
+                to: SQLTypeParser.labels(in: Spelling.parameters(of: newType))
+            )
         }
         let outcome = kindOutcome(
             from: SQLTypeParser.parse(oldType, family: family).kind,
@@ -53,10 +58,11 @@ internal enum TypeWidthComparison {
             return fractionalSecondsOutcome(from: oldPrecision, to: newPrecision, family: family)
         case let (.enumeration(oldValues), .enumeration(newValues)):
             return labelOutcome(from: oldValues, to: newValues)
-        /// A MySQL integer's parameter is its display width, which decides how `ZEROFILL` pads and
-        /// nothing else. MySQL 8.0.19 stopped reporting it, so a MariaDB `int(11)` and a MySQL `int`
-        /// are the same column.
-        case (.integer, .integer):
+        // A MySQL integer's parameter is its display width, which decides how `ZEROFILL` pads and
+        // nothing else. MySQL 8.0.19 stopped reporting it, so a MariaDB `int(11)` and a MySQL `int`
+        // are the same column. `TINYINT(1)` parses as a boolean and `TINYINT(4)` as an integer, so
+        // the arm takes both readings: the base name is already known to match.
+        case (.integer, .integer), (.integer, .boolean), (.boolean, .integer), (.boolean, .boolean):
             return .equivalent
         case let (.array(oldElement), .array(newElement)):
             return kindOutcome(from: oldElement, to: newElement, family: family)
@@ -156,6 +162,14 @@ internal enum TypeWidthComparison {
             }
             base = Self.collapsingWhitespace(trimmed[..<open] + trimmed[trimmed.index(after: close)...])
             params = String(trimmed[trimmed.index(after: open)..<close])
+        }
+
+        /// The parameter list in the case the type wrote it, which is the case a label keeps.
+        static func parameters(of type: String) -> String? {
+            guard let open = type.firstIndex(of: "("),
+                  let close = type.lastIndex(of: ")"),
+                  open < close else { return nil }
+            return String(type[type.index(after: open)..<close])
         }
 
         /// The first parameter, and only when it is a whole number on its own: `geometry(Point,4326)`
