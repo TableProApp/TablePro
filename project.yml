@@ -541,6 +541,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogTypeNames.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnClauses.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnTypeSpelling.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCommentStatements.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift

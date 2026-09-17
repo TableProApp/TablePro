@@ -246,8 +246,22 @@ enum PostgreSQLSchemaQueries {
     }
 
     static func setSearchPath(toSchema schema: String) -> String {
-        let quotedIdentifier = "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
-        return "SET search_path TO \(quotedIdentifier)"
+        return "SET search_path TO \(quotedSchemaIdentifier(schema))"
+    }
+
+    /// Narrows `search_path` to `pg_catalog` and one schema for the statement that follows, so every
+    /// name the server deparses is written the way that schema's own `CREATE TABLE` writes it: its
+    /// own types bare, every other schema's qualified. That is what `psql \d` shows, and it does not
+    /// depend on what the session's path happens to be.
+    ///
+    /// Run through `LibPQPluginConnection.executeTransactionScopedRead`, which is what confines the
+    /// setting to the read.
+    static func schemaRelativeReadPrefix(schema: String) -> String {
+        "SET LOCAL search_path = pg_catalog, \(quotedSchemaIdentifier(schema)); "
+    }
+
+    private static func quotedSchemaIdentifier(_ schema: String) -> String {
+        "\"\(schema.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 
     static func collationList(capabilities: PostgreSQLCapabilities) -> String {
@@ -344,6 +358,42 @@ enum PostgreSQLSchemaQueries {
             """
     }
 
+    /// The column's type as the table's own schema declares it, read under
+    /// `schemaRelativeReadPrefix`. `format_type` is the only spelling that keeps the modifier, and
+    /// under that path it writes the table's own types bare and every other schema's qualified.
+    ///
+    /// A type an extension owns is qualified even in its own schema. PostGIS and citext install into
+    /// `public` by default, so `public.places` reads `geometry(Point,4326)` while `staging.places`
+    /// reads `public.geometry(Point,4326)`: comparing the two schemas reported every extension-typed
+    /// column as changed and wrote an `ALTER ... TYPE geometry` that fails on the target's path,
+    /// because nothing recreates an extension's types beside a table. `pg_depend` with `deptype 'e'`
+    /// is what marks one, taken from the element type for an array, whose own row a server before 11
+    /// may not carry.
+    static func declaredType(attribute: String) -> String {
+        """
+        CASE WHEN EXISTS (
+                        SELECT 1
+                        FROM pg_catalog.pg_type dt
+                        JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
+                        WHERE dt.oid = \(attribute).atttypid
+                          AND dtn.nspname <> 'pg_catalog'
+                          AND pg_catalog.pg_type_is_visible(dt.oid)
+                          AND EXISTS (
+                              SELECT 1
+                              FROM pg_catalog.pg_depend dd
+                              WHERE dd.classid = 'pg_catalog.pg_type'::pg_catalog.regclass
+                                AND dd.deptype = 'e'
+                                AND dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0
+                                                    THEN dt.typelem ELSE dt.oid END))
+                   THEN (SELECT pg_catalog.quote_ident(dtn.nspname) || '.'
+                           FROM pg_catalog.pg_type dt
+                           JOIN pg_catalog.pg_namespace dtn ON dtn.oid = dt.typnamespace
+                          WHERE dt.oid = \(attribute).atttypid)
+                   ELSE '' END
+                || pg_catalog.format_type(\(attribute).atttypid, \(attribute).atttypmod)
+        """
+    }
+
     /// The column's collation as `COLLATE` takes it, or NULL where the column keeps its type's own.
     ///
     /// `pg_dump`'s rule: only a collation that differs from the type's is written. Both a column that
@@ -425,7 +475,15 @@ enum PostgreSQLSchemaQueries {
         """
     }
 
-    /// Column introspection for one schema. Passing `table` restricts the result to a single table;
+    /// Column introspection for one schema, read under `schemaRelativeReadPrefix(schema:)`.
+    ///
+    /// `declared_type` is what the column shows and `data_type` is what the app classifies by, which
+    /// are two different spellings: `information_schema` reports `character varying` for a
+    /// `varchar(50)`, `numeric` for a `numeric(10,2)` and `USER-DEFINED` for an enum, and only the
+    /// last of those says what the column holds. `domain_name` separates a domain column, whose
+    /// declared type is the domain's own name, from a column of the base type.
+    ///
+    /// Passing `table` restricts the result to a single table;
     /// passing `nil` returns every table's columns and prefixes each row with `table_name`.
     /// `schema` is the only schema source, so the caller resolves the target schema (qualified
     /// reference, then current schema) and passes it raw; quoting happens here. The identity,
@@ -454,12 +512,12 @@ enum PostgreSQLSchemaQueries {
         let generationExpressionProjection = capabilities.hasGeneratedColumns
             ? "c.generation_expression"
             : "NULL::text"
-        let attributeJoin = (capabilities.hasIdentityColumns || capabilities.hasGeneratedColumns) ? """
+        let attributeJoin = """
 
                 LEFT JOIN pg_catalog.pg_attribute a
                     ON a.attrelid = rel.oid
                     AND a.attnum = c.ordinal_position
-            """ : ""
+            """
         let informationSchemaArm = """
             SELECT
                 \(includesTableName ? "c.table_name AS table_name,\n    " : "")c.column_name AS column_name,
@@ -474,6 +532,8 @@ enum PostgreSQLSchemaQueries {
                 \(generatedProjection) AS generated_kind,
                 c.udt_schema AS udt_schema,
                 \(generationExpressionProjection) AS generation_expression,
+                \(declaredType(attribute: "a")) AS declared_type,
+                c.domain_name AS domain_name,
                 c.ordinal_position AS ordinal_position
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_namespace relns
@@ -522,16 +582,19 @@ enum PostgreSQLSchemaQueries {
             "cols.identity_kind",
             "cols.generated_kind",
             "cols.udt_schema",
-            "cols.generation_expression"
+            "cols.generation_expression",
+            "cols.declared_type",
+            "cols.domain_name"
         ]
         return columns.joined(separator: ",\n    ")
     }
 
     /// A materialized view's columns, built from `information_schema.columns`' own expressions so a
     /// matview column reaches `PostgresColumnTypeResolver` with the same `data_type`, `udt_name` and
-    /// `udt_schema` a table column does. The `NULL` typmod in `format_type` is deliberate:
+    /// `udt_schema` a table column does. The `NULL` typmod in those expressions is deliberate:
     /// `information_schema` also spells `numeric(10,2)` as `numeric`, and diverging here would
-    /// classify one column two different ways depending on which relation it sits in.
+    /// classify one column two different ways depending on which relation it sits in. `declared_type`
+    /// is the spelling with the modifier, exactly as the other arm reports it.
     ///
     /// There is no `pg_attrdef` join and no primary key lookup because PostgreSQL gives a
     /// materialized view column neither a default nor a constraint.
@@ -566,6 +629,8 @@ enum PostgreSQLSchemaQueries {
             \(generatedProjection) AS generated_kind,
             COALESCE(mvbtn.nspname, mvtn.nspname) AS udt_schema,
             NULL::text AS generation_expression,
+            \(declaredType(attribute: "mva")) AS declared_type,
+            CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name,
             mva.attnum AS ordinal_position
         FROM pg_catalog.pg_class mvc
         JOIN pg_catalog.pg_namespace mvn ON mvn.oid = mvc.relnamespace
