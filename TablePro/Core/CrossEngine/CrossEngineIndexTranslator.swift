@@ -22,12 +22,30 @@ internal enum CrossEngineIndexTranslator {
         internal let notes: [CrossEngineConversionNote]
     }
 
-    /// `columnKinds` is what each column holds on the target, keyed by its name in lowercase.
-    internal static func translate(
+    /// The indexes a copy between two type families can create at all, each with the type it takes on
+    /// `target`, before the columns are sized.
+    ///
+    /// None of it depends on what a column becomes, and the MySQL row pass needs to know which indexes
+    /// exist: a column covered only by a `gin` index or a Redshift `SORTKEY` is covered by nothing on
+    /// the target, so it moves to `TEXT` before a column whose kept unique index a prefix would weaken.
+    internal static func creatable(
         _ indexes: [EditableIndexDefinition],
         table: String,
         from source: DatabaseType,
-        to target: DatabaseType,
+        to target: DatabaseType
+    ) -> Result {
+        let family = SQLTypeFamily.of(target)
+        return decided(indexes, table: table, from: source, to: target) { index in
+            crossFamilyRefusal(index, family: family)
+        }
+    }
+
+    /// Fits the indexes `creatable` kept to what their columns hold on the target. `columnKinds` is
+    /// keyed by each column's name in lowercase.
+    internal static func translate(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        to family: SQLTypeFamily,
         columnKinds: [String: CanonicalTypeKind]
     ) -> Result {
         var kept: [EditableIndexDefinition] = []
@@ -41,17 +59,8 @@ internal enum CrossEngineIndexTranslator {
                 kept.append(index)
                 continue
             }
-            if let note = tableKeyNote(index, table: table, from: source, to: target) {
-                notes.append(note)
-                continue
-            }
             guard let translated = translate(
-                index,
-                table: table,
-                from: source,
-                to: target,
-                columnKinds: columnKinds,
-                notes: &notes
+                index, table: table, to: family, columnKinds: columnKinds, notes: &notes
             ) else { continue }
             kept.append(translated)
         }
@@ -66,6 +75,16 @@ internal enum CrossEngineIndexTranslator {
         from source: DatabaseType,
         to target: DatabaseType
     ) -> Result {
+        decided(indexes, table: table, from: source, to: target) { _ in nil }
+    }
+
+    private static func decided(
+        _ indexes: [EditableIndexDefinition],
+        table: String,
+        from source: DatabaseType,
+        to target: DatabaseType,
+        refusal: (EditableIndexDefinition) -> String?
+    ) -> Result {
         var kept: [EditableIndexDefinition] = []
         var notes: [CrossEngineConversionNote] = []
 
@@ -78,13 +97,17 @@ internal enum CrossEngineIndexTranslator {
                 notes.append(note)
                 continue
             }
+            if let reason = refusal(index) {
+                notes.append(dropped(index, table: table, reason: reason))
+                continue
+            }
             guard let type = resolvedType(index.type, from: source, to: target) else {
                 notes.append(droppedForType(index, table: table))
                 continue
             }
-            var retyped = index
-            retyped.type = type
-            kept.append(retyped)
+            var typed = index
+            typed.type = type
+            kept.append(typed)
         }
         return Result(indexes: kept, notes: notes)
     }
@@ -145,37 +168,28 @@ internal enum CrossEngineIndexTranslator {
         ))
     }
 
-    private static func translate(
-        _ index: EditableIndexDefinition,
-        table: String,
-        from source: DatabaseType,
-        to target: DatabaseType,
-        columnKinds: [String: CanonicalTypeKind],
-        notes: inout [CrossEngineConversionNote]
-    ) -> EditableIndexDefinition? {
-        let family = SQLTypeFamily.of(target)
+    private static func crossFamilyRefusal(_ index: EditableIndexDefinition, family: SQLTypeFamily) -> String? {
         guard supportsSecondaryIndexes(family) else {
-            notes.append(dropped(index, table: table, reason: String(
-                localized: "This engine does not take a secondary index in a CREATE TABLE."
-            )))
-            return nil
+            return String(localized: "This engine does not take a secondary index in a CREATE TABLE.")
         }
-
         /// An expression is written in the source engine's SQL, with its functions, casts and
         /// operators, and nothing here can say it in the target's.
         guard index.expressions.isEmpty else {
-            notes.append(dropped(index, table: table, reason: String(
+            return String(
                 format: String(localized: "Its key includes %@, an expression in the source engine's SQL."),
                 index.expressions.joined(separator: ", ")
-            )))
-            return nil
+            )
         }
+        return nil
+    }
 
-        guard let type = resolvedType(index.type, from: source, to: target) else {
-            notes.append(droppedForType(index, table: table))
-            return nil
-        }
-
+    private static func translate(
+        _ index: EditableIndexDefinition,
+        table: String,
+        to family: SQLTypeFamily,
+        columnKinds: [String: CanonicalTypeKind],
+        notes: inout [CrossEngineConversionNote]
+    ) -> EditableIndexDefinition? {
         let unbounded = index.columns.filter { CrossEngineKeyWidth.isUnbounded(columnKinds[$0.lowercased()]) }
         if !unbounded.isEmpty, !supportsKeyPrefixes(family) {
             notes.append(dropped(index, table: table, reason: String(
@@ -201,7 +215,6 @@ internal enum CrossEngineIndexTranslator {
 
         var translated = index
         translated.dropCatalogSpellings()
-        translated.type = type
         /// Carried to an engine without key prefixes the number is ignored by its driver, so it is
         /// not carried at all.
         translated.columnPrefixes = [:]

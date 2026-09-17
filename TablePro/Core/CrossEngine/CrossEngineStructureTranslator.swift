@@ -71,9 +71,12 @@ internal enum CrossEngineStructureTranslator {
         let jsonColumnType = PostgreSQLServerVersion.jsonColumnType(
             for: target, serverVersion: targetServerVersion
         )
+        let creatableIndexes = CrossEngineIndexTranslator.creatable(
+            snapshot.indexes, table: snapshot.name, from: source, to: target
+        )
         let keyColumns = Set(snapshot.primaryKeyColumns.map { $0.lowercased() })
         let indexedColumns = Set(
-            snapshot.indexes.filter { !$0.isPrimary }.flatMap(\.columns).map { $0.lowercased() }
+            creatableIndexes.indexes.filter { !$0.isPrimary }.flatMap(\.columns).map { $0.lowercased() }
         )
 
         var drafts = snapshot.columns.map { column in
@@ -120,13 +123,12 @@ internal enum CrossEngineStructureTranslator {
         var kindsByLowercasedName: [String: CanonicalTypeKind] = [:]
         for draft in drafts { kindsByLowercasedName[draft.name.lowercased()] = draft.targetKind }
         let indexOutcome = CrossEngineIndexTranslator.translate(
-            snapshot.indexes,
+            creatableIndexes.indexes,
             table: snapshot.name,
-            from: source,
-            to: target,
+            to: targetFamily,
             columnKinds: kindsByLowercasedName
         )
-        notes += indexOutcome.notes
+        notes += creatableIndexes.notes + indexOutcome.notes
 
         let translated = TableStructureSnapshot(
             name: snapshot.name,

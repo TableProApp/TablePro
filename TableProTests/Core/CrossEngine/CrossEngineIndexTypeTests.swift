@@ -23,13 +23,23 @@ struct CrossEngineIndexTypeTests {
         )
     }
 
+    private static func varchar(_ name: String, length: Int) -> EditableColumnDefinition {
+        EditableColumnDefinition(
+            id: UUID(), name: name, dataType: "CHARACTER VARYING", isNullable: true, defaultValue: nil,
+            autoIncrement: false, unsigned: false, comment: nil, collation: nil, onUpdate: nil, charset: nil,
+            extra: nil, isPrimaryKey: false, ddlSpelling: "character varying(\(length))"
+        )
+    }
+
     private static func index(
         _ name: String,
         type: String,
+        columns: [String] = ["a"],
+        isUnique: Bool = false,
         ddlMethodAndKeys: String? = nil
     ) -> EditableIndexDefinition {
         EditableIndexDefinition.from(IndexInfo(
-            name: name, columns: ["a"], isUnique: false, isPrimary: false, type: type,
+            name: name, columns: columns, isUnique: isUnique, isPrimary: false, type: type,
             ddlMethodAndKeys: ddlMethodAndKeys
         ))
     }
@@ -145,6 +155,56 @@ struct CrossEngineIndexTypeTests {
         #expect(resolve(.fulltext, .mysql, .postgresql) == nil)
         #expect(resolve(.spgist, .postgresql, .mysql) == nil)
         #expect(resolve(.spgist, .postgresql, .cockroachdb) == .spgist)
+    }
+
+    private static func mysqlCopy(
+        of columns: [EditableColumnDefinition],
+        indexes: [EditableIndexDefinition],
+        from source: DatabaseType
+    ) -> TableStructureSnapshot {
+        CrossEngineStructureTranslator.translate(
+            TableStructureSnapshot(name: "notes", schema: "public", columns: columns, indexes: indexes),
+            from: source,
+            to: .mysql
+        ).snapshot
+    }
+
+    private static func dataTypes(of snapshot: TableStructureSnapshot) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: snapshot.columns.map { ($0.name, $0.dataType) })
+    }
+
+    /// Twenty-one `VARCHAR(768)` columns and one `VARCHAR(700)` are 67,359 bytes against MySQL's 65,535,
+    /// so one column moves to `TEXT`. A column a kept index covers moves last, because that index is
+    /// then cut to a prefix and a unique one refuses rows the source accepted. A `gin` index is left out
+    /// of the copy, so it covers nothing there.
+    @Test("A MySQL copy moves the column whose only index it leaves out before a column a unique index covers")
+    func leftOutIndexDoesNotHoldItsColumnInTheRow() {
+        let codes = (1...21).map { "code\($0)" }
+        let copy = Self.mysqlCopy(
+            of: codes.map { Self.varchar($0, length: 768) } + [Self.varchar("tags", length: 700)],
+            indexes: codes.map { Self.index("\($0)_key", type: "btree", columns: [$0], isUnique: true) }
+                + [Self.index("tags_trgm", type: "gin", columns: ["tags"])],
+            from: .postgresql
+        )
+        let dataTypes = Self.dataTypes(of: copy)
+        #expect(dataTypes["tags"] == "TEXT")
+        #expect(codes.allSatisfy { dataTypes[$0] == "VARCHAR(768)" })
+        #expect(copy.indexes.map(\.name) == codes.map { "\($0)_key" })
+        #expect(copy.indexes.allSatisfy { $0.columnPrefixes.isEmpty })
+    }
+
+    @Test("A Redshift sort key left out of a MySQL copy does not hold its column in the row")
+    func leftOutTableKeyDoesNotHoldItsColumnInTheRow() {
+        let notes = (1...21).map { "note\($0)" }
+        let copy = Self.mysqlCopy(
+            of: [Self.varchar("sorted", length: 800)] + notes.map { Self.varchar($0, length: 768) },
+            indexes: [Self.index("SORTKEY", type: "SORTKEY", columns: ["sorted"])],
+            from: .redshift
+        )
+        let dataTypes = Self.dataTypes(of: copy)
+        #expect(dataTypes["sorted"] == "TEXT")
+        #expect(notes.allSatisfy { dataTypes[$0] == "VARCHAR(768)" })
+        #expect(copy.indexes.isEmpty)
     }
 
     /// Every Redshift table with a distribution key reports it under the name `DISTKEY`, and a
