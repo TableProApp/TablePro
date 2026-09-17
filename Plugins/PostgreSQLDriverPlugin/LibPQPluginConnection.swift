@@ -9,6 +9,7 @@
 
 import CLibPQ
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 

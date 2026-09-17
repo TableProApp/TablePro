@@ -1,5 +1,6 @@
 import CMariaDB
 import Foundation
+import os
 import OSLog
 
 nonisolated internal enum MariaDBCharacterSet {
