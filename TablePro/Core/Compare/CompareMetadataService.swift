@@ -472,8 +472,8 @@ internal struct CompareMetadataService {
     ) async -> TableStructureRead {
         do {
             let columns = try await columns(of: table, schema: schema, bulk: bulk, using: plugin)
-            let indexes = await indexes(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
-            let foreignKeys = await foreignKeys(
+            let indexes = try await indexes(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
+            let foreignKeys = try await foreignKeys(
                 of: table, schema: schema, profile: profile, bulk: bulk, using: plugin
             )
             let metadata = await metadata(of: table, schema: schema, profile: profile, bulk: bulk, using: plugin)
@@ -507,16 +507,27 @@ internal struct CompareMetadataService {
 
     /// An empty index list is a real answer, unlike an empty column list, so a table absent from a
     /// whole-schema read has no indexes rather than needing a read of its own.
+    ///
+    /// A read that *failed* is not that answer. Swallowing it made "this table could not be read"
+    /// indistinguishable from "this table has no indexes", and the sync script written from that
+    /// offers to drop every index the table really has. So the failure fails the table, the way the
+    /// column read already did, and the comparison reports it rather than acting on it.
+    ///
+    /// A view is the one object where the failure means nothing: it has neither indexes nor foreign
+    /// keys, and engines disagree on whether asking answers empty or refuses.
     nonisolated private static func indexes(
         of table: PluginTableInfo,
         schema: String?,
         profile: TableReadProfile,
         bulk: BulkMetadata,
         using plugin: any PluginDatabaseDriver
-    ) async -> [PluginIndexInfo] {
+    ) async throws -> [PluginIndexInfo] {
         guard profile.wantsIndexes else { return [] }
         guard bulk.indexes == nil else { return bulk.lookup(bulk.indexes, table.name) ?? [] }
-        return (try? await plugin.fetchIndexes(table: table.name, schema: schema)) ?? []
+        guard CompareTableKindClassifier.kind(of: table) == .table else {
+            return (try? await plugin.fetchIndexes(table: table.name, schema: schema)) ?? []
+        }
+        return try await plugin.fetchIndexes(table: table.name, schema: schema)
     }
 
     nonisolated private static func foreignKeys(
@@ -525,10 +536,13 @@ internal struct CompareMetadataService {
         profile: TableReadProfile,
         bulk: BulkMetadata,
         using plugin: any PluginDatabaseDriver
-    ) async -> [PluginForeignKeyInfo] {
+    ) async throws -> [PluginForeignKeyInfo] {
         guard profile.wantsForeignKeys else { return [] }
         guard bulk.foreignKeys == nil else { return bulk.lookup(bulk.foreignKeys, table.name) ?? [] }
-        return (try? await plugin.fetchForeignKeys(table: table.name, schema: schema)) ?? []
+        guard CompareTableKindClassifier.kind(of: table) == .table else {
+            return (try? await plugin.fetchForeignKeys(table: table.name, schema: schema)) ?? []
+        }
+        return try await plugin.fetchForeignKeys(table: table.name, schema: schema)
     }
 
     nonisolated private static func metadata(

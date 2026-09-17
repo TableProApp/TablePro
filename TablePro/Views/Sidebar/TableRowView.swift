@@ -15,6 +15,7 @@ enum TableRowLogic {
         case .systemTable:      return "tablecells.badge.ellipsis"
         case .partitionedTable: return "rectangle.split.3x1"
         case .externalTable:    return "externaldrive.connected.to.line.below"
+        case .sequence:         return "number"
         }
     }
 
@@ -27,6 +28,7 @@ enum TableRowLogic {
         case .systemTable:      return String(localized: "System Table")
         case .partitionedTable: return String(localized: "Partitioned Table")
         case .externalTable:    return String(localized: "External Table")
+        case .sequence:         return String(localized: "Sequence")
         }
     }
 

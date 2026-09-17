@@ -263,6 +263,7 @@ enum StructureEditEligibility {
         case .foreignTable: return String(localized: "A foreign table")
         case .systemTable: return String(localized: "A system table")
         case .externalTable: return String(localized: "An external table")
+        case .sequence: return String(localized: "A sequence")
         }
     }
 }

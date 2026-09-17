@@ -164,6 +164,10 @@ enum TableObjectKeyword {
             return "MATERIALIZED VIEW"
         case .foreignTable:
             return "FOREIGN TABLE"
+        /// `DROP SEQUENCE` is what MariaDB takes for one. Its `RENAME TABLE` ignores the keyword,
+        /// so the rename path is unaffected by the spelling.
+        case .sequence:
+            return "SEQUENCE"
         case .table, .systemTable, .partitionedTable, .externalTable:
             return "TABLE"
         }

@@ -508,6 +508,10 @@ targets:
       - Plugins/MySQLDriverPlugin/DatabendResultShape.swift
       - Plugins/MySQLDriverPlugin/TiDBCheckConstraints.swift
       - Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
+      - Plugins/MySQLDriverPlugin/MySQLCatalogVisibility.swift
+      - Plugins/MySQLDriverPlugin/MySQLCatalogFallback.swift
+      - Plugins/MySQLDriverPlugin/MySQLForeignKeyCatalog.swift
+      - Plugins/MySQLDriverPlugin/MySQLForeignKeyClause.swift
       - Plugins/MySQLDriverPlugin/MySQLIndexGrouping.swift
       - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift

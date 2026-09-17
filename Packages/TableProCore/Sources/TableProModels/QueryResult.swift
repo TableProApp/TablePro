@@ -74,12 +74,63 @@ public struct TableInfo: Hashable, Sendable, Identifiable {
     public let dataSize: Int?
     public let comment: String?
 
-    public enum TableKind: String, Sendable {
+    public enum TableKind: String, Sendable, CaseIterable {
         case table
         case view
         case materializedView
         case systemTable
+        case externalTable
         case sequence
+
+        public enum ListSection: String, Sendable, CaseIterable {
+            case tables
+            case views
+        }
+
+        /// Which section of the object list a row lands in. Exhaustive so a kind added later
+        /// cannot fall through both of the list's filters and vanish from the list entirely,
+        /// which is what happened to a MariaDB sequence.
+        public var listSection: ListSection {
+            switch self {
+            case .table, .systemTable, .externalTable, .sequence: return .tables
+            case .view, .materializedView: return .views
+            }
+        }
+
+        /// Measured on MariaDB 11.4.13: `TRUNCATE` on a sequence fails ERROR 1031, and a system
+        /// table belongs to the catalog. A view holds no rows of its own.
+        public var allowsTruncate: Bool {
+            switch self {
+            case .table: return true
+            case .view, .materializedView, .systemTable, .externalTable, .sequence: return false
+            }
+        }
+
+        /// `DROP TABLE` on a MariaDB sequence succeeds, measured on 11.4.13. A view needs
+        /// `DROP VIEW`, which this list does not write.
+        ///
+        /// An external table is left out for the same reason it was when it was folded into
+        /// `.systemTable`: this list writes one drop statement for every kind it offers, and what
+        /// an engine wants for a table whose rows live outside the database is unmeasured here.
+        public var allowsDrop: Bool {
+            switch self {
+            case .table, .sequence: return true
+            case .view, .materializedView, .systemTable, .externalTable: return false
+            }
+        }
+
+        /// Whether the data browser may offer row editing and Insert Row. A sequence takes an
+        /// INSERT and refuses UPDATE and DELETE with ERROR 1031, so it is read-only here too.
+        ///
+        /// An external table reads rows from a catalog outside the database, has no primary key
+        /// to target and refuses INSERT, measured as ERROR 1235 on OceanBase CE 4.4.2.1, which is
+        /// why the Mac app withholds row editing for one and this must too.
+        public var allowsRowEditing: Bool {
+            switch self {
+            case .table, .systemTable: return true
+            case .view, .materializedView, .externalTable, .sequence: return false
+            }
+        }
     }
 
     public init(
@@ -211,6 +262,8 @@ public extension TableInfo {
             kind = .materializedView
         case "SYSTEM TABLE":
             kind = .systemTable
+        case "EXTERNAL TABLE":
+            kind = .externalTable
         case "SEQUENCE":
             kind = .sequence
         default:

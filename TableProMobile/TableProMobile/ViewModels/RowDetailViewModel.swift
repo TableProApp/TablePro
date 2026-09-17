@@ -68,13 +68,14 @@ final class RowDetailViewModel {
 
     // MARK: - Computed
 
-    var isView: Bool {
-        guard let table else { return false }
-        return table.type == .view || table.type == .materializedView
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    var allowsRowEditing: Bool {
+        table?.type.allowsRowEditing ?? false
     }
 
     var canEdit: Bool {
-        table != nil && session != nil && !columnDetails.isEmpty && !isView
+        table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
             && columnDetails.contains(where: { $0.isPrimaryKey })
     }

@@ -4,9 +4,9 @@
 //
 
 import Foundation
+@testable import TablePro
 import TableProPluginKit
 import Testing
-@testable import TablePro
 
 /// Every cell of the PostgreSQL matrix below was measured against a live PostgreSQL 17.11 server,
 /// one statement per cell, rather than read out of the documentation. The pair that matters most is
@@ -36,7 +36,9 @@ struct StructureEditEligibilityTests {
 
     @Test("An uncurated engine offers nothing on anything that is not a table")
     func tablesOnlyRefusesEveryOtherKind() {
-        let kinds: [TableInfo.TableType] = [.view, .materializedView, .foreignTable, .systemTable, .externalTable]
+        let kinds: [TableInfo.TableType] = [
+            .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence,
+        ]
         for kind in kinds {
             #expect(!StructureEditEligibility.allowsAnyEdit(on: kind, matrix: .tablesOnly), "\(kind.rawValue)")
             for operation in StructureEditOperation.allCases {
@@ -94,11 +96,23 @@ struct StructureEditEligibilityTests {
         }
     }
 
-    @Test("A PostgreSQL system table and external table take nothing")
+    /// Measured on MariaDB 11.4.13: `ALTER TABLE seq1 ADD COLUMN` and `ADD INDEX` both fail with
+    /// ERROR 4086, so a sequence is in no matrix and takes nothing on any engine.
+    @Test("A PostgreSQL system table, external table and a sequence take nothing")
     func postgresReadOnlyKindsTakeNothing() {
-        for kind in [TableInfo.TableType.systemTable, .externalTable] {
+        for kind in [TableInfo.TableType.systemTable, .externalTable, .sequence] {
             #expect(!StructureEditEligibility.allowsAnyEdit(on: kind, matrix: .postgreSQL), "\(kind.rawValue)")
+            #expect(StructureEditEligibility.editableFields(on: kind, matrix: .postgreSQL).isEmpty, "\(kind.rawValue)")
         }
+    }
+
+    @Test("A refusal on a sequence names it as one")
+    func refusalNamesASequence() {
+        let reason = StructureEditEligibility.refusalReason(
+            for: .addColumn, on: .sequence, matrix: .postgreSQL
+        )
+
+        #expect(reason?.contains("A sequence") == true)
     }
 
     @Test("A PostgreSQL table and partitioned table still take every edit")

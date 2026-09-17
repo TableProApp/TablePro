@@ -914,6 +914,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return (.table, String(localized: "Partitioned Table"))
         case .externalTable:
             return (.table, String(localized: "External Table"))
+        case .sequence:
+            return (.table, String(localized: "Sequence"))
         }
     }
 

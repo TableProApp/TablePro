@@ -63,6 +63,13 @@ struct QueryResultMappingTests {
         let matViewPlugin = PluginTableInfo(name: "summary", type: "MATERIALIZED VIEW")
         let matView = TableInfo(from: matViewPlugin)
         #expect(matView.type == .materializedView)
+
+        /// An external table reads rows from outside the database and refuses INSERT, measured as
+        /// ERROR 1235 on OceanBase CE 4.4.2.1, so it must not arrive as a row-editable kind.
+        let externalPlugin = PluginTableInfo(name: "ext_csv", type: "EXTERNAL TABLE")
+        let external = TableInfo(from: externalPlugin)
+        #expect(external.type == .externalTable)
+        #expect(!external.type.allowsRowEditing)
     }
 
     @Test("Maps PluginColumnInfo to ColumnInfo")

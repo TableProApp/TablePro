@@ -175,6 +175,57 @@ struct MySQLObjectQueryTests {
     func literalsAreEscaped() {
         #expect(MySQLObjectQueries.routineList(schema: "it's").contains("'it''s'"))
         #expect(MySQLObjectQueries.triggerList(schema: "app", table: "o'brien").contains("'o''brien'"))
+        #expect(MySQLObjectQueries.catalogTableCount(schema: "o'brien").contains("'o''brien'"))
+        #expect(MySQLObjectQueries.foreignKeyColumns(schema: "o'brien", table: nil).contains("'o''brien'"))
+        #expect(MySQLObjectQueries.referentialActions(schema: "o'brien", table: nil).contains("'o''brien'"))
+    }
+
+    /// Ordering by `CONSTRAINT_NAME` alone left the order to the server. Measured on MariaDB
+    /// 11.4.13, a two-column key came back as `p_tenant` then `p_id`, which the structure editor
+    /// and every comparison then read as the declaration order.
+    @Test("The foreign key column read ends its ordering at ORDINAL_POSITION")
+    func foreignKeyColumnsOrderByOrdinalPosition() {
+        let sql = MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil)
+        #expect(sql.hasSuffix("ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION"))
+        #expect(sql.contains("REFERENCED_TABLE_NAME IS NOT NULL"))
+        #expect(sql.contains("REFERENCED_TABLE_SCHEMA"))
+    }
+
+    /// ShardingSphere-Proxy 5.5.3 answers any join of two `information_schema` tables with an OK
+    /// packet carrying no columns, and answers each of these two reads correctly on its own.
+    @Test("Neither foreign key read joins a second catalog")
+    func foreignKeyReadsAreUnjoined() {
+        let columns = MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil)
+        let actions = MySQLObjectQueries.referentialActions(schema: "app", table: nil)
+
+        #expect(!columns.uppercased().contains(" JOIN "))
+        #expect(!actions.uppercased().contains(" JOIN "))
+        #expect(columns.contains("information_schema.KEY_COLUMN_USAGE"))
+        #expect(actions.contains("information_schema.REFERENTIAL_CONSTRAINTS"))
+        #expect(actions.contains("CONSTRAINT_SCHEMA = 'app'"))
+        #expect(actions.contains("DELETE_RULE"))
+        #expect(actions.contains("UPDATE_RULE"))
+    }
+
+    @Test("The table filter is the only difference between the two foreign key scopes")
+    func foreignKeyScopesShareOneBuilder() {
+        #expect(!MySQLObjectQueries.foreignKeyColumns(schema: "app", table: nil).contains("TABLE_NAME = '"))
+        #expect(MySQLObjectQueries.foreignKeyColumns(schema: "app", table: "orders").contains("TABLE_NAME = 'orders'"))
+        #expect(!MySQLObjectQueries.referentialActions(schema: "app", table: nil).contains("TABLE_NAME = '"))
+        #expect(
+            MySQLObjectQueries.referentialActions(schema: "app", table: "orders").contains("TABLE_NAME = 'orders'")
+        )
+    }
+
+    /// One scalar, so a server that answers it with no row at all is telling the driver its catalog
+    /// is not this database's: measured on DBLE 3.23, where a direct MySQL always answers one row.
+    @Test("The visibility probe is a single scalar count over one catalog")
+    func catalogTableCountIsOneScalar() {
+        let sql = MySQLObjectQueries.catalogTableCount(schema: "app")
+        #expect(sql.contains("SELECT COUNT(*)"))
+        #expect(sql.contains("information_schema.TABLES"))
+        #expect(sql.contains("TABLE_SCHEMA = 'app'"))
+        #expect(!sql.uppercased().contains(" JOIN "))
     }
 
     @Test("A backtick in an identifier is doubled")

@@ -254,21 +254,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     /// One vocabulary for what a plugin calls an object, shared with the partition path so a
     /// foreign-table partition cannot arrive as a plain table and pick up Truncate on its way in.
     nonisolated internal static func mapPluginTableType(_ declaredType: String) -> TableInfo.TableType? {
-        switch declaredType.lowercased().replacingOccurrences(of: "_", with: " ") {
-        case "table", "base table", "prefix": return .table
-        case "partitioned table":             return .partitionedTable
-        case "view":                          return .view
-        case "materialized view":             return .materializedView
-        case "foreign table":                 return .foreignTable
-        case "system table", "system base table", "system view": return .systemTable
-        case "external table":                return .externalTable
-        default:                              return nil
-        }
+        PluginTableKindDecoder.decode(declaredType).kind
     }
 
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
+        let decoded = PluginTableKindDecoder.decode(table.type)
         let tableType: TableInfo.TableType
-        if let mapped = Self.mapPluginTableType(table.type) {
+        if let mapped = decoded.kind {
             tableType = mapped
         } else {
             Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
@@ -280,7 +272,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             rowCount: table.rowCount,
             schema: table.schema ?? schemaFallback,
             comment: table.comment,
-            partitionCount: table.partitionCount
+            partitionCount: table.partitionCount,
+            isSystemVersioned: decoded.isSystemVersioned
         )
     }
 

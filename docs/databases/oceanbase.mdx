@@ -34,6 +34,7 @@ Write the `@` in the user name as `%40` and the `#` as `%23`. `oceanbase+ssh://`
 - Triggers appear in the Structure tab. Adding one from there is not offered.
 - `EXPLAIN` shows the plan as text. `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE` are not offered.
 - Table Maintenance offers `ANALYZE TABLE` on OceanBase 4.2.2 and later, and nothing on earlier versions.
+- External tables list as external tables, and system and virtual tables as system tables. All three are read-only kinds, so their menus drop **Truncate** and **Import**.
 
 A connection saved as **MySQL** that reaches an OceanBase server gets none of the above, because the MySQL handshake reports `5.7.25` or `5.6.25` and names no engine. Choose **OceanBase** as the connection type.
 

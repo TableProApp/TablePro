@@ -181,7 +181,10 @@ struct TableTabSchemaResolutionTests {
             store.removeEntries(for: connection.id)
             SharedSidebarState.removeConnection(connection.id)
         }
-        store.record(connectionId: connection.id, database: "testdb", schema: nil, name: "routes", isView: false)
+        store.record(
+            connectionId: connection.id, database: "testdb", schema: nil, name: "routes",
+            isView: false, objectType: nil
+        )
 
         let state = SessionStateFactory.create(
             connection: connection,

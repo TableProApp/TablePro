@@ -32,7 +32,9 @@ enum ObjectRenameEligibility {
             return false
         case .view, .materializedView:
             return context.supportsRenameView
-        case .table, .foreignTable, .partitionedTable, .externalTable:
+        /// A sequence renames through `RENAME TABLE`, measured on MariaDB 11.4.13, so it belongs
+        /// with the tables rather than behind the view flag.
+        case .table, .foreignTable, .partitionedTable, .externalTable, .sequence:
             return context.supportsRenameTable
         }
     }

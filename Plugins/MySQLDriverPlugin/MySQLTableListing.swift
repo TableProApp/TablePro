@@ -27,13 +27,66 @@ internal enum MySQLTableListing {
     static func tables(from rows: [[PluginCellValue]], listsSequencesAsTables: Bool) -> [PluginTableInfo] {
         rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
-            let typeName = row[safe: 1]?.asText ?? "BASE TABLE"
-            guard listsSequencesAsTables || typeName != "SEQUENCE" else { return nil }
-            let isView = typeName.contains("VIEW")
-            let comment = isView ? nil : row[safe: 2]?.asText?.nilIfEmpty
-            let partitionCount = isView ? nil : row[safe: 3]?.asText.flatMap(Int.init)
-            let type = isView ? "VIEW" : (partitionCount == nil ? "TABLE" : "PARTITIONED TABLE")
+            let rawType = normalized(row[safe: 1]?.asText ?? "BASE TABLE")
+            guard listsSequencesAsTables || rawType != "SEQUENCE" else { return nil }
+            guard !isSessionTemporary(rawType) else { return nil }
+            let carriesTableDetail = !isViewLike(rawType) && rawType != "SEQUENCE"
+            let comment = carriesTableDetail ? row[safe: 2]?.asText?.nilIfEmpty : nil
+            let partitionCount = carriesTableDetail ? row[safe: 3]?.asText.flatMap(Int.init) : nil
+            let type = kind(forRawType: rawType, isPartitioned: partitionCount != nil)
             return PluginTableInfo(name: name, type: type, comment: comment, partitionCount: partitionCount)
         }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// The type the app is told about, from the type the server answered with.
+    ///
+    /// Measured on MariaDB 11.4.13: `information_schema.TABLES` reports `SEQUENCE` for a sequence
+    /// and `SYSTEM VERSIONED` for a table declared `WITH SYSTEM VERSIONING`, partitioned or not.
+    /// OceanBase adds `EXTERNAL TABLE`, `SYSTEM TABLE`, `VIRTUAL TABLE` and `TMP TABLE`.
+    ///
+    /// An external table keeps its own kind even when it is partitioned, rather than being traded
+    /// for `PARTITIONED TABLE`: the kind is what keeps row editing off, and the count rides along
+    /// beside it.
+    ///
+    /// `TMP TABLE` is OceanBase's spelling and is unmeasured here, so it stays an ordinary table.
+    /// If it turns out to shadow a base row the way MariaDB's `TEMPORARY` does, it belongs in
+    /// `isSessionTemporary` instead.
+    static func kind(forRawType rawType: String, isPartitioned: Bool) -> String {
+        switch rawType {
+        case "VIEW", "SYSTEM VIEW":
+            return "VIEW"
+        case "SEQUENCE":
+            return "SEQUENCE"
+        case "SYSTEM TABLE", "VIRTUAL TABLE":
+            return "SYSTEM TABLE"
+        case "EXTERNAL TABLE":
+            return "EXTERNAL TABLE"
+        case "SYSTEM VERSIONED":
+            return isPartitioned ? "SYSTEM VERSIONED PARTITIONED TABLE" : "SYSTEM VERSIONED TABLE"
+        default:
+            return isPartitioned ? "PARTITIONED TABLE" : "TABLE"
+        }
+    }
+
+    /// A temporary table shadows a base table of the same name in both channels.
+    ///
+    /// Measured on MariaDB 11.4.13 in one session: after `CREATE TEMPORARY TABLE plain` over a base
+    /// table `plain`, `SHOW FULL TABLES` lists `plain` twice as `TEMPORARY TABLE` then `BASE TABLE`,
+    /// and `information_schema.TABLES` lists it twice as `TEMPORARY` then `BASE TABLE`. The two rows
+    /// share one `TableInfo.id`, so the sidebar drew the name twice. MySQL 8.4.11 lists a temporary
+    /// table in neither channel, and the pooled metadata connection cannot see one anyway.
+    private static func isSessionTemporary(_ rawType: String) -> Bool {
+        rawType == "TEMPORARY" || rawType == "TEMPORARY TABLE"
+    }
+
+    private static func isViewLike(_ rawType: String) -> Bool {
+        rawType == "VIEW" || rawType == "SYSTEM VIEW"
+    }
+
+    private static func normalized(_ rawType: String) -> String {
+        rawType
+            .uppercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }

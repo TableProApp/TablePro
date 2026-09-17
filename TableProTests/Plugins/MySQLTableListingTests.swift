@@ -69,6 +69,92 @@ struct MySQLTableListingTests {
         #expect(tables.map(\.type) == ["VIEW"])
     }
 
+    /// One case per raw type the three servers were measured answering with. MariaDB 11.4.13
+    /// answers `SEQUENCE` and `SYSTEM VERSIONED`, MySQL 8.4.11 answers `BASE TABLE` and
+    /// `SYSTEM VIEW`, and OceanBase adds `EXTERNAL TABLE`, `SYSTEM TABLE`, `VIRTUAL TABLE` and
+    /// `TMP TABLE`. Anything else is a table, which is what keeps an unfamiliar row listed.
+    @Test("Each raw type the servers answer with maps to one emitted type")
+    func rawTypesMapToEmittedTypes() {
+        let cases: [(rawType: String, emitted: String)] = [
+            ("BASE TABLE", "TABLE"),
+            ("TABLE", "TABLE"),
+            ("VIEW", "VIEW"),
+            ("SYSTEM VIEW", "VIEW"),
+            ("SEQUENCE", "SEQUENCE"),
+            ("SYSTEM VERSIONED", "SYSTEM VERSIONED TABLE"),
+            ("TMP TABLE", "TABLE"),
+            ("EXTERNAL TABLE", "EXTERNAL TABLE"),
+            ("SYSTEM TABLE", "SYSTEM TABLE"),
+            ("VIRTUAL TABLE", "SYSTEM TABLE"),
+            ("UNKNOWN", "TABLE"),
+        ]
+
+        for testCase in cases {
+            let tables = MySQLTableListing.tables(
+                from: [row("t", testCase.rawType)], listsSequencesAsTables: true
+            )
+            #expect(tables.map(\.type) == [testCase.emitted], "\(testCase.rawType)")
+        }
+    }
+
+    /// Measured on MariaDB 11.4.13 in one session: a temporary table shadowing a base table of the
+    /// same name is listed twice, as `TEMPORARY TABLE` then `BASE TABLE` by `SHOW FULL TABLES` and
+    /// as `TEMPORARY` then `BASE TABLE` by the catalog. Both rows share one `TableInfo.id`.
+    @Test(
+        "A temporary row is dropped so the table it shadows is listed once",
+        arguments: ["TEMPORARY", "TEMPORARY TABLE"]
+    )
+    func temporaryRowsAreDropped(temporaryType: String) {
+        let tables = MySQLTableListing.tables(
+            from: [row("plain", temporaryType), row("plain", "BASE TABLE")],
+            listsSequencesAsTables: true
+        )
+
+        #expect(tables.map(\.name) == ["plain"])
+        #expect(tables.map(\.type) == ["TABLE"])
+    }
+
+    /// A sequence has no comment and no partitions of its own, so neither cell rides along even
+    /// when the catalog read put something in them.
+    @Test("A sequence carries no comment and no partition count")
+    func sequenceCarriesNoTableDetail() {
+        let tables = MySQLTableListing.tables(
+            from: [row("order_ids", "SEQUENCE", "leftover", "2")],
+            listsSequencesAsTables: true
+        )
+
+        #expect(tables.map(\.type) == ["SEQUENCE"])
+        #expect(tables.map(\.comment) == [nil])
+        #expect(tables.map(\.partitionCount) == [nil])
+    }
+
+    /// Measured on MariaDB 11.4.13: `versioned_parted` is `SYSTEM VERSIONED` with PARTITION_COUNT 2,
+    /// so the kind has to say both things at once or the table loses its partition rows.
+    @Test("A partitioned system-versioned table keeps both facts")
+    func systemVersionedPartitionedTableKeepsItsCount() {
+        let tables = MySQLTableListing.tables(
+            from: [row("versioned_parted", "SYSTEM VERSIONED", "", "2")],
+            listsSequencesAsTables: true
+        )
+
+        #expect(tables.map(\.type) == ["SYSTEM VERSIONED PARTITIONED TABLE"])
+        #expect(tables.map(\.partitionCount) == [2])
+    }
+
+    /// The count rides along, the kind does not change. An external table traded for
+    /// `PARTITIONED TABLE` would pick up row editing on another catalog's data.
+    @Test("A partitioned external table stays an external table")
+    func externalTableKeepsItsKindWithACount() {
+        let tables = MySQLTableListing.tables(
+            from: [row("lake_events", "EXTERNAL TABLE", "Parquet", "6")],
+            listsSequencesAsTables: true
+        )
+
+        #expect(tables.map(\.type) == ["EXTERNAL TABLE"])
+        #expect(tables.map(\.comment) == ["Parquet"])
+        #expect(tables.map(\.partitionCount) == [6])
+    }
+
     @Test("A sequence is dropped where the engine does not list sequences as tables")
     func sequencesFollowTheFlavor() {
         let rows = [row("order_ids", "SEQUENCE"), row("orders", "BASE TABLE")]

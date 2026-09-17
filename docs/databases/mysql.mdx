@@ -120,6 +120,17 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_COMMENT <> ''
 
 A column comment is part of the column's definition. Copy it from the **Structure** tab while **UTF-8 via Latin 1** is on, then switch back to **UTF-8**, reconnect, and paste it into the same column.
 
+## Behind a protocol proxy
+
+DBLE, MyCat and ShardingSphere-Proxy answer `information_schema` from their own configuration rather than from the database in front of you. A logical schema whose name is not a physical database reads back empty there, or with `ERROR 1064`.
+
+Point the connection at the proxy and browse as usual. Tables, columns, indexes and foreign keys come from `SHOW` statements when the catalog says nothing, and nothing changes on a direct server. The sidebar, the **Structure** tab, schema comparison and the ER diagram all fill in from that. Each whole-schema read costs one statement per table on that path, every time: a sidebar refresh, an ER diagram and a schema compare each pay it again.
+
+Two fields are unavailable on that path, because only `information_schema` carries them:
+
+- A generated column's expression. The column still shows as generated.
+- A foreign key's `ON DELETE` and `ON UPDATE` where the server prints no clause for them. MySQL 8.0.11 and 8.0.12 print nothing for `RESTRICT`, which reads back as `NO ACTION`. 8.0.13 and later print it.
+
 ## SSL/TLS
 
 New connections default to **Preferred**: TLS first, dropping to plain text only after an SSL handshake error. Pick **Verify CA** with the provider's certificate for strict validation. See [SSL/TLS](/connections/ssl).

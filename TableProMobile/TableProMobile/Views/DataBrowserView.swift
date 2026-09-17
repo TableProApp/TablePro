@@ -32,13 +32,16 @@ struct DataBrowserView: View {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
     }
 
-    private var isView: Bool { table.type == .view || table.type == .materializedView }
+    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    private var allowsRowEditing: Bool { table.type.allowsRowEditing }
     private var isRedis: Bool { connection.type == .redis }
 
     /// Both entry points ask this. Redis takes no `INSERT`, and the form cannot be filled in before
     /// the column list has arrived.
     private var canInsertRow: Bool {
-        !isView && !isRedis && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
+        allowsRowEditing && !isRedis
+            && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
     }
 
     private var columns: [ColumnInfo] { viewModel.columns }
@@ -285,7 +288,7 @@ struct DataBrowserView: View {
         .hoverEffect()
         .contextMenu { rowContextMenu(row: row) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !isView && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
+            if allowsRowEditing && viewModel.hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
                 Button {
                     deleteTarget = viewModel.primaryKeyValues(for: row)
                     showDeleteConfirmation = true
@@ -296,7 +299,7 @@ struct DataBrowserView: View {
             }
         }
         .accessibilityAction(named: Text("Delete row")) {
-            guard !isView, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
+            guard allowsRowEditing, viewModel.hasPrimaryKeys, !connection.safeModeLevel.blocksWrites else { return }
             deleteTarget = viewModel.primaryKeyValues(for: row)
             showDeleteConfirmation = true
         }

@@ -145,6 +145,50 @@ final class CompareMetadataReadPlanTests: XCTestCase {
         XCTAssertEqual(reads.compactMap(\.snapshot).count, 3)
     }
 
+    /// An index read that failed is not an answer of "no indexes". Reading it as one made the sync
+    /// script offer `DROP INDEX` for every index the table really has, which is what a MySQL proxy
+    /// whose per-table statement is refused produces.
+    func testAThrownPerTableIndexReadFailsItsTable() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "t1"
+
+        let reads = try await CompareMetadataService.read(
+            tables: tables(3), schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, using: driver
+        )
+
+        XCTAssertEqual(reads.filter { $0.failure != nil }.map(\.table.name), ["t1"])
+        XCTAssertEqual(reads.compactMap(\.snapshot).count, 2)
+    }
+
+    func testAThrownPerTableForeignKeyReadFailsItsTable() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingForeignKeyTable = "t2"
+
+        let reads = try await CompareMetadataService.read(
+            tables: tables(3), schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, using: driver
+        )
+
+        XCTAssertEqual(reads.filter { $0.failure != nil }.map(\.table.name), ["t2"])
+    }
+
+    /// A view has neither indexes nor foreign keys, and engines disagree on whether asking answers
+    /// empty or refuses, so a refusal there says nothing about the object.
+    func testAViewWhoseIndexReadRefusesIsStillCompared() async throws {
+        let driver = CountingMetadataDriver(bulk: false)
+        driver.failingIndexTable = "v0"
+
+        let reads = try await CompareMetadataService.read(
+            tables: [PluginTableInfo(name: "v0", type: "VIEW", schema: "public", comment: nil)],
+            schema: "public", profile: .structure,
+            narrowed: false, databaseType: .postgresql, using: driver
+        )
+
+        XCTAssertNil(reads.first?.failure)
+        XCTAssertEqual(reads.first?.indexes.count, 0)
+    }
+
     func testAnUnreadableTableIsReportedWithoutLosingTheOthers() async throws {
         let driver = CountingMetadataDriver(bulk: false)
         driver.failingTable = "t1"
@@ -181,6 +225,8 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
 
     var failsBulkColumns = false
     var failingTable: String?
+    var failingIndexTable: String?
+    var failingForeignKeyTable: String?
     var uppercasesBulkKeys = false
 
     init(bulk: Bool) {
@@ -255,11 +301,13 @@ private final class CountingMetadataDriver: PluginDatabaseDriver, @unchecked Sen
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         record("fetchIndexes")
+        if table == failingIndexTable { throw CocoaError(.fileReadNoPermission) }
         return indexes(for: table)
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         record("fetchForeignKeys")
+        if table == failingForeignKeyTable { throw CocoaError(.fileReadNoPermission) }
         return []
     }
 

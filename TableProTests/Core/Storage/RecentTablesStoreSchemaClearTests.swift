@@ -19,6 +19,7 @@ struct RecentTablesStoreSchemaClearTests {
             schema: schema,
             name: name,
             isView: false,
+            objectType: nil,
             openedAt: Date(timeIntervalSince1970: 1)
         )
     }
@@ -31,6 +32,7 @@ struct RecentTablesStoreSchemaClearTests {
                 schema: entry.schema,
                 name: entry.name,
                 isView: entry.isView,
+                objectType: nil,
                 at: entry.openedAt
             )
         }

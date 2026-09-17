@@ -14,9 +14,17 @@ struct NativeDumpObject: Sendable, Hashable {
     let name: String
     let schema: String?
 
-    init(name: String, schema: String? = nil) {
+    /// A hint for expansion, not part of the name the tool is handed.
+    ///
+    /// `pg_dump -t` on a partitioned parent emits `CREATE TABLE` and nothing else, measured on
+    /// 17.11, so a narrowed dump of one restores an empty table. `BackupScopeLoader` uses this to
+    /// name each partition alongside the parent; the argument builder never reads it.
+    let isPartitionedParent: Bool
+
+    init(name: String, schema: String? = nil, isPartitionedParent: Bool = false) {
         self.name = name
         self.schema = (schema?.isEmpty ?? true) ? nil : schema
+        self.isPartitionedParent = isPartitionedParent
     }
 }
 
@@ -35,6 +43,35 @@ enum NativeDumpScope: Sendable, Equatable {
     /// like a successful backup.
     var isWholeDatabase: Bool {
         objects.isEmpty
+    }
+}
+
+/// A dump scope and the objects that could not be read while it was built.
+///
+/// A failed read is not an empty answer, and collapsing the two is how a narrowed PostgreSQL dump
+/// came to write an empty table and report success: `pg_dump -t` on a partitioned parent emits
+/// `CREATE TABLE` and no rows at all, measured on 17.11, so a partition read that failed and was
+/// taken for "this table has no partitions" leaves the parent alone in the scope. The dump of that
+/// database is withheld instead, and the objects it could not read are named.
+struct NativeDumpScopeExpansion: Equatable {
+    let scope: NativeDumpScope
+    let unreadableObjects: [String]
+
+    init(scope: NativeDumpScope, unreadableObjects: [String] = []) {
+        self.scope = scope
+        self.unreadableObjects = unreadableObjects
+    }
+
+    var isComplete: Bool { unreadableObjects.isEmpty }
+
+    /// Why this database was not backed up, in the words the completion sheet shows. Nil when every
+    /// read answered. The objects are named rather than counted: a count gives nobody a retry.
+    var blockedReason: String? {
+        guard !unreadableObjects.isEmpty else { return nil }
+        return String(
+            format: String(localized: "Could not read the partitions of %@."),
+            unreadableObjects.joined(separator: ", ")
+        )
     }
 }
 

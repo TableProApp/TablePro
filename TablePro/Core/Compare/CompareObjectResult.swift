@@ -119,8 +119,16 @@ internal extension CompareObjectResult {
 internal struct CompareReport: Sendable {
     internal let results: [CompareObjectResult]
 
+    /// An object whose metadata could not be read is reported by that alone.
+    ///
+    /// A read that fails leaves the object without a snapshot, so the diff engine sees it on one
+    /// side only and suggests dropping it: one unreadable table on the source turned into
+    /// `DROP TABLE` against the target, from a comparison that never managed to read it. The row
+    /// naming the reason wins over the difference inferred from its absence.
     internal init(results: [CompareObjectResult]) {
-        self.results = results.sorted { lhs, rhs in
+        let unreadableIds = Set(results.filter { $0.comparisonError != nil }.map(\.id))
+        let reported = results.filter { $0.comparisonError != nil || !unreadableIds.contains($0.id) }
+        self.results = reported.sorted { lhs, rhs in
             guard lhs.identity.kind == rhs.identity.kind else {
                 return Self.kindRank(lhs.identity.kind) < Self.kindRank(rhs.identity.kind)
             }
