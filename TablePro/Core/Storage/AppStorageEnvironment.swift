@@ -122,7 +122,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             logger.fault(
                 """
                 Refusing to launch: could not create the storage sandbox at \
-                \(supportDirectory.path, privacy: .public): \(error.localizedDescription, privacy: .public)
+                \(supportDirectory.path, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)
                 """
             )
             exit(EXIT_FAILURE)
@@ -134,7 +134,7 @@ internal final class AppStorageEnvironment: @unchecked Sendable {
             exit(EXIT_FAILURE)
         }
 
-        logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .public)")
+        logger.notice("Storage sandboxed at \(supportDirectory.path, privacy: .private(mask: .hash))")
         return AppStorageEnvironment(
             applicationSupportRoot: root,
             defaults: defaults,

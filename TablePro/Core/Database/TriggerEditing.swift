@@ -177,9 +177,15 @@ enum TriggerEditing {
             if let rollback {
                 do {
                     _ = try await driver.execute(query: rollback)
-                    logger.error("Trigger edit failed; restored original definition: \(error.localizedDescription, privacy: .public)")
+                    logger.error("Trigger edit failed; restored original definition: \(error.publicLogShape, privacy: .public)")
                 } catch let rollbackError {
-                    logger.error("Trigger edit failed and rollback failed, trigger may be missing: edit=\(error.localizedDescription, privacy: .public) rollback=\(rollbackError.localizedDescription, privacy: .public)")
+                    logger.error(
+                        """
+                        Trigger edit failed and rollback failed, trigger may be missing: \
+                        edit=\(error.publicLogShape, privacy: .public) \
+                        rollback=\(rollbackError.publicLogShape, privacy: .public)
+                        """
+                    )
                 }
             }
             throw error

@@ -483,7 +483,7 @@ struct CreateTableView: View {
                 )
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             } catch {
-                Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Create table failed: \(error.publicLogShape, privacy: .public)")
                 errorMessage = error.localizedDescription
                 showError = true
             }

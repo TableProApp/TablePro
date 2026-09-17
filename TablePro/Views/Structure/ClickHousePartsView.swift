@@ -222,7 +222,7 @@ struct ClickHousePartsView: View {
             await loadParts()
             return true
         } catch {
-            Self.logger.error("\(description, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("\(description, privacy: .public) failed: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
             return false
         }
@@ -266,7 +266,7 @@ struct ClickHousePartsView: View {
                 )
             }
         } catch {
-            Self.logger.error("Failed to load parts: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load parts: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
 

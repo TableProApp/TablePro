@@ -88,7 +88,7 @@ final class IntegrityStampedFileStore<Element: Codable> {
         do {
             return try decoder.decode([Element].self, from: data)
         } catch {
-            logger.error("Failed to decode \(self.label, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to decode \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }
@@ -112,7 +112,7 @@ final class IntegrityStampedFileStore<Element: Codable> {
             isTrusted = integrity.stamp(data, fileURL: fileURL)
             return true
         } catch {
-            logger.error("Failed to save \(self.label, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to save \(self.label, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return false
         }
     }

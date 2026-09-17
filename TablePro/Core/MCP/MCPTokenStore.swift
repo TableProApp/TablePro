@@ -232,7 +232,7 @@ actor MCPTokenStore {
         tokens.append(token)
         save()
 
-        Self.logger.info("Generated MCP token '\(name, privacy: .public)'")
+        Self.logger.info("Generated MCP token '\(name, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenCreated(tokenId: token.id, tokenName: name)
         return (token, plaintext)
     }
@@ -279,7 +279,7 @@ actor MCPTokenStore {
         save()
         notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
-        Self.logger.info("Deleted MCP token '\(name, privacy: .public)'")
+        Self.logger.info("Deleted MCP token '\(name, privacy: .private(mask: .hash))'")
     }
 
     private func notifyRevocationObservers(tokenId: UUID, wasBridgeCredential: Bool) {
@@ -322,7 +322,7 @@ actor MCPTokenStore {
             Self.logger.info("Loaded \(decoded.count) MCP tokens from the keychain")
             return decoded
         } catch {
-            Self.logger.error("Failed to decode MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode MCP tokens: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
@@ -341,7 +341,7 @@ actor MCPTokenStore {
             Self.logger.info("Migrated \(decoded.count) MCP tokens from the legacy file into the keychain")
             return decoded
         } catch {
-            Self.logger.error("Failed to read legacy MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to read legacy MCP tokens: \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
@@ -361,7 +361,7 @@ actor MCPTokenStore {
                 return
             }
         } catch {
-            Self.logger.error("Failed to encode MCP tokens: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to encode MCP tokens: \(error.publicLogShape, privacy: .public)")
         }
     }
 

@@ -300,7 +300,7 @@ final class StructureChangeGuardTests: XCTestCase {
                 PluginColumnInfo(
                     name: "code", dataType: "text", collation: "Case Insens", generationExpression: nil,
                     generationKind: nil, ddlSpelling: "text", ddlDefault: nil, ddlGenerationExpression: nil,
-                    ddlCollation: spelling
+                    ddlCollation: spelling, classificationTypeName: nil
                 )
             ])
         }

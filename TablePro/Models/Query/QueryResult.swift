@@ -260,6 +260,13 @@ struct ColumnInfo: Identifiable, Hashable {
     let ddlDefault: String?
     let ddlGenerationExpression: String?
     let ddlCollation: String?
+    /// The name the column is classified by where `dataType` is the server's declared spelling and
+    /// says nothing about what the column holds. `PluginColumnInfo.classificationTypeName` says why.
+    let classificationTypeName: String?
+
+    /// What a classifier reads. Every display reads `dataType`, and these differ on PostgreSQL:
+    /// `status` is shown and `ENUM` is classified, `posint` is shown and `INTEGER` is classified.
+    var typeNameForClassification: String { classificationTypeName ?? dataType }
 
     init(
         name: String,
@@ -279,7 +286,8 @@ struct ColumnInfo: Identifiable, Hashable {
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
         ddlGenerationExpression: String? = nil,
-        ddlCollation: String? = nil
+        ddlCollation: String? = nil,
+        classificationTypeName: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -299,6 +307,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
+        self.classificationTypeName = classificationTypeName
     }
 }
 

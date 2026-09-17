@@ -275,7 +275,7 @@ internal struct ObjectCopyRunner {
                 ))
             } catch {
                 logger.error(
-                    "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 result.outcomes.append(ObjectCopyObjectOutcome(
                     selection: group.selection, rowsCopied: 0, error: error.localizedDescription
@@ -459,7 +459,7 @@ internal struct ObjectCopyRunner {
                 break
             } catch {
                 logger.error(
-                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 result.outcomes.append(ObjectCopyObjectOutcome(
                     selection: step.selection, rowsCopied: 0, error: error.localizedDescription
@@ -532,7 +532,7 @@ internal struct ObjectCopyRunner {
                 break
             } catch {
                 Self.logger.error(
-                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 result.outcomes.append(ObjectCopyObjectOutcome(
                     selection: step.selection, rowsCopied: 0, error: error.localizedDescription

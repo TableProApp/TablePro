@@ -42,7 +42,7 @@ extension MainContentCoordinator {
                 }
                 ClipboardService.shared.writeText(ddl)
             } catch {
-                Self.objectToolsLogger.error("Copy DDL failed: \(error.localizedDescription, privacy: .public)")
+                Self.objectToolsLogger.error("Copy DDL failed: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Couldn't Copy DDL"),
                     message: error.localizedDescription,
@@ -73,7 +73,7 @@ extension MainContentCoordinator {
             return MaterializedViewRefreshPrompt(qualifiedName: target.qualifiedName, availability: availability)
         } catch {
             Self.objectToolsLogger.error(
-                "Concurrent refresh check failed: \(error.localizedDescription, privacy: .public)"
+                "Concurrent refresh check failed: \(error.publicLogShape, privacy: .public)"
             )
             return MaterializedViewRefreshPrompt(
                 qualifiedName: target.qualifiedName,

@@ -140,7 +140,7 @@ final class SchemaEditorViewModel: ObservableObject {
             }
             loadState = .ready
         } catch {
-            Self.logger.error("Schema editor load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Schema editor load failed: \(error.publicLogShape, privacy: .public)")
             loadState = .failed(error.localizedDescription)
         }
     }
@@ -348,7 +348,7 @@ final class SchemaEditorViewModel: ObservableObject {
             try await loadCurrent(named: committedName)
         } catch {
             Self.logger.error(
-                "Rebase after a partial schema apply failed: \(error.localizedDescription, privacy: .public)"
+                "Rebase after a partial schema apply failed: \(error.publicLogShape, privacy: .public)"
             )
         }
     }

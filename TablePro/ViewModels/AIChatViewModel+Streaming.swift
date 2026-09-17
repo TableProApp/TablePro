@@ -701,7 +701,7 @@ extension AIChatViewModel {
             )
         } catch {
             AIChatViewModel.logger.warning(
-                "Tool \(block.name, privacy: .public) execution failed: \(error.localizedDescription, privacy: .public)"
+                "Tool \(block.name, privacy: .public) execution failed: \(error.publicLogShape, privacy: .public)"
             )
             return ToolResultBlock(
                 toolUseId: block.id,

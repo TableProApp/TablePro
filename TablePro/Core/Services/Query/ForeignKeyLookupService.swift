@@ -38,7 +38,7 @@ enum ForeignKeyLookupService {
             try await driver.fetchColumns(table: table, schema: schema)
         }
         return columns.map {
-            ForeignKeyLookupColumn(name: $0.name, type: classifier.classify(rawTypeName: $0.dataType))
+            ForeignKeyLookupColumn(name: $0.name, type: classifier.classify(rawTypeName: $0.typeNameForClassification))
         }
     }
 

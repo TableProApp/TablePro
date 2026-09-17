@@ -152,7 +152,7 @@ internal final class CompareSyncProfileStorage {
         do {
             return try JSONDecoder().decode(CompareSyncProfile.self, from: data)
         } catch {
-            Self.logger.error("Failed to decode last setup: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode last setup: \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }
@@ -161,7 +161,7 @@ internal final class CompareSyncProfileStorage {
         do {
             defaults.set(try JSONEncoder().encode(profile), forKey: Self.lastSetupKey)
         } catch {
-            Self.logger.error("Failed to persist last setup: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist last setup: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -172,7 +172,7 @@ internal final class CompareSyncProfileStorage {
         do {
             return try JSONDecoder().decode([CompareSyncProfile].self, from: data)
         } catch {
-            Self.logger.error("Failed to decode profiles: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode profiles: \(error.publicLogShape, privacy: .public)")
             return migrateLegacyProfiles(from: data)
         }
     }
@@ -195,7 +195,7 @@ internal final class CompareSyncProfileStorage {
         do {
             defaults.set(try JSONEncoder().encode(profiles), forKey: Self.defaultsKey)
         } catch {
-            Self.logger.error("Failed to persist profiles: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist profiles: \(error.publicLogShape, privacy: .public)")
         }
     }
 

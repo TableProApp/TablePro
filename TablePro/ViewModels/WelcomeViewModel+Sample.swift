@@ -31,7 +31,7 @@ internal enum SampleDatabaseLauncher {
             installedURL = sampleService.installedFileURL
         } catch {
             logger.error(
-                "Failed to install sample database: \(error.localizedDescription, privacy: .public)"
+                "Failed to install sample database: \(error.publicLogShape, privacy: .public)"
             )
             onError(error)
             return
@@ -115,7 +115,7 @@ internal enum SampleDatabaseLauncher {
                 WindowOpener.shared.openWelcome()
             } catch {
                 logger.error(
-                    "Failed to open sample database: \(error.localizedDescription, privacy: .public)"
+                    "Failed to open sample database: \(error.publicLogShape, privacy: .public)"
                 )
                 handleSampleLaunchFailure(error: error, connectionId: connection.id, onError: onError)
             }
@@ -162,7 +162,7 @@ internal enum SampleDatabaseLauncher {
         do {
             try sampleService.resetToBundled()
         } catch {
-            logger.error("Sample reset failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Sample reset failed: \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Reset Sample"),
                 message: error.localizedDescription,
@@ -178,7 +178,7 @@ internal enum SampleDatabaseLauncher {
                 AppEvents.shared.connectionUpdated.send(sampleConnection.id)
             } catch {
                 logger.warning(
-                    "Reopening sample after reset failed: \(error.localizedDescription, privacy: .public)"
+                    "Reopening sample after reset failed: \(error.publicLogShape, privacy: .public)"
                 )
             }
         }

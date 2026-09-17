@@ -263,7 +263,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         if let mapped = decoded.kind {
             tableType = mapped
         } else {
-            Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
+            Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .private(mask: .hash))\"; defaulting to .table")
             tableType = .table
         }
         return TableInfo(
@@ -452,7 +452,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return pluginRoutines.map { RoutineInfo($0.adopting(kind: $0.kind, schema: resolvedSchema)) }
                 .sorted { ($0.kind.rawValue, $0.name) < ($1.kind.rawValue, $1.name) }
         } catch {
-            Self.logger.warning("fetchRoutines failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchRoutines failed: \(error.publicLogShape, privacy: .public)")
             throw error
         }
     }
@@ -471,7 +471,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
                 .sorted { $0.name < $1.name }
         } catch {
-            Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchUserDefinedTypes failed: \(error.publicLogShape, privacy: .public)")
             throw error
         }
     }

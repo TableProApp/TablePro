@@ -127,7 +127,7 @@ extension MainContentView {
 
         MainContentView.lifecycleLogger.debug(
             """
-            [tableload] sidebarSelection table=\(table.name, privacy: .public) \
+            [tableload] sidebarSelection table=\(table.name, privacy: .private(mask: .hash)) \
             decision=\(String(describing: result), privacy: .public) \
             currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
             isExecuting=\(coordinator.tabExecution.isAnyExecuting)

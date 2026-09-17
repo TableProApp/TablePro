@@ -30,7 +30,7 @@ final class SafeModeMenuDelegate: NSObject, NSMenuDelegate {
         item.target = nil
         item.representedObject = level.rawValue
         item.state = level == current ? .on : .off
-        item.image = NSImage(systemSymbolName: level.iconName, accessibilityDescription: nil)
+        item.setInformativeImage(NSImage(systemSymbolName: level.iconName, accessibilityDescription: nil))
         return item
     }
 

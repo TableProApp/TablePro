@@ -469,7 +469,7 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             }
             controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
         } catch {
-            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("SQL Formatting error: \(error.publicLogShape, privacy: .public)")
         }
     }
 

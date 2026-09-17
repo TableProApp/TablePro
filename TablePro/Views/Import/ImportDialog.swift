@@ -393,7 +393,7 @@ struct ImportDialog: View {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             fileSize = attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)")
             fileSize = 0
         }
 
@@ -415,7 +415,7 @@ struct ImportDialog: View {
                 do {
                     try handle.close()
                 } catch {
-                    Self.logger.warning("Failed to close file handle for preview: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.warning("Failed to close file handle for preview: \(error.publicLogShape, privacy: .public)")
                 }
             }
 
@@ -455,7 +455,7 @@ struct ImportDialog: View {
             }.value
             statementCount = count
         } catch {
-            Self.logger.warning("Failed to count statements: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to count statements: \(error.publicLogShape, privacy: .public)")
             statementCount = 0
         }
 
@@ -518,7 +518,7 @@ struct ImportDialog: View {
                 try FileManager.default.removeItem(at: tempURL)
             } catch {
                 Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
             }
             tempPreviewURL = nil

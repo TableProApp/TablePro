@@ -73,7 +73,6 @@ struct FilterPanelView: View {
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL)
         }
-        .onPreferenceChange(FilterRowsHeightKey.self) { filterRowsHeight = $0 }
     }
 
     private func toggleAllFiltersEnabled() {
@@ -275,11 +274,7 @@ struct FilterPanelView: View {
     }
 
     private var measuredFilterRows: some View {
-        filterRows.background(
-            GeometryReader { proxy in
-                Color.clear.preference(key: FilterRowsHeightKey.self, value: proxy.size.height)
-            }
-        )
+        filterRows.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { filterRowsHeight = $0 }
     }
 
     @ViewBuilder
@@ -375,12 +370,5 @@ struct FilterPanelView: View {
             databaseType: databaseType,
             tableName: tableName
         )
-    }
-}
-
-private struct FilterRowsHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }

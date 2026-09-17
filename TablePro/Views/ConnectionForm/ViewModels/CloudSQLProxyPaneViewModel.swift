@@ -85,10 +85,10 @@ final class CloudSQLProxyPaneViewModel: ObservableObject {
                 resolvedBinaryPath = path
                 downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
                 didResolveBinary = true
-                Self.logger.info("cloud-sql-proxy ready at \(path, privacy: .public)")
+                Self.logger.info("cloud-sql-proxy ready at \(path, privacy: .private(mask: .hash))")
             } catch {
                 downloadError = error.localizedDescription
-                Self.logger.error("cloud-sql-proxy download failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("cloud-sql-proxy download failed: \(error.publicLogShape, privacy: .public)")
             }
         }
     }

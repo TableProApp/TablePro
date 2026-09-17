@@ -8,6 +8,7 @@
 
 import CMariaDB
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 

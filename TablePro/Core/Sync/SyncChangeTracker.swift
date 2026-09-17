@@ -25,7 +25,7 @@ final class SyncChangeTracker: Sendable {
         set { suppressionLock.withLock { $0 = newValue } }
     }
 
-    init(metadataStorage: SyncMetadataStorage = .shared) {
+    init(metadataStorage: SyncMetadataStorage = .appDefault) {
         self.metadataStorage = metadataStorage
     }
 

@@ -210,9 +210,7 @@ struct SQLReviewSheet: View {
                 Text(title ?? defaultTitle)
                     .font(.body.weight(.semibold))
                 if !statements.isEmpty {
-                    Text(
-                        "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
-                    )
+                    Text("(^[\(statements.count) statement](inflect: true))")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 }

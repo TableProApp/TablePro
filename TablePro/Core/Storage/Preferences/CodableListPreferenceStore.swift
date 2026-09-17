@@ -24,7 +24,7 @@ final class CodableListPreferenceStore<Element: Codable & Identifiable>: @unchec
         do {
             return try JSONDecoder().decode([Element].self, from: data)
         } catch {
-            Self.logger.error("Failed to decode \(self.key.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to decode \(self.key.name, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return []
         }
     }
@@ -34,7 +34,7 @@ final class CodableListPreferenceStore<Element: Codable & Identifiable>: @unchec
             let data = try JSONEncoder().encode(elements)
             store.setDataValue(data, forKey: key.name)
         } catch {
-            Self.logger.error("Failed to encode \(self.key.name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to encode \(self.key.name, privacy: .public): \(error.publicLogShape, privacy: .public)")
         }
     }
 

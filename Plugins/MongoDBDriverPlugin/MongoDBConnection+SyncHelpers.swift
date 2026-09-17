@@ -7,6 +7,7 @@
 import CLibMongoc
 #endif
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 

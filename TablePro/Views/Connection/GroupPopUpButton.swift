@@ -115,7 +115,7 @@ internal struct GroupPopUpButton: NSViewRepresentable {
             item.isEnabled = entry.isEnabled
             item.representedObject = entry.id
             if entry.id != nil {
-                item.image = ConnectionLibrarySymbols.folderImage(for: entry.color)
+                item.setInformativeImage(ConnectionLibrarySymbols.folderImage(for: entry.color))
             }
             menu.addItem(item)
         }

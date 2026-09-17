@@ -51,7 +51,7 @@ internal enum MissingDriverPluginPrompt {
             /// Ended before the failure is presented, because both are sheets on the same window
             /// and the second would queue behind the first.
             presenter.end()
-            logger.error("Install failed for \(type.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.error("Install failed for \(type.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Plugin Installation Failed"),
                 message: error.localizedDescription,

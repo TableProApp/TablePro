@@ -119,7 +119,7 @@ internal enum EditorTabOpener {
                 allowsDuplicate: payload.forcesNewTab
             )
         } catch {
-            logger.error("create tab for table failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("create tab for table failed: \(error.publicLogShape, privacy: .public)")
             return
         }
 

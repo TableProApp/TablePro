@@ -87,7 +87,7 @@ enum BackupScopeLoader {
                 }
             }
         } catch {
-            logger.warning("object list failed for \(database, privacy: .public)")
+            logger.warning("object list failed for \(database, privacy: .private(mask: .hash))")
             return []
         }
     }

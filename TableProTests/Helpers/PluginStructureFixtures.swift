@@ -62,7 +62,8 @@ enum PluginStructureFixtures {
             ddlSpelling: "ddlSpelling-\(suffix)",
             ddlDefault: "ddlDefault-\(suffix)",
             ddlGenerationExpression: "ddlGenerationExpression-\(suffix)",
-            ddlCollation: "ddlCollation-\(suffix)"
+            ddlCollation: "ddlCollation-\(suffix)",
+            classificationTypeName: "classificationTypeName-\(suffix)"
         )
     }
 

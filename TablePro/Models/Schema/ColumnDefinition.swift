@@ -45,11 +45,18 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     /// declared `COLLATE "default"` over a type whose own collation is `C`, and that column still
     /// has one to write.
     var ddlCollation: String? { catalogCollation?.spelling(for: collation) }
+    /// Paired with `dataType` like the spellings above: a type typed into the structure editor is
+    /// classified as the user wrote it, and the catalog's hint returns if the edit is undone.
+    var classificationTypeName: String? { catalogClassification?.spelling(for: dataType) }
+
+    /// What a classifier reads. `ColumnInfo.typeNameForClassification` says why it is not `dataType`.
+    var typeNameForClassification: String { classificationTypeName ?? dataType }
 
     private var catalogType: CatalogSpelling<String>?
     private var catalogDefault: CatalogSpelling<String>?
     private var catalogGeneration: CatalogSpelling<String>?
     private var catalogCollation: CatalogSpelling<String?>?
+    private var catalogClassification: CatalogSpelling<String>?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, dataType, isNullable, defaultValue, autoIncrement, unsigned, comment, collation
@@ -80,7 +87,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
         ddlGenerationExpression: String? = nil,
-        ddlCollation: String? = nil
+        ddlCollation: String? = nil,
+        classificationTypeName: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -101,6 +109,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         self.catalogDefault = Self.catalogSpelling(value: defaultValue, spelling: ddlDefault)
         self.catalogGeneration = Self.catalogSpelling(value: generationExpression, spelling: ddlGenerationExpression)
         self.catalogCollation = ddlCollation.map { CatalogSpelling(value: collation, spelling: $0) }
+        self.catalogClassification = classificationTypeName.map { CatalogSpelling(value: dataType, spelling: $0) }
     }
 
     private static func catalogSpelling(value: String?, spelling: String?) -> CatalogSpelling<String>? {
@@ -109,12 +118,35 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
     }
 
     /// For a column said again in another engine's words, where none of this server's spellings
-    /// name anything the target has.
+    /// name anything the target has. The classification hint stays: it names a kind, not an object,
+    /// and a domain column still holds an integer wherever it is written.
     mutating func dropCatalogSpellings() {
         catalogType = nil
         catalogDefault = nil
         catalogGeneration = nil
         catalogCollation = nil
+    }
+
+    /// The same column with the catalog's own spellings dropped and its collation said the way
+    /// another schema resolves it: the one name a comparison still has to write.
+    ///
+    /// `dataType`, `defaultValue` and `generationExpression` are already schema-relative on the side
+    /// they were read from, so the catalog spellings, which name the source's schema, would bind the
+    /// target's column to the source's types. A collation has no such spelling to fall back on:
+    /// dropped outright, `ALTER ... TYPE` resets the column to its type's default collation, which
+    /// changes sort order and uniqueness on a column the comparison reported as matching.
+    func droppingCatalogSpellings(collationRelativeTo schema: String?) -> EditableColumnDefinition {
+        var copy = self
+        let collationSpelling = catalogCollation
+        let hadCatalogType = catalogType != nil
+        copy.dropCatalogSpellings()
+        if hadCatalogType {
+            copy.catalogType = CatalogSpelling(value: dataType, spelling: dataType)
+        }
+        copy.catalogCollation = collationSpelling.map {
+            CatalogSpelling(value: $0.value, spelling: SchemaRelativeSpelling.of($0.spelling, ownSchema: schema))
+        }
+        return copy
     }
 
     /// The same column holding `other`'s character set and collation, with the catalog spelling
@@ -182,7 +214,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             ddlSpelling: columnInfo.ddlSpelling,
             ddlDefault: columnInfo.ddlDefault,
             ddlGenerationExpression: columnInfo.ddlGenerationExpression,
-            ddlCollation: columnInfo.ddlCollation
+            ddlCollation: columnInfo.ddlCollation,
+            classificationTypeName: columnInfo.classificationTypeName
         )
     }
 
@@ -224,7 +257,8 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             ddlSpelling: ddlSpelling,
             ddlDefault: ddlDefault,
             ddlGenerationExpression: ddlGenerationExpression,
-            ddlCollation: ddlCollation
+            ddlCollation: ddlCollation,
+            classificationTypeName: classificationTypeName
         )
     }
 

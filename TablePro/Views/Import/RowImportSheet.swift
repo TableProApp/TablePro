@@ -688,7 +688,7 @@ struct RowImportSheet: View {
         } catch {
             catalogNameKeys = nil
             tableListError = error.localizedDescription
-            Self.logger.warning("Failed to load tables: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load tables: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -753,7 +753,7 @@ struct RowImportSheet: View {
             newColumnsLoaded = true
         } catch {
             loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -778,7 +778,7 @@ struct RowImportSheet: View {
             }
         } catch {
             loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
     }
 

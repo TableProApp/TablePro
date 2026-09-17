@@ -12,11 +12,12 @@ import TableProPluginKit
 
 internal struct SchemaSyncScriptBuilder {
     private let targetDriver: any PluginDatabaseDriver
-    private let classifier: SyncSafetyClassifier
+    private let targetTypeFamily: SQLTypeFamily
+    private let classifier = SyncSafetyClassifier()
 
-    internal init(targetDriver: any PluginDatabaseDriver, classifier: SyncSafetyClassifier = SyncSafetyClassifier()) {
+    internal init(targetDriver: any PluginDatabaseDriver, targetDatabaseType: DatabaseType) {
         self.targetDriver = targetDriver
-        self.classifier = classifier
+        self.targetTypeFamily = SQLTypeFamily.of(targetDatabaseType)
     }
 
     internal func build(
@@ -136,7 +137,7 @@ internal struct SchemaSyncScriptBuilder {
         let generator = SchemaStatementGenerator(tableName: name, pluginDriver: targetDriver)
         var statements: [SyncStatement] = []
         for change in SchemaChangeOrdering.sorted(changes) {
-            let hazards = classifier.hazards(for: change)
+            let hazards = classifier.hazards(for: change, typeFamily: targetTypeFamily)
             let generated = try generator.generate(changes: [change])
             for statement in generated {
                 statements.append(SyncStatement(

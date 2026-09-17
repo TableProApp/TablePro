@@ -37,7 +37,7 @@ extension AIChatViewModel {
                     try await driver.fetchColumns(table: tableName)
                 }
             } catch {
-                Self.logger.warning("Column fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Column fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 columns = []
             }
             let fkMap: [String: [ForeignKeyInfo]]
@@ -46,7 +46,7 @@ extension AIChatViewModel {
                     try await driver.fetchForeignKeys(forTables: [tableName])
                 }
             } catch {
-                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Foreign key fetch failed for \(tableName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                 fkMap = [:]
             }
             guard !Task.isCancelled, let self else { return }
@@ -111,7 +111,7 @@ extension AIChatViewModel {
                         }
                         return (name, cols)
                     } catch {
-                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Schema column fetch failed for \(name, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
                         return (name, [])
                     }
                 }
@@ -133,7 +133,7 @@ extension AIChatViewModel {
                 foreignKeysByTable[name] = fks
             }
         } catch {
-            Self.logger.warning("Foreign key bulk fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Foreign key bulk fetch failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
