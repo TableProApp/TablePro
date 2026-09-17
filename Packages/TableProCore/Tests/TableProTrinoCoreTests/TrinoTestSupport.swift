@@ -54,6 +54,17 @@ func canned(_ json: String, status: Int = 200, headers: [String: String] = [:]) 
     StubTransport.Canned(statusCode: status, headers: headers, body: Data(json.utf8))
 }
 
+/// Hands the client to an `onSend` hook that runs on whatever thread the transport was resumed on.
+///
+/// The store has to be locked. Without one, the write on the test's thread and the read inside
+/// `send` are an unsynchronized race, and a read that comes back nil skips the `cancel()` the test
+/// exists to make: `testCancelStopsPolling` then failed with "Expected cancellation" on CI alone.
 final class ClientBox: @unchecked Sendable {
-    var client: TrinoStatementClient?
+    private let lock = NSLock()
+    private var stored: TrinoStatementClient?
+
+    var client: TrinoStatementClient? {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
 }
