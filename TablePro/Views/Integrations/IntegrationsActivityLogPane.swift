@@ -284,6 +284,7 @@ struct IntegrationsActivityLogPane: View {
 
     private static func fileTimestamp() -> String {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter.string(from: .now)
     }
