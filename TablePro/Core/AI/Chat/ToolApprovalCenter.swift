@@ -80,17 +80,23 @@ final class ToolApprovalCenter {
         decided[toolUseId] = decision
     }
 
-    /// Resumes everything still waiting as cancelled and drops every buffered answer.
+    /// Resumes everything still waiting as cancelled, and answers everything not waiting yet.
     ///
     /// Teardown has to reach this. A streaming task suspended inside `awaitDecision` holds the
     /// provider, its open stream and the whole turn, and cancelling the task does not resume a
     /// continuation, so a window closed over a card on screen leaked all of it for the life of the
     /// process.
+    ///
+    /// A turn awaits its cards one at a time, so the later ones are announced but not yet awaited.
+    /// Clearing them outright left the loop free to install a fresh continuation for the next card
+    /// after the first resumed, and sit there for good. They are answered instead.
     func cancelAll() {
         let snapshot = pending
         pending.removeAll()
-        expected.removeAll()
         decided.removeAll()
+        for id in expected {
+            decided[id] = .cancel
+        }
         for (_, continuation) in snapshot {
             continuation.resume(returning: .cancel)
         }
