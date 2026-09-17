@@ -325,15 +325,20 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let version = PQserverVersion(connection)
         guard version > 0 else { return }
 
-        _cachedServerVersionNumber = version
         let major = version / 10_000
+        let displayVersion: String
         if major >= 10 {
             let minor = version % 10_000
-            _cachedServerVersion = "\(major).\(minor)"
+            displayVersion = "\(major).\(minor)"
         } else {
             let minor = (version / 100) % 100
             let revision = version % 100
-            _cachedServerVersion = "\(major).\(minor).\(revision)"
+            displayVersion = "\(major).\(minor).\(revision)"
+        }
+
+        stateLock.withLock {
+            _cachedServerVersionNumber = version
+            _cachedServerVersion = displayVersion
         }
     }
 
@@ -409,10 +414,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let sink = serverMessages
         conn = nil
         serverMessages = nil
-        stateLock.unlock()
-
         _cachedServerVersion = nil
         _cachedServerVersionNumber = 0
+        stateLock.unlock()
 
         if let handle {
             queue.async {
@@ -623,11 +627,11 @@ final class LibPQPluginConnection: @unchecked Sendable {
     // MARK: - Server Information
 
     func serverVersion() -> String? {
-        _cachedServerVersion
+        stateLock.withLock { _cachedServerVersion }
     }
 
     func serverVersionNumber() -> Int32 {
-        _cachedServerVersionNumber
+        stateLock.withLock { _cachedServerVersionNumber }
     }
 
     func currentDatabase() -> String {
