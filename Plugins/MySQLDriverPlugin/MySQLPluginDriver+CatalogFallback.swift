@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal extension MySQLPluginDriver {
