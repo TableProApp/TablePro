@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Oracle login timeout that never fired, leaving the connecting spinner up past its deadline. (#2919)
 - Crash from an Oracle server sending a marker packet, or an accept packet under 32 bytes, during login. (#2919)
 - Crash on launch when a pairing deep link opens the approval sheet. (#2930)
+- `Cmd+Return` inserting the highlighted completion instead of running the query while the autocomplete list is open.
 - Wrong table dropped, truncated or opened from a PostgreSQL partition that lives in another schema. (#2523)
 - A PostgreSQL partition missing from the object list when its parent table is not readable. (#2523)
 - A PostgreSQL foreign-table partition listed twice, under Foreign Tables and under its parent. (#2523)

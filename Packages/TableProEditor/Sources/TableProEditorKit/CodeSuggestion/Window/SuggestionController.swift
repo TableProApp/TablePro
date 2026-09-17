@@ -297,6 +297,18 @@ public final class SuggestionController: NSWindowController {
 
         guard !activeTextView.textView.hasMarkedText() else { return event }
 
+        /// A chord carrying a real modifier is never this panel's. This runs from a local key
+        /// monitor, which AppKit consults **before** the main menu, so claiming one takes that
+        /// menu command away app-wide for as long as the panel is open: switching on the key code
+        /// alone made Command+Return apply a completion instead of running the query, with no
+        /// feedback and no way to tell from the outside. Caps Lock, Function and the numeric-pad
+        /// flag are not modifiers here, because a plain arrow key carries the last two.
+        guard event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .function, .numericPad])
+            .isEmpty
+        else { return event }
+
         switch Int(event.keyCode) {
         case kVK_Escape:
             close()
