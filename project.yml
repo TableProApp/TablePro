@@ -520,6 +520,7 @@ targets:
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
       - Plugins/CloudflareD1DriverPlugin/D1HttpClient.swift
       - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTableDefinitionSQL.swift
       - Plugins/PostgreSQLDriverPlugin/CockroachRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
