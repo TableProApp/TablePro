@@ -25,6 +25,9 @@ internal struct WorkspacePaneRenderKey: Equatable {
     /// the session is the same one. Without it `syncPanes(of:)` compares equal and silently skips
     /// the rebuild, so the window stays on the mode it was already drawing.
     internal let contentMode: ConnectionWorkspaceContentMode
+    /// Which agent session the panes were built for. Switching session changes nothing else in this
+    /// key, so without it the conversation and result panes stay bound to the previous one.
+    internal let agentSessionId: UUID?
 }
 
 /// One connection's three panes, kept alive for as long as the window hosts that connection.

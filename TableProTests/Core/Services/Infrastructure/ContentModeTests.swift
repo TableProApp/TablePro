@@ -20,13 +20,15 @@ struct ContentModeTests {
             pane: .content,
             connection: connection,
             sessionRevision: 3,
-            contentMode: .browse
+            contentMode: .browse,
+            agentSessionId: nil
         )
         let agent = WorkspacePaneRenderKey(
             pane: .content,
             connection: connection,
             sessionRevision: 3,
-            contentMode: .agent
+            contentMode: .agent,
+            agentSessionId: nil
         )
         #expect(browse != agent)
     }

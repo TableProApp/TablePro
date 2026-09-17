@@ -31,6 +31,15 @@ internal struct AgentConversationView: View {
                 /// A prompt typed before the connection landed is sent once, here, when the session
                 /// can take it. It is cleared before it is dispatched, so a second flush site cannot
                 /// send it again.
+                .task(id: session.id) {
+                    /// The restore is otherwise reached only through `AssistantState.activate`, so a
+                    /// session whose first presentation is Agent mode came back with an empty
+                    /// transcript and started a second conversation on the next message.
+                    if session.viewModel.connection?.id != connection.id {
+                        session.viewModel.connection = connection
+                    }
+                    session.viewModel.restoreConversationsIfNeeded()
+                }
                 .task(id: flushKey(session)) {
                     sendPendingPromptIfReady(session)
                 }

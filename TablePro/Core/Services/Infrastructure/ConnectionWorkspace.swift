@@ -239,7 +239,10 @@ internal final class ConnectionWorkspace {
             pane: resolvedPane,
             connection: connection,
             sessionRevision: sessionRevision,
-            contentMode: resolvedContentMode
+            contentMode: resolvedContentMode,
+            agentSessionId: resolvedContentMode == .agent
+                ? AgentSessionRegistry.shared.displayedSessionId(for: connectionId)
+                : nil
         )
     }
 
@@ -314,5 +317,12 @@ internal final class ConnectionWorkspace {
         sessionState = nil
         session = nil
         undoManager.removeAllActions()
+        /// Once nothing hosts this connection any more, its agent sessions stop: a stream, a tool
+        /// loop or a card waiting for an answer would otherwise keep running with nothing on screen.
+        /// Deferred so this workspace has already left the window's registry when the check runs.
+        let connectionId = self.connectionId
+        Task { @MainActor in
+            AgentSessionRegistry.shared.stopSessionsIfUnhosted(for: connectionId)
+        }
     }
 }

@@ -28,6 +28,13 @@ internal final class AgentSessionRegistry: ObservableObject {
     /// reentrancy let a stale snapshot land last.
     private var writeTask: Task<Void, Never>?
 
+    /// Which session each connection is showing.
+    ///
+    /// Held explicitly rather than derived. Deriving it from `sessions(for:)` answered the oldest
+    /// one every time, so New Session appended a row nothing switched to and Open Session moved a
+    /// timestamp nothing read: both panes stayed bound to the first session for ever.
+    private var displayedSessionIds: [UUID: UUID] = [:]
+
     /// Restore runs here, synchronously, which is the whole point of the store being a plain struct.
     /// A window that opens while a load is suspended finds nothing, mints a session, and is then
     /// joined by the stored one; doing it in the initialiser means no window can exist yet.
@@ -76,7 +83,24 @@ internal final class AgentSessionRegistry: ObservableObject {
     /// creates: opening a connection window starts no session and loads no transcript.
     internal func currentSession(for connectionId: UUID) -> AgentSession? {
         let owned = sessions(for: connectionId)
+        if let displayed = displayedSessionIds[connectionId],
+           let match = owned.first(where: { $0.id == displayed }) {
+            return match
+        }
         return owned.first { !$0.status.isEnded } ?? owned.last
+    }
+
+    /// Names the session a connection's two panes render. The pane render key carries it, so a
+    /// switch repaints rather than comparing equal.
+    internal func setDisplayedSession(_ sessionId: UUID, for connectionId: UUID) {
+        guard sessions.contains(where: { $0.id == sessionId && $0.connectionId == connectionId }) else {
+            return
+        }
+        displayedSessionIds[connectionId] = sessionId
+    }
+
+    internal func displayedSessionId(for connectionId: UUID) -> UUID? {
+        currentSession(for: connectionId)?.id
     }
 
     // MARK: - Writing
@@ -90,6 +114,7 @@ internal final class AgentSessionRegistry: ObservableObject {
             viewModel: makeViewModel(sessionId: id, conversationId: nil)
         )
         sessions.append(session)
+        displayedSessionIds[connectionId] = id
         persist()
         return session
     }
@@ -112,6 +137,15 @@ internal final class AgentSessionRegistry: ObservableObject {
         persist()
     }
 
+    /// Ends every session on a connection once nothing is showing it any more.
+    ///
+    /// Called from the connection's own teardown rather than from a window's, because a connection
+    /// can be hosted by two windows and one of them closing is not the connection going away.
+    internal func stopSessionsIfUnhosted(for connectionId: UUID) {
+        guard WindowManager.shared.workspaces(for: connectionId).isEmpty else { return }
+        stopSessions(for: connectionId)
+    }
+
     /// Ends every session on a connection. Disconnect and window close reach this; neither is the
     /// user discarding a conversation, so nothing is deleted.
     internal func stopSessions(for connectionId: UUID) {
@@ -131,6 +165,9 @@ internal final class AgentSessionRegistry: ObservableObject {
         session.viewModel.cancelStream()
         AIProviderFactory.resetCopilotConversation(sessionId: id)
         sessions.remove(at: index)
+        if displayedSessionIds[session.connectionId] == id {
+            displayedSessionIds[session.connectionId] = sessions(for: session.connectionId).last?.id
+        }
         if let conversationId {
             let storage = services.aiChatStorage
             Task { await storage.delete(conversationId) }

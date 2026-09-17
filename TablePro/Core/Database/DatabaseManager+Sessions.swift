@@ -677,6 +677,15 @@ extension DatabaseManager {
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
+        /// A session created while a window is already in Agent mode takes the level stored on the
+        /// connection, which is the user's own and may be Silent. Applying the floor only when the
+        /// mode is toggled therefore missed every session that appeared after the toggle, which is
+        /// the ordinary case: Agent mode is reachable while the connection is still dialling.
+        var session = session
+        let floored = AgentModeSafeModeFloor.level(for: session.connection)
+        if session.safeModeLevel != floored {
+            session.safeModeLevel = floored
+        }
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
         AppEvents.shared.connectionStatusChanged.send(

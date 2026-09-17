@@ -203,9 +203,9 @@ internal final class TabRouter {
             if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 session?.pendingPrompt = prompt
             }
-            WindowManager.shared.workspaces(for: connectionId)
-                .first?
-                .contentMode = .agent
+            /// Through the setter alone. Assigning `contentMode` first made the setter's
+            /// unchanged-mode guard skip the pane rebuild, the toolbar refresh and the floor, so a
+            /// connection that was already open stayed visibly in Browse with nothing to repair it.
             guard let host = WindowManager.shared.window(for: connectionId)?
                 .contentViewController as? MainSplitViewController else { return }
             host.setContentMode(.agent, for: connectionId)

@@ -74,6 +74,7 @@ internal extension MainSplitViewController {
     func selectAgentSession(_ sessionId: UUID, for connectionId: UUID) {
         guard let session = AgentSessionRegistry.shared.session(id: sessionId) else { return }
         session.resume()
+        AgentSessionRegistry.shared.setDisplayedSession(sessionId, for: connectionId)
         AgentSessionRegistry.shared.markActive(id: sessionId)
         guard let workspace = workspaces.workspace(for: connectionId) else { return }
         applyContentMode(for: workspace)

@@ -7,9 +7,10 @@ import SwiftUI
 
 /// The sessions this connection has open, in the window's leading column while Agent mode is on.
 ///
-/// Selection selects and nothing else. Making selection the action, which is the shape it is
-/// tempting to reach for, means an arrow key opens a session and focus cannot pass through the list
-/// at all; opening is its own command, on a double click and in the context menu.
+/// Selection selects and nothing else. A `List` moves its selection on a single click and on every
+/// arrow key, so acting on the change means the highlight cannot be moved without opening a session
+/// and focus cannot pass through the list at all. Opening is its own command, on a double click and
+/// in the context menu.
 internal struct AgentSessionRailView: View {
     internal let connectionId: UUID
     @ObservedObject internal var registry: AgentSessionRegistry
@@ -45,6 +46,8 @@ internal struct AgentSessionRailView: View {
                 ForEach(sessions) { session in
                     AgentSessionRow(session: session)
                         .tag(session.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { onSelect(session.id) }
                         .contextMenu {
                             Button(String(localized: "Open Session")) { onSelect(session.id) }
                             Divider()
@@ -54,10 +57,6 @@ internal struct AgentSessionRailView: View {
             }
         }
         .listStyle(.sidebar)
-        .onChange(of: listSelection) { selection in
-            guard let selection, selection != selectedSessionId else { return }
-            onSelect(selection)
-        }
     }
 
     /// The empty state offers the command rather than describing where its button is.
