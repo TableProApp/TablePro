@@ -480,7 +480,7 @@ final class SQLiteAgentConnection: @unchecked Sendable {
     private func startHeartbeat() {
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
         timer.schedule(deadline: .now() + Self.heartbeatInterval, repeating: Self.heartbeatInterval)
-        timer.setEventHandler { [weak self] in
+        timer.setEventHandler { @Sendable [weak self] in
             self?.sendHeartbeat()
         }
         heartbeatTimer = timer
