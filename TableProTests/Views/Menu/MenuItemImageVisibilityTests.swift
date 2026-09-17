@@ -21,9 +21,11 @@ struct MenuItemImageVisibilityTests {
         item.setInformativeImage(image)
 
         #expect(item.image === image)
+        #if SDK_MACOS_27
         if #available(macOS 27.0, *) {
             #expect(item.preferredImageVisibility == .visible)
         }
+        #endif
     }
 
     @Test("Clearing an informative image leaves no stale image behind")

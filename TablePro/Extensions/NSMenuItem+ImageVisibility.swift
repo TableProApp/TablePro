@@ -12,8 +12,10 @@ internal extension NSMenuItem {
     /// so here; a decorative image keeps the automatic behaviour, which is the intended new look.
     func setInformativeImage(_ image: NSImage?) {
         self.image = image
+        #if SDK_MACOS_27
         if #available(macOS 27.0, *) {
             preferredImageVisibility = .visible
         }
+        #endif
     }
 }
