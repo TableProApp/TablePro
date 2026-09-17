@@ -319,7 +319,7 @@ internal final class TransferReportView: NSView {
     internal init(shown: String, copied: String) {
         report = copied
         let button = NSButton(title: String(localized: "Copy Details"), target: nil, action: nil)
-        button.bezelStyle = .rounded
+        button.bezelStyle = .push
         button.sizeToFit()
         super.init(frame: NSRect(
             x: 0,

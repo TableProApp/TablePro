@@ -52,7 +52,6 @@ permissions:
   contents: read
 
 env:
-  XCODE_VERSION: "26.4.1"
   XCODE_PROJECT: TablePro.xcodeproj
   XCODE_SCHEME: TablePro
   TEST_DESTINATION: "platform=macOS"
@@ -120,9 +119,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: ${{ env.XCODE_VERSION }}
+        uses: ./.github/actions/setup-xcode
 
       - name: Run TableProCore package tests
         run: swift test --package-path Packages/TableProCore
@@ -170,9 +167,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: ${{ env.XCODE_VERSION }}
+        uses: ./.github/actions/setup-xcode
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
@@ -312,9 +307,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: ${{ env.XCODE_VERSION }}
+        uses: ./.github/actions/setup-xcode
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify
@@ -403,9 +396,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
-        with:
-          xcode-version: ${{ env.XCODE_VERSION }}
+        uses: ./.github/actions/setup-xcode
 
       - name: Install xcbeautify
         run: brew list xcbeautify &>/dev/null || brew install xcbeautify

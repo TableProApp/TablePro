@@ -25,7 +25,7 @@ struct FindModePicker: NSViewRepresentable {
 
     private func createSymbolButton(context: Context) -> NSButton {
         let button = NSButton(frame: .zero)
-        button.bezelStyle = .regularSquare
+        button.bezelStyle = .flexiblePush
         button.isBordered = false
         button.controlSize = .small
         button.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
@@ -41,7 +41,7 @@ struct FindModePicker: NSViewRepresentable {
 
     private func createPopupButton(context: Context) -> NSPopUpButton {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.bezelStyle = .regularSquare
+        popup.bezelStyle = .flexiblePush
         popup.isBordered = false
         popup.controlSize = .small
         popup.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))

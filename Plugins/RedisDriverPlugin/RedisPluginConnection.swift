@@ -11,6 +11,7 @@
 import CRedis
 #endif
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 

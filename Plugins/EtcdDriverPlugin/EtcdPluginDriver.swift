@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 

@@ -44,7 +44,7 @@ final class IOSSyncCoordinator {
     }
 
     init(
-        metadata: SyncMetadataStorage = SyncMetadataStorage(),
+        metadata: SyncMetadataStorage = SyncMetadataStorage(userDefaults: .standard),
         recordCache: SyncRecordCache = SyncRecordCache(
             directory: IOSSyncCoordinator.recordCacheDirectory,
             defaults: .standard

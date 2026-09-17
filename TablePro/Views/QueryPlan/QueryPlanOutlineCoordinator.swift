@@ -287,6 +287,7 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
             return reused
         }
         let hosting = NSHostingView(rootView: content)
+        hosting.sizingOptions = []
         hosting.identifier = identifier
         return hosting
     }

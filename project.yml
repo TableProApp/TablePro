@@ -6,7 +6,7 @@ name: TablePro
 
 options:
   minimumXcodeGenVersion: "2.46.0"
-  projectFormat: xcode16_0
+  projectFormat: xcode16_3
   defaultConfig: Release
   developmentLanguage: en
   createIntermediateGroups: true
@@ -98,6 +98,11 @@ targetTemplates:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.${target_name}
         PRODUCT_NAME: $(TARGET_NAME)
         SKIP_INSTALL: YES
+        # The app, both helper tools and both test bundles compile under these. A plugin bundle is
+        # loaded into that same process, so without them one nonisolated async function has two
+        # execution semantics depending on which target compiled it.
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
         WRAPPER_EXTENSION: tableplugin
 
 targets:
@@ -259,7 +264,6 @@ targets:
           - $(SRCROOT)/Libs/dylibs
         OTHER_LDFLAGS:
           - $(inherited)
-          - -Wl,-w
           - -force_load
           - $(SRCROOT)/Libs/libssh2.a
           - -lssl.3
@@ -309,6 +313,13 @@ targets:
         PRODUCT_NAME: $(TARGET_NAME:c99extidentifier)
         SKIP_INSTALL: YES
         SWIFT_EMIT_LOC_STRINGS: YES
+        # The app and all 41 plugin bundles link this framework, and every one of those links
+        # waits for its link step without this. It is Swift-only, so the build system can emit a
+        # TBD and unblock them.
+        EAGER_LINKING: YES
+        # No Objective-C anywhere in the framework and nothing imports the generated header, which
+        # the app then strips again with removeHeaders at embed time.
+        SWIFT_INSTALL_OBJC_HEADER: NO
 
   # ─── MCP stdio bridge, embedded in the app as Contents/MacOS/tablepro-mcp ─────
 

@@ -22,7 +22,7 @@ struct FindMethodPicker: NSViewRepresentable {
 
     private func createPopupButton(context: Context) -> NSPopUpButton {
         let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.bezelStyle = .regularSquare
+        popup.bezelStyle = .flexiblePush
         popup.isBordered = false
         popup.controlSize = .small
         popup.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
