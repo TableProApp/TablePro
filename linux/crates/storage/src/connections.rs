@@ -96,6 +96,22 @@ pub struct ConnectionListSnapshot {
     pub state: ConnectionListState,
 }
 
+/// What an import did to the list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ImportReport {
+    /// Connections the list did not have.
+    pub added: usize,
+    /// Connections already in the list under the same id, overwritten
+    /// by the file's version.
+    pub replaced: usize,
+}
+
+impl ImportReport {
+    pub fn total(self) -> usize {
+        self.added + self.replaced
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoveOutcome {
     Removed,
@@ -190,6 +206,56 @@ impl ConnectionStore {
         };
         connection.last_opened_at = Some(Utc::now());
         self.commit(&mut state, list)
+    }
+
+    /// The saved connections as a document to hand to the user.
+    ///
+    /// It carries no passwords: those are in the keyring, and a file
+    /// the user mails themselves is the wrong place for one. What it
+    /// does carry is every host, port, user name, database name and SSH
+    /// setting, which is why the UI says so before writing it.
+    pub fn export_blocking(&self) -> Result<Vec<u8>, StorageError> {
+        let mut state = self.lock();
+        let list = self.ensure_loaded(&mut state)?;
+        let document = ConnectionsDocument {
+            connections: list.to_vec(),
+        };
+        Ok(crate::document::encode_document(&document)?)
+    }
+
+    /// Merge an exported document back into the list.
+    ///
+    /// Connections are matched by id, so re-importing a file the user
+    /// exported from this machine updates the entries it came from
+    /// rather than doubling them, and a file from another machine adds
+    /// its own. `path` names the file in any problem reported, since
+    /// the user picked it and needs to know which one was refused.
+    pub fn import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportReport, StorageError> {
+        let incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
+            .map_err(StorageError::DocumentUnavailable)?
+            .connections;
+        let mut state = self.lock();
+        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        let mut report = ImportReport::default();
+        for connection in incoming {
+            match list.iter_mut().find(|saved| saved.id == connection.id) {
+                Some(existing) => {
+                    *existing = connection;
+                    report.replaced += 1;
+                }
+                None => {
+                    list.push(connection);
+                    report.added += 1;
+                }
+            }
+        }
+        // Nothing to write for an empty file, and writing anyway would
+        // rewrite the list for no reason.
+        if report.total() == 0 {
+            return Ok(report);
+        }
+        self.commit(&mut state, list)?;
+        Ok(report)
     }
 
     /// Move the unreadable file aside and start from an empty list,
@@ -719,5 +785,183 @@ mod tests {
     #[test]
     fn unknown_ssh_auth_kind_fails_to_parse() {
         assert!(serde_json::from_str::<SavedSshAuth>(r#"{"kind":"gssapi"}"#).is_err());
+    }
+
+    #[test]
+    fn an_export_holds_every_connection() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(saved("production")).expect("upsert");
+        store.upsert_blocking(saved("staging")).expect("upsert");
+
+        let bytes = store.export_blocking().expect("export");
+        let text = String::from_utf8(bytes).expect("utf-8");
+
+        assert!(text.contains("production"), "{text}");
+        assert!(text.contains("staging"), "{text}");
+        assert!(text.contains("\"version\": 1"), "{text}");
+    }
+
+    /// Every key in `value`, however deep, so a secret cannot be added
+    /// to a nested struct without this noticing.
+    fn keys(value: &serde_json::Value, found: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    found.push(key.clone());
+                    keys(child, found);
+                }
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|item| keys(item, found)),
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn an_export_carries_no_secret() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut connection = saved("production");
+        connection.ssh = Some(SavedSshConfig {
+            host: "bastion.internal".to_owned(),
+            port: Some(22),
+            username: Some("deploy".to_owned()),
+            jump_hosts: vec!["edge.internal".to_owned()],
+            auth: SavedSshAuth::PrivateKey {
+                path: Some(PathBuf::from("/home/me/.ssh/id_ed25519")),
+                has_passphrase: true,
+            },
+        });
+        store.upsert_blocking(connection).expect("upsert");
+
+        let bytes = store.export_blocking().expect("export");
+        let mut found = Vec::new();
+        keys(&serde_json::from_slice(&bytes).expect("json"), &mut found);
+
+        // Secrets live in the keyring. The structs have no field for
+        // one, and this is the guard against ever adding it.
+        for key in &found {
+            let lowered = key.to_lowercase();
+            assert!(
+                !(lowered.contains("password") || lowered.contains("passphrase") || lowered.contains("secret"))
+                    || lowered == "has_passphrase",
+                "the export carries a {key} field: {found:?}"
+            );
+        }
+        assert!(found.contains(&"has_passphrase".to_owned()), "{found:?}");
+    }
+
+    #[test]
+    fn an_export_imports_back_into_an_empty_list() {
+        let source_root = TempDir::new().expect("tempdir");
+        let source = store(&source_root);
+        source.upsert_blocking(saved("production")).expect("upsert");
+        let bytes = source.export_blocking().expect("export");
+
+        let target_root = TempDir::new().expect("tempdir");
+        let target = store(&target_root);
+        let report = target
+            .import_blocking(Path::new("/tmp/connections.json"), &bytes)
+            .expect("import");
+
+        assert_eq!(report, ImportReport { added: 1, replaced: 0 });
+        let list = target.load_blocking().expect("load");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "production");
+    }
+
+    #[test]
+    fn importing_the_same_file_twice_updates_rather_than_doubles() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mut connection = saved("production");
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        connection.name = "production (renamed)".to_owned();
+        let document = ConnectionsDocument {
+            connections: vec![connection],
+        };
+        let bytes = crate::document::encode_document(&document).expect("encode");
+
+        let first = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+        let second = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(first, ImportReport { added: 0, replaced: 1 });
+        assert_eq!(second, ImportReport { added: 0, replaced: 1 });
+        let list = store.load_blocking().expect("load");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "production (renamed)");
+    }
+
+    #[test]
+    fn an_import_leaves_the_connections_the_file_does_not_mention() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(saved("mine")).expect("upsert");
+        let other_root = TempDir::new().expect("tempdir");
+        let other = crate::connections::ConnectionStore::new(&crate::StoragePaths::under(
+            other_root.path(),
+            "tablepro",
+            "app.tablepro.TablePro",
+        ));
+        other.upsert_blocking(saved("theirs")).expect("upsert");
+        let bytes = other.export_blocking().expect("export");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(report, ImportReport { added: 1, replaced: 0 });
+        let names: Vec<String> = store
+            .load_blocking()
+            .expect("load")
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        assert!(names.contains(&"mine".to_owned()), "{names:?}");
+        assert!(names.contains(&"theirs".to_owned()), "{names:?}");
+    }
+
+    #[test]
+    fn an_empty_export_imports_as_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(saved("mine")).expect("upsert");
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: Vec::new(),
+        })
+        .expect("encode");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(report, ImportReport::default());
+        assert_eq!(store.load_blocking().expect("load").len(), 1);
+    }
+
+    #[test]
+    fn a_file_that_is_not_an_export_is_refused_by_name() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+
+        let error = store
+            .import_blocking(Path::new("/tmp/holiday.json"), b"{\"holiday\": true}")
+            .expect_err("not an export");
+
+        let StorageError::DocumentUnavailable(problem) = error else {
+            panic!("expected a document problem, got {error:?}");
+        };
+        assert!(problem.to_string().contains("holiday.json"), "{problem}");
+    }
+
+    #[test]
+    fn an_export_from_a_newer_build_is_refused_rather_than_half_read() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+
+        let error = store
+            .import_blocking(Path::new("/tmp/c.json"), br#"{"version": 99, "connections": []}"#)
+            .expect_err("newer");
+
+        let StorageError::DocumentUnavailable(problem) = error else {
+            panic!("expected a document problem, got {error:?}");
+        };
+        assert!(problem.is_newer_version(), "{problem:?}");
     }
 }

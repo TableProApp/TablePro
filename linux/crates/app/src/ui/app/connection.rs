@@ -1,6 +1,6 @@
 use relm4::adw::prelude::*;
-use relm4::gtk::glib;
-use relm4::{Component, ComponentController, ComponentSender, adw};
+use relm4::gtk::{gio, glib};
+use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
 use tablepro_core::TableInfo;
 use tablepro_storage::SavedConnection;
@@ -327,6 +327,117 @@ impl App {
         });
     }
 
+    /// Write the connection list to a file the user picks.
+    ///
+    /// The file carries no passwords, and the dialog's name says what
+    /// it does carry, because it is going somewhere the keyring does
+    /// not protect.
+    pub(super) fn on_export_connections(&self, sender: ComponentSender<Self>) {
+        self.connections_popover.popdown();
+        let connections = self.storage.connections().clone();
+        let bytes = match connections.export_blocking() {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                tracing::warn!(%error, "could not read the connections to export");
+                self.show_toast(&crate::i18n::gettext("The connections could not be read."));
+                return;
+            }
+        };
+
+        let dialog = gtk::FileDialog::builder()
+            .title(crate::i18n::gettext("Export Connections"))
+            .modal(true)
+            .initial_name("tablepro-connections.json")
+            .default_filter(&json_filter())
+            .filters(&json_filters())
+            .build();
+        let input = sender.input_sender().clone();
+        dialog.save(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
+            let Ok(file) = outcome else { return };
+            let Some(path) = file.path() else { return };
+            let message = match std::fs::write(&path, &bytes) {
+                Ok(()) => crate::i18n::gettext("Connections exported."),
+                Err(error) => {
+                    tracing::warn!(%error, path = %path.display(), "could not write the exported connections");
+                    crate::i18n::gettext("The connections could not be written to that file.")
+                }
+            };
+            let _ = input.send(AppMsg::ShowToast(message));
+        });
+    }
+
+    /// Ask for an exported file and read it off the GTK thread.
+    pub(super) fn on_import_connections(&self, sender: ComponentSender<Self>) {
+        self.connections_popover.popdown();
+        let dialog = gtk::FileDialog::builder()
+            .title(crate::i18n::gettext("Import Connections"))
+            .modal(true)
+            .default_filter(&json_filter())
+            .filters(&json_filters())
+            .build();
+        let input = sender.input_sender().clone();
+        dialog.open(Some(&self.window), gio::Cancellable::NONE, move |outcome| {
+            let Ok(file) = outcome else { return };
+            let input = input.clone();
+            glib::spawn_future_local(async move {
+                let path = file.path().unwrap_or_default();
+                match file.load_contents_future().await {
+                    Ok((bytes, _etag)) => {
+                        let _ = input.send(AppMsg::ConnectionsFileRead {
+                            path,
+                            bytes: bytes.to_vec(),
+                        });
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, path = %path.display(), "could not read the file to import");
+                        let _ = input.send(AppMsg::ShowToast(crate::i18n::gettext("That file could not be read.")));
+                    }
+                }
+            });
+        });
+    }
+
+    pub(super) fn on_connections_file_read(
+        &self,
+        path: std::path::PathBuf,
+        bytes: Vec<u8>,
+        sender: ComponentSender<Self>,
+    ) {
+        let connections = self.storage.connections().clone();
+        let tasks = self.tasks.clone();
+        let sender_clone = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let imported = tasks
+                        .spawn_blocking_task(move || connections.import_blocking(&path, &bytes))
+                        .await;
+                    let message = match imported {
+                        Ok(Ok(report)) if report.total() == 0 => {
+                            crate::i18n::gettext("That file has no connections in it.")
+                        }
+                        Ok(Ok(report)) => crate::i18n::ngettext_f(
+                            "Imported {n} connection.",
+                            "Imported {n} connections.",
+                            report.total() as u32,
+                            &[("n", &report.total().to_string())],
+                        ),
+                        Ok(Err(error)) => {
+                            tracing::warn!(%error, "could not import the connections");
+                            crate::i18n::gettext("That file is not a TablePro connection export.")
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "the import task did not finish");
+                            crate::i18n::gettext("The connections could not be imported.")
+                        }
+                    };
+                    sender_clone.input(AppMsg::ReloadConnections);
+                    sender_clone.input(AppMsg::ShowToast(message));
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         self.set_loading_page(
@@ -574,4 +685,20 @@ impl App {
         });
         dialog.present(Some(&self.window));
     }
+}
+
+/// The filter both file dialogs open with. Built fresh each time
+/// because a GtkFileFilter belongs to the dialog it is given to.
+fn json_filter() -> gtk::FileFilter {
+    let filter = gtk::FileFilter::new();
+    filter.set_name(Some(&crate::i18n::gettext("JSON files")));
+    filter.add_suffix("json");
+    filter.add_mime_type("application/json");
+    filter
+}
+
+fn json_filters() -> gio::ListStore {
+    let filters = gio::ListStore::new::<gtk::FileFilter>();
+    filters.append(&json_filter());
+    filters
 }

@@ -14,8 +14,8 @@ mod unix_time;
 
 pub use connection_color::ConnectionColor;
 pub use connections::{
-    ConnectionListSnapshot, ConnectionListState, ConnectionStore, RemoveOutcome, SavedConnection, SavedSshAuth,
-    SavedSshConfig, duplicate,
+    ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportReport, RemoveOutcome, SavedConnection,
+    SavedSshAuth, SavedSshConfig, duplicate,
 };
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};

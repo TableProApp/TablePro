@@ -350,6 +350,13 @@ pub enum AppMsg {
     /// A colour picked from a connection row's menu, or `None` when the
     /// user cleared it.
     SetConnectionColor(Uuid, Option<tablepro_storage::ConnectionColor>),
+    ExportConnections,
+    ImportConnections,
+    /// The file the user picked, read off the GTK thread.
+    ConnectionsFileRead {
+        path: std::path::PathBuf,
+        bytes: Vec<u8>,
+    },
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
@@ -1446,6 +1453,9 @@ impl SimpleComponent for App {
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
             AppMsg::SetConnectionColor(id, color) => self.on_set_connection_color(id, color, sender),
+            AppMsg::ExportConnections => self.on_export_connections(sender),
+            AppMsg::ImportConnections => self.on_import_connections(sender),
+            AppMsg::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes, sender),
             AppMsg::SaveActiveQuery => self.on_save_active_query(sender),
             AppMsg::SaveQueryNamed { name, query } => self.on_save_query_named(name, query, sender),
             AppMsg::OpenHistoryQuery(text) => {
@@ -1507,6 +1517,16 @@ fn primary_menu_model() -> gio::Menu {
         Some("win.show-saved-queries"),
     );
     menu.append_section(None, &history_section);
+    let connections_section = gio::Menu::new();
+    connections_section.append(
+        Some(&crate::i18n::gettext("Import Connections…")),
+        Some("win.import-connections"),
+    );
+    connections_section.append(
+        Some(&crate::i18n::gettext("Export Connections…")),
+        Some("win.export-connections"),
+    );
+    menu.append_section(None, &connections_section);
     let prefs_section = gio::Menu::new();
     prefs_section.append(Some(&crate::i18n::gettext("Preferences")), Some("win.preferences"));
     menu.append_section(None, &prefs_section);
@@ -1583,6 +1603,8 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
         input_action!("open-filter", AppMsg::ShowFilterDialog),
         input_action!("save-query", AppMsg::SaveActiveQuery),
+        input_action!("export-connections", AppMsg::ExportConnections),
+        input_action!("import-connections", AppMsg::ImportConnections),
     ]);
     let disconnect = gio::SimpleAction::new("disconnect", None);
     let sender_for_disconnect = sender.clone();
