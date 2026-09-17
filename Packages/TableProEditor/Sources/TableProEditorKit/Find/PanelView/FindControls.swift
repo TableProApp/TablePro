@@ -41,6 +41,7 @@ struct FindControls: View {
                         .padding(.horizontal, dynamicPadding)
                 }
                 .help("Previous Match")
+                .accessibilityLabel("Previous Match")
                 .disabled(viewModel.matchesEmpty)
 
                 Divider()
@@ -53,6 +54,7 @@ struct FindControls: View {
                         .padding(.horizontal, dynamicPadding)
                 }
                 .help("Next Match")
+                .accessibilityLabel("Next Match")
                 .disabled(viewModel.matchesEmpty)
             }
             .controlGroupStyle(PanelControlGroupStyle())
@@ -69,6 +71,7 @@ struct FindControls: View {
                     }
                 }
                 .help(condensed ? "Done" : "")
+                .accessibilityLabel("Done")
                 .padding(.horizontal, dynamicPadding)
             }
             .buttonStyle(PanelButtonStyle())

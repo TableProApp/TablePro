@@ -327,6 +327,7 @@ struct AIProviderDetailSheet: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Copy install command"))
+                .accessibilityLabel(String(localized: "Copy install command"))
             } label: {
                 Text(CursorAgentCLI.installCommand)
                     .font(.system(.body, design: .monospaced))

@@ -148,6 +148,8 @@ struct ForeignKeyPickerView: View {
                 row(for: entry)
                     .contentShape(Rectangle())
                     .onTapGesture { commit(entry) }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { commit(entry) }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

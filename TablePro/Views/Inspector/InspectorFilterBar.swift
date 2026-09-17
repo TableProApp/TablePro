@@ -113,6 +113,7 @@ struct InspectorFilterBar: View {
                 }
             }
             .labelsHidden()
+            .accessibilityLabel(String(localized: "Filter column"))
             .frame(maxWidth: 180)
             .onChange(of: clause.column) { _ in onChange() }
 
@@ -122,6 +123,7 @@ struct InspectorFilterBar: View {
                 }
             }
             .labelsHidden()
+            .accessibilityLabel(String(localized: "Filter operator"))
             .frame(maxWidth: 160)
             .onChange(of: clause.op) { _ in onChange() }
 
@@ -145,6 +147,7 @@ struct InspectorFilterBar: View {
             }
             .buttonStyle(.plain)
             .help(String(localized: "Remove filter"))
+            .accessibilityLabel(String(localized: "Remove filter"))
         }
     }
 

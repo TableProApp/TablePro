@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
+- Foreign key picker rows that could only be chosen with a mouse.
+- No spoken sort direction on Query Plan columns.
 - No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
 - Composite foreign key columns listed out of order on MariaDB.
 - Export dialog listing no tables for a MySQL server behind a proxy, and failing to open at all on Kafka, Cassandra and Teradata.

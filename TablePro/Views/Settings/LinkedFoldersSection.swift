@@ -73,6 +73,7 @@ struct LinkedFoldersSection: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .labelsHidden()
+            .accessibilityLabel(folder.name)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(folder.name)

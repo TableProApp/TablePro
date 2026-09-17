@@ -226,6 +226,7 @@ struct QueryPlanResultView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help(String(localized: "Copy EXPLAIN output to clipboard"))
+            .accessibilityLabel(String(localized: "Copy EXPLAIN output to clipboard"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

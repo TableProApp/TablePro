@@ -55,6 +55,7 @@ internal struct MultiLineEditorView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Open in Window"))
+            .accessibilityLabel(String(localized: "Open in Window"))
             .padding(4)
         }
     }

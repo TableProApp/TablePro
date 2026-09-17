@@ -284,6 +284,7 @@ internal struct DatabaseEndpointPicker: View {
                 if current?.id == endpoint.id {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.secondary)
+                        .accessibilityLabel(String(localized: "Selected"))
                 }
             }
             .contentShape(.rect)

@@ -189,6 +189,7 @@ struct ArrayValueEditorView: View {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
                 .help(Text("This value is not one of the type's current labels"))
+                .accessibilityLabel(Text("This value is not one of the type's current labels"))
         }
     }
 

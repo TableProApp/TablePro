@@ -173,6 +173,7 @@ struct FilterPanelView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.yellow)
                                     .help(String(localized: "Some columns in this preset don't exist in the current table"))
+                                    .accessibilityLabel(String(localized: "Some columns in this preset don't exist in the current table"))
                             }
                         }
                     }

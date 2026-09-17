@@ -291,6 +291,7 @@ internal struct ThemeEditorColorsSection: View {
                     }
                     .buttonStyle(.borderless)
                     .help(String(localized: "Reset to System Default"))
+                    .accessibilityLabel(String(localized: "Reset to System Default"))
                 }
             }
         }

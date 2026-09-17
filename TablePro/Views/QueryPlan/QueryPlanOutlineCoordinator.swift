@@ -57,6 +57,7 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
         // The rebuilt tree is in parse order, so a sort indicator left over from the previous
         // plan would advertise an order the rows are not in.
         outlineView?.sortDescriptors = []
+        publishSortDirection()
         outlineView?.reloadData()
         expandAll()
         selectRootRow()
@@ -134,9 +135,27 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
     }
 
     func outlineView(_ outlineView: NSOutlineView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        publishSortDirection()
         guard applyCurrentSort() else { return }
         outlineView.reloadData()
         expandAll()
+    }
+
+    /// `sortDescriptors` reaches no accessibility client, measured, so the sorted column is only
+    /// announced when its header cell is told directly. Every column here is click-sortable, so
+    /// without this a VoiceOver user cannot tell which one is sorted or which way.
+    internal func publishSortDirection() {
+        guard let outlineView else { return }
+        let sorted = outlineView.sortDescriptors.first
+        for column in outlineView.tableColumns {
+            let direction: NSAccessibilitySortDirection
+            if let sorted, sorted.key == column.identifier.rawValue {
+                direction = sorted.ascending ? .ascending : .descending
+            } else {
+                direction = .unknown
+            }
+            column.headerCell.setAccessibilitySortDirection(direction)
+        }
     }
 
     /// Reorders the tree by whatever the header currently advertises, keeping the selection. False

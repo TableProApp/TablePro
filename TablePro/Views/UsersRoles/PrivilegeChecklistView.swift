@@ -73,6 +73,7 @@ struct PrivilegeChecklistView: View {
         .fixedSize()
         .disabled(viewModel.privilegeSections.isEmpty)
         .help(String(localized: "Bulk actions"))
+        .accessibilityLabel(String(localized: "Bulk actions"))
     }
 
     // MARK: - Content

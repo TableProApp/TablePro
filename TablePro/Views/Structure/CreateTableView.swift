@@ -223,6 +223,7 @@ struct CreateTableView: View {
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Add Row"))
+            .accessibilityLabel(String(localized: "Add Row"))
             .disabled(!isGridTab)
 
             Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
@@ -230,6 +231,7 @@ struct CreateTableView: View {
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Delete Selected"))
+            .accessibilityLabel(String(localized: "Delete Selected"))
             .disabled(!isGridTab || selectedRows.isEmpty)
 
             issueMessage(issues)
