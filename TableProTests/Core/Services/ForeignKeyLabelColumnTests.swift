@@ -11,8 +11,11 @@ struct ForeignKeyLabelColumnTests {
         ForeignKeyLookupColumn(name: name, type: .text(rawType: "VARCHAR(64)"))
     }
 
-    private func resolve(_ columns: [ForeignKeyLookupColumn], preferred: String? = nil) -> String? {
-        ForeignKeyLabelColumn.resolve(columns: columns, keyColumn: "id", preferred: preferred)?.name
+    private func resolve(
+        _ columns: [ForeignKeyLookupColumn],
+        choice: ForeignKeyLabelChoice = .unset
+    ) -> String? {
+        ForeignKeyLabelColumn.resolve(columns: columns, keyColumn: "id", choice: choice)?.name
     }
 
     @Test("A preferred name wins over the column order")
@@ -54,15 +57,15 @@ struct ForeignKeyLabelColumnTests {
 
     @Test("A stored choice wins over every heuristic")
     func storedChoiceWins() {
-        #expect(resolve([key, text("name"), text("email")], preferred: "email") == "email")
+        #expect(resolve([key, text("name"), text("email")], choice: .column("email")) == "email")
     }
 
     /// The stored name reaches the query as a quoted identifier. A preference left behind by a
     /// dropped column, or written into defaults by hand, must never become one.
     @Test("A stored choice the table no longer has falls back to the heuristic")
     func storedChoiceMustExist() {
-        #expect(resolve([key, text("name")], preferred: "dropped_column") == "name")
-        #expect(resolve([key, text("name")], preferred: "\" OR 1=1 --") == "name")
+        #expect(resolve([key, text("name")], choice: .column("dropped_column")) == "name")
+        #expect(resolve([key, text("name")], choice: .column("\") OR 1=1 --")) == "name")
     }
 
     /// PostgreSQL refuses `LIKE` on an enum or an array, so neither can carry the picker's search
@@ -81,6 +84,19 @@ struct ForeignKeyLabelColumnTests {
     @Test("A stored choice may be a column the heuristic would have skipped")
     func storedChoiceMayBeNonText() {
         let columns = [key, text("name"), ForeignKeyLookupColumn(name: "score", type: .decimal(rawType: "NUMERIC"))]
-        #expect(resolve(columns, preferred: "score") == "score")
+        #expect(resolve(columns, choice: .column("score")) == "score")
+    }
+
+    @Test("Choosing no label returns no label")
+    func explicitNoneReturnsNoLabel() {
+        #expect(resolve([key, text("name")], choice: .noLabel) == nil)
+    }
+
+    /// Short-circuits before the candidate scan rather than falling through it, so a table carrying
+    /// every preferred name still answers nothing.
+    @Test("Choosing no label ignores every candidate")
+    func explicitNoneIgnoresEveryCandidate() {
+        let columns = [key] + ForeignKeyLabelColumn.preferredNames.map(text)
+        #expect(resolve(columns, choice: .noLabel) == nil)
     }
 }

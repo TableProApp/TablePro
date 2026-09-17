@@ -96,4 +96,33 @@ struct PostgreSQLCatalogTypeNamesTests {
         #expect(names == [16_385: "ENUM(mood)", 16_386: "ENUM[](mood)", 99_999: "unknown"])
         #expect(PostgreSQLCatalogTypeNames.names(for: [7], rows: []) == [7: PostgreSQLCatalogTypeNames.unresolved])
     }
+
+    @Test("A built-in oid spells from the table and a catalog-created oid has no built-in spelling")
+    func builtinTypeNames() {
+        let expected: [UInt32: String] = [
+            16: "boolean",
+            17: "bytea",
+            18: "char",
+            1_042: "char",
+            1_043: "varchar",
+            1_009: "text[]",
+            3_807: "jsonb[]",
+            2_950: "uuid",
+            701: "double precision"
+        ]
+        for (oid, name) in expected {
+            #expect(PostgreSQLCatalogTypeNames.builtinTypeName(for: oid) == name, "oid \(oid)")
+        }
+        #expect(PostgreSQLCatalogTypeNames.builtinTypeName(for: 0) == nil)
+        #expect(PostgreSQLCatalogTypeNames.builtinTypeName(for: 16_385) == nil)
+    }
+
+    /// A learned `unknown` is how an oid the catalog could not name is remembered, so a built-in
+    /// spelling equal to it would read as a type that was looked up and not found.
+    @Test("No built-in spelling is the unresolved spelling")
+    func builtinTypeNamesNeverReadAsUnresolved() {
+        let spellings = (UInt32(0)...10_000).compactMap(PostgreSQLCatalogTypeNames.builtinTypeName(for:))
+        #expect(!spellings.isEmpty)
+        #expect(!spellings.contains(PostgreSQLCatalogTypeNames.unresolved))
+    }
 }

@@ -9,14 +9,16 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarView: View {
-    @State private var viewModel: SidebarViewModel
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var databaseManager = DatabaseManager.shared
+    @StateObject private var viewModel: SidebarViewModel
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var showsSchemaProgress = false
 
-    private var schemaService: SchemaService { SchemaService.shared }
+    @ObservedObject private var schemaService = SchemaService.shared
 
-    var sidebarState: SharedSidebarState
-    var windowState: WindowSidebarState
+    @ObservedObject var sidebarState: SharedSidebarState
+    @ObservedObject var windowState: WindowSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
 
@@ -95,7 +97,7 @@ struct SidebarView: View {
         )
         /// Nothing observable is written here. This initializer runs on every evaluation of the
         /// parent's body, and the view model already seeds its own filter and watches the field.
-        _viewModel = State(wrappedValue: vm)
+        _viewModel = StateObject(wrappedValue: vm)
         self.connectionId = connectionId
         self.coordinator = coordinator
     }
@@ -106,7 +108,9 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             switch sidebarState.selectedSidebarTab {
             case .tables:
-                FeatureTipInline(tip: OpenQuicklyTip(shortcut: FeatureTipShortcut.display(for: .quickSwitcher)))
+                if #available(macOS 14.0, *) {
+                    FeatureTipInline(tip: OpenQuicklyTip(shortcut: FeatureTipShortcut.display(for: .quickSwitcher)))
+                }
                 tablesContent
             case .favorites:
                 if let coordinator {
@@ -124,13 +128,13 @@ struct SidebarView: View {
 
             sidebarFooter
         }
-        .onChange(of: settingsManager.general.showRecentTables) { _, _ in
+        .onChange(of: settingsManager.general.showRecentTables) { _ in
             sidebarState.reloadRecentTablesFromStore()
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
         }
-        .onChange(of: viewModel.showOperationDialog) { _, isPresented in
+        .onChange(of: viewModel.showOperationDialog) { isPresented in
             guard isPresented else { return }
             presentOperationAlert()
         }
@@ -171,7 +175,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var sidebarFooter: some View {
-        if showsSchemaPicker || LicenseManager.shared.supportAudience == .prospect {
+        if showsSchemaPicker || licenseManager.supportAudience == .prospect {
             VStack(spacing: 0) {
                 Divider()
                 HStack(spacing: 8) {
@@ -205,16 +209,19 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var databaseTreeContent: some View {
-        DatabaseTreeView(
-            connectionId: connectionId,
-            databaseType: viewModel.databaseType,
-            viewModel: viewModel,
-            windowState: windowState,
-            pendingTruncates: $pendingTruncates,
-            pendingDeletes: $pendingDeletes,
-            coordinator: coordinator,
-            sidebarState: sidebarState
-        )
+        if let coordinator {
+            DatabaseTreeView(
+                connectionId: connectionId,
+                databaseType: viewModel.databaseType,
+                viewModel: viewModel,
+                windowState: windowState,
+                pendingTruncates: $pendingTruncates,
+                pendingDeletes: $pendingDeletes,
+                coordinator: coordinator,
+                toolbarState: coordinator.toolbarState,
+                sidebarState: sidebarState
+            )
+        }
     }
 
     @ViewBuilder
@@ -231,6 +238,8 @@ struct SidebarView: View {
                 errorState(message: message)
             case .loading:
                 loadingState
+            case .noDatabaseSelected:
+                noDatabaseSelectedState
             case .noMatch, .list:
                 SidebarTreeView(
                     connectionId: connectionId,
@@ -254,8 +263,13 @@ struct SidebarView: View {
             state: schemaService.state(for: connectionId),
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
-            hasOutlastedGrace: showsSchemaProgress
+            hasOutlastedGrace: showsSchemaProgress,
+            needsDatabaseSelection: needsDatabaseSelection
         )
+    }
+
+    private var needsDatabaseSelection: Bool {
+        viewModel.databaseType.browsingRequiresSelectedDatabase && activeDatabase == nil
     }
 
     /// Asked above the switch rather than inside its loading branch, so which of the two the
@@ -272,6 +286,8 @@ struct SidebarView: View {
                 loadingState
             case .failed(let message):
                 errorState(message: message)
+            case .noDatabaseSelected:
+                noDatabaseSelectedState
             case .noMatch:
                 noMatchState
             case .list:
@@ -307,8 +323,21 @@ struct SidebarView: View {
         .padding()
     }
 
+    private var noDatabaseSelectedState: some View {
+        UnavailableStateView {
+            Label(String(localized: "No Database Selected"), systemImage: "cylinder")
+        } description: {
+            Text("Open a database to browse its tables.")
+        } actions: {
+            Button(String(localized: "Open Database…")) {
+                coordinator?.commandActions?.openDatabaseSwitcher()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var noMatchState: some View {
-        ContentUnavailableView.search(text: viewModel.searchText)
+        UnavailableStateView.search(text: viewModel.searchText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -320,7 +349,7 @@ struct SidebarView: View {
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var tableList: some View {
@@ -339,6 +368,8 @@ struct SidebarView: View {
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: settingsManager.general.showSystemContainers,
+            showsPartitions: settingsManager.general.showPartitions,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }

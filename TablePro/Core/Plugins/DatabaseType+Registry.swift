@@ -83,6 +83,11 @@ extension DatabaseType {
             .capabilities.authenticationIsDatabaseScoped ?? false
     }
 
+    var browsingRequiresSelectedDatabase: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?
+            .capabilities.browsingRequiresSelectedDatabase ?? false
+    }
+
     var defaultHost: String? {
         PluginMetadataRegistry.shared.snapshot(for: self)?.connection.defaultHost
     }

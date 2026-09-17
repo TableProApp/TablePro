@@ -262,6 +262,145 @@ struct DockerComposeExtractorTests {
         #expect(databend?.parsedURL.database == "default")
     }
 
+    @Test("An OceanBase observer with no tenant settings imports as root of the image's test tenant")
+    func testOceanBaseDefaultTenant() {
+        let oceanbase = extract("""
+        services:
+          ob:
+            image: oceanbase/oceanbase-ce:latest
+            environment:
+              OB_TENANT_NAME: ""
+            ports:
+              - "2881:2881"
+        """).first
+        #expect(oceanbase?.parsedURL.type == .oceanbase)
+        #expect(oceanbase?.parsedURL.port == 2_881)
+        #expect(oceanbase?.parsedURL.username == "root@test")
+        #expect(oceanbase?.parsedURL.password.isEmpty == true)
+        #expect(oceanbase?.parsedURL.database.isEmpty == true)
+    }
+
+    @Test("Tenant variables name the tenant, its password and its database, and the observer takes no cluster")
+    func testOceanBaseTenantVariables() {
+        let oceanbase = extract("""
+        services:
+          ob:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: app
+              OB_TENANT_PASSWORD: tenantpw
+              OB_SYS_PASSWORD: syspw
+              OB_DATABASE: shop
+              OB_CLUSTER_NAME: obcluster
+            ports:
+              - "2881:2881"
+        """).first
+        #expect(oceanbase?.parsedURL.username == "root@app")
+        #expect(oceanbase?.parsedURL.password == "tenantpw")
+        #expect(oceanbase?.parsedURL.database == "shop")
+    }
+
+    @Test("A sys password alone means the sys tenant, except in SLIM mode, which never applies it")
+    func testOceanBaseSysPassword() {
+        let candidates = extract("""
+        services:
+          current:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_SYS_PASSWORD: syspw
+          legacy:
+            image: oceanbase/oceanbase-ce:4.0.0.0
+            environment:
+              - OB_ROOT_PASSWORD=rootpw
+          slim:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              MODE: slim
+              OB_SYS_PASSWORD: syspw
+        """)
+        let current = candidates.first { $0.sourceKey == "services.current" }
+        #expect(current?.parsedURL.username == "root@sys")
+        #expect(current?.parsedURL.password == "syspw")
+        let legacy = candidates.first { $0.sourceKey == "services.legacy" }
+        #expect(legacy?.parsedURL.username == "root@sys")
+        #expect(legacy?.parsedURL.password == "rootpw")
+        let slim = candidates.first { $0.sourceKey == "services.slim" }
+        #expect(slim?.parsedURL.username == "root@test")
+        #expect(slim?.parsedURL.password.isEmpty == true)
+    }
+
+    @Test("OBProxy imports on 2883 as the tenant of the observer its RS_LIST names, qualified by its cluster")
+    func testOceanBaseProxy() {
+        let candidates = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:4.3.5.0-3
+            environment:
+              APP_NAME: tablepro
+              OB_CLUSTER: obcluster
+              RS_LIST: "observer:2881"
+            ports:
+              - "2883:2883"
+          observer:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: app
+              OB_TENANT_PASSWORD: tenantpw
+          other:
+            image: oceanbase/oceanbase-ce:4.4.2
+            environment:
+              OB_TENANT_NAME: other
+        """)
+        let proxy = candidates.first { $0.sourceKey == "services.proxy" }
+        #expect(proxy?.parsedURL.type == .oceanbase)
+        #expect(proxy?.parsedURL.port == 2_883)
+        #expect(proxy?.parsedURL.username == "root@app#obcluster")
+        #expect(proxy?.parsedURL.password == "tenantpw")
+    }
+
+    @Test("A proxy borrows the only observer's tenant, and with none keeps the default tenant")
+    func testOceanBaseProxyWithoutNamedObserver() {
+        let single = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:latest
+            environment:
+              OB_CLUSTER: demo
+              RS_LIST: "172.20.0.5:2881"
+          ob:
+            image: oceanbase/oceanbase-ce:latest
+            environment:
+              OB_TENANT_NAME: app
+        """).first { $0.sourceKey == "services.proxy" }
+        #expect(single?.parsedURL.username == "root@app#demo")
+
+        let alone = extract("""
+        services:
+          proxy:
+            image: oceanbase/obproxy-ce:latest
+            ports:
+              - "2883:2883"
+        """).first
+        #expect(alone?.parsedURL.username == "root@test")
+        #expect(alone?.parsedURL.password.isEmpty == true)
+    }
+
+    @Test("OceanBase images that do not serve SQL are not imported")
+    func testOceanBaseNonDatabaseImages() {
+        let candidates = extract("""
+        services:
+          ocp:
+            image: oceanbase/ocp-ce:latest
+            ports:
+              - "8080:8080"
+          agent:
+            image: oceanbase/obagent:latest
+          miniob:
+            image: oceanbase/miniob:latest
+        """)
+        #expect(candidates.isEmpty)
+    }
+
     @Test("Interpolation uses the adjacent dotenv file")
     func testInterpolationFromDotenv() {
         let contents = """

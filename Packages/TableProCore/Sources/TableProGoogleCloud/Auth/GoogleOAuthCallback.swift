@@ -8,7 +8,11 @@ public enum GoogleOAuthCallback: Sendable, Equatable {
     static let unknownDenialReason = "unknown"
 
     public static func parse(requestHead: Data, expectedState: String) -> GoogleOAuthCallback {
-        parse(requestHead: String(decoding: requestHead, as: UTF8.self), expectedState: expectedState)
+        parse(requestHead: decodedHead(requestHead), expectedState: expectedState)
+    }
+
+    private static func decodedHead(_ bytes: Data) -> String {
+        String(bytes: bytes, encoding: .utf8) ?? String(bytes: bytes, encoding: .isoLatin1) ?? ""
     }
 
     public static func parse(requestHead: String, expectedState: String) -> GoogleOAuthCallback {

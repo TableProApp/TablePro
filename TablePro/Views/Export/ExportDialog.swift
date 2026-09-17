@@ -10,6 +10,7 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct ExportDialog: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
 
     @Binding var isPresented: Bool
@@ -74,16 +75,6 @@ struct ExportDialog: View {
         return 0
     }
 
-    /// The name the progress sheet puts in front of the user. A streaming query has no current
-    /// table, so it is named by the file it is being written to instead of by an empty string.
-    private var progressSubject: String {
-        let currentTable = exportService?.state.currentTable ?? ""
-        guard currentTable.isEmpty else { return currentTable }
-        return config.fileName.isEmpty
-            ? String(localized: "Query results")
-            : config.fileName
-    }
-
     private var preselection: ExportPreselection {
         if case .tables(_, let preselection) = mode {
             return preselection
@@ -140,7 +131,7 @@ struct ExportDialog: View {
                 restoreSettingsSnapshot()
             }
         }
-        .onChange(of: config.formatId) {
+        .onChange(of: config.formatId) { _ in
             resetOptionValues()
             Task { await reconcileObjectKindsForFormat() }
         }
@@ -166,23 +157,19 @@ struct ExportDialog: View {
             }
         }
         .sheet(isPresented: $showProgressDialog) {
-            ExportProgressView(
-                subject: progressSubject,
-                tableIndex: exportService?.state.currentTableIndex ?? 0,
-                totalTables: exportService?.state.totalTables ?? 0,
-                processedRows: exportService?.state.processedRows ?? 0,
-                totalRows: exportService?.state.totalRows ?? 0,
-                statusMessage: exportService?.state.statusMessage ?? ""
-            ) {
-                exportService?.cancelExport()
+            if let exportService {
+                ExportProgressSheet(service: exportService, fileName: config.fileName) {
+                    exportService.cancelExport()
+                }
+                .interactiveDismissDisabled()
+                .onExitCommand { }
             }
-            .interactiveDismissDisabled()
-            .onExitCommand { }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentExportSuccess(
                 warnings: exportService?.state.warnings ?? [],
+                notes: exportService?.state.notes ?? [],
                 window: hostWindow
             ) { choice in
                 showSuccessDialog = false
@@ -198,7 +185,7 @@ struct ExportDialog: View {
 
     private var availableFormats: [any ExportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        let supported = PluginManager.shared.allExportPlugins()
+        let supported = pluginManager.allExportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 if !pluginType.supportedDatabaseTypeIds.isEmpty {
@@ -217,7 +204,7 @@ struct ExportDialog: View {
     }
 
     private var currentPlugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugin(forFormat: config.formatId)
+        pluginManager.exportPlugin(forFormat: config.formatId)
     }
 
     private var currentOptionColumnCount: Int {
@@ -337,7 +324,8 @@ struct ExportDialog: View {
         } label: {
             Image(systemName: "bookmark")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .help(String(localized: "Saved selections"))
         .popover(isPresented: $isNamingProfile, arrowEdge: .bottom) {
@@ -406,7 +394,7 @@ struct ExportDialog: View {
 
                         Picker(String(localized: "Format"), selection: $config.formatId) {
                             ForEach(availableFormatIds, id: \.self) { formatId in
-                                if let plugin = PluginManager.shared.exportPlugin(forFormat: formatId) {
+                                if let plugin = pluginManager.exportPlugin(forFormat: formatId) {
                                     Text(type(of: plugin).formatDisplayName).tag(formatId)
                                 }
                             }
@@ -484,15 +472,11 @@ struct ExportDialog: View {
 
     private var footerView: some View {
         DialogFooter {
-            if isExporting {
+            if isExporting, let exportService {
                 ProgressView()
                     .scaleEffect(0.7)
 
-                Text(exportService?.state.currentTable ?? "")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                ExportCurrentTableLabel(service: exportService)
             }
         } actions: {
             Button("Cancel") {
@@ -939,4 +923,43 @@ struct ExportDialog: View {
         isPresented: .constant(true),
         mode: .tables(connection: connection, preselection: .tables(names: ["users"], scope: nil))
     )
+}
+
+/// Observes the service so the progress sheet advances. The dialog holds the service in an
+/// optional, which no property wrapper can observe, so the subscription lives here instead.
+private struct ExportProgressSheet: View {
+    @ObservedObject var service: ExportService
+    let fileName: String
+    let onStop: () -> Void
+
+    var body: some View {
+        ExportProgressView(
+            subject: subject,
+            tableIndex: service.state.currentTableIndex,
+            totalTables: service.state.totalTables,
+            processedRows: service.state.processedRows,
+            totalRows: service.state.totalRows,
+            statusMessage: service.state.statusMessage,
+            onStop: onStop
+        )
+    }
+
+    /// A streaming query has no current table, so it is named by the file it is being written
+    /// to instead of by an empty string.
+    private var subject: String {
+        guard service.state.currentTable.isEmpty else { return service.state.currentTable }
+        return fileName.isEmpty ? String(localized: "Query results") : fileName
+    }
+}
+
+private struct ExportCurrentTableLabel: View {
+    @ObservedObject var service: ExportService
+
+    var body: some View {
+        Text(service.state.currentTable)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
 }

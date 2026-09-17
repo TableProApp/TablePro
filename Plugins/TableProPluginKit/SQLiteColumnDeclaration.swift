@@ -148,7 +148,7 @@ public extension SQLiteColumnDeclaration {
                 if let existing, existing.kind == .notNull { replacements.append((existing.range, "")) }
             } else if let existing, existing.kind == .null {
                 replacements.append((existing.clauseRange, "NOT NULL"))
-            } else if declaration.first(.notNull) == nil {
+            } else if !declaration.constraints.contains(where: { $0.kind == .notNull }) {
                 replacements.append((insertionPoint(in: declaration)..<insertionPoint(in: declaration), " NOT NULL"))
             }
         }

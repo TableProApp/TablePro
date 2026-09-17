@@ -9,6 +9,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import SwiftUI
 
@@ -19,6 +20,8 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     private static let detailMinThickness: CGFloat = 480
 
     private let coordinator: ConnectionFormCoordinator
+
+    private var titleObservations: [AnyCancellable] = []
 
     internal init(coordinator: ConnectionFormCoordinator) {
         self.coordinator = coordinator
@@ -60,14 +63,16 @@ internal final class ConnectionFormSplitViewController: NSSplitViewController {
     /// The window title follows the connection's type, which the Change… button can now alter.
     ///
     /// `NSWindow(contentViewController:)` binds the window's title to this controller's, so nothing
-    /// writes `window.title` directly. `withObservationTracking` fires once per change, so the
-    /// closure re-arms itself.
+    /// writes `window.title` directly. The coordinator passes on its children's changes, so its own
+    /// publisher covers a type change in `network`.
     private func trackTitle() {
-        withObservationTracking {
-            title = windowTitle
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.trackTitle() }
-        }
+        title = windowTitle
+        titleObservations = [
+            coordinator.onMainActorChange { [weak self] in
+                guard let self else { return }
+                self.title = self.windowTitle
+            },
+        ]
     }
 
     private var windowTitle: String {

@@ -26,6 +26,7 @@ internal enum HexEditorMetrics {
 }
 
 struct HexEditorBody: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let initialValue: String?
     let isEditable: Bool
     let onCommit: (String) -> Void
@@ -78,7 +79,7 @@ struct HexEditorBody: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HexDumpDisplayView(text: hexDumpText, font: ThemeEngine.shared.valueFont)
+            HexDumpDisplayView(text: hexDumpText, font: themeEngine.valueFont)
 
             if isEditable {
                 Divider()
@@ -88,7 +89,7 @@ struct HexEditorBody: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    HexInputTextView(text: $editableHex, font: ThemeEngine.shared.valueFont)
+                    HexInputTextView(text: $editableHex, font: themeEngine.valueFont)
                         .frame(height: 80)
 
                     HStack(spacing: 4) {
@@ -99,11 +100,11 @@ struct HexEditorBody: View {
                         if sourceIsTruncated || isTruncated {
                             Text(String(localized: "Truncated, read only"))
                                 .font(.caption)
-                                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                                .foregroundStyle(.orange)
                         } else if !isValid, !editableHex.isEmpty {
                             Text(String(localized: "Invalid hex"))
                                 .font(.caption)
-                                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                                .foregroundStyle(.red)
                         }
 
                         Spacer()
@@ -139,7 +140,7 @@ struct HexEditorBody: View {
                 .padding(.vertical, 8)
             }
         }
-        .onChange(of: editableHex) { _, newValue in
+        .onChange(of: editableHex) { newValue in
             scheduleValidation(newValue)
         }
     }
@@ -227,8 +228,8 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
-        textView.textColor = ThemeEngine.shared.palette[.panelSecondaryText]
+        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.textColor = NSColor.secondaryLabelColor
         textView.string = text
 
         return scrollView
@@ -239,8 +240,6 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         if textView.font != font {
             textView.font = font
         }
-        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
-        textView.textColor = ThemeEngine.shared.palette[.panelSecondaryText]
         if textView.string != text {
             textView.string = text
         }
@@ -267,8 +266,8 @@ private struct HexInputTextView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = font
         textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
-        textView.textColor = ThemeEngine.shared.palette[.panelText]
+        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.textColor = NSColor.labelColor
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
@@ -290,8 +289,6 @@ private struct HexInputTextView: NSViewRepresentable {
         if textView.font != font {
             textView.font = font
         }
-        textView.backgroundColor = ThemeEngine.shared.palette[.panelControlBackground]
-        textView.textColor = ThemeEngine.shared.palette[.panelText]
         if textView.string != text, !context.coordinator.isUpdating {
             textView.string = text
         }

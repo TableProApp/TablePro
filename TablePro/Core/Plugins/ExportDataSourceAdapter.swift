@@ -352,13 +352,18 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     // MARK: - Helpers
 
     /// The export tree names every group after a schema on a schema-aware engine and after a
-    /// database everywhere else, so only a schema-aware driver can read that name as its
-    /// schema. An empty name means the engine's implicit schema where it has one, and the
+    /// database everywhere else. Either way the name is the container the driver has to read in,
+    /// which is what `schema:` means to a driver with no schema layer of its own: withholding it
+    /// there left a MySQL dump reading its DDL and column metadata from whichever database the
+    /// connection happened to be on while `streamRows` qualified the rows by the name the export
+    /// actually named. An empty name means the engine's implicit schema where it has one, and the
     /// driver's own container everywhere else.
     func exportSchema(for databaseName: String) -> String? {
         guard let pluginDriver else { return nil }
-        guard pluginDriver.supportsSchemas else { return pluginDriver.currentSchema }
-        guard !databaseName.isEmpty else { return implicitSchemaName ?? pluginDriver.currentSchema }
+        guard !databaseName.isEmpty else {
+            guard pluginDriver.supportsSchemas else { return pluginDriver.currentSchema }
+            return implicitSchemaName ?? pluginDriver.currentSchema
+        }
         return databaseName
     }
 

@@ -39,6 +39,14 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
     /// loopback while keeping each `libssh2_sftp_read` inside one SFTP packet.
     private static let chunkSize = 32 * 1_024
 
+    /// The longest a single blocking libssh2 call waits to make progress before it returns a
+    /// timeout. Without it, a silently dropped peer blocks a `realpath`, `stat` or `read` until TCP
+    /// keepalive gives up around eleven minutes later, and `close()`, which runs on the same serial
+    /// queue, waits behind it. It bounds one operation, not the whole transfer: a healthy 32 KiB
+    /// read returns in milliseconds, so only a dead peer ever reaches this. The mobile SFTP client
+    /// sets the same timeout for the same reason.
+    private static let blockingCallTimeoutMilliseconds = 60_000
+
     private let chain: LibSSH2TunnelFactory.AuthenticatedChain
     private let sftp: OpaquePointer
     private let queue: DispatchQueue
@@ -73,6 +81,7 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
         let queue = DispatchQueue(label: "com.TablePro.sftp.\(label)", qos: .utility)
         let sftp: OpaquePointer? = queue.sync {
             libssh2_session_set_blocking(chain.session, 1)
+            libssh2_session_set_timeout(chain.session, Self.blockingCallTimeoutMilliseconds)
             return libssh2_sftp_init(chain.session)
         }
 

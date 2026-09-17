@@ -7,12 +7,9 @@ import SwiftUI
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
-    @Binding var typography: TypographySettings
 
     var body: some View {
         Form {
-            TypographySection(domain: .editor, settings: $typography)
-
             Section("SQL Editor") {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
@@ -20,15 +17,17 @@ struct EditorSettingsView: View {
                 Toggle("Word wrap", isOn: $settings.wordWrap)
                 Toggle("Code folding", isOn: $settings.codeFoldingEnabled)
                 Toggle("Run button beside each statement", isOn: $settings.showStatementRunControls)
-                    .disabled(!settings.showLineNumbers)
-                    .help(Text("The run button sits in the gutter, which needs line numbers."))
                 Toggle("Show invisible characters", isOn: $settings.showInvisibleCharacters)
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)
                     Text("8 spaces").tag(8)
                 }
-                Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
+                Picker("Keyword case:", selection: $settings.keywordCase) {
+                    ForEach(SQLKeywordCase.allCases, id: \.self) { keywordCase in
+                        Text(keywordCase.displayName).tag(keywordCase)
+                    }
+                }
                 Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
                     .accessibilityIdentifier("vim-mode-toggle")
@@ -40,6 +39,6 @@ struct EditorSettingsView: View {
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default), typography: .constant(.default))
+    EditorSettingsView(settings: .constant(.default))
         .frame(width: 450, height: 500)
 }

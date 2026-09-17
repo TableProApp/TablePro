@@ -98,6 +98,18 @@ final class TabSessionRegistry {
         session.rowSetRevision &+= 1
     }
 
+    func stageViewportPlacement(_ placement: GridViewportPlacement, for tabId: UUID) {
+        guard let session = sessions[tabId] else { return }
+        session.viewportStage = GridViewportStage(bufferEpoch: session.bufferEpoch, placement: placement)
+    }
+
+    func takeViewportPlacement(for tabId: UUID) -> GridViewportPlacement? {
+        guard let session = sessions[tabId], let stage = session.viewportStage else { return nil }
+        session.viewportStage = nil
+        guard stage.bufferEpoch == session.bufferEpoch else { return nil }
+        return stage.placement
+    }
+
     private func ensureSession(for tabId: UUID) -> TabSession {
         if let existing = sessions[tabId] {
             return existing

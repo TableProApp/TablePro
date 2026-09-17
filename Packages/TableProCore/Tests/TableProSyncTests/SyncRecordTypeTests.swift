@@ -93,11 +93,11 @@ struct SyncRecordTypeTests {
     @Test("Shortening is stable, so two devices agree on the record")
     func shorteningIsDeterministic() {
         let id = String(repeating: "path/to/database.sqlite", count: 40)
-        #expect(SyncRecordType.settings.recordName(for: id) == SyncRecordType.settings.recordName(for: id))
-        #expect(
-            SyncRecordType.settings.recordName(for: id) == "Settings_sha256-"
-                + SyncRecordName.digest(of: id)
-        )
+        let firstCall = SyncRecordType.settings.recordName(for: id)
+        let secondCall = SyncRecordType.settings.recordName(for: id)
+
+        #expect(firstCall == secondCall)
+        #expect(firstCall == "Settings_sha256-" + SyncRecordName.digest(of: id))
     }
 
     @Test("Two long identifiers do not collapse onto one record")

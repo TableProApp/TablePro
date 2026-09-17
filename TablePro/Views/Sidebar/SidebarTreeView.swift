@@ -2,17 +2,18 @@ import SwiftUI
 import TableProPluginKit
 
 struct SidebarTreeView: View {
-    @Bindable private var schemaService = SchemaService.shared
+    @ObservedObject private var databaseManager = DatabaseManager.shared
+    @ObservedObject private var schemaService = SchemaService.shared
 
     let connectionId: UUID
-    let viewModel: SidebarViewModel
-    let windowState: WindowSidebarState
-    var sidebarState: SharedSidebarState
+    @ObservedObject var viewModel: SidebarViewModel
+    @ObservedObject var windowState: WindowSidebarState
+    @ObservedObject var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<DatabaseTreeTableRef>
     @Binding var pendingDeletes: Set<DatabaseTreeTableRef>
     weak var coordinator: MainContentCoordinator?
 
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var searchLoadTask: Task<Void, Never>?
 
     private var activeDatabase: String? {
@@ -21,7 +22,7 @@ struct SidebarTreeView: View {
     }
 
     private var isConnected: Bool {
-        DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.status == .connected
     }
 
     private var systemSchemas: Set<String> {
@@ -29,7 +30,12 @@ struct SidebarTreeView: View {
     }
 
     private var schemas: [String] {
-        schemaService.schemas(for: connectionId).filter { !systemSchemas.contains($0) }
+        DatabaseTreeVisibility.visibleSchemas(
+            schemaService.schemas(for: connectionId),
+            systemSchemas: systemSchemas,
+            activeSchema: coordinator?.toolbarState.currentSchema,
+            showsSystem: settingsManager.general.showSystemContainers
+        )
     }
 
     private var searchText: String {
@@ -51,7 +57,7 @@ struct SidebarTreeView: View {
                 treeList
             }
         }
-        .onChange(of: searchText) { _, newValue in
+        .onChange(of: searchText) { newValue in
             scheduleSearchLoad(searchText: newValue)
         }
     }
@@ -74,13 +80,15 @@ struct SidebarTreeView: View {
             activeSchema: coordinator?.toolbarState.currentSchema,
             selectedTables: windowState.selectedTables,
             showRecentTables: settingsManager.general.showRecentTables,
+            showSystemContainers: settingsManager.general.showSystemContainers,
+            showsPartitions: settingsManager.general.showPartitions,
             rowSizePreference: settingsManager.general.sidebarRowSize
         )
     }
 
     private var emptySchemasState: some View {
         let entityName = PluginManager.shared.schemaEntityNamePlural(for: viewModel.databaseType)
-        return ContentUnavailableView(
+        return UnavailableStateView(
             String(format: String(localized: "No %@"), entityName),
             systemImage: "folder",
             description: Text(String(
@@ -92,7 +100,7 @@ struct SidebarTreeView: View {
     }
 
     private var noMatchState: some View {
-        ContentUnavailableView.search(text: searchText)
+        UnavailableStateView.search(text: searchText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -96,10 +96,14 @@ final class TeradataSocket: TeradataTransport {
 
     func send(_ bytes: [UInt8]) throws {
         if isClosed { throw TeradataWireError.cancelled }
+        guard !bytes.isEmpty else { return }
         var offset = 0
         try bytes.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else {
+                throw TeradataWireError.truncated("send buffer unavailable")
+            }
             while offset < bytes.count {
-                let written = Darwin.send(descriptor, raw.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
+                let written = Darwin.send(descriptor, base.advanced(by: offset), bytes.count - offset, 0)
                 if written <= 0 {
                     if isClosed { throw TeradataWireError.cancelled }
                     throw TeradataWireError.truncated("send errno \(errno)")
@@ -114,8 +118,11 @@ final class TeradataSocket: TeradataTransport {
         var buffer = [UInt8](repeating: 0, count: count)
         var offset = 0
         try buffer.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else {
+                throw TeradataWireError.truncated("receive buffer unavailable")
+            }
             while offset < count {
-                let read = Darwin.recv(descriptor, raw.baseAddress!.advanced(by: offset), count - offset, 0)
+                let read = Darwin.recv(descriptor, base.advanced(by: offset), count - offset, 0)
                 if read == 0 {
                     if isClosed { throw TeradataWireError.cancelled }
                     throw TeradataWireError.truncated("peer closed after \(offset)/\(count)")

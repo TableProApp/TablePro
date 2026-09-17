@@ -109,6 +109,25 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
+    /// Export reads the collection through the driver's own paging rather than through a
+    /// fabricated `SELECT * FROM "<collection>"`, which this driver has no parser for.
+    func defaultExportQuery(table: String) -> String? {
+        WeaviateOperations.encodeExport(collection: table)
+    }
+
+    // MARK: - Table Operations
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        WeaviateOperations.deleteCollection(named: name, objectType: objectType)
+    }
+
+    /// Weaviate empties a collection by deleting its objects by filter, which needs a `where` the
+    /// app has no way to supply here, so Truncate is not offered rather than offered as a delete
+    /// that removes the collection too.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        nil
+    }
+
     func typeName(for column: String, collection: WeaviateCollection) -> String {
         switch column {
         case WeaviateSchema.uuidColumn:

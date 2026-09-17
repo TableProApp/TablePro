@@ -49,25 +49,36 @@ internal enum SchemaSyncOperation: Identifiable {
     }
 }
 
+internal enum SyncSessionEffect: Hashable, Sendable {
+    case opens(scope: String, closingSQL: String)
+    case closes(scope: String)
+}
+
 internal struct SyncStatement: Identifiable, Hashable, Sendable {
     internal let id: UUID
     internal let sql: String
     internal let objectName: String
     internal let summary: String
     internal let hazards: [SyncHazard]
+    internal let expectedRowCount: Int?
+    internal let sessionEffect: SyncSessionEffect?
 
     internal init(
         id: UUID = UUID(),
         sql: String,
         objectName: String,
         summary: String,
-        hazards: [SyncHazard] = []
+        hazards: [SyncHazard] = [],
+        expectedRowCount: Int? = nil,
+        sessionEffect: SyncSessionEffect? = nil
     ) {
         self.id = id
         self.sql = sql
         self.objectName = objectName
         self.summary = summary
         self.hazards = hazards
+        self.expectedRowCount = expectedRowCount
+        self.sessionEffect = sessionEffect
     }
 
     internal var isRefusedByDefault: Bool {

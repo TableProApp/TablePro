@@ -84,7 +84,7 @@ build_symbol_index() {
         # Per file, not over one concatenated stream: a non-greedy /* */ match across a joined
         # stream would swallow everything between one file's opening marker and a later file's
         # closing one.
-        find TablePro Plugins Packages LocalPackages TableProTests TableProUITests \
+        find TablePro Plugins Packages TableProTests TableProUITests \
             -name '*.swift' -type f 2> /dev/null |
             while IFS= read -r swift_file; do
                 perl -0777 -pe 's{/\*.*?\*/}{}gs' "$swift_file" 2> /dev/null |

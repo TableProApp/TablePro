@@ -116,6 +116,10 @@ class DataGridRowView: NSTableRowView {
 
         let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
         let cellRect = NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+        if coordinator.presentsCheckboxCell(columnIndex: dataColumn) {
+            guard DataGridCheckboxMark.frame(in: cellRect).contains(point) else { return false }
+            return coordinator.toggleCheckbox(row: rowIndex, columnIndex: dataColumn)
+        }
         guard let appearance = coordinator.cellAppearance(
             row: rowIndex,
             columnIndex: dataColumn,
@@ -134,7 +138,7 @@ class DataGridRowView: NSTableRowView {
             coordinator.dataGridCellDidClickFKArrow(
                 row: rowIndex,
                 columnIndex: dataColumn,
-                openInNewTab: modifiers.contains(.command)
+                intent: modifiers.contains(.command) ? .newTab : .follow
             )
             return true
         case .chevron where !visualState.isDeleted:
@@ -168,7 +172,8 @@ class DataGridRowView: NSTableRowView {
             let columnRect = view.convert(tableView.rect(ofColumn: tableColumnIndex), from: tableView)
             coordinator.cellRenderer.draw(
                 appearance,
-                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height)
+                in: NSRect(x: columnRect.minX, y: 0, width: columnRect.width, height: view.bounds.height),
+                controlView: view
             )
         }
     }
@@ -250,17 +255,8 @@ class DataGridRowView: NSTableRowView {
         dirtyRect.fill()
     }
 
-    /// `NSTableRowView` fills a selected row with the system's selection colour and offers no way
-    /// to change it, so the theme's own selection is painted here instead. `super` is not called:
-    /// its fill would sit on top of this one.
-    override func drawSelection(in dirtyRect: NSRect) {
-        guard isSelected else { return }
-        cellSelectionFill.setFill()
-        dirtyRect.fill()
-    }
-
-    /// A cell range on a row the table has selected is already covered by the row's own selection
-    /// fill, which runs after this, so only the remaining rows are painted here.
+    /// A cell range on a row the table has selected is already covered by `NSTableRowView`'s own
+    /// selection fill, which runs after this, so only the remaining rows are painted here.
     private func drawCellSelectionFill(in dirtyRect: NSRect) {
         guard !isSelected,
               let coordinator,
@@ -287,9 +283,8 @@ class DataGridRowView: NSTableRowView {
     /// emphasized accent is far too dark to sit behind text these rows do not recolour, so that
     /// one goes on as a tint.
     private var cellSelectionFill: NSColor {
-        let palette = ThemeEngine.shared.palette
-        guard isEmphasized else { return palette[.gridInactiveSelection] }
-        return palette[.gridSelection].withAlphaComponent(Self.emphasizedCellSelectionAlpha)
+        guard isEmphasized else { return .unemphasizedSelectedContentBackgroundColor }
+        return NSColor.selectedContentBackgroundColor.withAlphaComponent(Self.emphasizedCellSelectionAlpha)
     }
 
     private static let emphasizedCellSelectionAlpha: CGFloat = 0.28
@@ -511,13 +506,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let jsonViewItem = NSMenuItem(
-            title: String(localized: "Show Row as JSON"),
-            action: #selector(showRowAsJSON),
-            keyEquivalent: ""
-        )
-        jsonViewItem.target = self
-        menu.addItem(jsonViewItem)
+        if coordinator.supportsColumnCommands {
+            let jsonViewItem = NSMenuItem(
+                title: String(localized: "Show Row as JSON"),
+                action: #selector(showRowAsJSON),
+                keyEquivalent: ""
+            )
+            jsonViewItem.target = self
+            menu.addItem(jsonViewItem)
+        }
 
         if dataColumnIndex >= 0,
            let highlightItem = coordinator.delegate?.dataGridHighlightMenuItem(
@@ -544,13 +541,15 @@ class DataGridRowView: NSTableRowView {
 
         menu.addItem(NSMenuItem.separator())
 
-        let exportItem = NSMenuItem(
-            title: String(localized: "Export Results…"),
-            action: #selector(exportResults),
-            keyEquivalent: ""
-        )
-        exportItem.target = self
-        menu.addItem(exportItem)
+        if coordinator.supportsColumnCommands {
+            let exportItem = NSMenuItem(
+                title: String(localized: "Export Results…"),
+                action: #selector(exportResults),
+                keyEquivalent: ""
+            )
+            exportItem.target = self
+            menu.addItem(exportItem)
+        }
 
         if coordinator.delegate?.dataGridCanClearResults() == true {
             let clearResultsItem = NSMenuItem(
@@ -800,14 +799,14 @@ class DataGridRowView: NSTableRowView {
     }
 
     @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: false)
+        performForeignKeyNavigation(from: sender, intent: .follow)
     }
 
     @objc private func navigateToForeignKeyInNewTab(_ sender: NSMenuItem) {
-        performForeignKeyNavigation(from: sender, openInNewTab: true)
+        performForeignKeyNavigation(from: sender, intent: .newTab)
     }
 
-    private func performForeignKeyNavigation(from sender: NSMenuItem, openInNewTab: Bool) {
+    private func performForeignKeyNavigation(from sender: NSMenuItem, intent: ReferenceOpenIntent) {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator else { return }
         let tableRows = coordinator.tableRowsProvider()
@@ -815,7 +814,7 @@ class DataGridRowView: NSTableRowView {
         let columnName = tableRows.columns[columnIndex]
         guard let fkInfo = tableRows.columnForeignKeys[columnName],
               let value = coordinator.cellValue(at: rowIndex, column: columnIndex) else { return }
-        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo, intent: intent)
     }
 }
 

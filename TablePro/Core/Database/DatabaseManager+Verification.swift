@@ -18,6 +18,10 @@ extension DatabaseManager {
     /// would only run a query against a database that cannot have gone away.
     internal func supportsHealthChecks(_ connectionId: UUID) -> Bool {
         guard let session = activeSessions[connectionId] else { return false }
+        /// A remote SQLite session holds a live socket to the server that can drop, so it is checked
+        /// even though the local SQLite engine, a file that cannot go away, is not. The answer is
+        /// per connection here rather than per type, because the same SQLite type is both.
+        if session.connection.opensRemoteDatabaseSession { return true }
         return PluginMetadataRegistry.shared.snapshot(
             for: session.connection.type
         )?.supportsHealthMonitor ?? true

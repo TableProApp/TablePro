@@ -23,7 +23,7 @@ internal struct FavoriteEditDialog: View {
 
     @State private var name: String = ""
     @State private var query: String = ""
-    @State private var keywordField = SQLFavoriteKeywordField()
+    @StateObject private var keywordField = SQLFavoriteKeywordField()
     @State private var isGlobal: Bool = false
     @State private var selectedFolderId: UUID?
     @State private var isSaving = false
@@ -139,7 +139,7 @@ internal struct FavoriteEditDialog: View {
         Section {
             TextField("Keyword", text: $keywordField.keyword)
                 .focused($focusedField, equals: .keyword)
-                .onChange(of: keywordField.keyword) {
+                .onChange(of: keywordField.keyword) { _ in
                     revalidateKeyword()
                 }
 
@@ -158,7 +158,7 @@ internal struct FavoriteEditDialog: View {
                 }
             }
             .toggleStyle(.checkbox)
-            .onChange(of: isGlobal) {
+            .onChange(of: isGlobal) { _ in
                 revalidateKeyword()
             }
         }

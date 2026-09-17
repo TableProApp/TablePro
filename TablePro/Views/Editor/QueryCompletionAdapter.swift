@@ -2,15 +2,15 @@
 //  QueryCompletionAdapter.swift
 //  TablePro
 //
-//  Bridges a per-language QueryCompletionService to CodeEditSourceEditor's
+//  Bridges a per-language QueryCompletionService to TableProEditorKit's
 //  CodeSuggestionDelegate.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import SwiftUI
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 
 @MainActor
 final class QueryCompletionAdapter: CodeSuggestionDelegate {
@@ -106,8 +106,6 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let offset = liveCursorPosition.range.location
         guard offset >= 0, offset <= text.length else { return nil }
 
-        await service.prepare()
-
         guard let result = await service.completions(
             in: text,
             at: offset,
@@ -159,7 +157,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         let length = offset - start
         guard length > 0, length <= maximumPrefixLength else { return nil }
 
-        let prefix = text.substring(with: NSRange(location: start, length: length)).lowercased()
+        let prefix = text.substring(with: NSRange(location: start, length: length))
         guard !prefix.isEmpty else { return nil }
 
         let ranked = service.rank(session.candidates, prefix: prefix)
@@ -222,10 +220,7 @@ final class SQLSuggestionEntry: CodeSuggestionEntry {
         Image(systemName: item.kind.iconName)
     }
 
-    /// The suggestion protocol is nonisolated and the panel only ever reads this on the main
-    /// thread. The kind is lifted out first so the closure sends a value rather than `self`.
     var imageColor: Color {
-        let kind = item.kind
-        return MainActor.assumeIsolated { Color(nsColor: kind.iconColor) }
+        Color(nsColor: item.kind.iconColor)
     }
 }

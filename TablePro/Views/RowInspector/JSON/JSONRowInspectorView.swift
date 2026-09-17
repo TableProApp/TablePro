@@ -9,7 +9,8 @@
 import SwiftUI
 
 struct JSONRowInspectorView: View {
-    @Bindable var viewModel: JSONRowInspectorViewModel
+    @ObservedObject private var themeEngine = ThemeEngine.shared
+    @ObservedObject var viewModel: JSONRowInspectorViewModel
 
     let snapshot: JSONRowSnapshot?
     let onOpenReferencedTable: (JSONForeignKeyRef, String) -> Void
@@ -33,7 +34,7 @@ struct JSONRowInspectorView: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Row Selected"),
             systemImage: "curlybraces",
             description: Text(String(localized: "Select a row to view it as JSON"))
@@ -66,7 +67,7 @@ struct JSONRowInspectorView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(ThemeEngine.shared.palette.color(.statusError).opacity(0.6))
+                .strokeBorder(Color.red.opacity(0.6))
                 .opacity(viewModel.isFilterInvalid ? 1 : 0)
         )
         .help(viewModel.isFilterInvalid
@@ -96,7 +97,8 @@ struct JSONRowInspectorView: View {
                 .frame(width: 22, height: 20)
                 .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
         .help(String(localized: "JSON view options"))
@@ -127,13 +129,13 @@ struct JSONRowInspectorView: View {
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(ThemeEngine.shared.palette.color(.editorBackground))
+            .background(Color(nsColor: themeEngine.colors.editor.background))
             .accessibilityLabel(String(localized: "Row as JSON"))
         }
     }
 
     private var noMatches: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Matches"),
             systemImage: "magnifyingglass",
             description: Text(String(localized: "No key or value matches this filter"))

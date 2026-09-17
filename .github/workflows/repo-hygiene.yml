@@ -18,6 +18,9 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
   push:
     branches: [main]
     paths:
@@ -30,6 +33,9 @@ on:
       - "Plugins/**/*.swift"
       - "TablePro/**/*.swift"
       - "Packages/**/*.swift"
+      - "project.yml"
+      - "TablePro.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "TablePro/Resources/ThirdPartyLicenses/licenses.yml"
   workflow_dispatch:
 
 concurrency:
@@ -80,6 +86,13 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # The iOS app compiles source files that belong to macOS plugin targets, and it alone sets
+      # SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, so one unmarked declaration in a shared file is
+      # @MainActor on iOS and nonisolated in the plugin. The macOS suite cannot see it and the iOS
+      # job reports it one symbol at a time, which took main red three times over one keyword.
+      - name: Check shared plugin sources are explicitly isolated for iOS
+        run: python3 scripts/ci/check-ios-shared-isolation.py
+
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 
@@ -92,6 +105,27 @@ jobs:
 
       - name: Validate release note extraction
         run: python3 scripts/ci/test_release_notes.py
+
+      - name: Validate changelog contributor credits
+        run: python3 scripts/ci/test_changelog_credits.py
+
+      # Only a real release runs sign-and-appcast.sh, so nothing on a pull request ever exercised
+      # the code that edits the file every install polls. These two cover the parts that can be
+      # tested without a signing key: which bytes move, and which releases are refused.
+      - name: Validate the appcast text primitives
+        run: python3 scripts/ci/test_appcast_feed.py
+
+      - name: Validate the appcast merge
+        run: python3 scripts/ci/test_merge_appcast.py
+
+      - name: Validate release withdrawal
+        run: python3 scripts/ci/test_pull_release.py
+
+      # The framework the app links and the generate_appcast that signs its feed are the same
+      # project, and nothing compared them. project.yml declares majorVersion, which XcodeGen
+      # writes as upToNextMajorVersion, so a resolve can move the framework alone.
+      - name: Check the Sparkle version agrees everywhere
+        run: python3 scripts/ci/check-sparkle-version.py
 
       # A check that guarded a real invariant and ran nowhere. Pure grep over Swift sources, so it
       # belongs on the free Linux runner. The MongoDB filter-shape check is the other one that was

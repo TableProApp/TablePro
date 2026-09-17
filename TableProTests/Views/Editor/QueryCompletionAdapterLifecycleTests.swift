@@ -10,11 +10,11 @@
 //  deterministically unit-testable; these tests cover the logic the fix relies on.
 //
 
-import CodeEditSourceEditor
-import CodeEditTextView
 import Foundation
 @testable import TablePro
+import TableProEditorKit
 import TableProPluginKit
+import TableProTextEngine
 import Testing
 
 @Suite("Query Completion Adapter Lifecycle")
@@ -122,6 +122,8 @@ struct QueryCompletionAdapterLifecycleTests {
         exact: String,
         longer: String
     ) async {
+        let keywordCase = PinnedKeywordCase(.upper)
+        defer { keywordCase.restore() }
         let labels = await incrementalLabels(opening: opening, typed: typed)
 
         #expect(labels.first == exact)
@@ -135,6 +137,8 @@ struct QueryCompletionAdapterLifecycleTests {
     @MainActor
     @Test("typing into an open popup lands where reopening it would")
     func incrementalUpdateMatchesAFreshRequest() async {
+        let keywordCase = PinnedKeywordCase(.upper)
+        defer { keywordCase.restore() }
         let opened = "SELECT * FROM gt_user WHERE t"
         let completed = "SELECT * FROM gt_user WHERE true"
 
@@ -175,6 +179,8 @@ struct QueryCompletionAdapterLifecycleTests {
     @MainActor
     @Test("deleting a character widens the list again")
     func deletingACharacterWidensTheList() async {
+        let keywordCase = PinnedKeywordCase(.upper)
+        defer { keywordCase.restore() }
         let opened = "SELECT * FROM gt_user WHERE t"
         let controller = EditorControllerFixture.make(string: opened)
         let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
@@ -212,6 +218,8 @@ struct QueryCompletionAdapterLifecycleTests {
     @MainActor
     @Test("a seeded session ranks its exact match first")
     func seededSessionRanksItsExactMatchFirst() async {
+        let keywordCase = PinnedKeywordCase(.upper)
+        defer { keywordCase.restore() }
         let suppressed = "SELECT * FROM users WHERE "
         let controller = EditorControllerFixture.make(string: suppressed)
         let adapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: .mysql)
@@ -305,6 +313,7 @@ struct QueryCompletionAdapterLifecycleTests {
         CursorPosition(range: NSRange(location: text.utf16.count, length: 0))
     }
 
+
     @MainActor
     private func incrementalLabels(opening: String, typed: String) async -> [String] {
         let queryPrefix = "SELECT * FROM gt_user WHERE "
@@ -328,6 +337,26 @@ struct QueryCompletionAdapterLifecycleTests {
     }
 }
 
+/// Holds `SQLKeywordCase` at one value for the length of a test, and puts the user's own back.
+///
+/// A completion's label follows that setting, so every ranking assertion written against a
+/// spelling would otherwise answer to whatever the machine running it has chosen: the same four
+/// tests pass on a developer set to UPPERCASE and fail on CI, which takes the shipped default and
+/// follows the lowercase prefix they type.
+@MainActor
+private struct PinnedKeywordCase {
+    private let previous: SQLKeywordCase
+
+    init(_ value: SQLKeywordCase) {
+        previous = AppSettingsManager.shared.editor.keywordCase
+        AppSettingsManager.shared.editor.keywordCase = value
+    }
+
+    func restore() {
+        AppSettingsManager.shared.editor.keywordCase = previous
+    }
+}
+
 /// Records what each incremental update was asked to rank, so a test can pin the pool's bound
 /// without reaching into the adapter's private session.
 @MainActor
@@ -344,8 +373,6 @@ private final class RankingInputRecordingCompletionService: QueryCompletionServi
     var triggerCharacters: Set<String> { [] }
 
     func seedItems() -> [SQLCompletionItem] { [] }
-
-    func prepare() async {}
 
     func completions(
         in text: NSString,

@@ -3,13 +3,13 @@
 //  SQLExportPlugin
 //
 
+import Combine
 import Foundation
 import os
 import SwiftUI
 import TableProPluginKit
 
-@Observable
-final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
+final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugin, @unchecked Sendable {
     static let pluginName = "SQL Export"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Export data to SQL format"
@@ -44,7 +44,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     typealias Settings = SQLExportOptions
     static let settingsStorageId = "sql"
 
-    var settings = SQLExportOptions() {
+    @Published var settings = SQLExportOptions() {
         didSet { saveSettings() }
     }
 
@@ -58,6 +58,16 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     /// Kept apart for the same reason `indexFailures` is: an object whose definition came back fine
     /// and only lost its comments is a different thing to tell the user about.
     var commentFailures: [String] = []
+
+    /// The tables whose dependent sequences or enum types could not be read. Kept apart from
+    /// `ddlFailures` for the same reason `indexFailures` is: the table's own `CREATE TABLE` came
+    /// back fine, and what is missing is an object that statement names. Measured on PostgreSQL
+    /// 17.11 with `SELECT` revoked on `pg_catalog.pg_enum`: the enum query fails, `fetchTableDDL`
+    /// still returns a `CREATE TABLE` declaring `status order_status`, and the restore stops at
+    /// `type "order_status" does not exist` with nothing in the dump explaining it. One entry per
+    /// table, however many of its two fetches failed.
+    private var dependentObjectFailures: [String] = []
+
     var metadataWarnings: [String] = []
 
     /// The tables a foreign key cycle left the ordering unable to place. They keep the order the
@@ -119,15 +129,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         ddlFailures = []
         indexFailures = []
         commentFailures = []
+        dependentObjectFailures = []
         metadataWarnings = []
         exportSpansContainers = false
         tablesUnorderedByCycle = []
         emittedSequenceNames = []
 
+        /// Read once, because `PluginManager` hands every window the same plugin instance and a
+        /// second window's options pane can write `settings` while this export is still running. A
+        /// cap re-read per table would let one export start at a mebibyte and finish unbounded.
+        let options = settings
+        var statementTally = SQLExportStatementTally()
+
         let actualDestination: URL
         let gzipTempURL: URL?
 
-        if settings.compressWithGzip {
+        if options.compressWithGzip {
             let tempSQL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString + ".sql")
             gzipTempURL = tempSQL
@@ -139,8 +156,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
 
         /// Compression runs over one file, so a compressed export never splits. Saying so beats
         /// silently gzipping the first part and dropping the rest.
-        let splitSize = settings.compressWithGzip ? 0 : settings.splitSizeMegabytes
-        if settings.compressWithGzip, settings.splitSizeMegabytes > 0 {
+        let splitSize = options.compressWithGzip ? 0 : options.splitSizeMegabytes
+        if options.compressWithGzip, options.splitSizeMegabytes > 0 {
             metadataWarnings.append(String(localized:
                 "A compressed export is written as one file, so the split size was not applied."))
         }
@@ -154,7 +171,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             if !committed { writer.rollback() }
         }
 
-        let snapshot = settings.consistentSnapshot
+        let snapshot = options.consistentSnapshot
             ? SQLExportSnapshot(dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId))
             : nil
 
@@ -182,8 +199,8 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 tables: rowObjects, dataSource: dataSource, to: writer)
             try await writeCreatePhase(
                 sortedTables: sortedTables, dataSource: dataSource, to: writer, progress: progress)
-            try await writeDataPhase(
-                sortedTables: sortedTables, columnsByTable: columnsByTable,
+            statementTally = try await writeDataPhase(
+                sortedTables: sortedTables, columnsByTable: columnsByTable, options: options,
                 dataSource: dataSource, to: writer, progress: progress)
             try await writeFinalizationPhase(
                 sortedTables: sortedTables, fkMap: fkMap, columnsByTable: columnsByTable,
@@ -207,12 +224,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             if let snapshot {
                 await snapshot.end(on: dataSource)
             }
-            try writer.commit()
+            /// The publication point. Every phase above can suspend on a driver call, and the
+            /// grant phase makes no cancellation check of its own, so a Stop arriving in one of
+            /// them used to resume and replace the user's file anyway. Nothing is published past
+            /// this line without the stop having been seen.
+            try progress.checkCancellation()
+            let writtenParts = try writer.commit()
             committed = true
-            if writer.didSplit {
+            if writer.didSplit, let first = writtenParts.first, let last = writtenParts.last {
                 metadataWarnings.append(String(
-                    format: String(localized: "The dump was written as %lld numbered parts. Restore them in order."),
-                    Int64(writer.partCount)))
+                    format: String(localized: """
+                        The dump was written as %1$lld numbered parts, %2$@ through %3$@. Restore \
+                        them in order.
+                        """),
+                    Int64(writtenParts.count),
+                    first.lastPathComponent,
+                    last.lastPathComponent))
             }
         } catch {
             if let snapshot {
@@ -221,19 +248,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             throw error
         }
 
-        if settings.compressWithGzip, let gzipSource = gzipTempURL {
-            progress.setStatus("Compressing...")
-
-            do {
-                defer {
-                    try? FileManager.default.removeItem(at: gzipSource)
-                }
-
-                try await compressFile(source: gzipSource, destination: destination)
-            } catch {
-                try? FileManager.default.removeItem(at: destination)
-                throw error
-            }
+        if options.compressWithGzip, let gzipSource = gzipTempURL {
+            progress.setStatus(String(localized: "Compressing\u{2026}"))
+            defer { try? FileManager.default.removeItem(at: gzipSource) }
+            try await SQLExportCompressor.compress(
+                source: gzipSource, to: destination, progress: progress)
         }
 
         progress.finalizeTable()
@@ -243,6 +262,14 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
             let failedTables = ddlFailures.joined(separator: ", ")
             warnings.append(String(
                 format: String(localized: "Could not fetch table structure for: %@"), failedTables))
+        }
+        if !dependentObjectFailures.isEmpty {
+            warnings.append(String(
+                format: String(localized: """
+                    Could not fetch the types and sequences needed by: %@. A CREATE TABLE that \
+                    names one of them will not restore.
+                    """),
+                dependentObjectFailures.joined(separator: ", ")))
         }
         if !indexFailures.isEmpty {
             warnings.append(String(
@@ -254,8 +281,64 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                 format: String(localized: "Could not fetch comments for: %@"),
                 commentFailures.joined(separator: ", ")))
         }
+        if let oversized = Self.oversizedRowWarning(tally: statementTally) {
+            warnings.append(oversized)
+        }
+        if let unrepresentable = Self.unrepresentableValueWarning(tally: statementTally) {
+            warnings.append(unrepresentable)
+        }
         warnings.append(contentsOf: metadataWarnings)
-        return ExportFormatResult(warnings: warnings)
+        return ExportFormatResult(warnings: warnings, notes: Self.statementSizeNotes(tally: statementTally))
+    }
+
+    /// The size a byte limit should be judged against, in the same binary units the limit's own menu
+    /// names, so a statement that hit a 1 MB limit reads as 1 MB rather than 1.05 MB.
+    private static func formatted(bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    private static func statementSizeNotes(tally: SQLExportStatementTally) -> [String] {
+        guard tally.largestStatementBytes > 0 else { return [] }
+        let template = tally.largestStatementRows == 1
+            ? String(localized: "Largest INSERT written: %1$@ (1 row).")
+            : String(localized: "Largest INSERT written: %1$@ (%2$lld rows).")
+        return [String(
+            format: template,
+            formatted(bytes: tally.largestStatementBytes),
+            Int64(tally.largestStatementRows))]
+    }
+
+    /// Named rather than left to the restore, because no single-statement form of such a value
+    /// exists on this engine: the dump carries the closest thing there is and says so.
+    private static func unrepresentableValueWarning(tally: SQLExportStatementTally) -> String? {
+        guard tally.unrepresentableValues > 0 else { return nil }
+        let ceiling = formatted(bytes: SQLExportBinaryLiteral.oracleLiteralByteCeiling)
+        let template = tally.unrepresentableValues == 1
+            ? String(localized: """
+                1 binary value is larger than the %1$@ this engine allows in one statement, so its \
+                INSERT may not restore.
+                """)
+            : String(localized: """
+                %2$lld binary values are larger than the %1$@ this engine allows in one statement, \
+                so their INSERTs may not restore.
+                """)
+        return String(format: template, ceiling, Int64(tally.unrepresentableValues))
+    }
+
+    /// The limit comes off the tally rather than the settings, so a second window moving the setting
+    /// mid-export cannot make this name a size this export never ran under.
+    private static func oversizedRowWarning(tally: SQLExportStatementTally) -> String? {
+        guard tally.oversizedRowCount > 0, tally.limitBytes > 0 else { return nil }
+        let template = tally.oversizedRowCount == 1
+            ? String(localized: "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size.")
+            : String(localized: "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size.")
+        return String(
+            format: template,
+            formatted(bytes: tally.limitBytes),
+            Int64(tally.oversizedRowCount))
     }
 
     private func writeHeader(
@@ -449,7 +532,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     try writer.write("\(seq.ddl)\n\n")
                 }
             } catch {
+                let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
+                noteDependentObjectFailure(sanitizedName)
                 Self.logger.warning("Failed to fetch dependent sequences for table \(table.name): \(error)")
+                let warning = "Warning: failed to fetch dependent sequences for \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
             }
 
             do {
@@ -466,9 +553,18 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     try writer.write("CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n\n")
                 }
             } catch {
+                let sanitizedName = PluginExportUtilities.sanitizeForSQLComment(table.name)
+                noteDependentObjectFailure(sanitizedName)
                 Self.logger.warning("Failed to fetch dependent types for table \(table.name): \(error)")
+                let warning = "Warning: failed to fetch dependent types for \(sanitizedName): \(error)"
+                try writer.write("-- \(PluginExportUtilities.sanitizeForSQLComment(warning))\n\n")
             }
         }
+    }
+
+    private func noteDependentObjectFailure(_ sanitizedTableName: String) {
+        guard !dependentObjectFailures.contains(sanitizedTableName) else { return }
+        dependentObjectFailures.append(sanitizedTableName)
     }
 
     private func writeCreatePhase(
@@ -645,19 +741,23 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     private func writeDataPhase(
         sortedTables: [PluginExportTable],
         columnsByTable: [String: [PluginColumnInfo]],
+        options: SQLExportOptions,
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> SQLExportStatementTally {
+        var tally = SQLExportStatementTally()
         for table in sortedTables where optionValue(table, at: 2) && table.kind.carriesRows {
             try progress.checkCancellation()
-            try await writeTableData(
+            tally.merge(try await writeTableData(
                 table: table,
                 columnInfo: columnsByTable[node(for: table).identifier] ?? [],
+                options: options,
                 dataSource: dataSource,
                 to: writer,
-                progress: progress)
+                progress: progress))
         }
+        return tally
     }
 
     private func writeFinalizationPhase(
@@ -834,15 +934,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
     private func writeTableData(
         table: PluginExportTable,
         columnInfo: [PluginColumnInfo],
+        options: SQLExportOptions,
         dataSource: any PluginExportDataSource,
         to writer: SQLExportFileWriter,
         progress: PluginExportProgress
-    ) async throws {
-        let batchSize = settings.batchSize
+    ) async throws -> SQLExportStatementTally {
         var wroteAnyRows = false
-        var columns: [String] = []
-        var columnTypeNames: [String] = []
-        var rowBatch: [[PluginCellValue]] = []
+        var tally = SQLExportStatementTally()
 
         let generatedColumnNames = Set(columnInfo.filter { $0.isGenerated }.map { $0.name })
         let primaryKeyColumns = columnInfo.filter(\.isPrimaryKey).map(\.name)
@@ -853,8 +951,14 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
         /// SQL Server refuses an explicit value for an IDENTITY column unless the table is opened
         /// for it first. The rows are exported with their keys, so without this the dump restores
         /// nothing: every INSERT for the table is rejected while the export itself reported success.
+        /// The writer owns it as a scope so a rotation inside the table's rows carries it into the
+        /// next part: as two plain statements, one part ended on an unmatched `ON` and the next
+        /// opened with rows and none (#2533).
         let needsIdentityInsert = dataSource.databaseTypeId == "SQL Server"
             && columnInfo.contains(where: \.isIdentity)
+        let identityInsert = needsIdentityInsert
+            ? SQLExportSessionScope.identityInsert(tableRef: tableRef)
+            : nil
 
         if !table.rowScope.isUnrestricted {
             let scopeNote = PluginExportUtilities.sanitizeForSQLComment(table.rowScope.summary)
@@ -866,215 +970,150 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin, @unchecked Send
                     "The row filter on %@ was not a single expression, so every row was exported."),
                 table.name))
         }
+        var encoder: SQLExportRowValueEncoder?
+        var accumulator: SQLExportStatementAccumulator?
+
+        /// The insert mode the engine cannot spell is only worth reporting once a row is actually
+        /// written under it. Held until then, because a table whose scope selected nothing still
+        /// produces a header, and a warning raised from that alone brands a clean export a failed
+        /// one: `warnings` is what retitles the summary alert and takes away its suppression.
+        var pendingModeWarning: String?
+
+        /// `SET IDENTITY_INSERT` opens the table and has to precede the first statement that carries
+        /// a key, so it is written from whatever hands one over rather than from a row count. The
+        /// byte budget can hold rows well past `batchSize` before closing a statement, so a
+        /// row-count trigger would write it in the wrong place or not at all.
+        func emit(_ statement: String) throws {
+            if let warning = pendingModeWarning {
+                if !metadataWarnings.contains(warning) {
+                    metadataWarnings.append(warning)
+                }
+                pendingModeWarning = nil
+            }
+            guard !wroteAnyRows else {
+                try writer.write(statement)
+                return
+            }
+            wroteAnyRows = true
+            try writer.write(statement, opening: identityInsert)
+        }
+
         let stream = dataSource.streamRows(for: table)
         for try await element in stream {
             try progress.checkCancellation()
 
             switch element {
             case .header(let header):
-                columns = header.columns
-                columnTypeNames = header.columnTypeNames ?? []
+                /// A second header describes different columns, so the statement built under the
+                /// first one is closed before anything is rendered against the new prefix.
+                if let statement = accumulator?.finish() {
+                    try emit(statement)
+                }
+                if let accumulator { tally.merge(accumulator.tally) }
+                /// The outgoing encoder's count goes with it. Only the last encoder used to reach
+                /// the tally, so a second header after rows dropped every unrepresentable value the
+                /// first segment rendered, and an export whose last segment held none reported clean.
+                if let encoder { tally.unrepresentableValues += encoder.unrepresentableValues.total }
+                let built = SQLExportRowValueEncoder(
+                    columns: header.columns,
+                    columnTypeNames: header.columnTypeNames ?? [],
+                    excludedColumnNames: generatedColumnNames,
+                    databaseTypeId: dataSource.databaseTypeId,
+                    escapeStringLiteral: dataSource.escapeStringLiteral
+                )
+                guard !built.writesNothing else {
+                    encoder = nil
+                    accumulator = nil
+                    continue
+                }
+                encoder = built
+                let statementWriter = makeStatementAccumulator(
+                    tableRef: tableRef,
+                    columns: header.columns,
+                    encoder: built,
+                    primaryKeyColumns: primaryKeyColumns,
+                    usesOverridingSystemValue: usesOverridingSystemValue,
+                    options: options,
+                    dataSource: dataSource)
+                accumulator = statementWriter.accumulator
+                pendingModeWarning = statementWriter.modeWarning
             case .rows(let rows):
+                guard let encoder, let accumulator else { continue }
                 for row in rows {
-                    rowBatch.append(row)
-                    if rowBatch.count >= batchSize {
-                        if needsIdentityInsert, !wroteAnyRows {
-                            try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
-                        }
-                        try writeInsertStatements(
-                            tableRef: tableRef,
-                            columns: columns,
-                            columnTypeNames: columnTypeNames,
-                            rows: rowBatch,
-                            batchSize: batchSize,
-                            excludedColumnNames: generatedColumnNames,
-                            primaryKeyColumns: primaryKeyColumns,
-                            usesOverridingSystemValue: usesOverridingSystemValue,
-                            dataSource: dataSource,
-                            to: writer,
-                            progress: progress
-                        )
-                        wroteAnyRows = true
-                        rowBatch.removeAll(keepingCapacity: true)
+                    try progress.checkCancellation()
+                    if let statement = accumulator.append(encoder.render(row)) {
+                        try emit(statement)
                     }
+                    progress.incrementRow()
                 }
             }
         }
 
-        if !rowBatch.isEmpty {
-            if needsIdentityInsert, !wroteAnyRows {
-                try writer.write("SET IDENTITY_INSERT \(tableRef) ON;\n")
-            }
-            try writeInsertStatements(
-                tableRef: tableRef,
-                columns: columns,
-                columnTypeNames: columnTypeNames,
-                rows: rowBatch,
-                batchSize: batchSize,
-                excludedColumnNames: generatedColumnNames,
-                primaryKeyColumns: primaryKeyColumns,
-                usesOverridingSystemValue: usesOverridingSystemValue,
-                dataSource: dataSource,
-                to: writer,
-                progress: progress
-            )
-            wroteAnyRows = true
+        /// Stop can land between the last row and the end of the stream, where the loop's own checks
+        /// no longer run. Without this, a cancelled export writes its last statement, commits the
+        /// file and reports success; the batch path this replaced checked cancellation per row and
+        /// so threw instead, which is what makes the writer roll the whole dump back.
+        try progress.checkCancellation()
+
+        if let statement = accumulator?.finish() {
+            try emit(statement)
         }
+        if let accumulator { tally.merge(accumulator.tally) }
+        if let encoder { tally.unrepresentableValues += encoder.unrepresentableValues.total }
 
         if wroteAnyRows, needsIdentityInsert {
-            try writer.write("SET IDENTITY_INSERT \(tableRef) OFF;\n")
+            try writer.closeScope()
         }
 
         if wroteAnyRows {
             try writer.write("\n")
         }
+        return tally
     }
 
-    private func writeInsertStatements(
+    /// The accumulator for one table, with its prefix and suffix rendered once, and whatever the
+    /// insert mode could not spell on this engine. The caller holds that warning until a row is
+    /// written under it rather than raising it here.
+    private func makeStatementAccumulator(
         tableRef: String,
         columns: [String],
-        columnTypeNames: [String],
-        rows: [[PluginCellValue]],
-        batchSize: Int,
-        excludedColumnNames: Set<String>,
+        encoder: SQLExportRowValueEncoder,
         primaryKeyColumns: [String],
         usesOverridingSystemValue: Bool,
-        dataSource: any PluginExportDataSource,
-        to writer: SQLExportFileWriter,
-        progress: PluginExportProgress
-    ) throws {
-        let includedColumnIndices = columns.enumerated().compactMap { index, name in
-            excludedColumnNames.contains(name) ? nil : index
-        }
-        guard !includedColumnIndices.isEmpty else { return }
-
-        let quotedColumns = includedColumnIndices
+        options: SQLExportOptions,
+        dataSource: any PluginExportDataSource
+    ) -> (accumulator: SQLExportStatementAccumulator, modeWarning: String?) {
+        let quotedColumns = encoder.includedColumnIndices
             .map { dataSource.quoteIdentifier(columns[$0]) }
             .joined(separator: ", ")
-        let overriding = usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : ""
         let rendered = SQLExportInsertRenderer(
             dialect: SqlDialect.from(databaseTypeId: dataSource.databaseTypeId),
             quoteIdentifier: dataSource.quoteIdentifier
         ).render(
-            mode: settings.insertMode,
+            mode: options.insertMode,
             tableRef: tableRef,
             quotedColumns: quotedColumns,
-            overriding: overriding,
-            columnNames: includedColumnIndices.map { columns[$0] },
+            overriding: usesOverridingSystemValue ? " OVERRIDING SYSTEM VALUE" : "",
+            columnNames: encoder.columnNames(from: columns),
             primaryKeyColumns: primaryKeyColumns
         )
-        if let warning = rendered.warning, !metadataWarnings.contains(warning) {
-            metadataWarnings.append(warning)
-        }
-        let insertPrefix = rendered.prefix
-        let insertSuffix = rendered.suffix
-
-        let numericIndices: Set<Int> = Set(includedColumnIndices.filter { idx in
-            idx < columnTypeNames.count && PluginExportUtilities.isNumericColumnType(columnTypeNames[idx])
-        })
-
-        let effectiveBatchSize = batchSize <= 1 ? 1 : batchSize
-        var valuesBatch: [String] = []
-        valuesBatch.reserveCapacity(effectiveBatchSize)
-
-        for row in rows {
-            try progress.checkCancellation()
-
-            let values = includedColumnIndices.map { colIndex -> String in
-                guard colIndex < row.count else { return "NULL" }
-                let cell = row[colIndex]
-                switch cell {
-                case .null:
-                    return "NULL"
-                case .bytes(let data):
-                    let hex = data.map { String(format: "%02X", $0) }.joined()
-                    return "X'\(hex)'"
-                case .text(let val):
-                    if numericIndices.contains(colIndex) && PluginNumericLiteral.isValid(val) {
-                        return val
-                    }
-                    let escaped = dataSource.escapeStringLiteral(val)
-                    return "'\(escaped)'"
-                }
-            }.joined(separator: ", ")
-
-            valuesBatch.append("  (\(values))")
-
-            if valuesBatch.count >= effectiveBatchSize {
-                let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
-                try writer.write(statement)
-                valuesBatch.removeAll(keepingCapacity: true)
-            }
-
-            progress.incrementRow()
-        }
-
-        if !valuesBatch.isEmpty {
-            let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + insertSuffix + ";\n\n"
-            try writer.write(statement)
-        }
+        let accumulator = SQLExportStatementAccumulator(
+            prefix: rendered.prefix,
+            suffix: rendered.suffix,
+            budget: statementBudget(for: dataSource.databaseTypeId, options: options))
+        return (accumulator, rendered.warning)
     }
 
-    private func compressFile(source: URL, destination: URL) async throws {
-        let gzipPath = "/usr/bin/gzip"
-        guard FileManager.default.isExecutableFile(atPath: gzipPath) else {
-            throw PluginExportError.exportFailed(
-                "Compression unavailable: gzip not found at \(gzipPath)"
-            )
-        }
-
-        let sourcePath = source.standardizedFileURL.path(percentEncoded: false)
-
-        guard FileManager.default.createFile(atPath: destination.path(percentEncoded: false), contents: nil) else {
-            throw PluginExportError.fileWriteFailed(destination.path(percentEncoded: false))
-        }
-
-        let outputHandle: FileHandle
-        do {
-            outputHandle = try FileHandle(forWritingTo: destination)
-        } catch {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
-        }
-        let errorPipe = Pipe()
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: gzipPath)
-        process.arguments = ["-c", sourcePath]
-        process.standardOutput = outputHandle
-        process.standardError = errorPipe
-
-        do {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                    process.terminationHandler = { proc in
-                        try? outputHandle.close()
-                        let status = proc.terminationStatus
-                        if status == 0 {
-                            continuation.resume()
-                        } else {
-                            let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                            let errMsg = String(data: errData, encoding: .utf8)?
-                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                            let message = errMsg.isEmpty
-                                ? "Compression failed with exit status \(status)"
-                                : "Compression failed with exit status \(status): \(errMsg)"
-                            continuation.resume(throwing: PluginExportError.exportFailed(message))
-                        }
-                    }
-                    do {
-                        try process.run()
-                    } catch {
-                        try? outputHandle.close()
-                        continuation.resume(throwing: error)
-                    }
-                }
-            } onCancel: {
-                process.terminate()
-            }
-        } catch {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
-        }
+    /// The row ceiling is the user's choice clamped by what the engine can parse, so a dialect that
+    /// rejects a multi-row `VALUES` gets one row per statement rather than a dump it cannot read.
+    private func statementBudget(
+        for databaseTypeId: String,
+        options: SQLExportOptions
+    ) -> SQLExportStatementBudget {
+        SQLExportStatementBudget(
+            maxRows: min(
+                options.batchSize,
+                SQLMultiRowInsert.maximumRowsPerStatement(forDatabaseTypeId: databaseTypeId)),
+            maxBytes: options.maxStatementBytes)
     }
 }

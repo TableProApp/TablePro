@@ -10,7 +10,7 @@ Point the connection at a TiDB server's SQL port, never at PD or TiKV. No minimu
 | Field | Default | Notes |
 |-------|---------|-------|
 | **Port** | `4000` | TiDB Cloud uses 4000 as well |
-| **Database** | empty | Optional. Leave it empty to browse every database |
+| **Database** | empty | Optional. Leave it empty and open one with `Cmd+K` |
 | **SSL Mode** | Preferred | TLS first, plain text if the server refuses. Use **Required** on TiDB Cloud |
 
 **Release the Server Connection After** is available under Advanced. AWS IAM, Cloud SQL Auth Proxy and Unix socket are not offered; reach a private cluster through an [SSH tunnel](/connections/ssh-tunneling).
@@ -25,7 +25,7 @@ tidb://user:password@host:4000/database
 
 ## What differs from MySQL
 
-- The sidebar hides `INFORMATION_SCHEMA`, `METRICS_SCHEMA`, `PERFORMANCE_SCHEMA`, `mysql` and `sys`. Sequences are not listed as tables.
+- `INFORMATION_SCHEMA`, `METRICS_SCHEMA`, `PERFORMANCE_SCHEMA`, `mysql` and `sys` are system databases: the database switcher lists them under **System**, and the sidebar tree shows them only with [**Show system databases and schemas**](/customization/general-settings#tabs-and-sidebar) on, or when one is the database in use. A TiDB server saved as a MySQL or MariaDB connection lists `METRICS_SCHEMA` with your own databases. Sequences are not listed as tables.
 - **Stop** sends `KILL TIDB QUERY` for the connection's own session.
 - `EXPLAIN` and `EXPLAIN ANALYZE` show TiDB's plan as text, not as a plan tree.
 - CHECK constraints appear in the Structure tab on TiDB 7.2 and later, when the cluster has `tidb_enable_check_constraint` on. Adding one from the Structure tab is not offered.

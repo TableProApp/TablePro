@@ -7,17 +7,18 @@ import SwiftUI
 import TableProSyncTransport
 
 struct SyncSection: View {
-    @Bindable private var settingsManager = AppSettingsManager.shared
-    @Bindable private var syncCoordinator = SyncCoordinator.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
 
     private var isProAvailable: Bool {
-        LicenseManager.shared.isFeatureAvailable(.iCloudSync)
+        licenseManager.isFeatureAvailable(.iCloudSync)
     }
 
     var body: some View {
         Section {
             Toggle("Sync this Mac with iCloud", isOn: $settingsManager.sync.enabled)
-                .onChange(of: settingsManager.sync.enabled) { _, newValue in
+                .onChange(of: settingsManager.sync.enabled) { newValue in
                     updatePasswordSyncFlag()
                     if newValue {
                         syncCoordinator.enableSync()
@@ -96,7 +97,7 @@ struct SyncSection: View {
     private var categoriesSection: some View {
         Section("Sync Categories") {
             Toggle("Connections", isOn: $settingsManager.sync.syncConnections)
-                .onChange(of: settingsManager.sync.syncConnections) { _, newValue in
+                .onChange(of: settingsManager.sync.syncConnections) { newValue in
                     if !newValue, settingsManager.sync.syncPasswords {
                         settingsManager.sync.syncPasswords = false
                         onPasswordSyncChanged(false)
@@ -105,7 +106,7 @@ struct SyncSection: View {
 
             if settingsManager.sync.syncConnections {
                 Toggle("Passwords", isOn: $settingsManager.sync.syncPasswords)
-                    .onChange(of: settingsManager.sync.syncPasswords) { _, newValue in
+                    .onChange(of: settingsManager.sync.syncPasswords) { newValue in
                         onPasswordSyncChanged(newValue)
                     }
                     .help("Syncs passwords via iCloud Keychain (end-to-end encrypted).")
@@ -120,6 +121,7 @@ struct SyncSection: View {
 
             Toggle("Groups & Tags", isOn: $settingsManager.sync.syncGroupsAndTags)
             Toggle("SSH Profiles", isOn: $settingsManager.sync.syncSSHProfiles)
+            Toggle("Credential Profiles", isOn: $settingsManager.sync.syncCredentialProfiles)
             Toggle("Settings", isOn: $settingsManager.sync.syncSettings)
             Toggle("Table Favorites", isOn: $settingsManager.sync.syncTableFavorites)
             Toggle("Database Favorites", isOn: $settingsManager.sync.syncDatabaseFavorites)

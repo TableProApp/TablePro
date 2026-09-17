@@ -15,10 +15,10 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// The first two tests change the fonts on the shared `ThemeEngine`. What keeps that from reaching a
+/// The first two tests activate a theme on the shared `ThemeEngine`. What keeps that from reaching a
 /// suite running in parallel is that both bodies are synchronous and `@MainActor`, so nothing else on
-/// the main actor can interleave between applying the test fonts and restoring the original ones, the
-/// same way `DataGridRowTintThemeTests` holds. Adding an `await` inside `withTypography` breaks it.
+/// the main actor can interleave between activating the test theme and restoring the original one, the
+/// same way `DataGridRowTintThemeTests` holds. Adding an `await` inside `withTheme` would break it.
 @Suite("Stored value font", .serialized)
 @MainActor
 struct ValueFontTests {
@@ -30,27 +30,30 @@ struct ValueFontTests {
         return url
     }()
 
-    private static func typography(editorSize: Int, gridSize: Int) -> TypographySettings {
-        TypographySettings(
+    private static func theme(editorSize: Int, gridSize: Int) -> ThemeDefinition {
+        var theme = ThemeDefinition.default
+        theme.id = "user.value-font-tests"
+        theme.fonts = ThemeFonts(
             editorFontFamily: "Menlo",
             editorFontSize: editorSize,
             dataGridFontFamily: "Courier",
             dataGridFontSize: gridSize
         )
+        return theme
     }
 
-    private func withTypography(_ typography: TypographySettings, _ body: () -> Void) {
-        let previous = AppSettingsManager.shared.typography
-        ThemeEngine.shared.apply(typography: typography)
+    private func withTheme(_ theme: ThemeDefinition, _ body: () -> Void) {
+        let previous = ThemeEngine.shared.activeTheme
+        ThemeEngine.shared.activateTheme(theme)
         body()
-        ThemeEngine.shared.apply(typography: previous)
+        ThemeEngine.shared.activateTheme(previous)
     }
 
     // MARK: - Which setting the value font comes from
 
     @Test("The value font is the data grid font, not the editor font")
     func valueFontFollowsTheDataGridFont() {
-        withTypography(Self.typography(editorSize: 18, gridSize: 11)) {
+        withTheme(Self.theme(editorSize: 18, gridSize: 11)) {
             let engine = ThemeEngine.shared
             #expect(engine.valueFont == engine.dataGridFonts.regular)
             #expect(engine.valueFont != engine.editorFonts.font)
@@ -64,8 +67,8 @@ struct ValueFontTests {
     func valueFontIgnoresTheEditorSize() {
         var afterSmall: NSFont?
         var afterLarge: NSFont?
-        withTypography(Self.typography(editorSize: 11, gridSize: 13)) { afterSmall = ThemeEngine.shared.valueFont }
-        withTypography(Self.typography(editorSize: 18, gridSize: 13)) { afterLarge = ThemeEngine.shared.valueFont }
+        withTheme(Self.theme(editorSize: 11, gridSize: 13)) { afterSmall = ThemeEngine.shared.valueFont }
+        withTheme(Self.theme(editorSize: 18, gridSize: 13)) { afterLarge = ThemeEngine.shared.valueFont }
 
         #expect(afterSmall == afterLarge)
     }
@@ -87,9 +90,14 @@ struct ValueFontTests {
         #expect(source.contains("case .json, .phpSerialized, .image:"))
     }
 
-    /// Everything outside the inspector has no shared root to inherit from: a popover, a pop-out window
-    /// and the Compare pane are each their own presentation, and an `NSViewRepresentable` never sees a
-    /// SwiftUI `.font` at all. Each of these therefore resolves it by name.
+    /// Everything outside the inspector has no shared root to inherit from: a popover and a pop-out
+    /// window are each their own presentation, and an `NSViewRepresentable` never sees a SwiftUI
+    /// `.font` at all. Each of these therefore resolves it by name.
+    ///
+    /// The Compare rows pane is not among them any more. It draws its values through `DataGridView`,
+    /// which takes its cell font from `ThemeEngine.dataGridFonts` in `DataGridCellPalette`, and that
+    /// is the same setting `valueFont` returns. A pane that no longer renders a value itself has
+    /// nothing to name.
     @Test("Every value view outside the inspector resolves the value font")
     func standaloneValueViewsResolveTheValueFont() throws {
         let paths = [
@@ -113,12 +121,15 @@ struct ValueFontTests {
             "TablePro/Views/Results/JSONTreeView.swift",
             "TablePro/Views/Results/PhpTreeView.swift",
             "TablePro/Views/Results/PhpViewerView.swift",
-            "TablePro/Views/Compare/CompareRowDiffPane.swift",
         ]
 
+        /// Either spelling names the value font. A view reads it through the `themeEngine` it
+        /// observes, so a change in Settings redraws it; a static helper, which has no instance to
+        /// observe through, reads the shared engine directly.
         var offenders: [String] = []
         for path in paths {
-            if try !source(of: path).contains("ThemeEngine.shared.valueFont") {
+            let text = try source(of: path)
+            if !text.contains("ThemeEngine.shared.valueFont"), !text.contains("themeEngine.valueFont") {
                 offenders.append(path)
             }
         }
@@ -160,7 +171,11 @@ struct ValueFontTests {
         let source = try source(of: "TablePro/Views/Results/JSONCodeEditor.swift")
 
         #expect(source.contains("onChange(of: colorScheme)"))
-        #expect(source.contains("onChange(of: AppSettingsManager.shared.editor)"))
+        /// Observed, not read off the shared instance. The value `onChange(of:)` compares is read
+        /// while the body is built, and a body that does not observe the settings is never rebuilt
+        /// when they change, so `onChange(of: AppSettingsManager.shared.editor)` never fired.
+        #expect(source.contains("@ObservedObject private var settingsManager = AppSettingsManager.shared"))
+        #expect(source.contains("onChange(of: settingsManager.editor)"))
         #expect(source.contains("onReceive(AppEvents.shared.themeChanged)"))
         #expect(source.contains("onReceive(AppEvents.shared.accessibilityTextSizeChanged)"))
     }

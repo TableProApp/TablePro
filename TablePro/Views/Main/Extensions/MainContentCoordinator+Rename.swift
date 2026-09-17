@@ -52,8 +52,7 @@ extension MainContentCoordinator {
                 presentRenameFailure(error, object: ref.id)
                 return
             }
-            adoptTableRename(ref, to: newName)
-            await refreshTables()
+            services.catalogChangeService.record(.tableRenamed(ref, to: newName, connectionId: connectionId))
         }
     }
 
@@ -70,17 +69,7 @@ extension MainContentCoordinator {
                 presentRenameFailure(error, object: ref.id)
                 return
             }
-            adoptContainerRename(ref, to: newName)
-            await DatabaseTreeMetadataService.shared.refreshDatabases(
-                connectionId: connectionId,
-                databaseType: connection.type
-            )
-            if ref.kind == .schema, let database = ref.database {
-                await DatabaseTreeMetadataService.shared.refreshSchemas(
-                    connectionId: connectionId,
-                    database: database
-                )
-            }
+            services.catalogChangeService.record(.containerRenamed(ref, to: newName, connectionId: connectionId))
         }
     }
 

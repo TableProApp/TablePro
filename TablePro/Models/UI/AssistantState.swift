@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
 /// The assistant surface's own state.
@@ -13,14 +14,15 @@ import Foundation
 /// every connection window read the whole chat history off disk on the window-open path, with the
 /// assistant never revealed and with the feature turned off in settings. Activation is now the
 /// single door, and only revealing the surface or invoking an assistant command opens it.
-@MainActor @Observable internal final class AssistantState {
-    internal var context: AssistantContext = .empty
+@MainActor
+internal final class AssistantState: ObservableObject {
+    @Published internal var context: AssistantContext = .empty
 
-    @ObservationIgnored private var activatedViewModel: AIChatViewModel?
+    private var activatedViewModel: AIChatViewModel?
 
     /// Observable, unlike the view model itself, so the window can seed the assistant's context the
     /// moment it comes into existence. The last context update ran before it did and skipped it.
-    internal private(set) var isActivated = false
+    @Published internal private(set) var isActivated = false
 
     /// Nil until something actually needs the assistant. Readers that only want to talk to a live
     /// assistant take this and do nothing when it is nil, rather than bringing one into existence.

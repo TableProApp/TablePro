@@ -74,6 +74,11 @@ enum TriggerEditing {
         }
 
         let startedAt = Date()
+        defer {
+            CatalogChangeService.shared.record(
+                .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+            )
+        }
         try await withSchemaChangeDriver(scope: scope) { driver in
             let strategy = TriggerApplyStrategy.resolve(
                 isEdit: isEdit,
@@ -103,10 +108,14 @@ enum TriggerEditing {
         name: String,
         gate: any ExecutionGate = ExecutionGateProvider.shared
     ) async throws {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
-            throw TriggerEditingError.notConnected
+        /// Built on a driver in the scope that will run it, the way `apply` builds its own inside
+        /// the lease. The session driver is wherever the sidebar last went, and an engine that
+        /// qualifies its DDL with the connection's current database writes that name into a
+        /// statement the pooled connection then runs somewhere else.
+        let generated = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+            driver.generateDropTriggerSQL(name: name, table: tableName)
         }
-        guard let dropSQL = driver.generateDropTriggerSQL(name: name, table: tableName) else {
+        guard let dropSQL = generated else {
             throw TriggerEditingError.dropUnavailable
         }
 
@@ -131,6 +140,9 @@ enum TriggerEditing {
         }
         await recordHistory(dropSQL, scope: scope, connection: connection, executionTime: Date().timeIntervalSince(startedAt))
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id, scope: scope))
+        CatalogChangeService.shared.record(
+            .changed(CatalogChange(connectionId: connection.id, database: scope.database, kinds: .triggers))
+        )
     }
 
     private static func withSchemaChangeDriver(

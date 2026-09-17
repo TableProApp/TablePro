@@ -61,10 +61,6 @@ final class SQLCompletionProvider {
         self.favoriteKeywords = keywords
     }
 
-    func retrySchemaIfNeeded() async {
-        await schemaProvider?.retryLoadSchemaIfNeeded()
-    }
-
     // MARK: - Public API
 
     /// Get completion suggestions for the current cursor position.
@@ -144,9 +140,11 @@ final class SQLCompletionProvider {
         if let cachedFunctionItems { return cachedFunctionItems }
         var items = SQLKeywords.functionItems()
         if let dialect = cachedDialect, !dialect.functions.isEmpty {
+            let folding: SQLCompletionCaseFolding =
+                dialect.functionNamesAreCaseInsensitive ? .caseInsensitive : .fixed
             var seen = Set(items.map { $0.label.uppercased() })
             for name in dialect.functions.sorted() where seen.insert(name.uppercased()).inserted {
-                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)"))
+                items.append(SQLCompletionItem.function(name, signature: "\(name)(…)", caseFolding: folding))
             }
         }
         cachedFunctionItems = items
@@ -522,6 +520,10 @@ final class SQLCompletionProvider {
     }
 
     /// Operators the connected dialect declares, with their documented meaning.
+    ///
+    /// Case-insensitive like any other keyword, because the list is not only symbols: PostgreSQL
+    /// declares `IS DISTINCT FROM`, `IS NOT NULL` and `BETWEEN SYMMETRIC` here, and the same words
+    /// arrive from `SQLKeywords` as well. A symbol has no cased character, so folding leaves it be.
     private func dialectOperatorItems() -> [SQLCompletionItem] {
         guard let descriptor = cachedDialect else { return [] }
         return descriptor.operators.map { operatorDescriptor in
@@ -532,12 +534,16 @@ final class SQLCompletionProvider {
                 detail: operatorDescriptor.appliesToTypes.isEmpty
                     ? nil
                     : operatorDescriptor.appliesToTypes.joined(separator: ", "),
-                documentation: operatorDescriptor.summary
+                documentation: operatorDescriptor.summary,
+                caseFolding: .caseInsensitive
             )
         }
     }
 
     /// Type names offered directly after a `::` cast operator, in the spelling users write.
+    ///
+    /// Lower case and fixed, which is the convention for a cast and is not the one `CREATE TABLE`
+    /// uses. The two spellings of one vocabulary are why this stays out of the keyword case policy.
     private func castTargetCompletionItems() -> [SQLCompletionItem] {
         guard let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty else { return [] }
         return descriptor.dataTypes.sorted().map { typeName in
@@ -554,7 +560,12 @@ final class SQLCompletionProvider {
     private func dataTypeKeywords() -> [SQLCompletionItem] {
         if let descriptor = cachedDialect, !descriptor.dataTypes.isEmpty {
             return descriptor.dataTypes.sorted().map { typeName in
-                var item = SQLCompletionItem(label: typeName, kind: .keyword, insertText: typeName)
+                var item = SQLCompletionItem(
+                    label: typeName,
+                    kind: .keyword,
+                    insertText: typeName,
+                    caseFolding: .caseInsensitive
+                )
                 item.sortPriority = 380
                 return item
             }

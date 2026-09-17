@@ -19,9 +19,10 @@ extension DatabaseManager {
     ///   - sshPasswordOverride: Optional SSH password to use instead of the stored one (for test connections).
     /// - Returns: A connection suitable for the database driver (SSH disabled, pointing at tunnel if applicable).
     internal func buildEffectiveConnection(
-        for connection: DatabaseConnection,
+        for original: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
+        let connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
@@ -37,6 +38,11 @@ extension DatabaseManager {
             return try await buildTunnelCommandEffectiveConnection(for: connection)
         case .remoteFile:
             return try await buildRemoteFileEffectiveConnection(
+                for: connection,
+                sshPasswordOverride: sshPasswordOverride
+            )
+        case .remoteDatabaseSession:
+            return try await buildRemoteSQLiteEffectiveConnection(
                 for: connection,
                 sshPasswordOverride: sshPasswordOverride
             )

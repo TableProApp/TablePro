@@ -68,6 +68,15 @@ struct ConnectionStoreIntegrity: Sendable {
         }
     }
 
+    static func randomKeyBytes(count: Int) -> Data? {
+        var bytes = [UInt8](repeating: 0, count: count)
+        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
+            logger.error("Could not generate a connection store integrity key")
+            return nil
+        }
+        return Data(bytes)
+    }
+
     static func constantTimeEquals(_ lhs: Data, _ rhs: Data) -> Bool {
         guard lhs.count == rhs.count else { return false }
         var difference: UInt8 = 0
@@ -91,6 +100,10 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
     nonisolated(unsafe) private static var cached: SymmetricKey?
 
     func key() -> SymmetricKey? {
+        if let isolatedStore = Self.isolatedStore {
+            return StoredIntegrityKeySource(store: isolatedStore).key()
+        }
+
         Self.lock.lock()
         defer { Self.lock.unlock() }
 
@@ -120,17 +133,7 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
     }
 
-    private static let isolatedKey = "connectionStoreIntegrity"
-
     private static func read() -> SymmetricKey? {
-        if let isolatedStore {
-            guard case let .found(encoded) = isolatedStore.readStringResult(forKey: isolatedKey),
-                  let data = Data(base64Encoded: encoded),
-                  data.count == byteCount
-            else { return nil }
-            return SymmetricKey(data: data)
-        }
-
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -145,22 +148,10 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
     }
 
     private static func create() -> SymmetricKey? {
-        var bytes = [UInt8](repeating: 0, count: byteCount)
-        guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
-            ConnectionStoreIntegrity.logger.error("Could not generate a connection store integrity key")
-            return nil
-        }
-
-        if let isolatedStore {
-            guard isolatedStore.writeString(Data(bytes).base64EncodedString(), forKey: isolatedKey) else {
-                ConnectionStoreIntegrity.logger.error("Could not store the connection store integrity key")
-                return nil
-            }
-            return SymmetricKey(data: Data(bytes))
-        }
+        guard let bytes = ConnectionStoreIntegrity.randomKeyBytes(count: byteCount) else { return nil }
 
         var addQuery = baseQuery()
-        addQuery[kSecValueData as String] = Data(bytes)
+        addQuery[kSecValueData as String] = bytes
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let status = SecItemAdd(addQuery as CFDictionary, nil)
@@ -170,6 +161,37 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
             )
             return nil
         }
-        return SymmetricKey(data: Data(bytes))
+        return SymmetricKey(data: bytes)
+    }
+}
+
+/// Holds the key in a `KeychainStoring` rather than in the system keychain.
+///
+/// A sandboxed run and a test host both need this: the sandbox keeps its key beside the storage it
+/// isolates, and a test host reaches no system keychain item of its own, so `SecItemAdd` fails and
+/// every store it writes reads back untrusted.
+struct StoredIntegrityKeySource: IntegrityKeySource {
+    private static let storageKey = "connectionStoreIntegrity"
+    private static let byteCount = 32
+
+    private let store: any KeychainStoring
+
+    init(store: any KeychainStoring) {
+        self.store = store
+    }
+
+    func key() -> SymmetricKey? {
+        if case let .found(encoded) = store.readStringResult(forKey: Self.storageKey),
+           let data = Data(base64Encoded: encoded),
+           data.count == Self.byteCount {
+            return SymmetricKey(data: data)
+        }
+
+        guard let bytes = ConnectionStoreIntegrity.randomKeyBytes(count: Self.byteCount) else { return nil }
+        guard store.writeString(bytes.base64EncodedString(), forKey: Self.storageKey) else {
+            ConnectionStoreIntegrity.logger.error("Could not store the connection store integrity key")
+            return nil
+        }
+        return SymmetricKey(data: bytes)
     }
 }

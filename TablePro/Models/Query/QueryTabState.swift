@@ -3,12 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import TableProPluginKit
 
-@MainActor @Observable
-final class GridSelectionState {
-    var indices: Set<Int> = []
+@MainActor
+final class GridSelectionState: ObservableObject {
+    @Published var indices: Set<Int> = []
 }
 
 /// Type of tab
@@ -675,6 +676,13 @@ struct TabQueryContent: Equatable {
 
 struct TabDisplayState: Equatable {
     var resultsViewMode: ResultsViewMode = .data
+    /// The geometry columns of the result currently installed, decided where the rows are installed
+    /// rather than at each reader.
+    ///
+    /// Deciding it costs a sample of the column's values, and the status bar asks on every render
+    /// while the View menu asks on every validation, so it is answered once per result. Nothing but
+    /// `MainContentCoordinator.installTableRows` writes it.
+    var spatialColumns: [SpatialColumn] = []
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
     var isResultsCollapsed: Bool = false
@@ -719,6 +727,7 @@ struct TabDisplayState: Equatable {
 
     static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {
         lhs.resultsViewMode == rhs.resultsViewMode
+            && lhs.spatialColumns == rhs.spatialColumns
             && lhs.isResultsCollapsed == rhs.isResultsCollapsed
             && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
             && lhs.activeResultSetId == rhs.activeResultSetId

@@ -178,6 +178,12 @@ struct DataGridPendingChangeMarkTests {
         return (row, gains[row], markedRows[row].max() ?? 0)
     }
 
+    /// The rule's length is `reach`, and its existence is `gain`. They are separate assertions
+    /// because a selected row admits far less new ink for the same rule: measured over mid grey at a
+    /// text width of 80, the rule reaches 84 whether the row is selected or not, but it adds 57 new
+    /// columns on a plain row against 31 on a selected one, because the selected row's glyphs are
+    /// already white and the rule crossing them inks nothing new. Holding both to half the text
+    /// width read the selected rule as missing when it was drawn in full.
     @Test("A struck-through cell draws a rule its plain twin does not, selected or not")
     func strikeIsDrawn() throws {
         let text = "0123456789"
@@ -189,8 +195,10 @@ struct DataGridPendingChangeMarkTests {
             against: resolve(text: text, onEmphasizedSelection: true)
         )
 
-        #expect(struck.gain > textWidth / 2)
-        #expect(selected.gain > textWidth / 2)
+        #expect(struck.gain > textWidth / 4)
+        #expect(selected.gain > textWidth / 4)
+        #expect(struck.reach >= textWidth)
+        #expect(selected.reach >= textWidth)
     }
 
     /// The two lines have to land in different places, or they are the same cue twice.

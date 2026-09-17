@@ -49,6 +49,7 @@ struct PluginMetadataRegistrySystemDatabaseTests {
             ("CockroachDB", "defaultdb"),
             ("TiDB", "test"),
             ("Databend", "default"),
+            ("OceanBase", "test"),
         ]
         for (typeId, database) in defaults {
             guard let names = systemDatabaseNames(forTypeId: typeId) else {

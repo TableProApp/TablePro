@@ -5,10 +5,12 @@
 
 import Combine
 import Foundation
+import TableProPluginKit
 
-/// A data-changed signal. `scope` names the database and schema the change landed in, so
-/// a window browsing somewhere else does not refetch. A nil scope means the whole
-/// connection changed and every window should reload.
+/// A rows-changed signal. `scope` names the database and schema the change landed in, so a tab
+/// on another scope does not reload. A nil scope means the whole connection changed. It says
+/// nothing about the catalog: a change to the objects themselves goes through
+/// `CatalogChangeService`, which reaches every store and window whatever they are browsing.
 struct DataRefreshRequest: Sendable, Equatable {
     let connectionId: UUID
     let scope: DatabaseScope?
@@ -24,11 +26,6 @@ struct DataRefreshRequest: Sendable, Equatable {
     func reaches(tabScope: DatabaseScope?) -> Bool {
         scope == nil || scope == tabScope
     }
-
-    /// The object list follows the sidebar, so it reloads only for the browsed database.
-    func reachesBrowsedDatabase(_ database: String) -> Bool {
-        scope == nil || scope?.database == database
-    }
 }
 
 /// A change to one named object, addressed by name rather than by scope.
@@ -43,6 +40,10 @@ struct DatabaseObjectChange: Sendable, Equatable {
         case rows
         /// The object's comment changed.
         case comment
+        /// The object no longer exists.
+        case dropped
+        /// The object now goes by another name.
+        case renamed(to: String)
     }
 
     let connectionId: UUID
@@ -53,7 +54,7 @@ struct DatabaseObjectChange: Sendable, Equatable {
     /// Whether a tab's table is this object. Schema is compared as the tab stores it, which is the
     /// resolved schema for an engine that has them and nil for one that does not.
     func matches(tableName: String?, databaseName: String, schemaName: String?) -> Bool {
-        tableName == name && databaseName == scope.database && schemaName == scope.schema
+        tableName == name && databaseName == scope.database && schemaName?.nilIfEmpty == scope.schema?.nilIfEmpty
     }
 }
 
@@ -65,6 +66,8 @@ final class AppCommands {
 
     let refreshData = PassthroughSubject<DataRefreshRequest, Never>()
     let objectChanged = PassthroughSubject<DatabaseObjectChange, Never>()
+    let containerChanged = PassthroughSubject<DatabaseContainerChange, Never>()
+    let catalogChanged = PassthroughSubject<CatalogChange, Never>()
     let refreshPrincipals = PassthroughSubject<UUID, Never>()
 
     // MARK: - File / Connection Import-Export

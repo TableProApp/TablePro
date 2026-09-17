@@ -7,7 +7,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct FilterPanelView: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
@@ -57,14 +57,14 @@ struct FilterPanelView: View {
             focusedFilterId = filterState.filters.last?.id
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: columns) { _, newColumns in
+        .onChange(of: columns) { newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
                 coordinator.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
                 focusedFilterId = filterState.filters.last?.id
             }
             refreshRawSQLCompletionProvider()
         }
-        .onChange(of: coordinator.currentTableName) { _, _ in
+        .onChange(of: coordinator.currentTableName) { _ in
             refreshRawSQLCompletionProvider()
         }
         .task(id: coordinator.currentTableName) {
@@ -217,10 +217,11 @@ struct FilterPanelView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .accessibilityLabel(String(localized: "Filter options"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .accessibilityLabel(String(localized: "Filter options"))
         .help(String(localized: "Filter options"))
         .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
             FilterSettingsPopover()

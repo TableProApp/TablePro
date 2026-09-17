@@ -3,14 +3,14 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
-@Observable
 @MainActor
-final class AIRulesPaneViewModel {
-    var rules: String = ""
+final class AIRulesPaneViewModel: ObservableObject {
+    @Published var rules: String = ""
 
-    var coordinator: WeakCoordinatorRef?
+    @Published var coordinator: WeakCoordinatorRef?
 
     func load(from connection: DatabaseConnection) {
         rules = connection.aiRules ?? ""

@@ -10,7 +10,7 @@ import SwiftUI
 /// The layout is keyed on holding a license, and entitlement decides only whether a renewal field
 /// appears alongside it. A lapsed license still has seats to release and billing to open.
 struct LicenseSettingsView: View {
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     private var notice: LicenseNotice? {
         LicensePresentation.notice(

@@ -48,7 +48,7 @@ struct QueryInsightsGroupList: View {
                 if let error = group.latestErrorMessage, case .failures = metric {
                     RevealedTextView(error)
                         .font(.caption)
-                        .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                        .foregroundStyle(.orange)
                         .lineLimit(2)
                 }
             }
@@ -86,7 +86,7 @@ struct QueryInsightsGroupList: View {
 
     private func headlineTint(_ group: QueryInsightsGroup) -> Color {
         switch metric {
-        case .failures: return ThemeEngine.shared.palette.color(.statusWarning)
+        case .failures: return .orange
         case .duration: return .primary
         case .callCount: return .primary
         }
@@ -160,7 +160,7 @@ struct QueryInsightsRegressionList: View {
             .font(.system(.callout, design: .monospaced))
             .fontWeight(.medium)
             .monospacedDigit()
-            .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+            .foregroundStyle(.orange)
             .frame(minWidth: 76, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 3) {

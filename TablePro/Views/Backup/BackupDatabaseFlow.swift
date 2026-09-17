@@ -18,8 +18,8 @@ struct BackupDatabaseFlow: View {
     /// to the database the window is browsing.
     var preselectedDatabases: Set<String> = []
 
-    @State private var model: BackupScopeModel
-    @State private var batch = NativeDumpBatch()
+    @StateObject private var model: BackupScopeModel
+    @StateObject private var batch = NativeDumpBatch()
     @State private var phase: Phase = .plan
     @State private var formatId: String
     @State private var directory: URL
@@ -50,7 +50,7 @@ struct BackupDatabaseFlow: View {
         self.preselectedDatabases = preselectedDatabases
         let formats = NativeDumpRegistry.formats(for: connection.type)
         self._formatId = State(initialValue: formats.first?.id ?? "default")
-        self._model = State(
+        self._model = StateObject(
             wrappedValue: BackupScopeModel(
                 connection: connection,
                 objectScope: NativeDumpRegistry.descriptor(for: connection.type)?.objectScope
@@ -188,26 +188,11 @@ struct BackupDatabaseFlow: View {
         )
     }
 
-    /// One tool, `sqlpackage`, takes a password only in its argument list, where `ps` can read it.
-    /// The user is told before it runs rather than after, because the exposure lasts as long as the
-    /// dump and there is no other channel to move it to.
     @MainActor
     private func confirmPasswordExposureIfNeeded() async -> Bool {
-        guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId),
-              descriptor.exposesPasswordInArguments,
-              !connection.username.isEmpty,
-              ConnectionStorage.shared.loadPassword(for: connection.id) != nil else {
-            return true
-        }
-        return await AlertHelper.confirm(
-            title: String(localized: "This tool takes your password on its command line."),
-            message: String(
-                localized: """
-                    SqlPackage has no other way to receive one, so while the dump runs the password \
-                    is readable by other processes on this Mac. Windows or Entra authentication \
-                    avoids it.
-                    """),
-            confirmButton: String(localized: "Continue"),
+        await NativeDumpPasswordExposure.confirm(
+            connection: connection,
+            formatId: formatId,
             window: hostWindow
         )
     }

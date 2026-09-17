@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -17,8 +17,7 @@ private enum QuickSwitcherRanking {
 }
 
 @MainActor
-@Observable
-internal final class QuickSwitcherViewModel {
+internal final class QuickSwitcherViewModel: ObservableObject {
     struct CrossConnectionCatalogVersion: Hashable {
         struct Entry: Hashable {
             let connectionId: UUID
@@ -51,55 +50,55 @@ internal final class QuickSwitcherViewModel {
     private static let recentLimit = 10
     private static let filterDebounceNanoseconds: UInt64 = 40_000_000
 
-    @ObservationIgnored private let services: AppServices
-    @ObservationIgnored private let connectionId: UUID
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let frecencyStore: QuickSwitcherFrecencyStore
-    @ObservationIgnored private let catalogStore: QuickSwitcherCatalogStore
+    private let services: AppServices
+    private let connectionId: UUID
+    private let defaults: UserDefaults
+    private let frecencyStore: QuickSwitcherFrecencyStore
+    private let catalogStore: QuickSwitcherCatalogStore
 
     /// The catalog arriving is what ends the load, so this owns `isLoading` rather than the one
     /// call site that happened to fetch it. A load that is superseded or cancelled after it has
     /// already delivered its items cannot then strand the panel on a spinner.
-    @ObservationIgnored internal var allItems: [QuickSwitcherItem] = [] {
+    internal var allItems: [QuickSwitcherItem] = [] {
         didSet {
             isLoading = false
             scheduleFilter(debounced: false)
         }
     }
-    @ObservationIgnored internal var crossConnectionItems: [QuickSwitcherItem] = [] {
+    internal var crossConnectionItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
     }
-    @ObservationIgnored internal var crossConnectionQueryItems: [QuickSwitcherItem] = [] {
+    internal var crossConnectionQueryItems: [QuickSwitcherItem] = [] {
         didSet { scheduleFilter(debounced: false) }
     }
-    @ObservationIgnored private var filterTask: Task<Void, Never>?
-    @ObservationIgnored private var selectionQuery: String?
-    @ObservationIgnored private var selectionScope: QuickSwitcherScope?
-    @ObservationIgnored private var activeLoadId = UUID()
-    @ObservationIgnored private var activeCrossConnectionLoadId = UUID()
-    @ObservationIgnored private var activeCrossConnectionQueryLoadId = UUID()
-    @ObservationIgnored private var loadedCrossConnectionVersion: CrossConnectionCatalogVersion?
-    @ObservationIgnored private var loadedCrossConnectionQueryVersion: CrossConnectionQueryVersion?
+    private var filterTask: Task<Void, Never>?
+    private var selectionQuery: String?
+    private var selectionScope: QuickSwitcherScope?
+    private var activeLoadId = UUID()
+    private var activeCrossConnectionLoadId = UUID()
+    private var activeCrossConnectionQueryLoadId = UUID()
+    private var loadedCrossConnectionVersion: CrossConnectionCatalogVersion?
+    private var loadedCrossConnectionQueryVersion: CrossConnectionQueryVersion?
 
-    private(set) var groups: [Group] = []
-    private(set) var isLoading = true
+    @Published private(set) var groups: [Group] = []
+    @Published private(set) var isLoading = true
     /// Ranking the scoped catalog runs off the main actor behind a debounce, so `groups` is empty
     /// for a beat after the catalog arrives. Without this the panel calls that emptiness "no
     /// results" and says so, for the whole first sort.
-    private(set) var isFiltering = false
-    private(set) var isLoadingCrossConnections = false
-    private(set) var isLoadingCrossConnectionQueries = false
-    private(set) var crossConnectionQueryContentRevision = 0
-    var selectedItemId: String?
+    @Published private(set) var isFiltering = false
+    @Published private(set) var isLoadingCrossConnections = false
+    @Published private(set) var isLoadingCrossConnectionQueries = false
+    @Published private(set) var crossConnectionQueryContentRevision = 0
+    @Published var selectedItemId: String?
 
-    var searchText = "" {
+    @Published var searchText = "" {
         didSet {
             guard oldValue != searchText else { return }
             scheduleFilter(debounced: true)
         }
     }
 
-    var scope: QuickSwitcherScope = .all {
+    @Published var scope: QuickSwitcherScope = .all {
         didSet {
             guard oldValue != scope else { return }
             scheduleFilter(debounced: false)
@@ -119,7 +118,7 @@ internal final class QuickSwitcherViewModel {
     /// rendering as "No results".
     ///
     /// `isFiltering` is the half that cannot be replaced by testing `allItems`: that property is
-    /// `@ObservationIgnored`, so nothing re-renders when it changes, and its `didSet` only
+    /// ``, so nothing re-renders when it changes, and its `didSet` only
     /// schedules the filter. `groups` is committed an await later, so between the catalog landing
     /// and the filter committing there is a frame with nothing to show and no load in flight.
     var isLoadingResults: Bool {
@@ -222,15 +221,6 @@ internal final class QuickSwitcherViewModel {
         let switchTarget = services.pluginManager.containerSwitchTarget(for: databaseType)
         let activeDatabase = services.databaseManager.session(for: connectionId)
             .map { services.databaseManager.browseDatabaseName(for: $0.connection) }
-        let visibleDatabaseNames = switchTarget == .database
-            ? Set(
-                DatabaseTreeVisibility.visible(
-                    databases: DatabaseTreeMetadataService.shared.databases(for: connectionId),
-                    selected: databaseFilter,
-                    activeDatabase: activeDatabase
-                ).map(\.name)
-            )
-            : []
         /// A schema-only engine has no database to switch to, and its driver answers
         /// `fetchDatabases()` with its schema list, so listing them here showed every schema
         /// twice and the copy labelled "Database" failed with the driver's own error (#2262).
@@ -242,14 +232,15 @@ internal final class QuickSwitcherViewModel {
                 let databaseSubtitle = switchTarget == .database
                     ? services.pluginManager.containerEntityName(for: databaseType)
                     : String(localized: "Database")
-                for db in databases {
-                    if switchTarget == .database {
-                        if !visibleDatabaseNames.isEmpty {
-                            if !visibleDatabaseNames.contains(db) { continue }
-                        } else if !databaseFilter.isEmpty, db != activeDatabase, !databaseFilter.contains(db) {
-                            continue
-                        }
-                    }
+                let listed = switchTarget == .database
+                    ? DatabaseSwitchList.sections(
+                        names: databases,
+                        systemNames: Set(services.pluginManager.systemDatabaseNames(for: databaseType)),
+                        selected: databaseFilter,
+                        activeDatabase: activeDatabase
+                    ).all.map(\.name)
+                    : databases
+                for db in listed {
                     items.append(QuickSwitcherItem(
                         id: "db_\(db)",
                         name: db,

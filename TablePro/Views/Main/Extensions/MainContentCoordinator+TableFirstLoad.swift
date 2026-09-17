@@ -23,7 +23,8 @@ extension MainContentCoordinator {
             }
             return
         }
-        executeTableTabQueryDirectly(trigger: trigger)
+        let viewport = restoredRowAnchor(forTab: tabId).map(GridReloadIntent.restoreRow) ?? .keepPlace
+        executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
     }
 
     @discardableResult
@@ -75,10 +76,14 @@ extension MainContentCoordinator {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .table,
               tabManager.tabs[index].tableContext.schemaName == nil,
-              let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(nil, for: connectionId)
+              let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(
+                  nil,
+                  inDatabase: tabManager.tabs[index].tableContext.resolvedDatabaseName(browsing: browseDatabaseName),
+                  for: connectionId
+              )
         else { return false }
 
-        tabManager.mutate(at: index) { $0.tableContext.schemaName = resolvedSchema }
+        tabManager.adoptResolvedSchema(resolvedSchema, at: index)
         filterCoordinator.rebuildTableQuery(at: index)
         return true
     }

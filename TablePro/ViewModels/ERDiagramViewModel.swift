@@ -6,8 +6,7 @@ import SwiftUI
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class ERDiagramViewModel {
+final class ERDiagramViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ERDiagram")
 
     // MARK: - Configuration
@@ -55,22 +54,22 @@ final class ERDiagramViewModel {
         }
     }
 
-    var loadState: LoadState = .loading
-    var needsInitialFit = true
-    var graph: ERDiagramGraph = .empty
-    var isCompactMode = false {
+    @Published var loadState: LoadState = .loading
+    @Published var needsInitialFit = true
+    @Published var graph: ERDiagramGraph = .empty
+    @Published var isCompactMode = false {
         didSet { rebuildVisibleGraph() }
     }
 
-    var collapseJunctions = true {
+    @Published var collapseJunctions = true {
         didSet { rebuildVisibleGraph() }
     }
 
     var hasJunctionTables: Bool { !fullGraph.junctionTableIds.isEmpty }
 
-    @ObservationIgnored private var fullGraph: ERDiagramGraph = .empty
-    @ObservationIgnored private var allColumns: [String: [ColumnInfo]] = [:]
-    @ObservationIgnored private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
+    private var fullGraph: ERDiagramGraph = .empty
+    private var allColumns: [String: [ColumnInfo]] = [:]
+    private var allForeignKeys: [String: [ForeignKeyInfo]] = [:]
 
     // MARK: - Canvas Viewport
 
@@ -80,37 +79,37 @@ final class ERDiagramViewModel {
     /// It belongs to the model rather than the view because an editor-tab switch destroys
     /// `ERDiagramView` and rebuilds it against the same model: a viewport held as view state came
     /// back at 100% scrolled to the origin every time the user left the tab and returned.
-    @ObservationIgnored let viewport = DiagramViewportController()
+    let viewport = DiagramViewportController()
 
     /// Selection outlives the view for the same reason.
-    var selectedNodeId: UUID?
+    @Published var selectedNodeId: UUID?
 
     // MARK: - Drag State
 
-    private(set) var isDragging = false
-    private(set) var draggingNodeId: UUID?
-    @ObservationIgnored private var dragNodeStart: CGPoint?
-    @ObservationIgnored private var lastDragTranslation: CGSize = .zero
+    @Published private(set) var isDragging = false
+    @Published private(set) var draggingNodeId: UUID?
+    private var dragNodeStart: CGPoint?
+    private var lastDragTranslation: CGSize = .zero
 
     // MARK: - Auto-Pan
 
-    @ObservationIgnored nonisolated(unsafe) private var autoPanTask: Task<Void, Never>?
-    @ObservationIgnored private var autoPanVelocity: CGPoint = .zero
-    @ObservationIgnored private var autoPanAccum: CGPoint = .zero
+    nonisolated(unsafe) private var autoPanTask: Task<Void, Never>?
+    private var autoPanVelocity: CGPoint = .zero
+    private var autoPanAccum: CGPoint = .zero
 
     private static let edgeThreshold: CGFloat = 40
     private static let maxPanSpeed: CGFloat = 8
 
     // MARK: - Positions
 
-    private(set) var computedLayout: [UUID: CGPoint] = [:]
-    private(set) var positionOverrides: [UUID: CGPoint] = [:]
-    @ObservationIgnored nonisolated(unsafe) private var layoutTask: Task<Void, Never>?
-    private(set) var cachedNodeRects: [UUID: CGRect] = [:]
-    @ObservationIgnored private var columnCountByNodeId: [UUID: Int] = [:]
-    @ObservationIgnored private var nodeIdToName: [UUID: String] = [:]
+    @Published private(set) var computedLayout: [UUID: CGPoint] = [:]
+    @Published private(set) var positionOverrides: [UUID: CGPoint] = [:]
+    nonisolated(unsafe) private var layoutTask: Task<Void, Never>?
+    @Published private(set) var cachedNodeRects: [UUID: CGRect] = [:]
+    private var columnCountByNodeId: [UUID: Int] = [:]
+    private var nodeIdToName: [UUID: String] = [:]
 
-    @ObservationIgnored private let services: AppServices
+    private let services: AppServices
 
     // MARK: - Initialization
 
@@ -364,7 +363,7 @@ final class ERDiagramViewModel {
 
     // MARK: - Canvas Size
 
-    private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
+    @Published private(set) var cachedCanvasSize = CGSize(width: 800, height: 600)
     private static let canvasPadding: CGFloat = 80
 
     // MARK: - Node Rect (for edge rendering)
@@ -397,20 +396,18 @@ final class ERDiagramViewModel {
             )
         }
         cachedNodeRects = rects
+        cachedCanvasSize = Self.canvasSize(enclosing: rects.values)
+    }
 
-        if graph.nodes.isEmpty {
-            cachedCanvasSize = CGSize(width: 800, height: 600)
-        } else {
-            var csMaxX: CGFloat = 0
-            var csMaxY: CGFloat = 0
-            for (_, rect) in rects {
-                csMaxX = max(csMaxX, rect.maxX)
-                csMaxY = max(csMaxY, rect.maxY)
-            }
-            cachedCanvasSize = CGSize(
-                width: csMaxX + Self.canvasPadding, height: csMaxY + Self.canvasPadding
-            )
+    private static func canvasSize(enclosing rects: some Collection<CGRect>) -> CGSize {
+        guard !rects.isEmpty else { return CGSize(width: 800, height: 600) }
+        var maxX: CGFloat = 0
+        var maxY: CGFloat = 0
+        for rect in rects {
+            maxX = max(maxX, rect.maxX)
+            maxY = max(maxY, rect.maxY)
         }
+        return CGSize(width: maxX + canvasPadding, height: maxY + canvasPadding)
     }
 
     // MARK: - Drag & Auto-Pan
@@ -444,6 +441,7 @@ final class ERDiagramViewModel {
     func endDrag() {
         if draggingNodeId != nil {
             persistPositions()
+            fitCanvasToNodes()
         }
         isDragging = false
         draggingNodeId = nil
@@ -502,10 +500,12 @@ final class ERDiagramViewModel {
             return
         }
 
-        let delta = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
-        viewport.scrollBy(delta)
-        autoPanAccum.x += delta.width
-        autoPanAccum.y += delta.height
+        let requested = CGSize(width: -autoPanVelocity.x, height: -autoPanVelocity.y)
+        extendCanvas(toScrollBy: requested)
+        let scrolled = viewport.scrollBy(requested)
+        guard scrolled != .zero else { return }
+        autoPanAccum.x += scrolled.width
+        autoPanAccum.y += scrolled.height
 
         setPositionOverride(
             nodeId: nodeId,
@@ -513,6 +513,33 @@ final class ERDiagramViewModel {
                 x: nodeStart.x + lastDragTranslation.width + autoPanAccum.x,
                 y: nodeStart.y + lastDragTranslation.height + autoPanAccum.y
             )
+        )
+    }
+
+    /// The canvas is sized from the nodes, so at a low zoom the edge band reaches further past the
+    /// dragged table than the canvas does and the view had nowhere to scroll. Growing it by the step,
+    /// document included, is what lets this same tick scroll.
+    private func extendCanvas(toScrollBy delta: CGSize) {
+        let visible = viewport.visibleDocumentRect
+        let extended = CGSize(
+            width: delta.width > 0 ? max(cachedCanvasSize.width, visible.maxX + delta.width) : cachedCanvasSize.width,
+            height: delta.height > 0 ? max(cachedCanvasSize.height, visible.maxY + delta.height) : cachedCanvasSize.height
+        )
+        guard extended != cachedCanvasSize else { return }
+        cachedCanvasSize = extended
+        viewport.resizeDocument(to: extended)
+    }
+
+    /// A drag only ever grows the canvas, so a table dragged out and back left empty space to scroll
+    /// into that Fit to Window then fitted. On an axis scrolled away from the origin it stops at the
+    /// far edge on screen, or the view would snap out from under the table just dropped. An axis at
+    /// the origin shrinks to the tables, because zoomed out the pane can be far larger than the canvas.
+    private func fitCanvasToNodes() {
+        let visible = viewport.visibleDocumentRect
+        let content = Self.canvasSize(enclosing: cachedNodeRects.values)
+        cachedCanvasSize = CGSize(
+            width: visible.minX > 0 ? max(content.width, visible.maxX) : content.width,
+            height: visible.minY > 0 ? max(content.height, visible.maxY) : content.height
         )
     }
 

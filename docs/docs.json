@@ -126,6 +126,7 @@
               "connections/connection-form",
               "connections/urls",
               "connections/ssh-tunneling",
+              "connections/credential-profiles",
               "connections/ssh-profiles",
               "connections/remote-database-files",
               "connections/cloudflare-tunnel",
@@ -164,6 +165,7 @@
               "databases/mssql",
               "databases/mongodb",
               "databases/mysql",
+              "databases/oceanbase",
               "databases/oracle",
               "databases/pglite",
               "databases/postgresql",
@@ -282,6 +284,7 @@
             "icon": "shield",
             "pages": [
               "security/privacy",
+              "security/managed-updates",
               "features/safe-mode",
               "features/acknowledgements"
             ]

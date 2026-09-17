@@ -2,11 +2,14 @@ import SwiftUI
 import TableProPluginKit
 
 struct KeyPatternSearchBar: View {
-    let coordinator: MainContentCoordinator
+    @ObservedObject var coordinator: MainContentCoordinator
     let descriptor: BrowseFilterDescriptor
 
     @State private var pattern: String = ""
     @State private var typeScope: String?
+
+    /// How much of a type name the bar will spend width on before truncating it.
+    private static let typeScopeMaximumWidth: CGFloat = 160
 
     var body: some View {
         HStack(spacing: 8) {
@@ -27,8 +30,12 @@ struct KeyPatternSearchBar: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .fixedSize()
-                .onChange(of: typeScope) { _, _ in apply() }
+                /// Bounded rather than `.fixedSize()`, for the reason `FilterRowView`'s column
+                /// pull-down is: the items are driver-supplied type names, and a pull-down takes the
+                /// width of its widest one, so an unbounded one could make this bar wider than the
+                /// pane and clip the grid beside it.
+                .frame(maxWidth: Self.typeScopeMaximumWidth)
+                .onChange(of: typeScope) { _ in apply() }
             }
 
             if isActive {
@@ -41,7 +48,7 @@ struct KeyPatternSearchBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .onAppear(perform: syncFromState)
-        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _, _ in
+        .onChange(of: coordinator.selectedTabFilterState.browseSearch) { _ in
             syncFromState()
         }
     }

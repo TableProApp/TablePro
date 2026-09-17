@@ -51,11 +51,15 @@ extension MCPConnectionBridge {
 
         return try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
             let columns = try await driver.fetchColumns(table: table, schema: schema)
-            let indexes = try await driver.fetchIndexes(table: table)
-            let foreignKeys = try await driver.fetchForeignKeys(table: table)
-            let checkConstraints = (try? await driver.fetchCheckConstraints(table: table)) ?? []
-            let approximateRowCount = (try? await driver.fetchApproximateRowCount(table: table)) ?? nil
-            let ddl = await MCPConnectionBridge.composedTableDDL(driver: driver, table: table)
+            let indexes = try await driver.fetchIndexes(table: table, schema: schema)
+            let foreignKeys = try await driver.fetchForeignKeys(table: table, schema: schema)
+            let checkConstraints = (try? await driver.fetchCheckConstraints(table: table, schema: schema)) ?? []
+            let approximateRowCount = (
+                try? await driver.fetchApproximateRowCount(table: table, schema: schema)
+            ) ?? nil
+            let ddl = await MCPConnectionBridge.composedTableDDL(
+                driver: driver, table: table, schema: schema
+            )
 
             var result: [String: JsonValue] = [
                 "table": .string(table),
@@ -97,14 +101,18 @@ extension MCPConnectionBridge {
 
     /// The table's own statement plus the indexes it does not declare, because a caller asking for
     /// a table's DDL wants what recreates it, not the half the export replays first.
-    static func composedTableDDL(driver: DatabaseDriver, table: String) async -> String? {
-        try? await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
+    static func composedTableDDL(driver: DatabaseDriver, table: String, schema: String?) async -> String? {
+        try? await TableDDLComposer.fetchDDL(
+            for: table, using: driver, includesDependencies: false, schema: schema
+        )
     }
 
     func getTableDDL(scope: DatabaseScope, table: String) async throws -> JsonValue {
         try await ensureConnected(scope.connectionId)
         let ddl = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await TableDDLComposer.fetchDDL(for: table, using: driver, includesDependencies: false)
+            try await TableDDLComposer.fetchDDL(
+                for: table, using: driver, includesDependencies: false, schema: scope.schema
+            )
         }
         return .object([
             "table": .string(table),
@@ -304,11 +312,11 @@ extension MCPConnectionBridge {
         try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let partitions = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-            try await driver.fetchPartitions(table: table, schema: schema)
+            try await driver.fetchPartitionDetails(table: table, schema: schema)
         }
         return .object([
             "table": .string(table),
-            "partitions": .array(Self.sortedTables(partitions).map { Self.encode(table: $0, rowCount: $0.rowCount) })
+            "partitions": .array(partitions.map(Self.encode(partition:)))
         ])
     }
 
@@ -384,6 +392,40 @@ extension MCPConnectionBridge {
         if let rowCount {
             fields["row_count"] = .int(rowCount)
         }
+        if let partitionCount = table.partitionCount {
+            fields["partition_count"] = .int(partitionCount)
+        }
+        return .object(fields)
+    }
+
+    /// `type` stays required, in the same vocabulary `list_tables` uses. This tool used to encode
+    /// its partitions with the table encoder, so a client that reads `partitions[].type` predates
+    /// the richer fields and must keep working. A partition that is not a relation has no table
+    /// type of its own and reports `PARTITION`.
+    static func encode(partition: PartitionInfo) -> JsonValue {
+        var fields: [String: JsonValue] = [
+            "name": .string(partition.name),
+            "type": .string(partition.relationType?.rawValue ?? "PARTITION"),
+            "is_separate_relation": .bool(partition.isSeparateRelation)
+        ]
+        if let schema = partition.schema, !schema.isEmpty {
+            fields["schema"] = .string(schema)
+        }
+        if let bound = partition.bound, !bound.isEmpty {
+            fields["bound"] = .string(bound)
+        }
+        if let position = partition.ordinalPosition {
+            fields["ordinal_position"] = .int(position)
+        }
+        if let rowCount = partition.rowCount {
+            fields["row_count"] = .int(rowCount)
+        }
+        if partition.isSubpartitioned {
+            fields["is_subpartitioned"] = .bool(true)
+        }
+        if let parent = partition.parentPartitionName, !parent.isEmpty {
+            fields["parent_partition"] = .string(parent)
+        }
         return .object(fields)
     }
 
@@ -432,6 +474,12 @@ extension MCPConnectionBridge {
         ]
         if let whereClause = index.whereClause, !whereClause.isEmpty {
             fields["where_clause"] = .string(whereClause)
+        }
+        if let expressions = index.expressions, !expressions.isEmpty {
+            fields["expressions"] = .array(expressions.map { .string($0) })
+        }
+        if let includedColumns = index.includedColumns, !includedColumns.isEmpty {
+            fields["included_columns"] = .array(includedColumns.map { .string($0) })
         }
         return .object(fields)
     }

@@ -72,13 +72,36 @@ Verify all of these first. If any fails, stop and say what is wrong.
 4. **Working tree is clean**: `git status --porcelain`. If not, warn and ask whether
    to fold those changes into the release.
 5. **`[Unreleased]` has content.** If empty, the release has no notes. Say so.
-6. **Entries are the right shape.** They accumulate one PR at a time and drift long.
+6. **Credit every entry to its pull request and its author**, in the form GitHub's
+   generated release notes use. Do this before anything rewords an entry: the script
+   reads each line's commit with `git blame`, and a line reworded in the working tree
+   blames to nothing and is skipped.
+
+   ```bash
+   python3 scripts/ci/changelog_credits.py --dry-run | tail -5
+   python3 scripts/ci/changelog_credits.py
+   ```
+
+   Each entry ends up as `(#2905 by @digows)`, or `(#1748, #2741 by @J2TeamNNL)` when it
+   already named an issue. The last lines name every contributor and every entry left
+   alone. Read that list: an entry is left bare when its commit has no pull request
+   number, which is a direct push. Credit it by hand from `git log` or leave it bare;
+   never guess a handle.
+
+   `git blame` credits the last commit to touch a line, so an entry a maintainer reworded
+   in a later pull request carries the maintainer's handle. Check the contributor list
+   against `gh pr list --state merged --search "merged:>=<last release date>" --json author`
+   and put a contributor's handle back on any entry that lost it. The script is
+   idempotent, so running it again changes only what is still bare.
+7. **Entries are the right shape.** They accumulate one PR at a time and drift long.
    Per `CLAUDE.md` rule 1 and Keep a Changelog 1.1.0, an entry is a fragment naming
-   the change, one line, aiming under 120 characters:
+   the change, one line, aiming under 120 characters. The credit is not part of the
+   fragment, so measure without it:
 
    ```bash
    awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md \
-     | grep '^- ' | awk '{ t+=length($0); n++; if (length($0)>120) o++ } \
+     | grep '^- ' | sed -E 's/ \(#[0-9, #]+ by @[A-Za-z0-9-]+\)$//' \
+     | awk '{ t+=length($0); n++; if (length($0)>120) o++ } \
          END { if (!n) { print "no entries"; exit } \
                print n" entries, avg "int(t/n)" chars, "o+0" over 120" }'
    ```
@@ -96,12 +119,32 @@ Verify all of these first. If any fails, stop and say what is wrong.
    If entries run over or match, rewrite the whole section before finalizing: cut each
    to the notable difference, turn every `X now does Y instead of Z` into the bug or
    the thing itself, drop trailing `so ...` clauses, merge entries describing one
-   change, keep every `(#1234)`. Diff the reference IDs before and after to prove none
-   were dropped. The explanation belongs in the PR body. At 0.67.0 this arrived with
-   211 entries averaging 300 characters, the longest 1,685.
-7. **On `main`**: warn, do not block.
-8. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
+   change, keep every trailing `(#1234 by @handle)` exactly as it is. Diff the
+   reference IDs and handles before and after to prove none were dropped. The
+   explanation belongs in the PR body. At 0.67.0 this arrived with 211 entries
+   averaging 300 characters, the longest 1,685.
+8. **On `main`**: warn, do not block.
+9. **SwiftLint is clean**: `swiftlint lint --strict`. Fix what it finds first, in its
    own commit.
+10. **Report the last full-suite verdict on `main`**: warn, do not block.
+
+    ```bash
+    gh run list --workflow=macos-tests.yml --branch main --limit 1 \
+      --json conclusion,headSha,createdAt -q '.[] | "\(.conclusion // "in progress") \(.headSha[0:9]) \(.createdAt)"'
+    ```
+
+    Say the verdict and the commit it belongs to, then carry on. This reports rather
+    than blocks on purpose: `main` is red or cancelled far more often than green, on
+    merge skew rather than on real defects, and a hard gate with no merge queue behind
+    it would stop releases instead of improving them. The release tag is currently the
+    only unconditional full-suite run, so knowing what the last one said is worth the
+    one command. Eight of the last seventeen releases had their tag moved onto extra
+    commits before going green.
+
+The release job re-checks what it can once the tag is pushed. It fails if the tag
+disagrees with `MARKETING_VERSION`, and it fails if `CURRENT_PROJECT_VERSION` did not
+rise above the newest published release's, because that number is what Sparkle
+compares and a flat one means no install is ever offered the update.
 
 ### Bump the version
 
@@ -150,6 +193,37 @@ TableProPluginKit pin `MARKETING_VERSION = 1.0` in `project.yml`; the iOS app re
    awk '/^## \[<version>\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md | grep -c '^- '
    ```
 
+### Write the release highlights
+
+A version section may open with a **lead block**: at most six lines before its first `###`
+heading, naming what a reader would notice. That block is what the update window and the
+Sparkle feed show. Without one they fall back to the whole section, which for 0.73.0 meant
+22,443 bytes and 231 list items inside a dialog.
+
+```
+## [0.75.0] - 2026-01-01
+
+Map view for results holding a geometry column.
+Row-number gutter held at the left edge when the grid scrolls sideways.
+
+### Added
+...
+```
+
+Two or three lines is right. Write them from the `### Added` entries a reader would change
+their behaviour over, in their words rather than the changelog's. A release of pure fixes can
+skip the block and take the fallback.
+
+Then regenerate the in-app notes from that block, so **Help > What's New** and the update
+window cannot disagree:
+
+```bash
+scripts/generate-whats-new.sh <version>
+```
+
+A release with no lead block gets a short pointer to the changelog instead of 270 entries
+compiled into the app bundle.
+
 ### Update the docs changelog
 
 `docs/changelog.mdx` needs a new `<Update>` block at the top, right after the
@@ -176,22 +250,80 @@ Group by audience, not by the Keep a Changelog types. This is the one place the
 wording may grow past the `CHANGELOG.md` entry it came from: the changelog states
 the change, the docs entry can name the feature and say what the reader does with it.
 
+### Decide whether this release may interrupt anyone
+
+`.github/release-flags.json` holds `criticalUpdate`. Leave it `false`. Updates
+install in the background and apply on quit, so an ordinary release costs a user
+nothing, and the flag is the only way one is allowed to cost them attention.
+
+Set it `true` only when the release fixes one of these, and say which:
+
+- **Data loss or corruption** of a database, saved connections, or persisted tabs.
+- **A security issue** that earns a `### Security` entry and to which a user on the
+  old build is actively exposed.
+- **A crash or hang on a common path**, or a failure to launch, connect, or update.
+- **A regression from the previous release** with no workaround.
+
+Nothing else. Not "a user asked for it today", not "it is a one-line fix". Budget it
+at a handful a year: 0.74.0 alone carries five `### Security` entries and most would
+not qualify. Marking loosely puts back the interruptions this exists to remove.
+
+What Sparkle does differently for a critical item, none of it cosmetic: it bypasses
+phased rollout, hides Skip and Remind Me Later, retitles the alert, reschedules an
+already-downloaded update at `MIN(regular, impatient)` instead of `MAX`, and shows it
+even under automatic downloads.
+
+Set it in the release commit and set it back in the next one. The release job fails
+if it is `true` while the file has not changed since the previous tag, which is what
+a flag left over from last time looks like.
+
+Three rules around it. A release-pipeline retag is never a hotfix and never gets the
+flag. A release that raises `minimumCompatiblePluginKitVersion` is not tagged until
+`release-all-plugins.sh` has published, because a silent install removes the user's
+chance to notice their drivers stopped loading. And a build that has to be withdrawn
+is pulled with `scripts/ci/pull-release.py` and superseded by a corrective release
+carrying the flag; that is the only rollback path there is.
+
 ### Commit, tag, push
 
 ```bash
-git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx
+git add Configs/Version.xcconfig CHANGELOG.md docs/changelog.mdx .github/release-flags.json \
+    TablePro/Resources/WhatsNew.md
 git commit -m "release: v<version>"
-git tag v<version>
+git tag -a v<version> -m "v<version>"
 git push origin main && git push origin v<version>
 ```
 
-Push the commit and the tag separately: `--follow-tags` only pushes annotated tags
-and `git tag` creates lightweight ones. Keep unrelated work out of the release
-commit; a lint fix made along the way gets its own conventional commit first.
+Always `-a`. The history mixes both kinds (`v0.72.0` is lightweight, `v0.73.0` and
+`v0.74.0` are annotated), and a lightweight tag answers `git tag -l --format='%(contents)'`
+with the commit message, so anything read back off a tag is silently wrong depending
+on which kind it happens to be. Push the commit and the tag separately anyway; keep
+unrelated work out of the release commit, and give a lint fix made along the way its
+own conventional commit first.
 
 This triggers `.github/workflows/build.yml`: arm64 and x86_64 builds, DMG and ZIP,
 Sparkle signatures, `appcast.xml`, and the GitHub Release with notes from
 `CHANGELOG.md`.
+
+### Withdrawing a release
+
+Removing the items from `appcast.xml` is the only way to un-ship a Sparkle release.
+Do this when a build turns out to lose data, fail to launch, or break connecting, and
+the corrective release is more than a few minutes away.
+
+```bash
+python3 scripts/ci/pull-release.py <version> --dry-run   # says what it would remove
+python3 scripts/ci/pull-release.py <version>             # edits, commits, pushes
+```
+
+Leave the GitHub Release in place. People who downloaded the DMG directly still need
+their link to resolve, and it is the corrective release that supersedes the build, not
+the deletion of the old one. Anyone who already installed the bad version is reached
+by shipping the fix with the critical flag set, not by the withdrawal.
+
+Nothing else needs unwinding. The rewind guard in `build.yml` compares the generated
+feed against `origin/main`, so once `main` no longer advertises the withdrawn version
+the next release's feed does not either and the guard passes on its own.
 
 ## Stage 3: Plugins
 
@@ -237,13 +369,31 @@ before republishing anything:
 scripts/check-pluginkit-abi.sh v<previous-version>
 ```
 
-It reports a diff and leaves the call to you. Additive needs no bump. Breaking means
-bumping `currentPluginKitVersion` plus every plugin `Info.plist`, then
-`release-all-plugins.sh` before or with the app release. The trap is a *removed or
-renamed* symbol: a shipped plugin hard-references the default implementation it
-relied on, and losing that symbol makes it fail to load. Adding a parameter to an
-existing public init is the same hazard unless the old signature stays as an
-`@_disfavoredOverload`.
+It reports a diff and leaves the call to you. Any diff at all, additive included,
+bumps `currentPluginKitVersion` plus every plugin `Info.plist`; see the PluginKit ABI
+section of `CLAUDE.md` for why an additive change still needs it. Breaking adds
+raising `minimumCompatiblePluginKitVersion` and running `release-all-plugins.sh`
+before or with the app release. The trap is a *removed or renamed* symbol: a shipped
+plugin hard-references the default implementation it relied on, and losing that
+symbol makes it fail to load. Adding a parameter to an existing public init is the
+same hazard unless the old signature stays as an `@_disfavoredOverload`.
+
+**Bump the number at most once per release cycle.** The first ABI change after a
+release takes the next number and every later change in the same cycle reuses it,
+because only the value at release time ever reaches a user. Between 2026-09-02 and
+2026-09-12 the kit went from 20 to 30, five of those bumps on one day, which is what
+closed the registry's retention window: by 2026-09-13 the oldest binary published
+anywhere was kit 21, and every user on v0.65.0 to v0.71.0 could install none of the
+23 registry plugins.
+
+**Run `release-all-plugins.sh` only for a breaking bump.** An additive bump does not
+invalidate a published binary, `check-registry-readiness.py` says so in its own
+docstring, and a bulk re-release burns a retention slot for every plugin. To get one
+driver fix to users who have not updated, build it against their release instead:
+
+```bash
+scripts/release-plugin-for-shipped-app.sh plugin-<name>-v<version> v<appVersion>
+```
 
 ## Stage 4: Blog post (big releases only)
 

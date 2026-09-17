@@ -29,6 +29,19 @@ extension MainContentCoordinator {
         persistence.clearForUserClosedAllTabs()
     }
 
+    /// The object these tabs show is gone, which is not the user closing them. Nothing goes to Reopen
+    /// Closed Tab, which could only reopen onto an error, and the saved tab set is never cleared,
+    /// because an emptied tab list is not consent to forget it.
+    func closeTabsForRemovedObjects(ids: [UUID]) {
+        for id in ids {
+            guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
+            releaseResources(of: tab)
+            releaseExecution(of: tab)
+            tabSessionRegistry.removeTableRows(for: id)
+            tabManager.closeTab(id: id)
+        }
+    }
+
     /// Drops the per-tab caches of tabs that are no longer open. Every one of these is keyed by
     /// tab id, so a stale entry does not merely waste memory: the next tab to be handed that id
     /// would read another tab's state.
@@ -39,7 +52,6 @@ extension MainContentCoordinator {
         prune(&tableMetadataCache, keeping: openTabIds)
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&navigationHistories, keeping: openTabIds)
-        prune(&pendingRowAnchors, keeping: openTabIds)
         toolbarState.forgetQueryTimings(keeping: openTabIds)
         for (tabId, session) in structureSessions where !openTabIds.contains(tabId) {
             session.releaseViewWiring()
@@ -61,7 +73,6 @@ extension MainContentCoordinator {
     /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
     /// retargeted at all; this is what keeps the caches honest once one without work has been.
     func releaseRetargetedTabState(for tabId: UUID) {
-        pendingRowAnchors.removeValue(forKey: tabId)
         displayStateCache.removeValue(forKey: tabId)
         tableMetadataCache.removeValue(forKey: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
@@ -89,7 +100,6 @@ extension MainContentCoordinator {
         structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
         createTableDrafts.removeValue(forKey: tab.id)
         navigationHistories.removeValue(forKey: tab.id)
-        pendingRowAnchors.removeValue(forKey: tab.id)
         displayStateCache.removeValue(forKey: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }

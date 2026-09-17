@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -232,30 +233,44 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
     }
 
-    func fetchPartitions(table: String, schema: String?) async throws -> [TableInfo] {
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
-        let pluginTables = try await pluginDriver.fetchPartitions(table: table, schema: resolvedSchema)
-        return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
+        let partitions = try await pluginDriver.fetchPartitionDetails(table: table, schema: resolvedSchema)
+        return partitions.map { partition in
+            let relationType = partition.relationType.flatMap(Self.mapPluginTableType)
+            return PartitionInfo(
+                name: partition.name,
+                schema: relationType == nil ? partition.schema : (partition.schema ?? resolvedSchema),
+                bound: partition.bound,
+                ordinalPosition: partition.ordinalPosition,
+                rowCount: partition.rowCount,
+                relationType: relationType,
+                isSubpartitioned: partition.isSubpartitioned,
+                parentPartitionName: partition.parentPartitionName
+            )
+        }
+    }
+
+    /// One vocabulary for what a plugin calls an object, shared with the partition path so a
+    /// foreign-table partition cannot arrive as a plain table and pick up Truncate on its way in.
+    nonisolated internal static func mapPluginTableType(_ declaredType: String) -> TableInfo.TableType? {
+        switch declaredType.lowercased().replacingOccurrences(of: "_", with: " ") {
+        case "table", "base table", "prefix": return .table
+        case "partitioned table":             return .partitionedTable
+        case "view":                          return .view
+        case "materialized view":             return .materializedView
+        case "foreign table":                 return .foreignTable
+        case "system table", "system base table", "system view": return .systemTable
+        case "external table":                return .externalTable
+        default:                              return nil
+        }
     }
 
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
         let tableType: TableInfo.TableType
-        switch table.type.lowercased() {
-        case "table", "base table", "prefix":
-            tableType = .table
-        case "partitioned table", "partitioned_table":
-            tableType = .partitionedTable
-        case "view":
-            tableType = .view
-        case "materialized view", "materialized_view":
-            tableType = .materializedView
-        case "foreign table", "foreign_table":
-            tableType = .foreignTable
-        case "system table", "system base table", "system view":
-            tableType = .systemTable
-        case "external table", "external_table":
-            tableType = .externalTable
-        default:
+        if let mapped = Self.mapPluginTableType(table.type) {
+            tableType = mapped
+        } else {
             Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
             tableType = .table
         }
@@ -264,101 +279,52 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             type: tableType,
             rowCount: table.rowCount,
             schema: table.schema ?? schemaFallback,
-            comment: table.comment
+            comment: table.comment,
+            partitionCount: table.partitionCount
         )
     }
 
     func fetchColumns(table: String) async throws -> [ColumnInfo] {
         let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: pluginDriver.currentSchema)
-        return mapPluginColumns(pluginColumns)
+        return pluginColumns.map(ColumnInfo.init)
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let pluginColumns = try await pluginDriver.fetchColumns(table: table, schema: schema ?? pluginDriver.currentSchema)
-        return mapPluginColumns(pluginColumns)
-    }
-
-    private func mapPluginColumns(_ pluginColumns: [PluginColumnInfo]) -> [ColumnInfo] {
-        pluginColumns.map { col in
-            ColumnInfo(
-                name: col.name,
-                dataType: col.dataType,
-                isNullable: col.isNullable,
-                isPrimaryKey: col.isPrimaryKey,
-                defaultValue: col.defaultValue,
-                extra: col.extra,
-                charset: col.charset,
-                collation: col.collation,
-                comment: col.comment,
-                identityKind: col.identityKind,
-                isGenerated: col.isGenerated,
-                allowedValues: col.allowedValues,
-                generationExpression: col.generationExpression,
-                generationKind: col.generationKind
-            )
-        }
+        return pluginColumns.map(ColumnInfo.init)
     }
 
     func fetchIndexes(table: String) async throws -> [IndexInfo] {
-        let pluginIndexes = try await pluginDriver.fetchIndexes(table: table, schema: pluginDriver.currentSchema)
-        return pluginIndexes.map(Self.mapPluginIndex)
+        try await fetchIndexes(table: table, schema: nil)
     }
 
-    nonisolated private static func mapPluginIndex(_ index: PluginIndexInfo) -> IndexInfo {
-        IndexInfo(
-            name: index.name,
-            columns: index.columns,
-            isUnique: index.isUnique,
-            isPrimary: index.isPrimary,
-            type: index.type,
-            columnPrefixes: index.columnPrefixes,
-            whereClause: index.whereClause
+    func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
+        let pluginIndexes = try await pluginDriver.fetchIndexes(
+            table: table, schema: schema ?? pluginDriver.currentSchema
         )
-    }
-
-    nonisolated private static func mapPluginTableMetadata(_ metadata: PluginTableMetadata) -> TableMetadata {
-        TableMetadata(
-            tableName: metadata.tableName,
-            dataSize: metadata.dataSize,
-            indexSize: metadata.indexSize,
-            totalSize: metadata.totalSize,
-            avgRowLength: metadata.avgRowLength,
-            rowCount: metadata.rowCount,
-            comment: metadata.comment,
-            engine: metadata.engine,
-            collation: metadata.collation,
-            createTime: metadata.createTime,
-            updateTime: metadata.updateTime
-        )
+        return pluginIndexes.map(IndexInfo.init)
     }
 
     func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] {
-        let pluginFKs = try await pluginDriver.fetchForeignKeys(table: table, schema: pluginDriver.currentSchema)
-        return pluginFKs.map { fk in
-            ForeignKeyInfo(
-                name: fk.name,
-                column: fk.column,
-                referencedTable: fk.referencedTable,
-                referencedColumn: fk.referencedColumn,
-                referencedSchema: fk.referencedSchema,
-                onDelete: fk.onDelete,
-                onUpdate: fk.onUpdate
-            )
-        }
+        try await fetchForeignKeys(table: table, schema: nil)
+    }
+
+    func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
+        let pluginFKs = try await pluginDriver.fetchForeignKeys(
+            table: table, schema: schema ?? pluginDriver.currentSchema
+        )
+        return pluginFKs.map(ForeignKeyInfo.init)
     }
 
     func fetchCheckConstraints(table: String) async throws -> [CheckConstraintInfo] {
+        try await fetchCheckConstraints(table: table, schema: nil)
+    }
+
+    func fetchCheckConstraints(table: String, schema: String?) async throws -> [CheckConstraintInfo] {
         let pluginConstraints = try await pluginDriver.fetchCheckConstraints(
-            table: table, schema: pluginDriver.currentSchema
+            table: table, schema: schema ?? pluginDriver.currentSchema
         )
-        return pluginConstraints.map { constraint in
-            CheckConstraintInfo(
-                name: constraint.name,
-                expression: constraint.expression,
-                columns: constraint.columns,
-                isValidated: constraint.isValidated
-            )
-        }
+        return pluginConstraints.map(CheckConstraintInfo.init)
     }
 
     func fetchTriggers(table: String) async throws -> [TriggerInfo] {
@@ -398,7 +364,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     var unsupportedIndexTypes: Set<String> { pluginDriver.unsupportedIndexTypes }
 
     func fetchApproximateRowCount(table: String) async throws -> Int? {
-        try await pluginDriver.fetchApproximateRowCount(table: table, schema: pluginDriver.currentSchema)
+        try await fetchApproximateRowCount(table: table, schema: nil)
+    }
+
+    func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
+        try await pluginDriver.fetchApproximateRowCount(
+            table: table, schema: schema ?? pluginDriver.currentSchema
+        )
     }
 
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
@@ -425,15 +397,27 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTableDDL(table: String) async throws -> String {
-        try await pluginDriver.fetchTableDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchTableDDL(table: table, schema: nil)
+    }
+
+    func fetchTableDDL(table: String, schema: String?) async throws -> String {
+        try await pluginDriver.fetchTableDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchIndexDDL(table: String) async throws -> [String] {
-        try await pluginDriver.fetchIndexDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchIndexDDL(table: table, schema: nil)
+    }
+
+    func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
+        try await pluginDriver.fetchIndexDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchCommentDDL(table: String) async throws -> [String] {
-        try await pluginDriver.fetchCommentDDL(table: table, schema: pluginDriver.currentSchema)
+        try await fetchCommentDDL(table: table, schema: nil)
+    }
+
+    func fetchCommentDDL(table: String, schema: String?) async throws -> [String] {
+        try await pluginDriver.fetchCommentDDL(table: table, schema: schema ?? pluginDriver.currentSchema)
     }
 
     func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] {
@@ -453,7 +437,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             table: tableName,
             schema: pluginDriver.currentSchema
         )
-        return Self.mapPluginTableMetadata(pluginMeta)
+        return TableMetadata(pluginMeta)
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -484,11 +468,14 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.fetchRoutineDDL(routine.pluginRoutine)
     }
 
+    /// The resolved schema is stamped on any type that came back without one, the same backfill
+    /// `fetchRoutines` does above. A driver that leaves it nil produces types whose qualified name
+    /// is bare, which the sidebar then files under no schema at all.
     func fetchUserDefinedTypes(schema: String?) async throws -> [UserDefinedTypeInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         do {
             return try await pluginDriver.fetchUserDefinedTypes(schema: resolvedSchema)
-                .map(UserDefinedTypeInfo.init)
+                .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
                 .sorted { $0.name < $1.name }
         } catch {
             Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")
@@ -514,15 +501,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
         let pluginMeta = try await pluginDriver.fetchDatabaseMetadata(database)
-        return DatabaseMetadata(
-            id: pluginMeta.name,
-            name: pluginMeta.name,
-            tableCount: pluginMeta.tableCount,
-            sizeBytes: pluginMeta.sizeBytes,
-            lastAccessed: nil,
-            isSystemDatabase: pluginMeta.isSystemDatabase,
-            icon: pluginMeta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill"
-        )
+        return Self.databaseMetadata(pluginMeta, systemDatabaseNames: systemDatabaseNames)
     }
 
     func createDatabaseFormSpec() async throws -> CreateDatabaseFormSpec? {
@@ -555,6 +534,25 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.renameSchema(name: name, to: newName)
     }
 
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? {
+        pluginDriver.createSchemaStatements(definition)
+    }
+
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? {
+        pluginDriver.renameSchemaStatements(name: name, to: newName)
+    }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? {
+        pluginDriver.alterSchemaStatements(from: current, to: target)
+    }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? {
+        try await pluginDriver.fetchSchemaDetails(name: name)
+    }
+
     func fetchSessionContexts() async throws -> [PluginSessionContext]? {
         try await pluginDriver.fetchSessionContexts()
     }
@@ -571,36 +569,44 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {
         let pluginResult = try await pluginDriver.fetchAllColumns(schema: pluginDriver.currentSchema)
-        var result: [String: [ColumnInfo]] = [:]
-        for (table, cols) in pluginResult {
-            result[table] = mapPluginColumns(cols)
-        }
-        return result
+        return pluginResult.mapValues { $0.map(ColumnInfo.init) }
     }
 
     var providesBulkForeignKeyFetch: Bool { pluginDriver.providesBulkForeignKeyFetch }
 
     func fetchAllForeignKeys() async throws -> [String: [ForeignKeyInfo]] {
         let pluginResult = try await pluginDriver.fetchAllForeignKeys(schema: pluginDriver.currentSchema)
-        var result: [String: [ForeignKeyInfo]] = [:]
-        for (table, fks) in pluginResult {
-            result[table] = fks.map { fk in
-                ForeignKeyInfo(name: fk.name, column: fk.column, referencedTable: fk.referencedTable,
-                               referencedColumn: fk.referencedColumn, referencedSchema: fk.referencedSchema,
-                               onDelete: fk.onDelete, onUpdate: fk.onUpdate)
-            }
-        }
-        return result
+        return pluginResult.mapValues { $0.map(ForeignKeyInfo.init) }
     }
 
     func fetchAllDatabaseMetadata() async throws -> [DatabaseMetadata] {
         let pluginResult = try await pluginDriver.fetchAllDatabaseMetadata()
-        return pluginResult.map { meta in
-            DatabaseMetadata(id: meta.name, name: meta.name, tableCount: meta.tableCount,
-                             sizeBytes: meta.sizeBytes, lastAccessed: nil,
-                             isSystemDatabase: meta.isSystemDatabase,
-                             icon: meta.isSystemDatabase ? "gearshape.fill" : "cylinder.fill")
-        }
+        let systemNames = systemDatabaseNames
+        return pluginResult.map { Self.databaseMetadata($0, systemDatabaseNames: systemNames) }
+    }
+
+    /// The connection type's own list, added to whatever the driver reports. SQL Server and ClickHouse
+    /// never set the flag, and MySQL leaves it off for a database with no readable tables, so trusting
+    /// the flag alone listed `master` and `msdb` as user databases once the switcher's metadata landed,
+    /// while the sidebar, classifying by the same list as here, kept them apart.
+    private var systemDatabaseNames: Set<String> {
+        Set(PluginMetadataRegistry.shared.snapshot(for: connection.type)?.schema.systemDatabaseNames ?? [])
+    }
+
+    nonisolated static func databaseMetadata(
+        _ pluginMeta: PluginDatabaseMetadata,
+        systemDatabaseNames: Set<String>
+    ) -> DatabaseMetadata {
+        let isSystem = pluginMeta.isSystemDatabase || systemDatabaseNames.contains(pluginMeta.name)
+        return DatabaseMetadata(
+            id: pluginMeta.name,
+            name: pluginMeta.name,
+            tableCount: pluginMeta.tableCount,
+            sizeBytes: pluginMeta.sizeBytes,
+            lastAccessed: nil,
+            isSystemDatabase: isSystem,
+            icon: isSystem ? "gearshape.fill" : "cylinder.fill"
+        )
     }
 
     // MARK: - Query Cancellation
@@ -742,22 +748,63 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
 
     // MARK: - Table Operations
 
-    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String] {
+    /// Nil where the engine has no way to say it. The driver's own answer wins; the app builds the
+    /// statement only for an engine whose DDL it can actually write, per `SQLDDLFallbackPolicy`.
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
         if let stmts = pluginDriver.truncateTableStatements(table: table, schema: schema, cascade: cascade) {
             return stmts
         }
+        guard allowsGeneratedDDL else { return nil }
         let name = qualifiedName(table, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return ["TRUNCATE TABLE \(name)\(cascadeSuffix)"]
     }
 
-    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String {
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
         if let stmt = pluginDriver.dropObjectStatement(name: name, objectType: objectType, schema: schema, cascade: cascade) {
             return stmt
         }
+        guard allowsGeneratedDDL else { return nil }
         let qualName = qualifiedName(name, schema: schema)
         let cascadeSuffix = cascade ? " CASCADE" : ""
         return "DROP \(objectType) \(qualName)\(cascadeSuffix)"
+    }
+
+    private var allowsGeneratedDDL: Bool {
+        SQLDDLFallbackPolicy.allowsGeneratedDDL(for: connection.type)
+    }
+
+    /// Which of these objects this connection has a drop or truncate statement for.
+    ///
+    /// Resolved per object rather than per engine, because a plugin answers per object: Typesense
+    /// has a statement for a collection and none for anything else, and Elasticsearch has none for
+    /// an index name carrying a wildcard. Every menu that offers either operation asks this, so the
+    /// answer and the statement it leads to come from one place.
+    func tableOperationEligibility(
+        for refs: some Collection<DatabaseTreeTableRef>,
+        isReadOnly: Bool
+    ) -> TableOperationEligibility.Context {
+        guard !isReadOnly else { return .unavailable }
+        var droppable: Set<DatabaseTreeTableRef> = []
+        var truncatable: Set<DatabaseTreeTableRef> = []
+        for ref in refs {
+            if dropObjectStatement(
+                name: ref.table.name,
+                objectType: TableObjectKeyword.forDDL(ref.table.type),
+                schema: ref.qualifyingSchema,
+                cascade: false
+            ) != nil {
+                droppable.insert(ref)
+            }
+            if truncateTableStatements(
+                table: ref.table.name, schema: ref.qualifyingSchema, cascade: false
+            ) != nil {
+                truncatable.insert(ref)
+            }
+        }
+        return TableOperationEligibility.Context(
+            droppable: droppable, truncatable: truncatable, isReadOnly: false
+        )
     }
 
     func foreignKeyDisableStatements() -> [String]? {

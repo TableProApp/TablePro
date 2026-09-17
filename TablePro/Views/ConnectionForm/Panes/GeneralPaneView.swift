@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
 /// Everything about how the bytes get there belongs to `NetworkPaneView`, so a connection that
 /// needs no tunnel and no TLS never sees a control about either.
 struct GeneralPaneView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
     @FocusState private var nameFocused: Bool
 
     private var type: DatabaseType { coordinator.network.type }
@@ -192,33 +192,43 @@ struct GeneralPaneView: View {
         if connectionMode != .fileBased {
             let authFields = coordinator.auth.authFields.splitCredentialControllers()
             Section(String(localized: "Authentication")) {
-                ForEach(authFields.usernameControllers, id: \.id) { field in
-                    authFieldRow(field)
-                }
-                if connectionMode == .network && !coordinator.auth.hidesUsername {
-                    TextField(
-                        String(localized: "Username"),
-                        text: $coordinator.auth.username
-                    )
-                    .accessibilityIdentifier("connection-form-username")
-                }
-                ForEach(authFields.passwordControllers, id: \.id) { field in
-                    authFieldRow(field)
-                }
-                if !coordinator.auth.hidesPassword {
-                    PasswordPromptToggle(
-                        type: type,
-                        promptForPassword: $coordinator.auth.promptForPassword,
-                        password: $coordinator.auth.password,
-                        additionalFieldValues: $coordinator.auth.additionalFieldValues
-                    )
-                }
-                ForEach(authFields.rest, id: \.id) { field in
-                    authFieldRow(field)
-                }
-                kerberosCaption
-                if coordinator.auth.usePgpass {
-                    pgpassStatusView
+                /// Shown for API-only engines too. Their credentials are plugin secure fields,
+                /// which a profile carries, and hiding the picker left a connection changed from a
+                /// network type to an API-only one stuck in a profile with no control to leave it.
+                CredentialProfilePicker(auth: coordinator.auth)
+                if coordinator.auth.usesCredentialProfile {
+                    ForEach(authFields.rest, id: \.id) { field in
+                        authFieldRow(field)
+                    }
+                } else {
+                    ForEach(authFields.usernameControllers, id: \.id) { field in
+                        authFieldRow(field)
+                    }
+                    if connectionMode == .network && !coordinator.auth.hidesUsername {
+                        TextField(
+                            String(localized: "Username"),
+                            text: $coordinator.auth.username
+                        )
+                        .accessibilityIdentifier("connection-form-username")
+                    }
+                    ForEach(authFields.passwordControllers, id: \.id) { field in
+                        authFieldRow(field)
+                    }
+                    if !coordinator.auth.hidesPassword {
+                        PasswordPromptToggle(
+                            type: type,
+                            promptForPassword: $coordinator.auth.promptForPassword,
+                            password: $coordinator.auth.password,
+                            additionalFieldValues: $coordinator.auth.additionalFieldValues
+                        )
+                    }
+                    ForEach(authFields.rest, id: \.id) { field in
+                        authFieldRow(field)
+                    }
+                    kerberosCaption
+                    if coordinator.auth.usePgpass {
+                        pgpassStatusView
+                    }
                 }
             }
         }

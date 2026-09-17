@@ -66,6 +66,14 @@ extension MainSplitViewController {
         commandActions?.saveAsFavorite()
     }
 
+    @objc func clearQuery(_ sender: Any?) {
+        commandActions?.clearQuery()
+    }
+
+    @objc func clearResults(_ sender: Any?) {
+        commandActions?.clearResults()
+    }
+
     @objc func previewFKReference(_ sender: Any?) {
         commandActions?.previewFKReference()
     }

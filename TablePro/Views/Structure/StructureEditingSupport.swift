@@ -61,9 +61,14 @@ enum StructureEditingSupport {
         switch colIndex {
         case 0: index.name = value
         case 1:
+            let previousExpressions = Set(index.expressions)
             var prefixes: [String: Int] = [:]
-            index.columns = value.split(separator: ",").map { part in
-                let trimmed = part.trimmingCharacters(in: .whitespaces)
+            var expressions: [String] = []
+            index.columns = indexKeyParts(value, expressions: index.expressions).map { trimmed in
+                if previousExpressions.contains(trimmed) {
+                    expressions.append(trimmed)
+                    return trimmed
+                }
                 if let parenStart = trimmed.firstIndex(of: "("),
                    let parenEnd = trimmed.firstIndex(of: ")"),
                    let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
@@ -74,14 +79,55 @@ enum StructureEditingSupport {
                 return trimmed
             }
             index.columnPrefixes = prefixes
+            index.expressions = expressions
         case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
+            let indexType = EditableIndexDefinition.IndexType(rawValue: value)
+            if EditableIndexDefinition.IndexType.knownTypes.contains(indexType) {
                 index.type = indexType
             }
         case 3: index.isUnique = parseBool(value)
         case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
         }
+    }
+
+    /// The entries of an index's Columns cell, split at the commas that separate key parts.
+    ///
+    /// The cell lists column names as they are, unquoted, beside expressions as the server writes
+    /// them, so no single reading of quotes and parentheses fits both: the column `owner's_id` opens a
+    /// quote that never closes, and `coalesce(a, b)` holds a comma that separates nothing. An
+    /// expression can only have come from the index being edited, so each of `expressions` is taken
+    /// whole where an entry starts with it, and the rest of the cell is split at every comma, the way
+    /// a list of column names always was. An expression edited by hand is therefore read as column
+    /// names, which the column check then names.
+    static func indexKeyParts(_ value: String, expressions: [String]) -> [String] {
+        let longestFirst = expressions.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+        var parts: [String] = []
+        var remaining = value[...]
+        while !remaining.isEmpty {
+            remaining = remaining.drop(while: isBlank)
+            if let expression = longestFirst.first(where: { entry(in: remaining, isWhole: $0) }) {
+                parts.append(expression)
+                remaining = remaining.dropFirst(expression.count).drop(while: isBlank).dropFirst()
+                continue
+            }
+            let entryEnd = remaining.firstIndex(of: ",") ?? remaining.endIndex
+            parts.append(remaining[..<entryEnd].trimmingCharacters(in: .whitespaces))
+            remaining = entryEnd == remaining.endIndex
+                ? remaining[entryEnd...]
+                : remaining[remaining.index(after: entryEnd)...]
+        }
+        return parts.filter { !$0.isEmpty }
+    }
+
+    nonisolated private static func entry(in text: Substring, isWhole expression: String) -> Bool {
+        guard text.hasPrefix(expression) else { return false }
+        let rest = text.dropFirst(expression.count).drop(while: isBlank)
+        return rest.isEmpty || rest.first == ","
+    }
+
+    nonisolated private static func isBlank(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { CharacterSet.whitespaces.contains($0) }
     }
 
     static func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {

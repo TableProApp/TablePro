@@ -15,16 +15,32 @@ struct CellPosition: Hashable {
     let column: Int
 }
 
+enum DataGridChangeVocabulary: Equatable {
+    case pendingEdit
+    case comparison
+}
+
 struct RowVisualState: Equatable {
     let isDeleted: Bool
     let isInserted: Bool
     let modifiedColumns: Set<Int>
+    let struckColumns: Set<Int>
+    let vocabulary: DataGridChangeVocabulary
     let highlight: RowHighlight
 
-    init(isDeleted: Bool, isInserted: Bool, modifiedColumns: Set<Int>, highlight: RowHighlight = .none) {
+    init(
+        isDeleted: Bool,
+        isInserted: Bool,
+        modifiedColumns: Set<Int>,
+        struckColumns: Set<Int> = [],
+        vocabulary: DataGridChangeVocabulary = .pendingEdit,
+        highlight: RowHighlight = .none
+    ) {
         self.isDeleted = isDeleted
         self.isInserted = isInserted
         self.modifiedColumns = modifiedColumns
+        self.struckColumns = struckColumns
+        self.vocabulary = vocabulary
         self.highlight = highlight
     }
 
@@ -32,11 +48,17 @@ struct RowVisualState: Equatable {
         modifiedColumns.contains(columnIndex)
     }
 
+    func isStruck(columnIndex: Int) -> Bool {
+        struckColumns.contains(columnIndex)
+    }
+
     func highlighted(_ highlight: RowHighlight) -> RowVisualState {
         RowVisualState(
             isDeleted: isDeleted,
             isInserted: isInserted,
             modifiedColumns: modifiedColumns,
+            struckColumns: struckColumns,
+            vocabulary: vocabulary,
             highlight: highlight
         )
     }
@@ -48,8 +70,8 @@ extension RowVisualState {
     /// The wash a row in this state carries, read by the row and by the pinned row gutter over it so
     /// the two cannot disagree.
     @MainActor var tint: NSColor? {
-        if isDeleted { return ThemeEngine.shared.palette[.gridDeleted] }
-        if isInserted { return ThemeEngine.shared.palette[.gridInserted] }
+        if isDeleted { return ThemeEngine.shared.colors.dataGrid.deleted }
+        if isInserted { return ThemeEngine.shared.colors.dataGrid.inserted }
         return highlight.rowColor?.washColor
     }
 
@@ -107,6 +129,7 @@ struct DataGridView: NSViewRepresentable {
     var restoredCellSelection: GridSelection?
     /// Handed this grid's selection on the way out, for the owner to keep until the next mount.
     var onSelectionTeardown: (@MainActor (Set<Int>, GridSelection) -> Void)?
+    var viewportPlacementProvider: (@MainActor () -> GridViewportPlacement?)?
     var contentRevision: Int = 0
 
     // MARK: - NSViewRepresentable
@@ -300,6 +323,9 @@ struct DataGridView: NSViewRepresentable {
         syncSortState(tableView: tableView, coordinator: coordinator)
         restoreSelection(tableView: tableView, coordinator: coordinator)
         syncSelection(tableView: tableView, coordinator: coordinator)
+        if let placement = viewportPlacementProvider?() {
+            coordinator.applyViewportPlacement(placement)
+        }
         coordinator.schedulePendingColumnJump(contentReplaced: contentReplaced)
     }
 
@@ -315,6 +341,8 @@ struct DataGridView: NSViewRepresentable {
         contentChanged: Bool,
         columnComments: [String: String]
     ) {
+        let rowsKeptAcrossReload = contentChanged ? [] : coordinator.selectedRowIDs()
+
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier == ColumnIdentitySchema.rowNumberIdentifier }) {
             let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
@@ -420,6 +448,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.selectionController.clear()
             tableView.reloadData()
             coordinator.restoreScrollAnchor()
+            coordinator.reselectRows(rowsKeptAcrossReload)
             coordinator.startBackgroundPrewarm()
         } else if displayFormatsChanged {
             coordinator.reloadAfterDisplayFormatChange()
@@ -514,6 +543,7 @@ struct DataGridView: NSViewRepresentable {
             isEditable: isEditable,
             hiddenColumnNames: configuration.hiddenColumns,
             firstClickSortDirection: coordinator.firstClickSortDirection,
+            supportsValueFilter: configuration.supportsColumnCommands,
             widthCalculator: { columnName, slot in
                 coordinator.automaticColumnWidth(
                     for: columnName,
@@ -637,6 +667,9 @@ struct DataGridView: NSViewRepresentable {
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: TableViewCoordinator) {
         coordinator.overlayEditor?.dismiss(commit: true)
+        /// The detached editor commits through this coordinator, and a mount is built fresh per tab
+        /// switch and per results-mode toggle, so a window left open past one writes nothing.
+        coordinator.dismissPoppedOutCellEditor()
         coordinator.recordScrollAnchor()
         coordinator.captureSelectionForTeardown()
         coordinator.flushPendingColumnLayoutPersistence()

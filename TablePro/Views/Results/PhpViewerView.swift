@@ -31,6 +31,7 @@ internal enum PhpParseResult: Equatable {
 
 @MainActor
 internal struct PhpViewerView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let rawValue: String
     var onDismiss: (() -> Void)?
     var onPopOut: ((String) -> Void)?
@@ -128,7 +129,7 @@ internal struct PhpViewerView: View {
     private var rawBody: some View {
         ScrollView {
             Text(rawValue)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -136,7 +137,7 @@ internal struct PhpViewerView: View {
     }
 
     private func errorPlaceholder(title: String, detail: String, systemImage: String) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(title, systemImage: systemImage)
         } description: {
             Text(detail)

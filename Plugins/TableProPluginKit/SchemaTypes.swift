@@ -33,6 +33,17 @@ public struct PluginColumnDefinition: Sendable {
     public let collation: String?
     public let generationExpression: String?
     public let generationKind: GenerationKind?
+    /// The server's own spelling of `dataType` for a `CREATE TABLE`, or nil to write `dataType`.
+    /// `PluginColumnInfo.ddlSpelling` says why the two differ.
+    public let ddlSpelling: String?
+    /// The server's own spelling of `defaultValue` for a `CREATE TABLE`, or nil to write `defaultValue`.
+    public let ddlDefault: String?
+    /// The server's own spelling of `generationExpression` for a `CREATE TABLE`, or nil to write
+    /// `generationExpression`.
+    public let ddlGenerationExpression: String?
+    /// What follows `COLLATE` in a `CREATE TABLE`, or nil to write no `COLLATE` clause.
+    /// `PluginColumnInfo.ddlCollation` says why it is not `collation`.
+    public let ddlCollation: String?
 
     /// The signature published before generated-column detail existed. Kept byte-identical and
     /// disfavoured so already-built plugins keep resolving their own mangled symbol.
@@ -63,8 +74,15 @@ public struct PluginColumnDefinition: Sendable {
         self.collation = collation
         self.generationExpression = nil
         self.generationKind = nil
+        self.ddlSpelling = nil
+        self.ddlDefault = nil
+        self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
     }
 
+    /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
+    /// for the same reason as the one above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -93,6 +111,88 @@ public struct PluginColumnDefinition: Sendable {
         self.collation = collation
         self.generationExpression = generationExpression
         self.generationKind = generationKind
+        self.ddlSpelling = nil
+        self.ddlDefault = nil
+        self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
+    }
+
+    /// The signature published before `ddlCollation` existed, kept byte-identical and disfavoured for
+    /// the same reason as the ones above.
+    @_disfavoredOverload
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        defaultValue: String? = nil,
+        isPrimaryKey: Bool = false,
+        autoIncrement: Bool = false,
+        comment: String? = nil,
+        unsigned: Bool = false,
+        onUpdate: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.defaultValue = defaultValue
+        self.isPrimaryKey = isPrimaryKey
+        self.autoIncrement = autoIncrement
+        self.comment = comment
+        self.unsigned = unsigned
+        self.onUpdate = onUpdate
+        self.charset = charset
+        self.collation = collation
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        defaultValue: String? = nil,
+        isPrimaryKey: Bool = false,
+        autoIncrement: Bool = false,
+        comment: String? = nil,
+        unsigned: Bool = false,
+        onUpdate: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?,
+        ddlCollation: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.defaultValue = defaultValue
+        self.isPrimaryKey = isPrimaryKey
+        self.autoIncrement = autoIncrement
+        self.comment = comment
+        self.unsigned = unsigned
+        self.onUpdate = onUpdate
+        self.charset = charset
+        self.collation = collation
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 
     public var isGenerated: Bool { generationExpression?.isEmpty == false }
@@ -117,7 +217,22 @@ public struct PluginIndexDefinition: Sendable {
     public let indexType: String?
     public let columnPrefixes: [String: Int]?
     public let whereClause: String?
+    /// The entries of `columns` that are expressions rather than column names. See
+    /// `PluginIndexInfo.expressions`.
+    public let expressions: [String]?
+    /// The columns stored beside the key, written as `INCLUDE`. See `PluginIndexInfo.includedColumns`.
+    public let includedColumns: [String]?
+    /// Everything between the table and the `WHERE` clause, as the source server spelled it. A writer
+    /// that has it emits it verbatim instead of rebuilding the method and key list from the fields.
+    /// See `PluginIndexInfo.ddlMethodAndKeys`.
+    public let ddlMethodAndKeys: String?
+    /// `whereClause` as a `CREATE INDEX` on another schema has to write it, or nil to write
+    /// `whereClause`.
+    public let ddlWhereClause: String?
 
+    /// The signature published before key expressions, `INCLUDE` columns and the DDL spellings
+    /// existed, kept byte-identical and disfavoured for the same reason as `PluginIndexInfo`'s.
+    @_disfavoredOverload
     public init(
         name: String,
         columns: [String],
@@ -132,6 +247,34 @@ public struct PluginIndexDefinition: Sendable {
         self.indexType = indexType
         self.columnPrefixes = columnPrefixes
         self.whereClause = whereClause
+        self.expressions = nil
+        self.includedColumns = nil
+        self.ddlMethodAndKeys = nil
+        self.ddlWhereClause = nil
+    }
+
+    public init(
+        name: String,
+        columns: [String],
+        isUnique: Bool = false,
+        indexType: String? = nil,
+        columnPrefixes: [String: Int]? = nil,
+        whereClause: String? = nil,
+        expressions: [String]?,
+        includedColumns: [String]?,
+        ddlMethodAndKeys: String?,
+        ddlWhereClause: String?
+    ) {
+        self.name = name
+        self.columns = columns
+        self.isUnique = isUnique
+        self.indexType = indexType
+        self.columnPrefixes = columnPrefixes
+        self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
     }
 }
 

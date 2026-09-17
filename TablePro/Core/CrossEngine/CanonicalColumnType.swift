@@ -25,6 +25,9 @@ internal enum CanonicalTypeKind: Hashable, Sendable {
     /// Width in bytes, which is what decides the target spelling: 1 is a MySQL `TINYINT` and a
     /// PostgreSQL `SMALLINT`, and no engine has a type for every width.
     case integer(bytes: Int)
+    /// A nil precision is a decimal with no declared limit, which is what PostgreSQL's `numeric`
+    /// without a modifier is: it holds 131,072 digits before the point. A family whose omitted
+    /// precision means a fixed default reads that default instead, so nil never stands for both.
     case decimal(precision: Int?, scale: Int?)
     case floatingPoint(bits: Int)
     case text(length: Int?, isFixed: Bool)
@@ -44,6 +47,17 @@ internal enum CanonicalTypeKind: Hashable, Sendable {
     case spatial
     indirect case array(element: CanonicalTypeKind)
     case unsupported
+}
+
+internal extension CanonicalTypeKind {
+    /// Whether the reading named nothing, looking through an array to its element.
+    var isUnsupported: Bool {
+        switch self {
+        case .unsupported: return true
+        case .array(let element): return element.isUnsupported
+        default: return false
+        }
+    }
 }
 
 internal struct CanonicalColumnType: Hashable, Sendable {

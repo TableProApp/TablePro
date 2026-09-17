@@ -93,6 +93,6 @@ struct ConnectionTransportActivityTests {
     func everyKindDeclaresMeasurability() {
         let measured = ConnectionTunnelKind.allCases.filter(\.carriesMeasuredBytes)
 
-        #expect(Set(measured) == Set([.ssh, .socksProxy]))
+        #expect(Set(measured) == Set([.ssh, .socksProxy, .remoteDatabaseSession]))
     }
 }

@@ -398,14 +398,24 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Table Operations
 
+    /// `FLUSHDB` empties whichever database the session is on and names none of its own, so it is
+    /// only the right statement for the row the session already points at. The rows here are the
+    /// server's databases, and the connection does not switch between them
+    /// (`supportsDatabaseSwitching` is false), so a `FLUSHDB` staged from another row emptied the
+    /// current database and reported success. Refusing it is what `DatabaseManager.pin` already
+    /// does for a tab on a database the session cannot reach.
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        ["FLUSHDB"]
+        guard let conn = redisConnection else { return nil }
+        guard conn.supportsDatabaseSelection else {
+            return table == Self.clusterDatabaseName ? ["FLUSHDB"] : nil
+        }
+        guard let index = RedisDatabaseIndex.parse(table), index == conn.currentDatabase() else { return nil }
+        return ["FLUSHDB"]
     }
 
+    /// Redis databases are pre-allocated, so there is nothing to drop and no statement to write.
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        // Redis databases are pre-allocated and cannot be dropped.
-        // Return empty string to prevent adapter from synthesizing SQL DROP.
-        ""
+        nil
     }
 
     // MARK: - EXPLAIN

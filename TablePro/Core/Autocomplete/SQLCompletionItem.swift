@@ -36,17 +36,16 @@ enum SQLCompletionKind: String, CaseIterable {
     }
 
     /// Color for the icon
-    @MainActor
     var iconColor: NSColor {
         switch self {
-        case .keyword: return ThemeEngine.shared.palette[.syntaxKeyword]
-        case .table: return ThemeEngine.shared.palette[.syntaxType]
-        case .view: return ThemeEngine.shared.palette[.syntaxType]
-        case .column: return ThemeEngine.shared.palette[.syntaxNull]
-        case .function: return ThemeEngine.shared.palette[.syntaxFunction]
-        case .schema: return ThemeEngine.shared.palette[.syntaxType]
-        case .alias: return ThemeEngine.shared.palette[.syntaxNull]
-        case .operator: return ThemeEngine.shared.palette[.syntaxOperator]
+        case .keyword: return .systemBlue
+        case .table: return .systemTeal
+        case .view: return .systemPurple
+        case .column: return .systemOrange
+        case .function: return .systemPink
+        case .schema: return .systemGreen
+        case .alias: return .systemGray
+        case .operator: return .systemIndigo
         case .favorite: return .systemYellow
         }
     }
@@ -77,6 +76,11 @@ struct SQLCompletionItem: Identifiable, Hashable {
     let documentation: String?  // Tooltip/description
     var sortPriority: Int       // For ranking (lower = higher priority)
     let filterText: String      // Text used for matching
+    /// Whether `label` and `insertText` may follow the typed prefix. Defaults to `.fixed`, so a
+    /// vocabulary opts in rather than having to remember to opt out: the kinds carry more than
+    /// language keywords, including value literals and `table.*`, and re-casing those is a
+    /// correctness bug rather than a style choice.
+    let caseFolding: SQLCompletionCaseFolding
     var matchedRanges: [Range<Int>] = []
     var fuzzyPenalty: Int = 0
 
@@ -87,7 +91,8 @@ struct SQLCompletionItem: Identifiable, Hashable {
         detail: String? = nil,
         documentation: String? = nil,
         sortPriority: Int? = nil,
-        filterText: String? = nil
+        filterText: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .fixed
     ) {
         self.id = UUID()
         self.label = label
@@ -97,6 +102,27 @@ struct SQLCompletionItem: Identifiable, Hashable {
         self.documentation = documentation
         self.sortPriority = sortPriority ?? kind.basePriority
         self.filterText = filterText ?? label.lowercased()
+        self.caseFolding = caseFolding
+    }
+
+    private init(recasing item: SQLCompletionItem, label: String, insertText: String) {
+        self.id = item.id
+        self.label = label
+        self.kind = item.kind
+        self.insertText = insertText
+        self.detail = item.detail
+        self.documentation = item.documentation
+        self.sortPriority = item.sortPriority
+        self.filterText = item.filterText
+        self.caseFolding = item.caseFolding
+        self.matchedRanges = item.matchedRanges
+        self.fuzzyPenalty = item.fuzzyPenalty
+    }
+
+    /// The same suggestion, spelled differently. `filterText` and `matchedRanges` are carried over
+    /// untouched because they describe the canonical lowercase form the matcher works in.
+    func recased(label: String, insertText: String) -> SQLCompletionItem {
+        SQLCompletionItem(recasing: self, label: label, insertText: insertText)
     }
 
     // MARK: - Hashable
@@ -191,14 +217,24 @@ extension SQLCompletionItem {
         "ON DUPLICATE KEY UPDATE": "Handle duplicate key on insert (MySQL)",
     ]
 
-    /// Create a keyword completion item
-    static func keyword(_ keyword: String, documentation: String? = nil) -> SQLCompletionItem {
+    /// Create a keyword completion item.
+    ///
+    /// The canonical spelling is whatever the caller passes, which every SQL caller writes in
+    /// uppercase. It is no longer uppercased here, because the case a keyword is presented and
+    /// inserted in belongs to `SQLCompletionCasing` and the typed prefix, neither of which exists
+    /// at construction.
+    static func keyword(
+        _ keyword: String,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
         let doc = documentation ?? keywordDocs[keyword.uppercased()]
         return SQLCompletionItem(
-            label: keyword.uppercased(),
+            label: keyword,
             kind: .keyword,
-            insertText: keyword.uppercased(),
-            documentation: doc
+            insertText: keyword,
+            documentation: doc,
+            caseFolding: caseFolding
         )
     }
 
@@ -265,24 +301,35 @@ extension SQLCompletionItem {
     }
 
     /// Create a function completion item
-    static func function(_ name: String, signature: String? = nil, documentation: String? = nil) -> SQLCompletionItem {
+    static func function(
+        _ name: String,
+        signature: String? = nil,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
         let insertText = signature != nil ? "\(name)()" : name
         return SQLCompletionItem(
             label: name,
             kind: .function,
             insertText: insertText,
             detail: signature,
-            documentation: documentation
+            documentation: documentation,
+            caseFolding: caseFolding
         )
     }
 
     /// Create an operator completion item
-    static func `operator`(_ op: String, documentation: String? = nil) -> SQLCompletionItem {
+    static func `operator`(
+        _ op: String,
+        documentation: String? = nil,
+        caseFolding: SQLCompletionCaseFolding = .caseInsensitive
+    ) -> SQLCompletionItem {
         SQLCompletionItem(
             label: op,
             kind: .operator,
             insertText: op,
-            documentation: documentation
+            documentation: documentation,
+            caseFolding: caseFolding
         )
     }
 

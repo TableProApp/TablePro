@@ -56,11 +56,42 @@ final class MetadataConnectionPool {
         }
     }
 
+    typealias DriverOpener = @MainActor (DatabaseScope) async throws -> DatabaseDriver
+
+    /// Why an open still in progress was taken away from the callers waiting on it.
+    private enum Withdrawal {
+        /// The transport it was dialing is being rebuilt, so its callers take a connection again
+        /// once the replacement is in place.
+        case transportReplaced
+        /// What it was opened for is going away, so nothing may open it again.
+        case closed
+    }
+
+    /// One open in progress, shared by every caller that asks for its key while it runs.
+    @MainActor
+    private final class PendingOpen {
+        let task: Task<Void, Error>
+        var withdrawal: Withdrawal?
+
+        init(task: Task<Void, Error>) {
+            self.task = task
+        }
+    }
+
+    private struct TransportWaiter {
+        let ticket: UUID
+        let scope: DatabaseScope
+        let continuation: CheckedContinuation<Void, Error>
+    }
+
     private var entries: [Key: Entry] = [:]
-    private var pending: [Key: Task<Void, Error>] = [:]
+    private var pending: [Key: PendingOpen] = [:]
+    private var transportReplacements: [UUID: Int] = [:]
+    private var transportWaiters: [UUID: [TransportWaiter]] = [:]
+    private let openDriver: DriverOpener
     private let maxPerConnection = 6
-    private let operationTimeoutSeconds: Double = 15
-    private let preparationTimeoutSeconds: Double = 60
+    private static let operationTimeoutSeconds: Double = 15
+    private static let preparationTimeoutSeconds: Double = 60
     private var sweeper: Task<Void, Never>?
 
     /// How long a pooled connection may sit unused before it is handed back.
@@ -80,7 +111,11 @@ final class MetadataConnectionPool {
     /// day waking up.
     private static let sweepInterval: Duration = .seconds(60)
 
-    private init() {}
+    private init(openDriver: DriverOpener? = nil) {
+        self.openDriver = openDriver ?? { scope in
+            try await MetadataConnectionPool.openSessionDriver(for: scope)
+        }
+    }
 
     func withDriver<T: Sendable>(
         scope: DatabaseScope,
@@ -98,27 +133,41 @@ final class MetadataConnectionPool {
     /// needs: PostgreSQL refuses `ALTER DATABASE ... RENAME` while any backend is connected to it,
     /// and an expanded row or a tab that ran a query there leaves one here.
     func closeAll(connectionId: UUID, database: String) {
-        for key in pending.keys
-        where key.scope.connectionId == connectionId && key.scope.database == database {
-            pending[key]?.cancel()
-            pending.removeValue(forKey: key)
+        closeEntries(withdrawingOpensAs: .closed) { scope in
+            scope.connectionId == connectionId && scope.database == database
         }
-        for key in entries.keys
-        where key.scope.connectionId == connectionId && key.scope.database == database {
-            closeOrDeferEntry(forKey: key)
-        }
-        stopSweeperIfEmpty()
     }
 
     func closeAll(connectionId: UUID) {
-        for key in pending.keys where key.scope.connectionId == connectionId {
-            pending[key]?.cancel()
-            pending.removeValue(forKey: key)
+        closeEntries(withdrawingOpensAs: .closed) { $0.connectionId == connectionId }
+    }
+
+    /// Holds a connection's pooled work while its transport is rebuilt.
+    ///
+    /// A pooled entry stands on the session's effective connection plus its own database, so it only
+    /// has to go when that endpoint does: a tunnel rebuilt on a new local port, or a reconnect
+    /// recovering a connection that stopped answering. An open already dialing is withdrawn, and once
+    /// it has returned the callers waiting on it take a connection again after `endTransportReplacement`
+    /// rather than failing a load nobody cancelled. A new caller waits for the same moment instead of
+    /// dialing an endpoint about to close. Replacements nest, and pooled work resumes when the last one
+    /// ends. Closing the connection, or one of its databases, fails the callers waiting for it.
+    func beginTransportReplacement(connectionId: UUID) {
+        transportReplacements[connectionId, default: 0] += 1
+        closeEntries(withdrawingOpensAs: .transportReplaced) { $0.connectionId == connectionId }
+    }
+
+    /// Has to follow every `beginTransportReplacement` on every exit, cancellation included, or the
+    /// connection's pooled work waits for good.
+    func endTransportReplacement(connectionId: UUID) {
+        guard let depth = transportReplacements[connectionId] else { return }
+        guard depth == 1 else {
+            transportReplacements[connectionId] = depth - 1
+            return
         }
-        for key in entries.keys where key.scope.connectionId == connectionId {
-            closeOrDeferEntry(forKey: key)
+        transportReplacements.removeValue(forKey: connectionId)
+        for waiter in transportWaiters.removeValue(forKey: connectionId) ?? [] {
+            waiter.continuation.resume()
         }
-        stopSweeperIfEmpty()
     }
 
     #if DEBUG
@@ -154,9 +203,20 @@ final class MetadataConnectionPool {
     }
 
     /// A pool of its own, so a test that moves the clock or empties the pool cannot close the
-    /// entries another test injected into the shared one.
-    internal static func isolatedForTesting() -> MetadataConnectionPool {
-        MetadataConnectionPool()
+    /// entries another test injected into the shared one. `openDriver` stands in for opening a real
+    /// connection, which a test with no plugin cannot do.
+    internal static func isolatedForTesting(openDriver: DriverOpener? = nil) -> MetadataConnectionPool {
+        MetadataConnectionPool(openDriver: openDriver)
+    }
+
+    /// How many callers are waiting for a transport replacement to end, so a test can wait for one
+    /// to park instead of guessing how many scheduler turns that takes.
+    internal func transportWaiterCount(for connectionId: UUID) -> Int {
+        transportWaiters[connectionId]?.count ?? 0
+    }
+
+    internal func isReplacingTransport(for connectionId: UUID) -> Bool {
+        transportReplacements[connectionId] != nil
     }
     #endif
 
@@ -176,35 +236,83 @@ final class MetadataConnectionPool {
         }
     }
 
-    private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
-        let connectionId = scope.connectionId
-        let key = Key(scope: scope, workload: workload)
-        /// A cached entry is only worth reusing while it is both connected and recent. The
-        /// staleness half matters even with the sweeper running, because a Mac that slept comes
-        /// back with entries the sweeper never got to and sockets the server has long since
-        /// closed. The old entry is closed rather than left behind: overwriting `entries[key]`
-        /// with a fresh one used to leak the driver it replaced.
-        if let entry = entries[key] {
-            if entry.driver.status == .connected, !entry.driver.hasLostConnection, !Self.isStale(entry.lastUsed) {
-                return entry
-            }
+    private func closeEntries(
+        withdrawingOpensAs withdrawal: Withdrawal,
+        where matches: (DatabaseScope) -> Bool
+    ) {
+        for key in pending.keys where matches(key.scope) {
+            guard let open = pending.removeValue(forKey: key) else { continue }
+            open.withdrawal = withdrawal
+            open.task.cancel()
+        }
+        if withdrawal == .closed {
+            failTransportWaiters(where: matches)
+        }
+        for key in entries.keys where matches(key.scope) {
             closeOrDeferEntry(forKey: key)
         }
+        stopSweeperIfEmpty()
+    }
 
-        if let inFlight = pending[key] {
-            try await inFlight.value
+    /// A caller parked for a replacement is waiting on its connection as much as one waiting on a
+    /// pending open, so closing what it waits for fails it too. Left parked, it would wake when the
+    /// replacement ends and open a connection for a session, or a database, that has gone.
+    private func failTransportWaiters(where matches: (DatabaseScope) -> Bool) {
+        for (connectionId, waiters) in transportWaiters {
+            let failing = waiters.filter { matches($0.scope) }
+            guard !failing.isEmpty else { continue }
+            let remaining = waiters.filter { !matches($0.scope) }
+            transportWaiters[connectionId] = remaining.isEmpty ? nil : remaining
+            for waiter in failing {
+                waiter.continuation.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    private func acquireEntry(scope: DatabaseScope, workload: Workload) async throws -> Entry {
+        let key = Key(scope: scope, workload: workload)
+        while true {
+            try await waitForTransport(for: scope)
+            if let entry = reusableEntry(forKey: key) {
+                return entry
+            }
+            let open = try pending[key] ?? startOpen(forKey: key)
+            let failure = await completion(of: open, forKey: key)
+            /// A withdrawn open can end either way: a driver whose connect honours cancellation
+            /// throws, and one that finished first returns without keeping its entry.
+            if open.withdrawal == .transportReplaced {
+                try Task.checkCancellation()
+                continue
+            }
+            if let failure {
+                throw failure
+            }
             guard let entry = entries[key] else { throw DatabaseError.notConnected }
             return entry
         }
+    }
 
-        guard DatabaseManager.shared.session(for: connectionId) != nil else {
+    /// A cached entry is only worth reusing while it is both connected and recent. The
+    /// staleness half matters even with the sweeper running, because a Mac that slept comes
+    /// back with entries the sweeper never got to and sockets the server has long since
+    /// closed. The old entry is closed rather than left behind: overwriting `entries[key]`
+    /// with a fresh one used to leak the driver it replaced.
+    private func reusableEntry(forKey key: Key) -> Entry? {
+        guard let entry = entries[key] else { return nil }
+        if entry.driver.status == .connected, !entry.driver.hasLostConnection, !Self.isStale(entry.lastUsed) {
+            return entry
+        }
+        closeOrDeferEntry(forKey: key)
+        return nil
+    }
+
+    private func startOpen(forKey key: Key) throws -> PendingOpen {
+        guard DatabaseManager.shared.session(for: key.scope.connectionId) != nil else {
             throw DatabaseError.notConnected
         }
-
-        evictIdleIfNeeded(for: connectionId)
-
+        evictIdleIfNeeded(for: key.scope.connectionId)
         let task = Task<Void, Error> { [self] in
-            let entry = try await openEntry(key: key)
+            let entry = Entry(driver: try await openDriver(key.scope))
             if Task.isCancelled {
                 entry.driver.disconnect()
                 return
@@ -212,23 +320,81 @@ final class MetadataConnectionPool {
             entries[key] = entry
             startSweeperIfNeeded()
         }
-        pending[key] = task
-        defer { if pending[key] == task { pending.removeValue(forKey: key) } }
-        try await task.value
-
-        guard let entry = entries[key] else { throw DatabaseError.notConnected }
-        return entry
+        let open = PendingOpen(task: task)
+        pending[key] = open
+        return open
     }
 
-    private func openEntry(key: Key) async throws -> Entry {
-        guard let session = DatabaseManager.shared.session(for: key.scope.connectionId) else {
+    /// Waits for an open to finish, takes it off the pending list if nothing replaced it there, and
+    /// returns how it failed.
+    private func completion(of open: PendingOpen, forKey key: Key) async -> Error? {
+        defer {
+            if pending[key] === open {
+                pending.removeValue(forKey: key)
+            }
+        }
+        do {
+            try await open.task.value
+            return nil
+        } catch {
+            return error
+        }
+    }
+
+    /// Parks a caller for as long as the connection's transport is being replaced. A caller that is
+    /// cancelled while parked stops waiting at once rather than when the replacement ends.
+    private func waitForTransport(for scope: DatabaseScope) async throws {
+        let connectionId = scope.connectionId
+        while transportReplacements[connectionId] != nil {
+            let ticket = UUID()
+            try await withTaskCancellationHandler(
+                operation: { try await parkForTransport(ticket: ticket, scope: scope) },
+                onCancel: { [weak self] in
+                    Task { @MainActor in
+                        self?.failTransportWaiter(ticket: ticket, connectionId: connectionId)
+                    }
+                }
+            )
+        }
+    }
+
+    private func parkForTransport(ticket: UUID, scope: DatabaseScope) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            guard !Task.isCancelled else {
+                continuation.resume(throwing: CancellationError())
+                return
+            }
+            transportWaiters[scope.connectionId, default: []].append(
+                TransportWaiter(ticket: ticket, scope: scope, continuation: continuation)
+            )
+        }
+    }
+
+    /// Removes the ticket before resuming it, so a cancellation racing the end of a replacement can
+    /// only ever find one of them.
+    private func failTransportWaiter(ticket: UUID, connectionId: UUID) {
+        guard var waiters = transportWaiters[connectionId],
+              let index = waiters.firstIndex(where: { $0.ticket == ticket })
+        else {
+            return
+        }
+        let waiter = waiters.remove(at: index)
+        transportWaiters[connectionId] = waiters.isEmpty ? nil : waiters
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private static func openSessionDriver(for scope: DatabaseScope) async throws -> DatabaseDriver {
+        guard let session = DatabaseManager.shared.session(for: scope.connectionId) else {
             throw DatabaseError.notConnected
         }
         var connection = session.effectiveConnection ?? session.connection
         let plan = Self.planConnection(
             configuredDatabase: connection.database,
-            targetDatabase: key.scope.database,
-            authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped
+            targetDatabase: scope.database,
+            authenticationIsDatabaseScoped: connection.type.authenticationIsDatabaseScoped,
+            runsStartupCommands: DatabaseManager.hasStartupCommands(session.connection.startupCommands),
+            switchesDatabaseWithoutReconnecting: PluginManager.shared
+                .switchesDatabaseWithoutReconnecting(for: connection.type)
         )
         connection.database = plan.connectDatabase
 
@@ -249,14 +415,14 @@ final class MetadataConnectionPool {
             if let database = plan.switchDatabase {
                 try await Self.switchDatabase(driver, to: database, timeoutSeconds: operationTimeoutSeconds)
             }
-            if let schema = key.scope.schema {
+            if let schema = scope.schema {
                 try await Self.switchSchema(driver, to: schema, timeoutSeconds: operationTimeoutSeconds)
             }
         } catch {
             driver.disconnect()
             throw error
         }
-        return Entry(driver: driver)
+        return driver
     }
 
     static func connect(_ driver: DatabaseDriver, database: String, timeoutSeconds: Double) async throws {
@@ -274,13 +440,32 @@ final class MetadataConnectionPool {
         let switchDatabase: String?
     }
 
+    /// A pooled entry is pinned once, at creation, and then answered from for up to the idle
+    /// timeout, where the session driver is pinned again before every scoped operation. So anything
+    /// that moves the connection between `connect` and the first read moves it for the entry's whole
+    /// life, and the only thing that runs in between is the user's own startup commands. A `USE
+    /// other` there leaves every unqualified read answering from `other` while the driver still
+    /// reports the database it was asked for, which is how an unqualified `ALTER TABLE` from the
+    /// structure editor reached the wrong one.
+    ///
+    /// Re-asserted only when there is something to undo and only where the engine takes a switch as
+    /// a statement: an engine that reconnects to switch would throw away the startup commands it
+    /// just ran, and one that cannot switch at all would fail a connection that works today. That is
+    /// the same pair `pin(_:to:)` already trusts, so the pool issues no statement the session driver
+    /// does not issue for the same scope.
     static func planConnection(
         configuredDatabase: String,
         targetDatabase: String,
-        authenticationIsDatabaseScoped: Bool
+        authenticationIsDatabaseScoped: Bool,
+        runsStartupCommands: Bool = false,
+        switchesDatabaseWithoutReconnecting: Bool = false
     ) -> ConnectionPlan {
         guard authenticationIsDatabaseScoped, targetDatabase != configuredDatabase else {
-            return ConnectionPlan(connectDatabase: targetDatabase, switchDatabase: nil)
+            let reassert = runsStartupCommands && switchesDatabaseWithoutReconnecting
+                && !targetDatabase.isEmpty
+            return ConnectionPlan(
+                connectDatabase: targetDatabase, switchDatabase: reassert ? targetDatabase : nil
+            )
         }
         return ConnectionPlan(connectDatabase: configuredDatabase, switchDatabase: targetDatabase)
     }

@@ -40,6 +40,16 @@ struct StructureServerSupport: Equatable, Sendable {
     func offeredIndexTypes(
         from types: [EditableIndexDefinition.IndexType]
     ) -> [EditableIndexDefinition.IndexType] {
-        types.filter { !unsupportedIndexTypes.contains($0.rawValue.uppercased()) }
+        types.filter { !unsupportedIndexTypes.contains($0.rawValue) }
+    }
+
+    /// The Type list for one index: the known types this server offers, then the index's own type
+    /// where it is not among them. A `CLUSTERED`, `DATA_SKIPPING` or `HNSW` row otherwise holds a
+    /// value no menu item matches, and the inspector's picker shows nothing selected.
+    func indexTypeChoices(
+        keeping current: EditableIndexDefinition.IndexType
+    ) -> [EditableIndexDefinition.IndexType] {
+        let offered = offeredIndexTypes(from: EditableIndexDefinition.IndexType.knownTypes)
+        return offered.contains(current) ? offered : offered + [current]
     }
 }

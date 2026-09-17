@@ -5,11 +5,12 @@ import PackageDescription
 let package = Package(
     name: "TableProCore",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v13),
         .iOS(.v17)
     ],
     products: [
         .library(name: "TableProCoreTypes", targets: ["TableProCoreTypes"]),
+        .library(name: "TableProGeometry", targets: ["TableProGeometry"]),
         .library(name: "TableProPluginKit", targets: ["TableProPluginKit"]),
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProImport", targets: ["TableProImport"]),
@@ -25,7 +26,9 @@ let package = Package(
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
-        .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"])
+        .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
+        .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
+        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
     ],
     targets: [
         .target(
@@ -34,9 +37,19 @@ let package = Package(
             path: "Sources/TableProNumberFormatting"
         ),
         .target(
+            name: "TableProDocumentPath",
+            dependencies: [],
+            path: "Sources/TableProDocumentPath"
+        ),
+        .target(
             name: "TableProCoreTypes",
             dependencies: [],
             path: "Sources/TableProCoreTypes"
+        ),
+        .target(
+            name: "TableProGeometry",
+            dependencies: [],
+            path: "Sources/TableProGeometry"
         ),
         .target(
             name: "TableProPluginKit",
@@ -113,10 +126,30 @@ let package = Package(
             dependencies: [],
             path: "Sources/TableProR2SQLCore"
         ),
+        .target(
+            name: "TableProConnectionLibrary",
+            dependencies: [],
+            path: "Sources/TableProConnectionLibrary"
+        ),
+        .testTarget(
+            name: "TableProConnectionLibraryTests",
+            dependencies: ["TableProConnectionLibrary"],
+            path: "Tests/TableProConnectionLibraryTests"
+        ),
+        .testTarget(
+            name: "TableProGeometryTests",
+            dependencies: ["TableProGeometry"],
+            path: "Tests/TableProGeometryTests"
+        ),
         .testTarget(
             name: "TableProNumberFormattingTests",
             dependencies: ["TableProNumberFormatting"],
             path: "Tests/TableProNumberFormattingTests"
+        ),
+        .testTarget(
+            name: "TableProDocumentPathTests",
+            dependencies: ["TableProDocumentPath"],
+            path: "Tests/TableProDocumentPathTests"
         ),
         .testTarget(
             name: "TableProModelsTests",

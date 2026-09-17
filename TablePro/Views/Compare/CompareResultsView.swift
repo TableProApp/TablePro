@@ -12,7 +12,7 @@
 import SwiftUI
 
 internal struct CompareResultsView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
     internal let onCompare: () -> Void
 
     @State private var sortOrder = [KeyPathComparator(\CompareResultRow.objectName)]
@@ -81,6 +81,9 @@ internal struct CompareResultsView: View {
 
     // MARK: - Table
 
+    /// `DisclosureTableRow` is macOS 14, and `@TableRowBuilder` rejects an `if #available`
+    /// inside it, so the whole table branches instead. The columns are shared.
+    @ViewBuilder
     private func resultsTable(
         visible: [CompareObjectResult],
         uncomparable: [CompareObjectResult]
@@ -92,60 +95,83 @@ internal struct CompareResultsView: View {
         let unreadable = CompareResultGrouping.uncomparableGroup(from: uncomparable, sortedUsing: sortOrder)
         let selectableGroups = groups + (unreadable.map { [$0] } ?? [])
 
-        return Table(of: CompareResultRow.self, selection: $session.selectedObjectId, sortOrder: $sortOrder) {
-            TableColumn("Include") { row in
-                includeToggle(for: row)
-            }
-            .width(min: 52, ideal: 60)
-
-            TableColumn("Object", value: \.objectName) { row in
-                Text(row.objectName)
-                    .fontWeight(row.isGroup ? .semibold : .regular)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(row.objectName)
-            }
-
-            TableColumn("Type", value: \.typeName) { row in
-                Text(row.typeName)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            TableColumn("Difference", value: \.differenceName) { row in
-                differenceCell(row)
-            }
-
-            TableColumn("Change", value: \.changeSummary) { row in
-                Text(row.changeSummary)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .help(row.changeSummary)
-            }
-        } rows: {
-            if session.grouping == .none {
-                ForEach(flatRows) { row in
-                    SwiftUI.TableRow(row)
+        if #available(macOS 14.0, *) {
+            Table(of: CompareResultRow.self, selection: $session.selectedObjectId, sortOrder: $sortOrder) {
+                resultColumns
+            } rows: {
+                if session.grouping == .none {
+                    ForEach(flatRows) { row in
+                        SwiftUI.TableRow(row)
+                    }
+                } else {
+                    ForEach(groups) { group in
+                        DisclosureTableRow(group.header) {
+                            ForEach(group.rows) { row in
+                                SwiftUI.TableRow(row)
+                            }
+                        }
+                    }
                 }
-            } else {
-                ForEach(groups) { group in
-                    DisclosureTableRow(group.header) {
-                        ForEach(group.rows) { row in
+                if let unreadable {
+                    DisclosureTableRow(unreadable.header) {
+                        ForEach(unreadable.rows) { row in
                             SwiftUI.TableRow(row)
                         }
                     }
                 }
             }
-            if let unreadable {
-                DisclosureTableRow(unreadable.header) {
-                    ForEach(unreadable.rows) { row in
-                        SwiftUI.TableRow(row)
-                    }
+            .contextMenu(forSelectionType: CompareResultRow.ID.self) { selection in
+                inclusionCommands(for: selection, groups: selectableGroups)
+            }
+        } else {
+            Table(of: CompareResultRow.self, selection: $session.selectedObjectId, sortOrder: $sortOrder) {
+                resultColumns
+            } rows: {
+                /// A group reads as its header followed by its rows; what macOS 13 gives up is
+                /// collapsing it.
+                ForEach(
+                    (session.grouping == .none ? flatRows : groups.flatMap { [$0.header] + $0.rows })
+                        + (unreadable.map { [$0.header] + $0.rows } ?? [])
+                ) { row in
+                    SwiftUI.TableRow(row)
                 }
             }
+            .contextMenu(forSelectionType: CompareResultRow.ID.self) { selection in
+                inclusionCommands(for: selection, groups: selectableGroups)
+            }
         }
-        .contextMenu(forSelectionType: CompareResultRow.ID.self) { selection in
-            inclusionCommands(for: selection, groups: selectableGroups)
+    }
+
+    @TableColumnBuilder<CompareResultRow, KeyPathComparator<CompareResultRow>>
+    private var resultColumns: some TableColumnContent<CompareResultRow, KeyPathComparator<CompareResultRow>> {
+        TableColumn("Include") { row in
+            includeToggle(for: row)
+        }
+        .width(min: 52, ideal: 60)
+
+        TableColumn("Object", value: \.objectName) { row in
+            Text(row.objectName)
+                .fontWeight(row.isGroup ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(row.objectName)
+        }
+
+        TableColumn("Type", value: \.typeName) { row in
+            Text(row.typeName)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+
+        TableColumn("Difference", value: \.differenceName) { row in
+            differenceCell(row)
+        }
+
+        TableColumn("Change", value: \.changeSummary) { row in
+            Text(row.changeSummary)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help(row.changeSummary)
         }
     }
 
@@ -246,7 +272,7 @@ internal struct CompareResultsView: View {
     /// button leaves the user with no way to work out what is missing, which the HIG asks an app not
     /// to do.
     private var noReportState: some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label("No Comparison Yet", systemImage: "arrow.left.arrow.right.circle")
         } description: {
             Text(noReportDescription)
@@ -265,15 +291,15 @@ internal struct CompareResultsView: View {
     @ViewBuilder
     private var emptyResultState: some View {
         if session.report?.differenceCount == 0 {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("No Differences", systemImage: "equal.circle")
             } description: {
                 Text("Every object that was compared matches.")
             }
         } else if !session.searchText.isEmpty {
-            ContentUnavailableView.search(text: session.searchText)
+            UnavailableStateView.search(text: session.searchText)
         } else {
-            ContentUnavailableView {
+            UnavailableStateView {
                 Label("Nothing to Show", systemImage: "line.3.horizontal.decrease.circle")
             } description: {
                 Text("The object types taking part in the comparison are set in Options.")

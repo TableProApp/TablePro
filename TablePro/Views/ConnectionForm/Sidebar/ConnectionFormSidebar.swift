@@ -16,7 +16,7 @@ import SwiftUI
 /// whole time; `ConnectionFormTab.validationIssues(for:)` returns them, and the action bar spells
 /// out the first one.
 struct ConnectionFormSidebar: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         List(selection: $coordinator.selectedTab) {

@@ -31,6 +31,7 @@ enum KafkaApiKey: Int16, CaseIterable, Sendable {
     case listGroups = 16
     case saslHandshake = 17
     case apiVersions = 18
+    case deleteTopics = 20
     case deleteRecords = 21
     case describeConfigs = 32
     case saslAuthenticate = 36
@@ -47,6 +48,7 @@ enum KafkaApiKey: Int16, CaseIterable, Sendable {
         case .listGroups: return "ListGroups"
         case .saslHandshake: return "SaslHandshake"
         case .apiVersions: return "ApiVersions"
+        case .deleteTopics: return "DeleteTopics"
         case .deleteRecords: return "DeleteRecords"
         case .describeConfigs: return "DescribeConfigs"
         case .saslAuthenticate: return "SaslAuthenticate"
@@ -70,6 +72,7 @@ enum KafkaApiKey: Int16, CaseIterable, Sendable {
         case .describeGroups: return 5
         case .listGroups: return 3
         case .apiVersions: return 3
+        case .deleteTopics: return 4
         case .deleteRecords: return 2
         case .describeConfigs: return 4
         case .saslAuthenticate: return 2
@@ -92,6 +95,7 @@ enum KafkaApiKey: Int16, CaseIterable, Sendable {
         case .listGroups: return 4
         case .saslHandshake: return 1
         case .apiVersions: return 3
+        case .deleteTopics: return 5
         case .deleteRecords: return 2
         case .describeConfigs: return 4
         case .saslAuthenticate: return 2
@@ -112,6 +116,7 @@ enum KafkaApiKey: Int16, CaseIterable, Sendable {
         case .listGroups: return 0
         case .saslHandshake: return 0
         case .apiVersions: return 0
+        case .deleteTopics: return 1
         case .deleteRecords: return 0
         case .describeConfigs: return 1
         case .saslAuthenticate: return 0

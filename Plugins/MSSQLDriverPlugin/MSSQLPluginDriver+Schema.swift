@@ -420,55 +420,46 @@ extension MSSQLPluginDriver {
         return fksByTable
     }
 
+    private static let metadataLogger = Logger(subsystem: "com.TablePro", category: "MSSQLPluginDriver")
+
+    /// Each database answers for itself, so a login that can open a database gets its real size and count. A
+    /// database that cannot be opened keeps its row, with the server-wide file size when that view is readable.
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let sql = """
-            SELECT d.name,
-                   SUM(mf.size) * 8 * 1024 AS size_bytes
-            FROM sys.databases d
-            LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
-            GROUP BY d.name
-            ORDER BY d.name
-            """
+        let names = try await fetchDatabases()
+        var metadata: [PluginDatabaseMetadata] = []
+        var unreadable: Set<String> = []
+        for name in names {
+            do {
+                metadata.append(try await fetchDatabaseMetadata(name))
+            } catch {
+                Self.metadataLogger.debug(
+                    "No metadata for database \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                unreadable.insert(name)
+                metadata.append(PluginDatabaseMetadata(name: name))
+            }
+        }
+        guard !unreadable.isEmpty else { return metadata }
+        let sizes = await serverWideDatabaseSizes()
+        return metadata.map { entry in
+            guard unreadable.contains(entry.name), let size = sizes[entry.name] else { return entry }
+            return PluginDatabaseMetadata(name: entry.name, sizeBytes: size)
+        }
+    }
+
+    private func serverWideDatabaseSizes() async -> [String: Int64] {
         do {
-            let result = try await execute(query: sql)
-            var metadata = result.rows.compactMap { row -> PluginDatabaseMetadata? in
-                guard let name = row[safe: 0]?.asText else { return nil }
-                let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) }
-                return PluginDatabaseMetadata(name: name, sizeBytes: sizeBytes)
+            let result = try await execute(query: MSSQLSchemaQueries.allDatabaseSizes)
+            var sizes: [String: Int64] = [:]
+            for row in result.rows {
+                guard let name = row[safe: 0]?.asText,
+                      let size = (row[safe: 1]?.asText).flatMap({ Int64($0) }) else { continue }
+                sizes[name] = size
             }
-
-            for i in metadata.indices {
-                let dbName = metadata[i].name.replacingOccurrences(of: "]", with: "]]")
-                do {
-                    let countResult = try await execute(
-                        query: "SELECT COUNT(*) FROM [\(dbName)].sys.tables"
-                    )
-                    if let countStr = countResult.rows.first?[safe: 0]?.asText,
-                       let count = Int(countStr) {
-                        metadata[i] = PluginDatabaseMetadata(
-                            name: metadata[i].name,
-                            tableCount: count,
-                            sizeBytes: metadata[i].sizeBytes
-                        )
-                    }
-                } catch {
-                    // Database offline or permission denied: leave tableCount as nil
-                }
-            }
-
-            return metadata
+            return sizes
         } catch {
-            // Fall back to N+1 if permission denied on sys.master_files
-            let dbs = try await fetchDatabases()
-            var result: [PluginDatabaseMetadata] = []
-            for db in dbs {
-                do {
-                    result.append(try await fetchDatabaseMetadata(db))
-                } catch {
-                    result.append(PluginDatabaseMetadata(name: db))
-                }
-            }
-            return result
+            Self.metadataLogger.debug("Server-wide database sizes unavailable: \(error.localizedDescription, privacy: .public)")
+            return [:]
         }
     }
 
@@ -579,23 +570,13 @@ extension MSSQLPluginDriver {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let sql = """
-            SELECT
-                SUM(size) * 8.0 / 1024 AS size_mb,
-                (SELECT COUNT(*) FROM sys.tables) AS table_count
-            FROM sys.database_files
-            """
-        let result = try await execute(query: sql)
-        if let row = result.rows.first {
-            let sizeMb = (row[safe: 0]?.asText).flatMap { Double($0) } ?? 0
-            let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
-            return PluginDatabaseMetadata(
-                name: database,
-                tableCount: tableCount,
-                sizeBytes: Int64(sizeMb * 1_024 * 1_024)
-            )
-        }
-        return PluginDatabaseMetadata(name: database)
+        let result = try await execute(query: MSSQLSchemaQueries.databaseMetadata(database: database))
+        guard let row = result.rows.first else { return PluginDatabaseMetadata(name: database) }
+        return PluginDatabaseMetadata(
+            name: database,
+            tableCount: (row[safe: 1]?.asText).flatMap { Int($0) },
+            sizeBytes: (row[safe: 0]?.asText).flatMap { Int64($0) }
+        )
     }
 
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
@@ -626,7 +607,7 @@ extension MSSQLPluginDriver {
             t.name as name,
             CASE WHEN v.object_id IS NOT NULL THEN 'VIEW' ELSE 'TABLE' END as kind,
             p.rows as estimated_rows,
-            CAST(ROUND(SUM(a.total_pages) * 8 / 1024.0, 2) AS VARCHAR) + ' MB' as total_size
+            CAST(ROUND(ISNULL(SUM(a.total_pages), 0) * 8 / 1024.0, 2) AS VARCHAR) + ' MB' as total_size
         FROM sys.tables t
         INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
         INNER JOIN sys.indexes i ON t.object_id = i.object_id AND i.index_id IN (0, 1)

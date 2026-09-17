@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleCellFormattingTests: XCTestCase {
     private static let referenceDate: Date = {

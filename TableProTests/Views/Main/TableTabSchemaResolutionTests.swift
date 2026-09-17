@@ -124,6 +124,91 @@ struct TableTabSchemaResolutionTests {
 
         #expect(resolved == false)
     }
+
+    /// A schema belongs to the database that holds it, so the first load stamping the browsed one
+    /// onto a tab bound elsewhere made its query name a relation that database may not have.
+    @Test("Leaves a tab bound to another database without a schema")
+    @MainActor
+    func leavesForeignDatabaseTabUnqualified() throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        var session = ConnectionSession(connection: connection)
+        session.status = .connected
+        session.browseSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = makeCoordinator(connection: connection, tabManager: tabManager)
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(tableName: "events", databaseType: connection.type, databaseName: "analytics")
+        let tabId = try #require(tabManager.selectedTab?.id)
+
+        #expect(coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId) == false)
+        #expect(tabManager.selectedTab?.tableContext.schemaName == nil)
+    }
+
+    @Test("Stamps a tab that follows the browsed database")
+    @MainActor
+    func stampsTabFollowingBrowsedDatabase() throws {
+        let connection = TestFixtures.makeConnection(database: "app", type: .postgresql)
+        var session = ConnectionSession(connection: connection)
+        session.status = .connected
+        session.browseSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let tabManager = QueryTabManager()
+        let coordinator = makeCoordinator(connection: connection, tabManager: tabManager)
+        defer { coordinator.teardown() }
+
+        try tabManager.addTableTab(tableName: "events", databaseType: connection.type, databaseName: "")
+        let tabId = try #require(tabManager.selectedTab?.id)
+
+        #expect(coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId) == true)
+        #expect(tabManager.selectedTab?.tableContext.schemaName == "sales")
+    }
+
+    /// A table opened from a link before the connection is up is recorded in Recent while the
+    /// session has no schema yet. Left that way, clicking the entry later opened the same name in
+    /// whichever schema was browsed by then, and opening the table again listed it twice.
+    @Test("A Recent entry recorded before connecting takes the schema the tab resolves")
+    @MainActor
+    func recentEntryTakesResolvedSchema() throws {
+        let connection = TestFixtures.makeConnection(type: .postgresql)
+        let store = RecentTablesStore.shared
+        defer {
+            store.removeEntries(for: connection.id)
+            SharedSidebarState.removeConnection(connection.id)
+        }
+        store.record(connectionId: connection.id, database: "testdb", schema: nil, name: "routes", isView: false)
+
+        let state = SessionStateFactory.create(
+            connection: connection,
+            payload: EditorTabPayload(connectionId: connection.id, tabType: .table, tableName: "routes")
+        )
+        let tabId = try #require(state.tabManager.selectedTab?.id)
+
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        session.browseSchema = "sales"
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        #expect(state.coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId))
+        #expect(store.entries(connectionId: connection.id).map(\.schema) == ["sales"])
+        state.coordinator.teardown()
+
+        DatabaseManager.shared.updateSession(connection.id) { $0.browseSchema = "audit" }
+        let entry = try #require(store.entries(connectionId: connection.id).first)
+        let tabManager = QueryTabManager()
+        let coordinator = makeCoordinator(connection: connection, tabManager: tabManager)
+        defer { coordinator.teardown() }
+
+        coordinator.openTableTab(entry.tableInfo, schema: entry.schema)
+
+        #expect(tabManager.selectedTab?.tableContext.schemaName == "sales")
+    }
 }
 
 /// A table tab must carry the schema the row was listed under. SQL Server has no
@@ -139,6 +224,7 @@ struct TableTabListingSchemaTests {
         let connection = TestFixtures.makeConnection(database: "AppDb", type: .mssql)
         let driver = MockDatabaseDriver(connection: connection)
         var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
         session.browseSchema = sessionSchema
         DatabaseManager.shared.injectSession(session, for: connection.id)
         defer { DatabaseManager.shared.removeSession(for: connection.id) }
@@ -205,6 +291,17 @@ struct TableTabListingSchemaTests {
             coordinator.openTableTab(makeTable(schema: "custom"))
             let query = tabManager.tabs.first?.content.query ?? ""
             #expect(query.contains("[custom].[def_encounter]"))
+        }
+    }
+
+    @Test("A table opened in another database takes no schema from the browsed one")
+    func foreignDatabaseTakesNoBrowsedSchema() {
+        withCoordinator(sessionSchema: "custom") { coordinator, tabManager in
+            coordinator.openTableTab("def_encounter", database: "Warehouse")
+            let tab = tabManager.tabs.first
+            #expect(tab?.tableContext.databaseName == "Warehouse")
+            #expect(tab?.tableContext.schemaName == nil)
+            #expect(tab?.content.query.contains("[custom]") == false)
         }
     }
 }

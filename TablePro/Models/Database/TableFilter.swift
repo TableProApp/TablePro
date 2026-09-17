@@ -261,6 +261,15 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var keyPattern: String
     var keyTypeScope: String?
 
+    /// The filters the rows on screen were actually fetched with.
+    ///
+    /// `filters` is the panel's editable draft, and `appliedFilters` resolves from it, so both
+    /// describe a query that has not run the moment a reader types into a filter row without
+    /// pressing Apply. Anything asking what a tab is *showing*, rather than what its panel says,
+    /// has to read this. It is written wherever a query is built from the filters and is
+    /// deliberately not persisted: a restored tab rebuilds its query on first load, which fills it.
+    var executedFilters: [TableFilter] = []
+
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil
@@ -287,6 +296,19 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var appliedFilters: [TableFilter] {
         guard let commit else { return [] }
         return Self.resolve(commit, in: filters)
+    }
+
+    /// What a table's saved filters hold: every valid row with its own enabled flag, and the logic mode.
+    ///
+    /// Never `appliedFilters`, which is the query's reading of the same rows: `.all` drops unchecked
+    /// rows and `.solo` keeps one row forced on, so saving that loses rows the reader only switched off.
+    ///
+    /// Nothing committed saves nothing. Clear deletes the table's saved filters on purpose, and
+    /// restoring commits whatever was saved, so writing the rows back would apply them again on the
+    /// next open.
+    var persistedState: PersistedFilterState {
+        guard commit != nil else { return PersistedFilterState(filters: [], logicMode: filterLogicMode) }
+        return PersistedFilterState(filters: filters.filter(\.isValid), logicMode: filterLogicMode)
     }
 
     static func resolve(_ commit: FilterCommit, in filters: [TableFilter]) -> [TableFilter] {

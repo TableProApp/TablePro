@@ -19,6 +19,10 @@ extension DatabaseTreeOutlineCoordinator {
             mainCoordinator?.createView()
         case .createType(let database, let schema):
             mainCoordinator?.createType(database: database, schema: schema)
+        case .createSchema(let database):
+            mainCoordinator?.createSchema(database: database)
+        case .editSchema(let container):
+            mainCoordinator?.editSchema(container)
         case .filterDatabases:
             mainCoordinator?.splitViewController?.presentDatabaseFilter()
         case .showAllDatabases:
@@ -162,7 +166,8 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(key)
         case .openRedisKey(let key, let keyType):
             mainCoordinator?.openRedisKey(key, keyType: keyType)
-        case .toggleObjectIcons, .toggleObjectComments, .setRowSize:
+        case .toggleObjectIcons, .toggleObjectComments, .toggleSystemContainers, .togglePartitions,
+             .setRowSize:
             _ = SidebarViewOptionsMenu.apply(command)
         }
     }

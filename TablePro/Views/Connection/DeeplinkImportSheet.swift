@@ -33,7 +33,7 @@ struct DeeplinkImportSheet: View {
 
                 Section(String(localized: "Connection")) {
                     TextField(String(localized: "Name"), text: $editableName)
-                        .onChange(of: editableName) { checkDuplicate() }
+                        .onChange(of: editableName) { _ in checkDuplicate() }
 
                     LabeledContent(String(localized: "Host")) {
                         Text(hostDisplay)

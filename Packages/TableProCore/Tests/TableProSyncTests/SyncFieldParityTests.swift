@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProSyncTransport
+import Testing
 
 /// macOS and iOS map a synced record with two separate `SyncRecordMapper` implementations, because
 /// the two platforms cannot share one `DatabaseConnection`: the macOS `DatabaseType` resolves
@@ -40,6 +40,7 @@ struct SyncFieldParityTests {
         "SQLFavoriteSyncField",
         "SQLFavoriteFolderSyncField",
         "SSHProfileSyncField",
+        "CredentialProfileSyncField",
     ]
 
     /// Connection fields only one platform has a model property for. Each is a feature the other
@@ -47,7 +48,7 @@ struct SyncFieldParityTests {
     /// platform that does not write one also cannot erase it.
     private static let connectionMacOnly: Set<String> = [
         "aiPolicy", "aiRules", "aiAlwaysAllowedTools",
-        "redisDatabase", "startupCommands", "sshProfileId", "isFavorite",
+        "redisDatabase", "startupCommands", "sshProfileId",
     ]
 
     private static let connectionIosOnly: Set<String> = [

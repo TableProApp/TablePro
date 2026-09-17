@@ -351,6 +351,8 @@ final class CompareSyncEngineFamilyTests: XCTestCase {
         XCTAssertFalse(CompareSyncEngineFamily.canGenerateStructureScript(from: .mysql, to: .tidb))
         XCTAssertFalse(CompareSyncEngineFamily.canGenerateStructureScript(from: .tidb, to: .mariadb))
         XCTAssertFalse(CompareSyncEngineFamily.canGenerateStructureScript(from: .mysql, to: .databend))
+        XCTAssertTrue(CompareSyncEngineFamily.canGenerateStructureScript(from: .oceanbase, to: .oceanbase))
+        XCTAssertFalse(CompareSyncEngineFamily.canGenerateStructureScript(from: .mysql, to: .oceanbase))
     }
 
     func testUnrelatedEnginesAreRefused() {

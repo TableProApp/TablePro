@@ -25,10 +25,10 @@ public enum MSSQLParameterBatch {
 
     public static func spExecuteSql(query: String, parameters: [MSSQLParameter]) -> Statement {
         let replaced = replacePlaceholders(in: query, limit: parameters.count)
-        guard replaced.count > 0 else {
+        guard replaced.placeholderCount > 0 else {
             return Statement(query: replaced.query, declarations: "", assignments: "")
         }
-        let used = parameters.prefix(replaced.count)
+        let used = parameters.prefix(replaced.placeholderCount)
         let declarations = used.enumerated()
             .map { "@p\($0.offset + 1) \(declaredType(of: $0.element))" }
             .joined(separator: ", ")
@@ -76,7 +76,7 @@ public enum MSSQLParameterBatch {
     /// The bracket is the one T-SQL spells differently from everything else, and it was missing:
     /// a column named `[we?ird]` took `@p1`, which shifted every parameter after it by one and
     /// sent the values to the wrong placeholders.
-    private static func replacePlaceholders(in query: String, limit: Int) -> (query: String, count: Int) {
+    private static func replacePlaceholders(in query: String, limit: Int) -> (query: String, placeholderCount: Int) {
         var converted = ""
         var count = 0
         var quoting = Quoting.code

@@ -13,6 +13,7 @@ enum ThemeEditSlot: Hashable {
 }
 
 struct AppearanceSettingsView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var settings: AppearanceSettings
     @State private var chosenSlot: ThemeEditSlot?
 
@@ -20,7 +21,7 @@ struct AppearanceSettingsView: View {
     /// pane opens on the theme in use, but the user can switch to edit the other
     /// slot without changing the app's appearance mode.
     private var editSlot: ThemeEditSlot {
-        chosenSlot ?? (ThemeEngine.shared.effectiveAppearance == .dark ? .dark : .light)
+        chosenSlot ?? (themeEngine.effectiveAppearance == .dark ? .dark : .light)
     }
 
     private var slotAppearance: ThemeAppearance {
@@ -83,7 +84,7 @@ struct AppearanceSettingsView: View {
                 ThemeListView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
                     .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
 
-                ThemeEditorView(selectedThemeId: slotThemeBinding, slotAppearance: slotAppearance)
+                ThemeEditorView(selectedThemeId: slotThemeBinding)
                     .frame(minWidth: 400)
             }
         }

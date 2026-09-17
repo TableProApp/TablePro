@@ -30,6 +30,37 @@ internal enum SplitViewAutosaveName {
     /// the user has and leaves the old keys orphaned.
     internal static let base = "com.TablePro.mainSplit"
 
+    /// The drawer that carries one connection's query history.
+    ///
+    /// Declared here rather than spelled at the call site, so the name and anything that has to
+    /// recognise it share one spelling instead of two lists nothing forces to agree.
+    internal static let historyDrawerPrefix = "HistoryDrawer-"
+
+    /// The editor/results divider of one connection's query pane.
+    ///
+    /// Per connection, not per tab, because a per-tab record is not reachable through
+    /// `autosaveName` at all. `VerticalCollapsibleSplitView` assigns the name in
+    /// `makeNSViewController` only, and the query tab branch of `MainEditorContentView` is the one
+    /// tab-content branch with no `.id(tab.id)`, so switching between two query tabs reuses the same
+    /// `NSSplitViewController` with the name it was born with: both tabs autosaved into the first
+    /// tab's record and the second never had one. Measured before this changed: 164 persisted query
+    /// tabs against 1 tab id with a record, beside 795 records naming tabs that were gone.
+    ///
+    /// Reassigning the name on update cannot fix it. `MainSplitViewController` records the same
+    /// lesson one layer up: assigning a name to a split view that has already laid out does not
+    /// re-apply the saved frames. Giving the branch its own identity per tab would, and would also
+    /// rebuild the editor on every tab switch, discarding the find panel, the undo stack and the
+    /// grid's scroll and selection. So the honest name is the one the pane actually has.
+    internal static let querySplitPrefix = "QuerySplit-"
+
+    internal static func historyDrawer(connectionId: UUID) -> String {
+        "\(historyDrawerPrefix)\(connectionId.uuidString)"
+    }
+
+    internal static func querySplit(connectionId: UUID) -> String {
+        "\(querySplitPrefix)\(connectionId.uuidString)"
+    }
+
     /// - Parameter sandboxIdentifier: something unique to one test case. The sandbox root's last
     ///   path component is a fresh UUID per case, which is exactly that.
     internal static func resolved(isIsolated: Bool, sandboxIdentifier: String?) -> String {

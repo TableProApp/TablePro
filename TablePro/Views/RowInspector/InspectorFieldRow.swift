@@ -13,6 +13,7 @@ import SwiftUI
 /// and invisible to anyone who does not happen to hover. It is drawn unconditionally now, which is
 /// what Postico does and what a control that is the only way to reach a command has to do.
 internal struct InspectorFieldRow: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let context: FieldEditorContext
     internal let layout: InspectorFieldLayout
     internal let kind: FieldEditorKind
@@ -156,19 +157,23 @@ internal struct InspectorFieldRow: View {
     // MARK: - Value menu
 
     /// Always drawn, never hover-gated.
+    ///
+    /// The button's own disclosure chevron is the whole control. A chevron supplied as the label
+    /// would be its icon and would render beside that one, which is why the hand-drawn version had
+    /// to hide the real indicator to look right at all. The `Label` carries a title with no icon so
+    /// the control still has a name: `.accessibilityLabel` on a `Menu` does not add one, it
+    /// replaces whatever the label was providing with nothing.
     private var valueMenu: some View {
         Menu {
             menuContent
         } label: {
-            Label(String(localized: "Value Options"), systemImage: "chevron.down")
+            Label { Text("Value Options") } icon: { EmptyView() }
         }
         .labelStyle(.iconOnly)
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.visible)
         .fixedSize()
-        .frame(minWidth: 12)
         .help(String(localized: "Value Options"))
         .accessibilityIdentifier("inspector-value-menu")
     }
@@ -218,8 +223,8 @@ internal struct InspectorFieldRow: View {
         switch kind {
         case .json, .phpSerialized, .image:
             return nil
-        case .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker, .schemaText,
-             .multiLine, .singleLine:
+        case .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+             .schemaText, .multiLine, .singleLine:
             return ThemeEngine.shared.valueFontSwiftUI
         }
     }

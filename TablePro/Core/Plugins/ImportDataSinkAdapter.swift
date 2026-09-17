@@ -16,14 +16,22 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let columnMapping: [String: String]
     private let rowGenerator: SQLStatementGenerator?
 
+    /// Asked before every statement this sink sends, because one `insertRows` call is no longer one
+    /// statement: a byte-heavy batch, or an Oracle target that takes one row per statement, splits
+    /// it into many awaited writes. The callers check their own cancellation only before entering
+    /// the sink, so without this a Stop was followed by every remaining INSERT of the batch.
+    private let isCancelled: @Sendable () -> Bool
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDataSinkAdapter")
 
     init(
         driver: DatabaseDriver,
         databaseType: DatabaseType,
         targetTable: String? = nil,
-        columnMapping: [String: String] = [:]
+        columnMapping: [String: String] = [:],
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
+        self.isCancelled = isCancelled
         self.driver = driver
         self.databaseType = databaseType
         self.databaseTypeId = databaseType.rawValue
@@ -109,20 +117,45 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             }
             index = next
 
-            let chunkSize = max(1, rowGenerator.maxBindParameters / columns.count)
-            var offset = 0
-            while offset < groupValues.count {
-                let end = min(offset + chunkSize, groupValues.count)
-                let chunk = Array(groupValues[offset..<end])
-                guard let statement = rowGenerator.insertStatement(columns: columns, rows: chunk) else {
-                    throw PluginImportError.importFailed(
-                        String(localized: "Could not build an INSERT for the mapped columns")
-                    )
-                }
-                _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
-                offset = end
-            }
+            try await insertGroup(groupValues, columns: columns, generator: rowGenerator)
         }
+    }
+
+    /// One budget per group, because a group is exactly the run of rows sharing one column set and
+    /// the column set is what fixes a row's width. Bounded in bytes as well as parameters: 500 rows
+    /// of three 1 MB values fit a three-column table's 21,845-row parameter ceiling and went out as
+    /// a single 500 MB statement the server refused, failing the first batch and leaving nothing
+    /// imported. The row cap also carries the engine's multi-row `VALUES` ceiling, which this path
+    /// never consulted, so an Oracle target no longer gets a statement it cannot parse.
+    private func insertGroup(
+        _ groupValues: [[PluginCellValue]],
+        columns: [String],
+        generator: SQLStatementGenerator
+    ) async throws {
+        let budget = SQLWriteBatchBudget(columnCount: columns.count, generator: generator)
+        var filler = SQLWriteBatchFiller<[PluginCellValue]>(budget: budget)
+        for row in groupValues {
+            guard let batch = filler.append(row, bytes: budget.byteCount(of: row)) else {
+                continue
+            }
+            try await write(batch, columns: columns, generator: generator)
+        }
+        guard let batch = filler.take() else { return }
+        try await write(batch, columns: columns, generator: generator)
+    }
+
+    private func write(
+        _ batch: [[PluginCellValue]],
+        columns: [String],
+        generator: SQLStatementGenerator
+    ) async throws {
+        guard !isCancelled() else { throw PluginImportCancellationError() }
+        guard let statement = generator.insertStatement(columns: columns, rows: batch) else {
+            throw PluginImportError.importFailed(
+                String(localized: "Could not build an INSERT for the mapped columns")
+            )
+        }
+        _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
     }
 
     /// A row carrying values none of which reach a mapped column writes nothing. Reporting it as

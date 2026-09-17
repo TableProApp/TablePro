@@ -12,7 +12,7 @@ struct RestoreDatabaseFlow: View {
     let initialDatabase: String
     let sourceURL: URL
 
-    @State private var service = NativeDumpService(kind: .restore)
+    @StateObject private var service = NativeDumpService(kind: .restore)
     @State private var phase: Phase = .resolvingTarget
     @State private var hostWindow: NSWindow?
 
@@ -69,7 +69,7 @@ struct RestoreDatabaseFlow: View {
         .background {
             WindowAccessor { window in hostWindow = window }
         }
-        .onChange(of: serviceState) { _, newState in
+        .onChange(of: serviceState) { newState in
             handleServiceStateChange(newState)
         }
         .task { await resolveTarget() }
@@ -155,10 +155,17 @@ struct RestoreDatabaseFlow: View {
             phase = .running(database: database)
         case .finished(let database, _, _, let skippedSettings):
             phase = .finished(database: database, skippedSettings: skippedSettings)
+            CatalogChangeService.post(
+                .changed(CatalogChange(connectionId: connection.id, database: database, kinds: .everything))
+            )
         case .failed(let message, let targetMayBeModified):
             phase = .failed(message: message, targetMayBeModified: targetMayBeModified)
+            if targetMayBeModified {
+                CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
+            }
         case .cancelled:
             phase = .cancelled
+            CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         case .idle, .cancelling:
             break
         }
@@ -181,6 +188,11 @@ struct RestoreDatabaseFlow: View {
             isPresented = false
             return
         }
+        guard await NativeDumpPasswordExposure.confirm(
+            connection: connection,
+            formatId: formatId,
+            window: hostWindow
+        ) else { return }
         phase = .running(database: database)
         do {
             try await service.start(

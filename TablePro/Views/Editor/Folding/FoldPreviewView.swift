@@ -4,9 +4,9 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 /// The block behind a collapsed fold, shown while the pointer rests on its placeholder.
 ///
@@ -19,6 +19,7 @@ import SwiftUI
 /// content that simply fills it reads as stray text drawn over the code rather than as a panel floating above it. The
 /// code keeps the theme's editor background so its colours stay legible, and a hairline marks where the panel ends.
 struct FoldPreviewView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let layout: FoldPreviewMetrics.Layout
     let language: CodeLanguage
 
@@ -51,7 +52,7 @@ struct FoldPreviewView: View {
                     .padding(.vertical, 5)
             }
         }
-        .background(ThemeEngine.shared.palette.color(.editorBackground))
+        .background(themeEngine.colors.editor.backgroundSwiftUI)
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)

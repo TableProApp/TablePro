@@ -26,6 +26,9 @@ struct StatusBarSnapshot: Equatable {
     let pagination: PaginationState
     let statusMessage: String?
     let paginationCapability: PaginationCapability
+    /// A query plan is a result set, so it is chosen and pinned from the bar like any other, but it
+    /// has no rows and no pages. Without this the bar reports "No rows" under every plan.
+    let isQueryPlan: Bool
 
     init(
         tabId: UUID?,
@@ -38,6 +41,7 @@ struct StatusBarSnapshot: Equatable {
         hasTableName: Bool,
         availableModes: [ResultsViewMode] = [],
         hasStructureActions: Bool = false,
+        isQueryPlan: Bool = false,
         pagination: PaginationState,
         statusMessage: String?,
         paginationCapability: PaginationCapability = .offset
@@ -52,6 +56,7 @@ struct StatusBarSnapshot: Equatable {
         self.hasTableName = hasTableName
         self.availableModes = availableModes
         self.hasStructureActions = hasStructureActions
+        self.isQueryPlan = isQueryPlan
         self.pagination = pagination
         self.statusMessage = statusMessage
         self.paginationCapability = paginationCapability
@@ -68,6 +73,7 @@ struct StatusBarSnapshot: Equatable {
         displayRowCount: Int? = nil,
         isFetching: Bool = false,
         hasStructureActions: Bool = false,
+        isQueryPlan: Bool = false,
         paginationCapability: PaginationCapability = .offset
     ) {
         let loaded = tableRows?.rows.count ?? 0
@@ -86,9 +92,11 @@ struct StatusBarSnapshot: Equatable {
             availableModes: ResultsModeAvailability.modes(
                 tabType: tab?.tabType,
                 hasTableName: tab?.tableContext.tableName != nil,
-                hasColumns: !(tableRows?.columns.isEmpty ?? true)
+                hasColumns: !(tableRows?.columns.isEmpty ?? true),
+                hasSpatialColumn: !(tab?.display.spatialColumns.isEmpty ?? true)
             ),
             hasStructureActions: hasStructureActions,
+            isQueryPlan: isQueryPlan,
             pagination: pagination,
             statusMessage: tab?.execution.statusMessage,
             paginationCapability: paginationCapability

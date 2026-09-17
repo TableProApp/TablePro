@@ -28,6 +28,7 @@ struct DataGridCellAppearance: Equatable {
     let drawsFocusBorder: Bool
     /// The cell cursor on an unselected row.
     let drawsFocusRing: Bool
+    let checkboxMark: DataGridCheckboxMark?
 
     static func resolve(
         kind: DataGridCellKind,
@@ -36,7 +37,8 @@ struct DataGridCellAppearance: Equatable {
         palette: DataGridCellPalette,
         nullDisplayString: String,
         onEmphasizedSelection: Bool,
-        hasOverlay: Bool
+        hasOverlay: Bool,
+        checkboxMark: DataGridCheckboxMark? = nil
     ) -> DataGridCellAppearance {
         let deletedTextColor = state.visualState.isDeleted ? palette.deletedRowText : nil
         let font: NSFont
@@ -59,7 +61,8 @@ struct DataGridCellAppearance: Equatable {
         let stateTint: NSColor?
         if state.visualState.isDeleted || state.visualState.isInserted {
             stateTint = nil
-        } else if state.visualState.isModified(columnIndex: state.columnIndex) {
+        } else if state.visualState.isModified(columnIndex: state.columnIndex)
+            || state.visualState.isStruck(columnIndex: state.columnIndex) {
             stateTint = palette.modifiedColumnTint
         } else {
             stateTint = highlightColor?.washColor
@@ -88,7 +91,7 @@ struct DataGridCellAppearance: Equatable {
         )
         let isCursorVisible = state.isFocused && !hasOverlay
         return DataGridCellAppearance(
-            text: DataGridCellContent.resolvedDisplayText(
+            text: kind == .checkbox ? "" : DataGridCellContent.resolvedDisplayText(
                 content.displayText,
                 placeholder: content.placeholder,
                 isLargeDataset: state.isLargeDataset,
@@ -105,7 +108,8 @@ struct DataGridCellAppearance: Equatable {
                 isDisabled: state.visualState.isDeleted
             ),
             drawsFocusBorder: isCursorVisible && onEmphasizedSelection,
-            drawsFocusRing: isCursorVisible && !onEmphasizedSelection
+            drawsFocusRing: isCursorVisible && !onEmphasizedSelection,
+            checkboxMark: kind == .checkbox ? checkboxMark : nil
         )
     }
 
@@ -117,6 +121,6 @@ struct DataGridCellAppearance: Equatable {
         guard kind == .boolean, let rawValue, let isTrue = StoredBoolean.value(of: rawValue) else {
             return palette.text
         }
-        return isTrue ? palette.booleanTrueText : palette.booleanFalseText
+        return (isTrue ? palette.booleanTrueText : palette.booleanFalseText) ?? palette.text
     }
 }

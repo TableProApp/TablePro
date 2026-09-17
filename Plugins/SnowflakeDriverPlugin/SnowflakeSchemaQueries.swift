@@ -80,3 +80,19 @@ enum SnowflakeSchemaQueries {
         parts.map(quote).joined(separator: ".")
     }
 }
+
+internal extension SnowflakeSchemaQueries {
+    /// The database a foreign key points at, or nil when it points at the one it was read from.
+    ///
+    /// `SHOW IMPORTED KEYS` reports `pk_database_name` beside `pk_schema_name`, and the driver used
+    /// to read only the second, so a key into another database resolved to the current one's
+    /// same-named table. Snowflake folds an unquoted identifier to upper case and answers in its own
+    /// spelling, so a same-database key is recognised case-insensitively and reported as nil, which
+    /// keeps every existing key resolving exactly as before.
+    static func referencedDatabase(reported: String?, local: String?) -> String? {
+        guard let reported, !reported.isEmpty else { return nil }
+        guard let local, !local.isEmpty else { return reported }
+        return reported.caseInsensitiveCompare(local) == .orderedSame ? nil : reported
+    }
+}
+

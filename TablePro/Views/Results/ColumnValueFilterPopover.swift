@@ -102,7 +102,7 @@ struct ColumnValueFilterPopover: View {
                         Text(label(for: value))
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .foregroundStyle(value.isNull ? ThemeEngine.shared.palette.color(.gridNullValue) : Color.primary)
+                            .foregroundStyle(value.isNull ? Color.secondary : Color.primary)
                         Spacer(minLength: 8)
                         Text("\(value.count)")
                             .font(.callout.monospacedDigit())

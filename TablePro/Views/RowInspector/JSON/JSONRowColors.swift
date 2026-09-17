@@ -21,14 +21,14 @@ struct JSONRowColors {
 
     @MainActor
     static func current() -> JSONRowColors {
-        let palette = ThemeEngine.shared.palette
+        let colors = ThemeEngine.shared.colors.editor
         return JSONRowColors(
-            key: palette.color(.syntaxKeyword),
-            string: palette.color(.syntaxString),
-            number: palette.color(.syntaxNumber),
-            literal: palette.color(.syntaxNull),
-            punctuation: palette.color(.editorText),
-            placeholder: palette.color(.syntaxComment)
+            key: colors.keywordSwiftUI,
+            string: colors.stringSwiftUI,
+            number: colors.numberSwiftUI,
+            literal: colors.nullSwiftUI,
+            punctuation: colors.textSwiftUI,
+            placeholder: colors.commentSwiftUI
         )
     }
 

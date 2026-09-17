@@ -61,7 +61,9 @@ struct TablePlusImporterTests {
         privateKeyPath: String = "",
         tlsMode: Int? = nil,
         tlsKeyPaths: [String] = [],
-        environment: String = ""
+        environment: String = "",
+        databasePasswordMode: Int? = nil,
+        serverPasswordMode: Int? = nil
     ) -> [String: Any] {
         var entry: [String: Any] = [
             "ConnectionName": name,
@@ -87,6 +89,12 @@ struct TablePlusImporterTests {
         }
         if !tlsKeyPaths.isEmpty {
             entry["TlsKeyPaths"] = tlsKeyPaths
+        }
+        if let databasePasswordMode {
+            entry["DatabasePasswordMode"] = databasePasswordMode
+        }
+        if let serverPasswordMode {
+            entry["ServerPasswordMode"] = serverPasswordMode
         }
         return entry
     }
@@ -334,14 +342,14 @@ struct TablePlusImporterTests {
         #expect(ssh?.privateKeyPath == "")
     }
 
-    @Test("importConnections parses SSL config")
+    @Test("importConnections reads TlsKeyPaths in TablePlus order: key, certificate, CA")
     func testImportConnections_parsesSSLConfig() throws {
         try writeConnections([
             makeConnection(
                 name: "SSL DB",
                 id: "ssl-1",
-                tlsMode: 1,
-                tlsKeyPaths: ["/path/to/ca.pem", "/path/to/client-cert.pem", "/path/to/client-key.pem"]
+                tlsMode: 2,
+                tlsKeyPaths: ["/path/to/client-key.pem", "/path/to/client-cert.pem", "/path/to/ca.pem"]
             )
         ])
 
@@ -378,38 +386,160 @@ struct TablePlusImporterTests {
         #expect(ssl?.mode == "Preferred")
     }
 
-    @Test("importConnections SSL mode Verify CA when tLSMode is 2")
-    func testImportConnections_sslModeVerifyCA() throws {
-        try writeConnections([
-            makeConnection(name: "Verify CA", id: "ssl-ca", tlsMode: 2)
-        ])
+    @Test("importConnections reads tLSMode against the popup the driver's own form shows")
+    func testImportConnections_sslModeFollowsDriverVocabulary() throws {
+        let cases: [(driver: String, tlsMode: Int, mode: String)] = [
+            ("MySQL", 0, "Preferred"),
+            ("MySQL", 1, "Disabled"),
+            ("MySQL", 2, "Required"),
+            ("MySQL", 3, "Verify CA"),
+            ("MySQL", 4, "Verify Identity"),
+            ("MariaDB", 1, "Required"),
+            ("MariaDB", 2, "Verify Identity"),
+            ("PostgreSQL", 1, "Disabled"),
+            ("PostgreSQL", 2, "Required"),
+            ("PostgreSQL", 3, "Preferred"),
+            ("PostgreSQL", 4, "Verify CA"),
+            ("PostgreSQL", 5, "Verify Identity"),
+            ("Cockroach", 5, "Verify Identity"),
+            ("Redshift", 4, "Verify CA"),
+            ("Cassandra", 0, "Disabled"),
+            ("Cassandra", 2, "Verify CA"),
+            ("Cassandra", 4, "Verify Identity"),
+            ("Redis", 0, "Disabled"),
+            ("Redis", 2, "Verify CA"),
+            ("ClickHouse", 1, "Verify Identity"),
+            ("ClickHouse", 2, "Required"),
+            ("Mongo", 1, "Verify Identity"),
+            ("ElasticSearch", 1, "Verify Identity"),
+            ("ElasticSearch", 2, "Verify CA"),
+            ("ElasticSearch", 3, "Required"),
+            ("Oracle", 1, "Required")
+        ]
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssl = result.envelope.connections[0].sslConfig
-        #expect(ssl != nil)
-        #expect(ssl?.mode == "Verify CA")
+        try writeConnections(cases.enumerated().map { index, testCase in
+            makeConnection(
+                name: "\(testCase.driver) \(testCase.tlsMode)",
+                driver: testCase.driver,
+                id: "ssl-\(index)",
+                tlsMode: testCase.tlsMode
+            )
+        })
+
+        let connections = try importer.importConnections(includePasswords: false).envelope.connections
+        for (index, testCase) in cases.enumerated() {
+            #expect(
+                connections[index].sslConfig?.mode == testCase.mode,
+                "\(testCase.driver) tLSMode \(testCase.tlsMode) should map to \(testCase.mode)"
+            )
+        }
     }
 
-    @Test("importConnections SSL mode Verify Identity when tLSMode is 3")
-    func testImportConnections_sslModeVerifyIdentity() throws {
+    @Test("importConnections reads the TLS slots each driver's own form writes")
+    func testImportConnections_tlsKeySlotsFollowDriverForm() throws {
         try writeConnections([
-            makeConnection(name: "Verify Identity", id: "ssl-identity", tlsMode: 3)
+            makeConnection(
+                name: "Cassandra TLS",
+                driver: "Cassandra",
+                id: "tls-cassandra",
+                tlsMode: 2,
+                tlsKeyPaths: ["/path/to/cass-key.pem", "/path/to/cass-cert.pem", "/path/to/cass-ca.pem"]
+            ),
+            makeConnection(
+                name: "Cassandra CA only",
+                driver: "Cassandra",
+                id: "tls-cassandra-ca",
+                tlsMode: 3,
+                tlsKeyPaths: ["", "", "/path/to/cass-ca.pem"]
+            ),
+            makeConnection(
+                name: "Mongo TLS",
+                driver: "Mongo",
+                id: "tls-mongo",
+                tlsMode: 1,
+                tlsKeyPaths: ["/path/to/mongo-certkey.pem", "/path/to/mongo-ca.pem"]
+            ),
+            makeConnection(
+                name: "ClickHouse TLS",
+                driver: "ClickHouse",
+                id: "tls-clickhouse",
+                tlsMode: 1,
+                tlsKeyPaths: ["/path/to/clickhouse-ca.pem"]
+            ),
+            makeConnection(
+                name: "Elasticsearch TLS",
+                driver: "ElasticSearch",
+                id: "tls-es",
+                tlsMode: 2,
+                tlsKeyPaths: ["/path/to/es-ca.pem"]
+            )
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        let ssl = result.envelope.connections[0].sslConfig
-        #expect(ssl != nil)
-        #expect(ssl?.mode == "Verify Identity")
+        let connections = try importer.importConnections(includePasswords: false).envelope.connections
+
+        #expect(connections[0].sslConfig?.clientKeyPath == "/path/to/cass-key.pem")
+        #expect(connections[0].sslConfig?.clientCertificatePath == "/path/to/cass-cert.pem")
+        #expect(connections[0].sslConfig?.caCertificatePath == "/path/to/cass-ca.pem")
+
+        #expect(connections[1].sslConfig?.caCertificatePath == "/path/to/cass-ca.pem")
+        #expect(connections[1].sslConfig?.clientKeyPath == nil)
+        #expect(connections[1].sslConfig?.clientCertificatePath == nil)
+
+        #expect(connections[2].sslConfig?.clientCertificatePath == "/path/to/mongo-certkey.pem")
+        #expect(connections[2].sslConfig?.caCertificatePath == "/path/to/mongo-ca.pem")
+        #expect(connections[2].sslConfig?.clientKeyPath == nil)
+
+        #expect(connections[3].sslConfig?.caCertificatePath == "/path/to/clickhouse-ca.pem")
+        #expect(connections[3].sslConfig?.clientCertificatePath == nil)
+        #expect(connections[3].sslConfig?.clientKeyPath == nil)
+
+        #expect(connections[4].sslConfig?.caCertificatePath == "/path/to/es-ca.pem")
+        #expect(connections[4].sslConfig?.clientCertificatePath == nil)
     }
 
-    @Test("importConnections no SSL for unknown tLSMode value")
-    func testImportConnections_noSSLForUnknownTLSMode() throws {
+    @Test("importConnections carries no TLS paths for a driver whose form has no file pickers")
+    func testImportConnections_oracleCarriesNoTLSPaths() throws {
         try writeConnections([
-            makeConnection(name: "Unknown TLS", id: "ssl-unknown", tlsMode: 99)
+            makeConnection(
+                name: "Oracle TLS",
+                driver: "Oracle",
+                id: "tls-oracle",
+                tlsMode: 1,
+                tlsKeyPaths: ["/stray/a.pem", "/stray/b.pem", "/stray/c.pem"]
+            )
         ])
 
-        let result = try importer.importConnections(includePasswords: false)
-        #expect(result.envelope.connections[0].sslConfig == nil)
+        let ssl = try importer.importConnections(includePasswords: false).envelope.connections[0].sslConfig
+        #expect(ssl?.mode == "Required")
+        #expect(ssl?.caCertificatePath == nil)
+        #expect(ssl?.clientCertificatePath == nil)
+        #expect(ssl?.clientKeyPath == nil)
+    }
+
+    @Test("importConnections drops an SSL mode past the end of the driver's own popup")
+    func testImportConnections_noSSLForTLSModePastDriverVocabulary() throws {
+        try writeConnections([
+            makeConnection(name: "Unknown TLS", id: "ssl-unknown", tlsMode: 99),
+            makeConnection(name: "Past MySQL", driver: "MySQL", id: "ssl-past-mysql", tlsMode: 5),
+            makeConnection(name: "Past Oracle", driver: "Oracle", id: "ssl-past-oracle", tlsMode: 2)
+        ])
+
+        let connections = try importer.importConnections(includePasswords: false).envelope.connections
+        #expect(connections[0].sslConfig == nil)
+        #expect(connections[1].sslConfig == nil)
+        #expect(connections[2].sslConfig == nil)
+    }
+
+    @Test("importConnections keeps Preferred for a driver whose form has no SSL picker")
+    func testImportConnections_driverWithoutSSLPicker_staysPreferred() throws {
+        try writeConnections([
+            makeConnection(name: "SQL Server", driver: "MicrosoftSQLServer", id: "ssl-mssql", tlsMode: 0),
+            makeConnection(name: "Snowflake", driver: "Snowflake", id: "ssl-snowflake", tlsMode: 0)
+        ])
+
+        let connections = try importer.importConnections(includePasswords: false).envelope.connections
+        #expect(connections[0].sslConfig?.mode == "Preferred")
+        #expect(connections[1].sslConfig?.mode == "Preferred")
     }
 
     @Test("importConnections treats empty TablePlus TLS paths as none")
@@ -671,6 +801,177 @@ struct TablePlusImporterTests {
         #expect(result.credentialsAborted == true)
         #expect(spy.calls.count == 1)
         #expect(spy.calls.first?.account == "c1_database")
+    }
+
+    // MARK: - Password Mode
+
+    @Test("importConnections carries Ask everytime across as Prompt for password")
+    func testImportConnections_askEveryTime_setsPromptForPassword() throws {
+        try writeConnections([
+            makeConnection(name: "Ask", id: "c1", databasePasswordMode: 1)
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["promptForPassword"] == "true")
+    }
+
+    @Test("importConnections leaves Store in keychain and a missing mode without a prompt")
+    func testImportConnections_storeInKeychainOrAbsentMode_leavesNoPrompt() throws {
+        try writeConnections([
+            makeConnection(name: "Stored", id: "c1", databasePasswordMode: 0),
+            makeConnection(name: "Absent", id: "c2"),
+            makeConnection(name: "Unknown", id: "c3", databasePasswordMode: 47)
+        ])
+
+        let connections = try importer.importConnections(includePasswords: false).envelope.connections
+        #expect(connections[0].additionalFields?["promptForPassword"] == nil)
+        #expect(connections[1].additionalFields?["promptForPassword"] == nil)
+        #expect(connections[2].additionalFields?["promptForPassword"] == nil)
+    }
+
+    @Test("importConnections leaves No password without a prompt")
+    func testImportConnections_noPasswordMode_leavesNoPrompt() throws {
+        try writeConnections([
+            makeConnection(name: "None", id: "c1", databasePasswordMode: 2)
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["promptForPassword"] == nil)
+    }
+
+    @Test("importConnections prompts for a Command Line password TablePro cannot run")
+    func testImportConnections_commandLineMode_setsPromptForPassword() throws {
+        try writeConnections([
+            makeConnection(name: "Command", id: "c1", databasePasswordMode: 3)
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["promptForPassword"] == "true")
+    }
+
+    @Test("importConnections keeps the local file path alongside the prompt flag")
+    func testImportConnections_promptMergesWithFilePathField() throws {
+        var entry = makeConnection(
+            name: "libSQL Ask",
+            driver: "LibSQL",
+            port: "",
+            database: "",
+            id: "c1",
+            databasePasswordMode: 1
+        )
+        entry["DatabasePath"] = "/Users/me/local.db"
+        try writeConnections([entry])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["libsqlFilePath"] == "/Users/me/local.db")
+        #expect(connection.additionalFields?["promptForPassword"] == "true")
+    }
+
+    @Test("importConnections keeps a DuckDB file path without an inert prompt")
+    func testImportConnections_duckDBAskEveryTime_keepsPathWithoutPrompt() throws {
+        var entry = makeConnection(
+            name: "DuckDB Ask",
+            driver: "DuckDB",
+            port: "",
+            database: "",
+            id: "c1",
+            databasePasswordMode: 1
+        )
+        entry["DatabasePath"] = "/Users/me/warehouse.duckdb"
+        try writeConnections([entry])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["duckdbFilePath"] == "/Users/me/warehouse.duckdb")
+        #expect(connection.additionalFields?["promptForPassword"] == nil)
+    }
+
+    @Test("importConnections skips the keychain for a database password TablePlus does not store")
+    func testImportConnections_nonKeychainDatabaseMode_skipsKeychainRead() throws {
+        try writeConnections([
+            makeConnection(name: "Ask", id: "conn-1", databasePasswordMode: 1)
+        ])
+        let spy = KeychainSpy()
+        spy.responses["conn-1_database"] = .found("stale")
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(spy.calls.contains { $0.account == "conn-1_database" } == false)
+        #expect(result.envelope.credentials?["0"]?.password == nil)
+    }
+
+    @Test("importConnections skips the SSH password but keeps the separately stored key passphrase")
+    func testImportConnections_nonKeychainServerMode_skipsSSHPasswordOnly() throws {
+        try writeConnections([
+            makeConnection(name: "Ask SSH", id: "conn-1", serverPasswordMode: 1)
+        ])
+        let spy = KeychainSpy()
+        spy.responses["conn-1_server"] = .found("stale")
+        spy.responses["conn-1_server_key"] = .found("passphrase")
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(Set(spy.calls.map(\.account)) == ["conn-1_database", "conn-1_server_key"])
+        #expect(result.envelope.credentials?["0"]?.sshPassword == nil)
+        #expect(result.envelope.credentials?["0"]?.keyPassphrase == "passphrase")
+    }
+
+    @Test("importConnections reads the keychain for a mode index TablePlus has not shipped yet")
+    func testImportConnections_unknownPasswordMode_readsKeychainWithoutPrompting() throws {
+        try writeConnections([
+            makeConnection(name: "Future", id: "conn-1", databasePasswordMode: 47)
+        ])
+        let spy = KeychainSpy()
+        spy.responses["conn-1_database"] = .found("s3cret")
+
+        var imp = importer
+        imp.readKeychain = spy.read
+
+        let result = try imp.importConnections(includePasswords: true)
+
+        #expect(spy.calls.contains { $0.account == "conn-1_database" })
+        #expect(result.envelope.credentials?["0"]?.password == "s3cret")
+        #expect(result.envelope.connections[0].additionalFields?["promptForPassword"] == nil)
+    }
+
+    @Test("importConnections leaves an inert prompt off a driver whose password field is plugin-owned")
+    func testImportConnections_pluginOwnedPasswordField_setsNoPrompt() throws {
+        try writeConnections([
+            makeConnection(name: "DynamoDB Ask", driver: "DynamoDB", id: "c1", databasePasswordMode: 1)
+        ])
+
+        let connection = try importer.importConnections(includePasswords: false).envelope.connections[0]
+        #expect(connection.additionalFields?["promptForPassword"] == nil)
+    }
+
+    @MainActor
+    @Test("importConnections keeps the prompt flag through analyze and into the connection")
+    func testImportConnections_promptFlagSurvivesTheImportPipeline() throws {
+        try writeConnections([
+            makeConnection(name: "Ask", id: "c1", databasePasswordMode: 1)
+        ])
+
+        let envelope = try importer.importConnections(includePasswords: false).envelope
+        let preview = ConnectionExportService.analyzeImport(
+            envelope,
+            existingConnections: [],
+            registeredTypeIds: ["MySQL"],
+            fileExists: { _ in true }
+        )
+        let connection = ConnectionExportService.buildDatabaseConnection(
+            id: UUID(),
+            from: preview.items[0].connection,
+            name: "Ask",
+            tagIdsByName: [:],
+            groupIdsByName: [:]
+        )
+
+        #expect(connection.promptForPassword)
     }
 }
 

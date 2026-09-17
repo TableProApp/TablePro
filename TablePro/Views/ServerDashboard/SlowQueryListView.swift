@@ -19,7 +19,7 @@ struct SlowQueryListView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                     }
                     .font(.caption)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                    .foregroundStyle(.orange)
                 }
             }
             .padding(.horizontal, 12)
@@ -49,7 +49,7 @@ struct SlowQueryListView: View {
             Text(query.duration)
                 .font(.system(.caption, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                .foregroundStyle(.orange)
                 .frame(width: 50, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 2) {

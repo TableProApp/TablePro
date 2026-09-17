@@ -135,5 +135,6 @@ struct MainContentCommandActionsResultViewTests {
     func availableModesFollowTheTab() {
         let (actions, _, _) = makeActions()
         #expect(actions.availableResultsViewModes == [.data, .structure, .json, .chart])
+        #expect(!actions.availableResultsViewModes.contains(.map))
     }
 }

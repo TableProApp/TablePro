@@ -100,6 +100,7 @@ For read-only access, drop `PartiQLInsert`, `PartiQLUpdate` and `PartiQLDelete`.
 - Paging is cursor-based, so page 40 re-scans everything before it.
 - A list or map cell is cut at 10,000 characters and ends in `...`. Saving an edit to a cut cell stores the fragment; change long nested values with PartiQL instead.
 - Table structure is fixed at creation: no structure editing, no transactions, no import.
+- Truncate is not offered. DynamoDB empties a table by scanning it and deleting every item, which is a long billed job rather than a statement. Deleting the table is available, from the sidebar or with `DROP TABLE "<name>"`, which issues `DeleteTable`.
 - Item counts come from DynamoDB and refresh roughly every six hours, so they lag.
 - DAX endpoints are not supported. Leave **Custom Endpoint** empty or point it at a standard endpoint.
 

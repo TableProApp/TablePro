@@ -15,7 +15,7 @@ import TableProPluginKit
 final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MySQL Driver"
     static let pluginVersion = "1.0.0"
-    static let pluginDescription = "MySQL, MariaDB, TiDB, and Databend support via libmariadb"
+    static let pluginDescription = "MySQL, MariaDB, TiDB, Databend, and OceanBase support via libmariadb"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "MySQL"
@@ -33,7 +33,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         ),
         MySQLConnectionEncoding.connectionField
         ]
-    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend"]
+    static let additionalDatabaseTypeIds: [String] = ["MariaDB", "TiDB", "Databend", "OceanBase"]
 
     // MARK: - UI/Capability Metadata
 
@@ -49,7 +49,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     ]
     static let brandColorHex = "#FF9500"
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
-    static let systemDatabaseNames: [String] = ["information_schema", "mysql", "performance_schema", "sys"]
+    static let systemDatabaseNames: [String] = MySQLSystemDatabases.mysql
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT"],
         "Float": ["FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "REAL"],
@@ -123,7 +123,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static func driverVariant(for databaseTypeId: String) -> String? {
         switch databaseTypeId {
-        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant:
+        case MySQLServerFlavor.tidbVariant, MySQLServerFlavor.databendVariant, MySQLServerFlavor.oceanbaseVariant:
             return databaseTypeId
         default:
             return nil

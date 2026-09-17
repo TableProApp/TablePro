@@ -12,14 +12,17 @@ struct DatabaseSwitcherFilterTests {
     private func makeViewModel(
         databaseNames: [String],
         filter: Set<String> = [],
-        systemNames: [String] = []
+        systemNames: [String] = [],
+        switchTarget: ContainerSwitchTarget = .database,
+        currentDatabase: String? = nil
     ) -> DatabaseSwitcherViewModel {
         let sidebarState = SharedSidebarState()
         sidebarState.databaseFilterSelected = filter
         let vm = DatabaseSwitcherViewModel(
             connectionId: UUID(),
-            currentDatabase: nil,
+            currentDatabase: currentDatabase,
             databaseType: .mysql,
+            switchTarget: switchTarget,
             sidebarState: sidebarState
         )
         vm.databases = databaseNames.map { name in
@@ -64,22 +67,59 @@ struct DatabaseSwitcherFilterTests {
         #expect(Set(vm.filteredDatabases.map(\.name)) == ["app", "staging"])
     }
 
-    @Test("Empty sidebar filter still hides system databases")
-    func emptySidebarFilterHidesSystemDatabases() {
+    /// #2832. A MySQL server listed `mysql`, `sys` and the rest, and the switcher dropped every one of
+    /// them, so a user who connected with no database could never reach `mysql`.
+    @Test("System databases are listed after the user databases")
+    func systemDatabasesAreListedLast() {
         let vm = makeViewModel(
-            databaseNames: ["app", "analytics", "staging"],
-            systemNames: ["analytics"]
-        )
-        #expect(vm.filteredDatabases.map(\.name) == ["app", "staging"])
-    }
-
-    @Test("Sidebar filter keeps hiding system databases even when selected")
-    func sidebarFilterHidesSystemDatabasesWhenSelected() {
-        let vm = makeViewModel(
-            databaseNames: ["app", "mysql", "sys"],
-            filter: ["app", "mysql", "sys"],
+            databaseNames: ["analytics", "app", "mysql", "staging", "sys"],
             systemNames: ["mysql", "sys"]
         )
-        #expect(vm.filteredDatabases.map(\.name) == ["app"])
+        #expect(vm.filteredDatabases.map(\.name) == ["analytics", "app", "staging", "mysql", "sys"])
+        #expect(vm.visibleSections.system.map(\.name) == ["mysql", "sys"])
+    }
+
+    @Test("The sidebar filter never hides a system database")
+    func sidebarFilterKeepsSystemDatabases() {
+        let vm = makeViewModel(
+            databaseNames: ["app", "mysql", "staging", "sys"],
+            filter: ["app"],
+            systemNames: ["mysql", "sys"]
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["app", "mysql", "sys"])
+    }
+
+    @Test("Typing a system database's name finds and selects it")
+    func typingSystemDatabaseNameFindsIt() {
+        let vm = makeViewModel(databaseNames: ["app", "mysql"], systemNames: ["mysql"])
+        vm.searchText = "mysql"
+        #expect(vm.filteredDatabases.map(\.name) == ["mysql"])
+        #expect(vm.selectedDatabase == "mysql")
+    }
+
+    @Test("A search ranks within each section, so a system database never outranks a user database")
+    func searchRanksWithinSections() {
+        let vm = makeViewModel(databaseNames: ["mysql", "mysql_backup"], systemNames: ["mysql"])
+        vm.searchText = "mysql"
+        #expect(vm.filteredDatabases.map(\.name) == ["mysql_backup", "mysql"])
+    }
+
+    @Test("The arrow keys walk from the last user database into the system section")
+    func arrowKeysReachSystemSection() {
+        let vm = makeViewModel(databaseNames: ["app", "mysql", "staging"], systemNames: ["mysql"])
+        vm.selectedDatabase = "staging"
+        vm.moveDown()
+        #expect(vm.selectedDatabase == "mysql")
+    }
+
+    @Test("Schema mode lists system schemas last and ignores the database filter")
+    func schemaModeListsSystemSchemasLast() {
+        let vm = makeViewModel(
+            databaseNames: ["APP", "SYS", "SALES"],
+            filter: ["APP"],
+            systemNames: ["SYS"],
+            switchTarget: .schema
+        )
+        #expect(vm.filteredDatabases.map(\.name) == ["APP", "SALES", "SYS"])
     }
 }

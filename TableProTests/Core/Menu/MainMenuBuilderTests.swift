@@ -157,10 +157,16 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    @Test("Find ships on Cmd+F and the filter bar keeps Cmd+Option+F")
+    /// `Cmd+Option+F` is Apple's Find and Replace key, so the filter bar moved off it rather than a
+    /// documented text-editing shortcut landing somewhere users would not look for it.
+    @Test("The find keys are Apple's and the filter bar sits beside them")
     func findAndFilterDefaultsHold() {
         #expect(KeyboardSettings.defaultShortcuts[.find] == .character("f", command: true))
-        #expect(KeyboardSettings.defaultShortcuts[.toggleFilters] == .character("f", command: true, option: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findAndReplace] == .character("f", command: true, option: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findNext] == .character("g", command: true))
+        #expect(KeyboardSettings.defaultShortcuts[.findPrevious] == .character("g", command: true, shift: true))
+        #expect(KeyboardSettings.defaultShortcuts[.useSelectionForFind] == .character("e", command: true))
+        #expect(KeyboardSettings.defaultShortcuts[.toggleFilters] == .character("f", command: true, shift: true))
         #expect(
             KeyboardSettings.defaultShortcuts[.focusSidebarSearch]
                 == .character("f", command: true, option: true, control: true)
@@ -472,7 +478,9 @@ struct MainMenuValidationTests {
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
+        context.hasRowSelection = true
         context.canTruncateSelectedTables = true
+        context.canDropSelectedTables = true
         context.canShowTableStructure = true
         context.canEditViewDefinition = true
         context.hasMaintenanceOperations = true

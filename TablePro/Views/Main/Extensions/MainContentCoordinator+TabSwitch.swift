@@ -6,9 +6,9 @@
 //  to keep the main class body within SwiftLint limits.
 //
 
-import CodeEditSourceEditor
 import Foundation
 import os
+import TableProEditorKit
 
 extension MainContentCoordinator {
     func handleTabChange(
@@ -78,16 +78,7 @@ extension MainContentCoordinator {
             if let live = mountedGridSelection() {
                 storeGridSelection(rows: live.rows, cells: live.cells, forTab: oldId)
             }
-            if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
-                FilterSettingsStorage.shared.saveLastFilters(
-                    tabManager.tabs[oldIndex].filterState.appliedFilters,
-                    logicMode: tabManager.tabs[oldIndex].filterState.filterLogicMode,
-                    for: tableName,
-                    connectionId: connectionId,
-                    databaseName: tabManager.tabs[oldIndex].tableContext.databaseName,
-                    schemaName: tabManager.tabs[oldIndex].tableContext.schemaName
-                )
-            }
+            filterCoordinator.saveLastFilters(of: tabManager.tabs[oldIndex])
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
@@ -112,6 +103,7 @@ extension MainContentCoordinator {
             selectionState.indices = newTab.selectedDisplayRows
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
+            syncQueryToolbarState(for: newTab)
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
@@ -121,7 +113,7 @@ extension MainContentCoordinator {
                     schemaName: newTab.tableContext.schemaName,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchExcludedColumns: newRows.rowMatchExcludedColumns
+                    rowMatchPolicy: newRows.rowMatchPolicy
                 )
             } else {
                 changeManager.configureForTable(
@@ -131,7 +123,7 @@ extension MainContentCoordinator {
                     primaryKeyColumns: newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     generatedColumns: newRows.generatedColumns,
-                    rowMatchExcludedColumns: newRows.rowMatchExcludedColumns,
+                    rowMatchPolicy: newRows.rowMatchPolicy,
                     triggerReload: false
                 )
             }
@@ -150,7 +142,36 @@ extension MainContentCoordinator {
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
+            toolbarState.isQueryTab = false
+            toolbarState.hasQueryText = false
         }
+    }
+
+    /// What the toolbar's Run, Explain, Format and Favorite items validate against.
+    ///
+    /// Execution state is deliberately not among these: `TabExecutionRegistry` is the single answer
+    /// to "is something running", and its own documentation records that a hand-kept mirror of that
+    /// is what let the titlebar report a query which had already ended (#2342). The toolbar reads
+    /// it live through `isSelectedTabExecuting`.
+    func syncQueryToolbarState(for tab: QueryTab) {
+        toolbarState.isQueryTab = tab.tabType == .query
+        toolbarState.hasQueryText = tab.tabType == .query && tab.hasQueryText
+    }
+
+    func syncQueryToolbarStateForSelectedTab() {
+        guard let tab = tabManager.selectedTab else {
+            toolbarState.isQueryTab = false
+            toolbarState.hasQueryText = false
+            return
+        }
+        syncQueryToolbarState(for: tab)
+    }
+
+    /// Whether the tab the toolbar is pointed at has a query in flight, asked of the registry each
+    /// time rather than stored.
+    var isSelectedTabExecuting: Bool {
+        guard let tabId = tabManager.selectedTabId else { return false }
+        return tabExecution.isExecuting(tabId)
     }
 
     /// Whether dropping this tab's rows is safe, which is exactly whether `canAutoLoadTableTab`

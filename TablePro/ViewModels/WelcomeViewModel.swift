@@ -7,240 +7,147 @@ import AppKit
 import Combine
 import os
 import SwiftUI
+import TableProConnectionLibrary
 import TableProImport
 import TableProPluginKit
 
+internal struct WelcomeNewGroupRequest: Hashable {
+    internal let parentId: UUID?
+    internal let movingConnectionIds: [UUID]
+}
+
+internal struct WelcomeTagToken: Identifiable, Hashable {
+    internal let id: UUID
+    internal let name: String
+    internal let color: ConnectionColor
+}
+
 enum WelcomeActiveSheet: Identifiable {
-    case newGroup(parentId: UUID?)
+    case newGroup(WelcomeNewGroupRequest)
     case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
+    case importFromAWS
     case projectFolderScan(URL)
     case deeplinkImport(ExportableConnection)
 
     var id: String {
         switch self {
-        case .newGroup(let parentId): "newGroup-\(parentId?.uuidString ?? "root")"
+        case .newGroup(let request):
+            "newGroup-\(request.parentId?.uuidString ?? "root")-"
+                + request.movingConnectionIds.map(\.uuidString).joined(separator: ",")
         case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
+        case .importFromAWS: "importFromAWS"
         case .projectFolderScan(let u): "projectFolderScan-\(u.absoluteString)"
         case .deeplinkImport(let c): "deeplinkImport-\(c.type)-\(c.name)-\(c.host)-\(c.port)"
         }
     }
 }
 
-@MainActor @Observable
-final class WelcomeViewModel {
+@MainActor
+internal protocol WelcomeOutlineControlling: AnyObject {
+    var outlineUndoManager: UndoManager? { get }
+    func beginRename(_ row: LibraryRowID)
+    func focusList(selectFirstRow: Bool)
+}
+
+@MainActor
+final class WelcomeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
-
-    @ObservationIgnored let services: AppServices
-    private var storage: ConnectionStorage { services.connectionStorage }
-    private var groupStorage: GroupStorage { services.groupStorage }
-
-    // MARK: - State
-
-    var connections: [DatabaseConnection] = []
-    var searchText = "" { didSet { scheduleRebuildTree(oldValue: oldValue) } }
-    var tagFilter = TagFilter() { didSet { if tagFilter != oldValue { rebuildTree() } } }
-    var selectedConnectionIds: Set<UUID> = []
-    var groups: [ConnectionGroup] = []
-    var linkedConnections: [LinkedConnection] = [] {
-        didSet { rebuildTree() }
-    }
-    var teamLibraryConnections: [LinkedConnection] = [] {
-        didSet { rebuildTree() }
-    }
-    private(set) var hasImportableApp = false
-    var presentsWelcomeSheet = false
-    var connectionsToDelete: [DatabaseConnection] = []
-    var showDeleteConfirmation = false
-    var pendingDeleteHasFavorites = false
-    private var deleteRequestToken = UUID()
-    var showDeleteGroupConfirmation = false
-    var groupToDelete: ConnectionGroup?
-    var pendingMoveToNewGroup: [DatabaseConnection] = []
-    var activeSheet: WelcomeActiveSheet?
-    var pluginInstallConnection: DatabaseConnection?
-
-    var databaseTypeChooser: DatabaseTypeChooserPayload?
-    var urlImportPresented = false
-    var pendingInstallType: DatabaseType?
-    @ObservationIgnored var pendingInstallPayload: DatabaseTypeChooserPayload?
-
-    var renameGroupTarget: ConnectionGroup?
-    var renameGroupName = ""
-    var showRenameGroupAlert = false
-
-    /// Why a group change was refused. Renaming, recolouring and moving are commands with no
-    /// surface of their own to report into, so the window presents this; creating a group has its
-    /// own sheet and reports there instead.
-    var groupErrorMessage: String?
-
-    var connectionError: String?
-    var connectionErrorRecovery: PendingConnectionRecovery?
-    var showConnectionError = false
-    var pluginDiagnostic: PluginDiagnosticItem?
-
-    var showImportFilePanel = false
-    var importResultCount: Int?
-    /// Set when a sheet (import file / import-from-app) finishes work and is
-    /// about to dismiss. Flushed in the sheet's `onDismiss` so the result
-    /// alert appears after the sheet animation completes, no sleep needed.
-    var pendingImportResultCount: Int?
-
-    var expandedGroupIds: Set<UUID> = [] {
-        didSet { groupExpansionStore.save(expandedGroupIds) }
-    }
-
-    // MARK: - Notification Observers
-
-    @ObservationIgnored private var connectionUpdatedCancellable: AnyCancellable?
-    @ObservationIgnored private var linkedFoldersCancellable: AnyCancellable?
-    @ObservationIgnored private var teamLibraryCancellable: AnyCancellable?
-    @ObservationIgnored private var licenseCancellable: AnyCancellable?
-    @ObservationIgnored private var welcomeRouterTask: Task<Void, Never>?
-    @ObservationIgnored private var searchDebounceTask: Task<Void, Never>?
-    @ObservationIgnored private let importableAppDetector: @MainActor () -> Bool
-    @ObservationIgnored private let groupExpansionStore: WelcomeGroupExpansionStore
-    @ObservationIgnored private let hasStoredGroupExpansion: Bool
+    private static let teamLibraryNamespace = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
-    // MARK: - Computed Properties
+    let services: AppServices
+    let recentConnections: RecentConnectionsStore
+    let listPreferences: ConnectionListPreferences
+    weak var outlineController: WelcomeOutlineControlling?
+    var storage: ConnectionStorage { services.connectionStorage }
+    var groupStorage: GroupStorage { services.groupStorage }
 
-    private(set) var treeItems: [ConnectionGroupTreeNode] = []
-    private(set) var favoriteConnections: [DatabaseConnection] = []
-    private(set) var connectionCountByGroup: [UUID: Int] = [:]
-    private(set) var depthByGroup: [UUID: Int] = [:]
-    private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
+    // MARK: - Library
 
-    private(set) var tags: [ConnectionTag] = []
-
-    var availableTags: [ConnectionTag] {
-        let usedIds = Set(connections.flatMap(\.tagIds))
-        return tags.filter { usedIds.contains($0.id) }
+    @Published private(set) var connections: [DatabaseConnection] = []
+    @Published private(set) var groups: [ConnectionGroup] = []
+    @Published private(set) var tags: [ConnectionTag] = []
+    private(set) var connectionsById: [UUID: DatabaseConnection] = [:]
+    private(set) var groupsById: [UUID: ConnectionGroup] = [:]
+    private(set) var tagsById: [UUID: ConnectionTag] = [:]
+    private(set) var groupGraph = LibraryGroupGraph(groups: [ConnectionGroup]())
+    private(set) var groupConnectionCounts: [UUID: Int] = [:]
+    @Published var linkedConnections: [LinkedConnection] = [] {
+        didSet { rebuildOutline() }
+    }
+    @Published var teamLibraryConnections: [LinkedConnection] = [] {
+        didSet { rebuildOutline() }
     }
 
-    private var presentableLinkedConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
-        return linkedConnections
+    // MARK: - Query
+
+    @Published var searchText = "" { didSet { scheduleRebuild(previous: oldValue) } }
+    @Published var searchTokens: [WelcomeTagToken] = [] {
+        didSet { if searchTokens != oldValue { rebuildOutline() } }
+    }
+    @Published var tagMatch: LibraryTagMatch = .any {
+        didSet { if tagMatch != oldValue { rebuildOutline() } }
     }
 
-    private var presentableTeamLibraryConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
-        return teamLibraryConnections
+    // MARK: - Outline
+
+    @Published private(set) var outline: LibraryOutline = .empty
+    @Published private(set) var outlineRevision = 0
+    @Published private(set) var sortMode: LibrarySortMode
+    @Published var expandedGroupIds: Set<UUID> = [] {
+        didSet { groupExpansionStore.save(expandedGroupIds) }
     }
+    @Published var selection: [LibraryRowID] = []
 
-    var visibleLinkedConnections: [LinkedConnection] {
-        Self.visibleExternalConnections(presentableLinkedConnections, searchText: searchText, tagFilter: tagFilter)
-    }
+    // MARK: - Presentation
 
-    var visibleTeamLibraryConnections: [LinkedConnection] {
-        Self.visibleExternalConnections(presentableTeamLibraryConnections, searchText: searchText, tagFilter: tagFilter)
-    }
+    @Published private(set) var hasImportableApp = false
+    @Published var presentsWelcomeSheet = false
+    @Published var connectionsToDelete: [DatabaseConnection] = []
+    @Published var showDeleteConfirmation = false
+    @Published var pendingDeleteHasFavorites = false
+    private var deleteRequestToken = UUID()
+    @Published var showDeleteGroupConfirmation = false
+    @Published var groupToDelete: ConnectionGroup?
+    @Published var activeSheet: WelcomeActiveSheet?
+    @Published var pluginInstallConnection: DatabaseConnection?
 
-    static func visibleExternalConnections(
-        _ external: [LinkedConnection],
-        searchText: String,
-        tagFilter: TagFilter
-    ) -> [LinkedConnection] {
-        guard !tagFilter.isActive else { return [] }
-        guard !searchText.isEmpty else { return external }
-        return external.filter { linked in
-            linked.connection.name.localizedCaseInsensitiveContains(searchText)
-                || linked.connection.host.localizedCaseInsensitiveContains(searchText)
-                || linked.connection.database.localizedCaseInsensitiveContains(searchText)
-        }
-    }
+    @Published var databaseTypeChooser: DatabaseTypeChooserPayload?
+    @Published var urlImportPresented = false
+    @Published var pendingInstallType: DatabaseType?
+    var pendingInstallPayload: DatabaseTypeChooserPayload?
 
-    var showsFavoritesSection: Bool {
-        searchText.isEmpty && !favoriteConnections.isEmpty
-    }
+    @Published var libraryErrorMessage: String?
 
-    var hasAnyConnection: Bool {
-        !connections.isEmpty || !presentableLinkedConnections.isEmpty || !presentableTeamLibraryConnections.isEmpty
-    }
+    @Published var connectionError: String?
+    @Published var connectionErrorRecovery: PendingConnectionRecovery?
+    @Published var showConnectionError = false
+    @Published var pluginDiagnostic: PluginDiagnosticItem?
 
-    var isSearchAvailable: Bool {
-        hasAnyConnection
-    }
+    @Published var showImportFilePanel = false
+    @Published var importResultCount: Int?
+    /// Set when a sheet (import file / import-from-app) finishes work and is about to dismiss.
+    /// Flushed in the sheet's `onDismiss` so the result alert appears after the sheet animation.
+    @Published var pendingImportResultCount: Int?
 
-    var listState: WelcomeListState {
-        WelcomeListState.resolve(WelcomeListState.Input(
-            hasAnyConnection: hasAnyConnection,
-            hasVisibleContent: !treeItems.isEmpty || showsFavoritesSection
-                || !visibleLinkedConnections.isEmpty || !visibleTeamLibraryConnections.isEmpty,
-            searchText: searchText,
-            isTagFiltered: tagFilter.isActive
-        ))
-    }
+    // MARK: - Observers
 
-    func rebuildTree() {
-        guard filtersStillApply() else { return }
-
-        favoriteConnections = connections
-            .filter(\.isFavorite)
-            .filter { tagFilter.matches($0) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
-        let (tree, indices) = buildGroupTreeWithIndices(groups: groups, connections: connections)
-        var baseItems = searchText.isEmpty ? tree : filterGroupTree(tree, searchText: searchText)
-        if showsFavoritesSection {
-            baseItems = removingConnections(from: baseItems, where: \.isFavorite)
-        }
-        if tagFilter.isActive {
-            baseItems = filterGroupTreeByTags(baseItems, filter: tagFilter)
-        }
-        treeItems = baseItems
-
-        connectionCountByGroup = indices.connectionCountByGroup
-        depthByGroup = indices.depthByGroup
-        maxDescendantDepthByGroup = indices.maxDescendantDepthByGroup
-    }
-
-    private func filtersStillApply() -> Bool {
-        if !hasAnyConnection, !searchText.isEmpty {
-            searchText = ""
-            return false
-        }
-        let usedTagIds = Set(connections.flatMap(\.tagIds))
-        guard tagFilter.selectedIds.isSubset(of: usedTagIds) else {
-            tagFilter.selectedIds.formIntersection(usedTagIds)
-            return false
-        }
-        return true
-    }
-
-    private func scheduleRebuildTree(oldValue: String) {
-        searchDebounceTask?.cancel()
-        if searchText.isEmpty || oldValue.isEmpty {
-            rebuildTree()
-            return
-        }
-        searchDebounceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
-            guard !Task.isCancelled else { return }
-            self?.rebuildTree()
-        }
-    }
-
-    var flatVisibleConnections: [DatabaseConnection] {
-        let inTree = flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
-        guard searchText.isEmpty, !favoriteConnections.isEmpty else { return inTree }
-        var seen = Set<UUID>()
-        return (favoriteConnections + inTree).filter { seen.insert($0.id).inserted }
-    }
-
-    var selectedConnections: [DatabaseConnection] {
-        connections.filter { selectedConnectionIds.contains($0.id) }
-    }
-
-    func groupName(for groupId: UUID?) -> String? {
-        guard let groupId else { return nil }
-        return groups.first { $0.id == groupId }?.name
-    }
+    private var connectionUpdatedCancellable: AnyCancellable?
+    private var listStateCancellable: AnyCancellable?
+    private var linkedFoldersCancellable: AnyCancellable?
+    private var teamLibraryCancellable: AnyCancellable?
+    private var licenseCancellable: AnyCancellable?
+    private var welcomeRouterTask: Task<Void, Never>?
+    private var searchDebounceTask: Task<Void, Never>?
+    private let importableAppDetector: @MainActor () -> Bool
+    private let groupExpansionStore: WelcomeGroupExpansionStore
+    private let hasStoredGroupExpansion: Bool
 
     // MARK: - Initialization
 
@@ -251,11 +158,16 @@ final class WelcomeViewModel {
     init(
         services: AppServices,
         importableAppDetector: @escaping @MainActor () -> Bool = WelcomeViewModel.detectImportableApp,
-        groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore()
+        groupExpansionStore: WelcomeGroupExpansionStore = WelcomeGroupExpansionStore(),
+        recentConnections: RecentConnectionsStore = .shared,
+        listPreferences: ConnectionListPreferences = .shared
     ) {
         self.services = services
         self.importableAppDetector = importableAppDetector
         self.groupExpansionStore = groupExpansionStore
+        self.recentConnections = recentConnections
+        self.listPreferences = listPreferences
+        self.sortMode = listPreferences.sortMode
         let storedExpansion = groupExpansionStore.load()
         self.hasStoredGroupExpansion = storedExpansion != nil
         self.expandedGroupIds = storedExpansion ?? []
@@ -267,7 +179,199 @@ final class WelcomeViewModel {
         }
     }
 
-    // MARK: - Setup & Teardown
+    deinit {
+        welcomeRouterTask?.cancel()
+        searchDebounceTask?.cancel()
+    }
+
+    // MARK: - Derived State
+
+    var availableTags: [ConnectionTag] {
+        let usedIds = Set(connections.flatMap(\.tagIds))
+        return tags.filter { usedIds.contains($0.id) }
+    }
+
+    var suggestedTokens: [WelcomeTagToken] {
+        let chosen = Set(searchTokens.map(\.id))
+        return availableTags.filter { !chosen.contains($0.id) }.map(Self.token(for:))
+    }
+
+    static func token(for tag: ConnectionTag) -> WelcomeTagToken {
+        WelcomeTagToken(id: tag.id, name: tag.name, color: tag.color)
+    }
+
+    var query: LibraryQuery {
+        LibraryQuery(text: searchText, tagIds: Set(searchTokens.map(\.id)), tagMatch: tagMatch)
+    }
+
+    var isFiltering: Bool {
+        query.isActive
+    }
+
+    var presentableLinkedConnections: [LinkedConnection] {
+        guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
+        return linkedConnections
+    }
+
+    var presentableTeamLibraryConnections: [LinkedConnection] {
+        guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        return teamLibraryConnections
+    }
+
+    var sharedConnectionsById: [UUID: LinkedConnection] {
+        Dictionary(
+            (presentableLinkedConnections + presentableTeamLibraryConnections).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    var hasAnyConnection: Bool {
+        !connections.isEmpty || !presentableLinkedConnections.isEmpty || !presentableTeamLibraryConnections.isEmpty
+    }
+
+    var isSearchAvailable: Bool {
+        hasAnyConnection
+    }
+
+    var showsSectionHeaders: Bool {
+        !(outline.sections.count == 1 && outline.sections.first?.kind == .connections)
+    }
+
+    var listState: WelcomeListState {
+        WelcomeListState.resolve(WelcomeListState.Input(
+            hasAnyConnection: hasAnyConnection,
+            hasVisibleContent: !outline.isEmpty,
+            searchText: query.trimmedText,
+            isTagFiltered: !searchTokens.isEmpty
+        ))
+    }
+
+    func isGroupExpanded(_ groupId: UUID) -> Bool {
+        isFiltering ? outline.groupIdsExpandedByQuery.contains(groupId) : expandedGroupIds.contains(groupId)
+    }
+
+    func setGroupExpanded(_ groupId: UUID, _ expanded: Bool) {
+        guard !isFiltering else { return }
+        if expanded {
+            expandedGroupIds.insert(groupId)
+        } else {
+            expandedGroupIds.remove(groupId)
+        }
+    }
+
+    // MARK: - Outline
+
+    func rebuildOutline() {
+        guard filtersStillApply() else { return }
+        connectionsById = Dictionary(connections.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        groupsById = Dictionary(groups.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        tagsById = Dictionary(tags.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        groupGraph = LibraryGroupGraph(groups: groups)
+        outline = LibraryOutlineBuilder.build(outlineRequest(query: query))
+        groupConnectionCounts = Self.groupCounts(in: outline)
+        let visible = visibleRowIds()
+        selection = selection.filter { visible.contains($0) }
+        outlineRevision += 1
+    }
+
+    func outlineRequest(query: LibraryQuery) -> LibraryOutlineRequest<DatabaseConnection, ConnectionGroup, ConnectionTag> {
+        LibraryOutlineRequest(
+            connections: connections,
+            groups: groups,
+            tags: tags,
+            sortMode: sortMode,
+            query: query,
+            favoritesOrder: listPreferences.favoritesOrder,
+            lastConnected: recentConnections.lastConnected,
+            externalSections: [
+                LibraryExternalSection(kind: .linkedFolders, entries: presentableLinkedConnections.map(\.libraryEntry)),
+                LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryEntry)),
+            ]
+        )
+    }
+
+    func visibleRowIds() -> Set<LibraryRowID> {
+        var rows: Set<LibraryRowID> = []
+        let headers = showsSectionHeaders
+        for section in outline.sections {
+            if headers {
+                rows.insert(.section(section.kind))
+            }
+            collectVisibleRows(section.nodes, in: section.kind, into: &rows)
+        }
+        return rows
+    }
+
+    private func collectVisibleRows(
+        _ nodes: [LibraryNode],
+        in section: LibrarySectionKind,
+        into rows: inout Set<LibraryRowID>
+    ) {
+        for node in nodes {
+            rows.insert(node.rowID(in: section))
+            if case .group(let id, let children, _) = node, isGroupExpanded(id) {
+                collectVisibleRows(children, in: section, into: &rows)
+            }
+        }
+    }
+
+    private static func groupCounts(in outline: LibraryOutline) -> [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        func visit(_ nodes: [LibraryNode]) {
+            for node in nodes {
+                guard case .group(let id, let children, let count) = node else { continue }
+                counts[id] = count
+                visit(children)
+            }
+        }
+        visit(outline.section(.connections)?.nodes ?? [])
+        return counts
+    }
+
+    private func filtersStillApply() -> Bool {
+        if !hasAnyConnection, !searchText.isEmpty {
+            searchText = ""
+            return false
+        }
+        let usedTagIds = Set(connections.flatMap(\.tagIds))
+        let keptTokens = searchTokens.filter { usedTagIds.contains($0.id) }
+        guard keptTokens.count == searchTokens.count else {
+            searchTokens = keptTokens
+            return false
+        }
+        return true
+    }
+
+    private func scheduleRebuild(previous: String) {
+        searchDebounceTask?.cancel()
+        if searchText.isEmpty || previous.isEmpty {
+            rebuildOutline()
+            return
+        }
+        searchDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.searchDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            self?.rebuildOutline()
+        }
+    }
+
+    func setSortMode(_ mode: LibrarySortMode) {
+        listPreferences.setSortMode(mode)
+        guard sortMode != mode else { return }
+        sortMode = mode
+        rebuildOutline()
+    }
+
+    func focusList(selectFirstRow: Bool = false) {
+        outlineController?.focusList(selectFirstRow: selectFirstRow)
+    }
+
+    private func listStateDidChange() {
+        sortMode = listPreferences.sortMode
+        rebuildOutline()
+    }
+
+    // MARK: - Setup
 
     func refreshImportableApp() {
         hasImportableApp = importableAppDetector()
@@ -288,6 +392,12 @@ final class WelcomeViewModel {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.loadConnections()
+            }
+
+        listStateCancellable = services.appEvents.connectionListStateChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.listStateDidChange()
             }
 
         linkedFoldersCancellable = services.appEvents.linkedFoldersDidUpdate
@@ -357,13 +467,9 @@ final class WelcomeViewModel {
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 box.set(continuation)
-                withObservationTracking({
-                    _ = router.pendingRequest
-                    _ = router.pendingImport
-                    _ = router.pendingConnectionShare
-                    _ = router.pendingError
-                    _ = router.pendingPluginInstall
-                }, onChange: {
+                /// One-shot: the continuation resumes on the first change, and the sink is
+                /// released with the box, so nothing needs re-arming.
+                box.hold(router.onMainActorChange {
                     box.resume(with: true)
                 })
             }
@@ -373,6 +479,15 @@ final class WelcomeViewModel {
     }
 
     private final class ContinuationBox: @unchecked Sendable {
+        private var observation: AnyCancellable?
+
+        /// Keeps the subscription alive until the continuation resumes.
+        func hold(_ cancellable: AnyCancellable) {
+            lock.lock()
+            defer { lock.unlock() }
+            observation = cancellable
+        }
+
         private var continuation: CheckedContinuation<Bool, Never>?
         private let lock = NSLock()
 
@@ -384,6 +499,7 @@ final class WelcomeViewModel {
 
         func resume(with value: Bool) {
             lock.lock()
+            observation = nil
             let pending = continuation
             continuation = nil
             lock.unlock()
@@ -391,25 +507,26 @@ final class WelcomeViewModel {
         }
     }
 
-    deinit {
-        welcomeRouterTask?.cancel()
-        searchDebounceTask?.cancel()
-    }
-
     // MARK: - Data Loading
 
     func loadConnections() {
         connections = storage.loadConnections()
         tags = services.tagStorage.loadTags()
-        loadGroups()
-    }
-
-    func loadGroups() {
         groups = groupStorage.loadGroups()
-        rebuildTree()
+        pruneDeviceState()
+        rebuildOutline()
     }
 
-    // MARK: - Connection Actions
+    private func pruneDeviceState() {
+        let favoriteIds = Set(connections.filter(\.isFavorite).map(\.id))
+        listPreferences.setFavoritesOrder(
+            LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, keeping: favoriteIds)
+        )
+        guard !connections.isEmpty else { return }
+        recentConnections.retain(only: Set(connections.map(\.id)))
+    }
+
+    // MARK: - Connecting
 
     func connectToDatabase(_ connection: DatabaseConnection) {
         Task {
@@ -426,14 +543,12 @@ final class WelcomeViewModel {
     }
 
     func connectToLinkedConnection(_ linked: LinkedConnection) {
-        let connection = DatabaseConnection(
+        let connection = ConnectionExportService.buildDatabaseConnection(
             id: linked.id,
+            from: linked.connection,
             name: linked.connection.name,
-            host: linked.connection.host,
-            port: linked.connection.port,
-            database: linked.connection.database,
-            username: linked.connection.username,
-            type: DatabaseType(rawValue: linked.connection.type)
+            tagIdsByName: [:],
+            groupIdsByName: [:]
         )
         Task {
             do {
@@ -444,216 +559,35 @@ final class WelcomeViewModel {
         }
     }
 
-    private static let teamLibraryFolderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
-
     private static func buildTeamLibraryConnections() -> [LinkedConnection] {
         guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
         let placeholderURL = URL(fileURLWithPath: "/")
-        return TeamLibrarySyncCoordinator.shared.library.connections.map { connection in
-            LinkedConnection(
-                id: LinkedFolderWatcher.stableId(
-                    folderId: teamLibraryFolderId,
-                    connection: connection.payload
-                ),
+        var seen: Set<UUID> = []
+        return TeamLibrarySyncCoordinator.shared.library.connections.compactMap { connection in
+            let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
+            guard seen.insert(id).inserted else { return nil }
+            return LinkedConnection(
+                id: id,
                 connection: connection.payload,
-                folderId: teamLibraryFolderId,
+                folderId: teamLibraryNamespace,
                 sourceFileURL: placeholderURL
             )
         }
     }
 
-    func duplicateConnection(_ connection: DatabaseConnection) {
-        let duplicate = storage.duplicateConnection(connection)
-        loadConnections()
-        WindowOpener.shared.openConnectionForm(editing: duplicate.id)
-    }
-
-    // MARK: - Favorites
-
-    func toggleFavorite(_ targets: [DatabaseConnection]) {
-        guard !targets.isEmpty else { return }
-        let ids = Set(targets.map(\.id))
-        let live = connections.filter { ids.contains($0.id) }
-        guard !live.isEmpty else { return }
-        let shouldFavorite = !live.allSatisfy(\.isFavorite)
-        var updated: [DatabaseConnection] = []
-        for index in connections.indices where ids.contains(connections[index].id) {
-            connections[index].isFavorite = shouldFavorite
-            updated.append(connections[index])
-        }
-        guard storage.updateConnections(updated) else {
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        rebuildTree()
-        AppEvents.shared.connectionUpdated.send(targets.count == 1 ? targets.first?.id : nil)
-    }
-
-    // MARK: - Delete
-
-    func requestDeleteConnections(_ targets: [DatabaseConnection]) {
-        guard !targets.isEmpty else { return }
-        let token = UUID()
-        deleteRequestToken = token
-        connectionsToDelete = targets
-        pendingDeleteHasFavorites = false
-        Task {
-            let hasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
-            guard deleteRequestToken == token else { return }
-            pendingDeleteHasFavorites = hasFavorites
-            showDeleteConfirmation = true
-        }
-    }
-
-    func deleteSelectedConnections() {
-        let idsToDelete = Set(connectionsToDelete.map(\.id))
-        guard storage.deleteConnections(connectionsToDelete) else {
-            connectionsToDelete = []
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        connections.removeAll { idsToDelete.contains($0.id) }
-        selectedConnectionIds.subtract(idsToDelete)
-        connectionsToDelete = []
-        rebuildTree()
-    }
-
-    // MARK: - Tags
-
-    func deleteTag(_ tag: ConnectionTag) {
-        guard !tag.isPreset else { return }
-        services.tagStorage.deleteTag(tag, clearingFrom: storage)
-        connections = storage.loadConnections()
-        tags = services.tagStorage.loadTags()
-        tagFilter.selectedIds.remove(tag.id)
-        rebuildTree()
-    }
-
-    // MARK: - Groups
-
-    func requestDeleteGroup(_ group: ConnectionGroup) {
-        groupToDelete = group
-        showDeleteGroupConfirmation = true
-    }
-
-    func confirmDeleteGroup() {
-        guard let group = groupToDelete else { return }
-        groupStorage.deleteGroup(group)
-        groupToDelete = nil
-        loadConnections()
-    }
-
-    func beginRenameGroup(_ group: ConnectionGroup) {
-        renameGroupTarget = group
-        renameGroupName = group.name
-        showRenameGroupAlert = true
-    }
-
-    func confirmRenameGroup() {
-        guard let target = renameGroupTarget else { return }
-        let newName = renameGroupName.trimmingCharacters(in: .whitespaces)
-        guard !newName.isEmpty else { return }
-        let siblings = groups.filter { $0.parentId == target.parentId }
-        let isDuplicate = siblings.contains {
-            $0.id != target.id && $0.name.lowercased() == newName.lowercased()
-        }
-        guard !isDuplicate else {
-            groupErrorMessage = GroupStorageError.duplicateName(newName).localizedDescription
-            return
-        }
-        var updated = target
-        updated.name = newName
-        guard applyGroupUpdate(updated) else { return }
-        renameGroupTarget = nil
-    }
-
-    func updateGroupColor(_ group: ConnectionGroup, color: ConnectionColor) {
-        var updated = group
-        updated.color = color
-        applyGroupUpdate(updated)
-    }
-
-    func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
-        let ids = Set(targets.map(\.id))
-        var updated: [DatabaseConnection] = []
-        for i in connections.indices where ids.contains(connections[i].id) {
-            connections[i].groupId = groupId
-            updated.append(connections[i])
-        }
-        guard storage.updateConnections(updated) else {
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        rebuildTree()
-    }
-
-    func removeFromGroup(_ targets: [DatabaseConnection]) {
-        let ids = Set(targets.map(\.id))
-        var updated: [DatabaseConnection] = []
-        for i in connections.indices where ids.contains(connections[i].id) {
-            connections[i].groupId = nil
-            updated.append(connections[i])
-        }
-        guard storage.updateConnections(updated) else {
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        rebuildTree()
-    }
-
-    func createGroup(name: String, color: ConnectionColor, parentId: UUID?) throws {
-        let group = ConnectionGroup(name: name, color: color, parentId: parentId)
-        try groupStorage.addGroup(group)
-        groups = groupStorage.loadGroups()
-        expandedGroupIds.insert(group.id)
-        if let parentId {
-            expandedGroupIds.insert(parentId)
-        }
-        if !pendingMoveToNewGroup.isEmpty {
-            moveConnections(pendingMoveToNewGroup, toGroup: group.id)
-            pendingMoveToNewGroup = []
-        }
-        rebuildTree()
-    }
-
-    func createSubgroup(under parentId: UUID) {
-        activeSheet = .newGroup(parentId: parentId)
-    }
-
-    /// The placement rule lives in the storage that enforces it, so this no longer pre-checks what
-    /// it would only have to keep in step. The menu dims an impossible target through the same
-    /// `canPlaceGroup`, which leaves the throw for a graph that changed under the open menu.
-    func moveGroup(_ group: ConnectionGroup, toParent newParentId: UUID?) {
-        var updated = group
-        updated.parentId = newParentId
-        applyGroupUpdate(updated)
-    }
-
-    @discardableResult
-    private func applyGroupUpdate(_ group: ConnectionGroup) -> Bool {
-        do {
-            try groupStorage.updateGroup(group)
-        } catch {
-            groupErrorMessage = error.localizedDescription
-            return false
-        }
-        groups = groupStorage.loadGroups()
-        rebuildTree()
-        return true
-    }
-
     // MARK: - Import / Export
 
     func exportConnections(_ connectionsToExport: [DatabaseConnection]) {
+        guard !connectionsToExport.isEmpty else { return }
         activeSheet = .exportConnections(connectionsToExport)
     }
 
     func importConnectionsFromApp() {
         activeSheet = .importFromApp
+    }
+
+    func importConnectionsFromAWS() {
+        activeSheet = .importFromAWS
     }
 
     func importConnectionsFromFile() {
@@ -664,112 +598,26 @@ final class WelcomeViewModel {
         importResultCount = count
     }
 
-    // MARK: - Keyboard Navigation
-
-    func moveToNextConnection() {
-        let visible = flatVisibleConnections
-        guard !visible.isEmpty else { return }
-        let anchorId = visible.last(where: { selectedConnectionIds.contains($0.id) })?.id
-        guard let anchorId,
-              let index = visible.firstIndex(where: { $0.id == anchorId }) else {
-            selectedConnectionIds = Set([visible[0].id])
-            return
+    func connectionString(for connection: DatabaseConnection) -> String {
+        let password = storage.loadPassword(for: connection.id)
+        guard let profileId = connection.sshProfileId else {
+            return ConnectionURLFormatter.format(
+                connection,
+                password: password,
+                sshPassword: storage.loadSSHPassword(for: connection.id),
+                sshProfile: nil
+            )
         }
-        let next = min(index + 1, visible.count - 1)
-        selectedConnectionIds = [visible[next].id]
+        let profiles = services.sshProfileStorage
+        return ConnectionURLFormatter.format(
+            connection,
+            password: password,
+            sshPassword: profiles.loadSSHPassword(for: profileId),
+            sshProfile: profiles.profile(for: profileId)
+        )
     }
 
-    func moveToPreviousConnection() {
-        let visible = flatVisibleConnections
-        guard !visible.isEmpty else { return }
-        let anchorId = visible.first(where: { selectedConnectionIds.contains($0.id) })?.id
-        guard let anchorId,
-              let index = visible.firstIndex(where: { $0.id == anchorId }) else {
-            selectedConnectionIds = Set([visible[visible.count - 1].id])
-            return
-        }
-        let prev = max(index - 1, 0)
-        selectedConnectionIds = [visible[prev].id]
-    }
-
-    func collapseSelectedGroup() {
-        guard let id = selectedConnectionIds.first,
-              let connection = connections.first(where: { $0.id == id }),
-              let groupId = connection.groupId,
-              expandedGroupIds.contains(groupId) else { return }
-        withMotion(.easeInOut(duration: 0.2)) {
-            expandedGroupIds.remove(groupId)
-        }
-    }
-
-    func expandSelectedGroup() {
-        guard let id = selectedConnectionIds.first,
-              let connection = connections.first(where: { $0.id == id }),
-              let groupId = connection.groupId,
-              !expandedGroupIds.contains(groupId) else { return }
-        withMotion(.easeInOut(duration: 0.2)) {
-            expandedGroupIds.insert(groupId)
-        }
-    }
-
-    // MARK: - Reorder
-
-    /// Reorder the rows the list actually drew.
-    ///
-    /// `.onMove` reports positions in the rendered node list, and that list is not `connections`:
-    /// a top level hides every favorite, and a tag filter hides whatever it does not match. Mapping
-    /// those offsets into the unfiltered array moved a different connection than the one dragged,
-    /// so the ids come in from the view and the offsets are only ever applied to them.
-    ///
-    /// Connections the list did not draw keep the slots they held, so a drag between two visible
-    /// rows cannot reshuffle the rows around them.
-    func moveConnections(renderedIds: [UUID], from source: IndexSet, to destination: Int, inGroup groupId: UUID?) {
-        guard source.allSatisfy({ $0 < renderedIds.count }), destination <= renderedIds.count else { return }
-
-        var reordered = renderedIds
-        reordered.move(fromOffsets: source, toOffset: destination)
-
-        let renderedSet = Set(renderedIds)
-        let scope = sortConnections(connections.filter { isInScope($0, groupId: groupId) })
-        guard scope.filter({ renderedSet.contains($0.id) }).count == renderedIds.count else { return }
-
-        var cursor = 0
-        var rankById: [UUID: Int] = [:]
-        for (rank, connection) in scope.enumerated() {
-            if renderedSet.contains(connection.id) {
-                rankById[reordered[cursor]] = rank
-                cursor += 1
-            } else {
-                rankById[connection.id] = rank
-            }
-        }
-
-        var updated: [DatabaseConnection] = []
-        for index in connections.indices {
-            guard let rank = rankById[connections[index].id], connections[index].sortOrder != rank else { continue }
-            connections[index].sortOrder = rank
-            updated.append(connections[index])
-        }
-
-        guard storage.updateConnections(updated) else {
-            connections = storage.loadConnections()
-            rebuildTree()
-            return
-        }
-        rebuildTree()
-    }
-
-    /// A connection with a `groupId` no group answers to is ungrouped, which is where the tree
-    /// draws it.
-    private func isInScope(_ connection: DatabaseConnection, groupId: UUID?) -> Bool {
-        guard let groupId else {
-            guard let assigned = connection.groupId else { return true }
-            return !groups.contains { $0.id == assigned }
-        }
-        return connection.groupId == groupId
-    }
-
-    // MARK: - Private Helpers
+    // MARK: - Connection Errors
 
     private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
@@ -831,5 +679,84 @@ final class WelcomeViewModel {
     func dismissConnectionError() {
         connectionError = nil
         connectionErrorRecovery = nil
+    }
+
+    // MARK: - Delete
+
+    func requestDeleteConnections(_ ids: [UUID]) {
+        let targets = ids.compactMap { connectionsById[$0] }
+        guard !targets.isEmpty else { return }
+        let token = UUID()
+        deleteRequestToken = token
+        connectionsToDelete = targets
+        pendingDeleteHasFavorites = false
+        Task {
+            let hasFavorites = await services.sqlFavoriteManager.hasFavorites(for: targets.map(\.id))
+            guard deleteRequestToken == token else { return }
+            pendingDeleteHasFavorites = hasFavorites
+            showDeleteConfirmation = true
+        }
+    }
+
+    func deleteSelectedConnections() {
+        let ids = Set(connectionsToDelete.map(\.id))
+        connectionsToDelete = []
+        let stored = storage.loadConnections().filter { ids.contains($0.id) }
+        guard !stored.isEmpty else { return }
+        guard storage.deleteConnections(stored) else {
+            reportLibraryWriteFailure()
+            loadConnections()
+            return
+        }
+        recentConnections.remove(ids)
+        listPreferences.setFavoritesOrder(LibraryOrdering.favoritesOrder(listPreferences.favoritesOrder, removing: ids))
+        selection.removeAll { row in
+            guard case .connection(let id, _) = row else { return false }
+            return ids.contains(id)
+        }
+        services.appEvents.connectionUpdated.send(nil)
+        loadConnections()
+    }
+
+    func reportLibraryWriteFailure() {
+        libraryErrorMessage = String(
+            localized: "The change could not be saved. Check disk space and permissions, then try again."
+        )
+    }
+
+    // MARK: - Groups
+
+    func requestNewGroup(parentId: UUID?, movingConnectionIds: [UUID]) {
+        activeSheet = .newGroup(WelcomeNewGroupRequest(parentId: parentId, movingConnectionIds: movingConnectionIds))
+    }
+
+    func createGroup(name: String, color: ConnectionColor, parentId: UUID?, moving connectionIds: [UUID]) throws {
+        let group = ConnectionGroup(name: name, color: color, parentId: parentId)
+        try groupStorage.addGroup(group)
+        expandedGroupIds.insert(group.id)
+        if let parentId {
+            expandedGroupIds.insert(parentId)
+        }
+        groups = groupStorage.loadGroups()
+        if !connectionIds.isEmpty,
+           !storage.moveConnections(connectionIds, toGroup: group.id, before: nil, validGroupIds: Set(groups.map(\.id))) {
+            reportLibraryWriteFailure()
+        }
+        loadConnections()
+    }
+
+    func requestDeleteGroup(_ groupId: UUID) {
+        guard let group = groupsById[groupId] else { return }
+        groupToDelete = group
+        showDeleteGroupConfirmation = true
+    }
+
+    func confirmDeleteGroup() {
+        guard let group = groupToDelete else { return }
+        groupToDelete = nil
+        if !groupStorage.deleteGroup(group) {
+            libraryErrorMessage = GroupStorageError.storeUnreadable.localizedDescription
+        }
+        loadConnections()
     }
 }

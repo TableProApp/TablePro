@@ -1,0 +1,55 @@
+---
+title: OceanBase
+description: Connect to an OceanBase MySQL-mode tenant through the bundled MySQL driver, directly or through OBProxy
+---
+
+The tenant goes in the user name: `root@test` on an observer's port 2881, `root@test#obcluster` through OBProxy on 2883. Any OceanBase version in MySQL mode connects. Host, password, SSH tunnels, SSL/TLS and `Cmd+K` database switching work as on [MySQL](/databases/mysql).
+
+## Connection settings
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Port** | `2881` | The observer's MySQL port. OBProxy listens on `2883` |
+| **Username** | empty | `user@tenant` on an observer, `user@tenant#cluster` through OBProxy. The sys tenant's administrator is `root@sys` |
+| **Database** | empty | Optional. Leave it empty and open one in the tenant with `Cmd+K` |
+| **SSL Mode** | Preferred | TLS first, plain text if the server refuses |
+
+**Release the Server Connection After** is available under Advanced. AWS IAM, Cloud SQL Auth Proxy and Unix socket are not offered; reach a private cluster through an [SSH tunnel](/connections/ssh-tunneling).
+
+## Connection URL
+
+```text
+oceanbase://root%40test:password@host:2881/database
+oceanbase://root%40test%23obcluster:password@proxy-host:2883/database
+```
+
+Write the `@` in the user name as `%40` and the `#` as `%23`. `oceanbase+ssh://` opens it through an SSH tunnel. See [Connection URL Reference](/connections/urls).
+
+## What differs from MySQL
+
+- Connecting reads `@@version_comment`. A server that does not answer with `OceanBase` and a version number there is refused, so a wrong host or port fails at connect.
+- The sidebar hides `information_schema`, `mysql`, `oceanbase`, `SYS`, `LBACSYS` and `ORAAUDITOR`. A tenant's `test` database stays listed.
+- The [query timeout](/customization/general-settings#query-timeout) replaces OceanBase's own 10 second statement limit, and **No limit** removes it.
+- CHECK constraints appear in the Structure tab on OceanBase 4.0 and later. Adding one from the Structure tab is not offered.
+- Triggers appear in the Structure tab. Adding one from there is not offered.
+- `EXPLAIN` shows the plan as text. `EXPLAIN FORMAT=JSON` and `EXPLAIN ANALYZE` are not offered.
+- Table Maintenance offers `ANALYZE TABLE` on OceanBase 4.2.2 and later, and nothing on earlier versions.
+
+A connection saved as **MySQL** that reaches an OceanBase server gets none of the above, because the MySQL handshake reports `5.7.25` or `5.6.25` and names no engine. Choose **OceanBase** as the connection type.
+
+## Tables without a primary key
+
+An OceanBase table declared without a primary key is edited as it is on MySQL: the `UPDATE` or `DELETE` matches every column of the row, and a save that would change more than one row, or none, stops and reports it. See [Change tracking](/features/change-tracking).
+
+## Limitations
+
+- Oracle-mode tenants do not connect. Point the connection at a MySQL-mode tenant.
+- No Server Dashboard, and **File > Backup Dump…** stays dimmed.
+- [Compare & Sync](/features/compare-sync) writes no structure script between OceanBase and MySQL or MariaDB. OceanBase against OceanBase works.
+- Tenant and cluster administration is not offered. Create tenants with SQL as `root@sys`.
+
+## Related
+
+- [MySQL](/databases/mysql), for connection fields, SSL/TLS, and troubleshooting
+- [TiDB](/databases/tidb)
+- [SSH Tunneling](/connections/ssh-tunneling)

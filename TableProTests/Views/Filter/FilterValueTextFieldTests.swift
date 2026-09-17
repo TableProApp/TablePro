@@ -3,10 +3,11 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
+import SwiftUI
 @testable import TablePro
 import TableProPluginKit
-import AppKit
 import Testing
 
 @Suite("Filter Value Text Field Suggestions")
@@ -122,26 +123,54 @@ struct FilterValueTextFieldTests {
         #expect(FilterValueTextField.escapeOutcome(popupVisible: false, recentlyDismissedPopup: false) == .closeBar)
     }
 
-    @Test("Arrow and accept commands map to consuming outcomes")
-    func testCommandOutcome_navigationAndAccept() {
+    @Test("Arrow keys move the selection whether or not one is already made")
+    func testCommandOutcome_arrowKeysAlwaysMove() {
         #expect(
             FilterValueTextField.suggestionCommandOutcome(
-                for: #selector(NSResponder.moveDown(_:)), submitsOnAccept: false
+                for: #selector(NSResponder.moveDown(_:)), hasSelection: false, submitsOnAccept: false
             ) == .moveSelection(1)
         )
         #expect(
             FilterValueTextField.suggestionCommandOutcome(
-                for: #selector(NSResponder.moveUp(_:)), submitsOnAccept: false
+                for: #selector(NSResponder.moveUp(_:)), hasSelection: true, submitsOnAccept: false
             ) == .moveSelection(-1)
+        )
+    }
+
+    @Test("Return and Tab reach the field until a suggestion is selected")
+    func testCommandOutcome_unselectedListPassesKeysThrough() {
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertNewline(_:)), hasSelection: false, submitsOnAccept: true
+            ) == .passThrough
         )
         #expect(
             FilterValueTextField.suggestionCommandOutcome(
-                for: #selector(NSResponder.insertNewline(_:)), submitsOnAccept: true
+                for: #selector(NSResponder.insertNewline(_:)), hasSelection: false, submitsOnAccept: false
+            ) == .passThrough
+        )
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertTab(_:)), hasSelection: false, submitsOnAccept: true
+            ) == .passThrough
+        )
+    }
+
+    @Test("A selected suggestion takes Return, and submits only where accepting completes the value")
+    func testCommandOutcome_selectedSuggestionTakesReturn() {
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertNewline(_:)), hasSelection: true, submitsOnAccept: true
             ) == .accept(submitting: true)
         )
         #expect(
             FilterValueTextField.suggestionCommandOutcome(
-                for: #selector(NSResponder.insertTab(_:)), submitsOnAccept: true
+                for: #selector(NSResponder.insertNewline(_:)), hasSelection: true, submitsOnAccept: false
+            ) == .accept(submitting: false)
+        )
+        #expect(
+            FilterValueTextField.suggestionCommandOutcome(
+                for: #selector(NSResponder.insertTab(_:)), hasSelection: true, submitsOnAccept: true
             ) == .accept(submitting: false)
         )
     }
@@ -150,40 +179,132 @@ struct FilterValueTextFieldTests {
     func testCommandOutcome_passThrough() {
         #expect(
             FilterValueTextField.suggestionCommandOutcome(
-                for: #selector(NSResponder.moveLeft(_:)), submitsOnAccept: true
+                for: #selector(NSResponder.moveLeft(_:)), hasSelection: true, submitsOnAccept: true
             ) == .passThrough
         )
     }
 
-    @Test("Token completion is offered while typing a partial token")
-    func testTokenCompletion_offeredForPartialToken() {
-        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "cre", cursor: 3))
-        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "id = 1 AND cre", cursor: 14))
+    @Test("An unselected list is entered from the end the arrow points away from")
+    func testSelection_entersFromTheArrowEnd() {
+        #expect(FilterValueTextField.selection(movedBy: 1, from: nil, count: 3) == 0)
+        #expect(FilterValueTextField.selection(movedBy: -1, from: nil, count: 3) == 2)
     }
 
-    @Test("Token completion is suppressed when the cursor follows whitespace")
-    func testTokenCompletion_suppressedAfterWhitespace() {
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: " ", cursor: 1))
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "id = ", cursor: 5))
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name AND ", cursor: 9))
+    @Test("Movement inside the list clamps at both ends")
+    func testSelection_clampsInsideTheList() {
+        #expect(FilterValueTextField.selection(movedBy: 1, from: 1, count: 3) == 2)
+        #expect(FilterValueTextField.selection(movedBy: 1, from: 2, count: 3) == 2)
+        #expect(FilterValueTextField.selection(movedBy: -1, from: 1, count: 3) == 0)
+        #expect(FilterValueTextField.selection(movedBy: -1, from: 0, count: 3) == 0)
     }
 
-    @Test("Token completion is suppressed for an empty field or a leading cursor")
-    func testTokenCompletion_suppressedForEmptyOrLeadingCursor() {
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "", cursor: 0))
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name", cursor: 0))
+    @Test("An empty list has nothing to select")
+    func testSelection_emptyListSelectsNothing() {
+        #expect(FilterValueTextField.selection(movedBy: 1, from: nil, count: 0) == nil)
+        #expect(FilterValueTextField.selection(movedBy: -1, from: 0, count: 0) == nil)
     }
 
-    @Test("Token completion clamps an out-of-range cursor to the field length")
-    func testTokenCompletion_clampsCursor() {
-        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name", cursor: 99))
-        #expect(!FilterValueTextField.shouldOfferTokenCompletion(fieldText: "name ", cursor: 99))
+    /// #2927: the popup used to select its first row the moment it opened, so `Return` accepted a
+    /// suggestion the user never asked for and the filter went unapplied until they pressed
+    /// `Escape` first. Driven through the coordinator rather than a sleep, so it measures the key
+    /// handling and not the debounce.
+    @MainActor
+    @Test("Return applies the filter while the list is open and unselected")
+    func testReturn_appliesTheFilterWhileNothingIsSelected() throws {
+        let harness = try SuggestionHarness(values: ["alpha", "alphabet"])
+        defer { harness.close() }
+        harness.type("alph")
+
+        #expect(harness.send(#selector(NSResponder.insertNewline(_:))))
+        #expect(harness.text == "alph")
+        #expect(harness.submitted == "alph")
     }
 
-    @Test("A trailing non-BMP character counts as non-whitespace and still offers completion")
-    func testTokenCompletion_trailingAstralCharacter() {
-        let text = "name😀"
-        #expect(FilterValueTextField.shouldOfferTokenCompletion(fieldText: text, cursor: (text as NSString).length))
+    @MainActor
+    @Test("Arrowing to a suggestion gives the list Return back")
+    func testReturn_acceptsTheSuggestionTheUserSelected() throws {
+        let harness = try SuggestionHarness(values: ["alpha", "alphabet"])
+        defer { harness.close() }
+        harness.type("alph")
+
+        #expect(harness.send(#selector(NSResponder.moveDown(_:))))
+        #expect(harness.send(#selector(NSResponder.insertNewline(_:))))
+        #expect(harness.text == "alpha")
+        #expect(harness.submitted == "alpha")
+    }
+
+    @MainActor
+    @Test("Tab reaches the field until a suggestion is selected")
+    func testTab_leavesTheFieldWhileNothingIsSelected() throws {
+        let harness = try SuggestionHarness(values: ["alpha", "alphabet"])
+        defer { harness.close() }
+        harness.type("alph")
+
+        #expect(!harness.send(#selector(NSResponder.insertTab(_:))))
+        #expect(harness.text == "alph")
+        #expect(harness.submitted == nil)
+    }
+
+    @MainActor
+    @Test("Typing past the last match closes the list and leaves the keys with the field")
+    func testNoMatches_closeTheListAndLeaveTheKeys() throws {
+        let harness = try SuggestionHarness(values: ["alpha"])
+        defer { harness.close() }
+        harness.type("alph")
+        harness.type("zzz")
+
+        #expect(!harness.send(#selector(NSResponder.moveDown(_:))))
+        #expect(harness.send(#selector(NSResponder.insertNewline(_:))))
+        #expect(harness.submitted == "zzz")
+    }
+
+    @MainActor
+    private final class SuggestionHarness {
+        private let control = NSTextField(frame: NSRect(x: 20, y: 50, width: 300, height: 24))
+        private let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 120),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        private let coordinator: FilterValueTextField.Coordinator
+        private let box = Box()
+
+        private final class Box {
+            var text = ""
+            var submitted: String?
+        }
+
+        var text: String { box.text }
+        var submitted: String? { box.submitted }
+
+        init(values: [String]) throws {
+            let box = self.box
+            let field = FilterValueTextField(
+                text: Binding(get: { box.text }, set: { box.text = $0 }),
+                focusedId: .constant(nil),
+                identity: UUID(),
+                completionSource: .staticValues(values),
+                onSubmit: { box.submitted = box.text }
+            )
+            coordinator = field.makeCoordinator()
+            window.contentView?.addSubview(control)
+            coordinator.textField = control
+        }
+
+        func close() {
+            coordinator.dismissSuggestions()
+            window.orderOut(nil)
+        }
+
+        func type(_ value: String) {
+            control.stringValue = value
+            coordinator.controlTextDidChange(
+                Notification(name: NSControl.textDidChangeNotification, object: control)
+            )
+        }
+
+        func send(_ command: Selector) -> Bool {
+            coordinator.control(control, textView: NSTextView(), doCommandBy: command)
+        }
     }
 
     @Test("Escape dismisses the popup when one is visible")

@@ -86,8 +86,12 @@ extension DatabaseManager {
         }
 
         var passwordOverride: String? = incomingPasswordOverride
-        if passwordOverride == nil, connection.promptForPassword, !pluginManager.hidesPassword(for: connection) {
-            if let cached = activeSessions[connection.id]?.cachedPassword {
+        let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
+        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
+        if passwordOverride == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) {
+            /// Keyed by the credential profile when there is one, so a profile set to ask every
+            /// time asks once rather than once per connection using it.
+            if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
                 passwordOverride = cached
             } else {
                 let isApiOnly = pluginManager.connectionMode(for: connection.type) == .apiOnly
@@ -168,6 +172,13 @@ extension DatabaseManager {
                 markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesAWSIAM {
                     session.cachedPassword = passwordOverride
+                    /// Only a password that actually authenticated is shared with the other
+                    /// connections on this profile. Caching the prompt's answer before the connect
+                    /// meant one mistyped password locked every one of them out until a relaunch,
+                    /// because the prompt never came back.
+                    if promptsForPassword {
+                        promptedPasswords[promptCacheKey] = passwordOverride
+                    }
                 }
                 setSession(session, for: connection.id)
             }
@@ -333,13 +344,22 @@ extension DatabaseManager {
 
         if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
             try await reconnectOntoDatabase(database, for: connectionId)
-        } else if let adapter = driver as? PluginDriverAdapter {
+        } else if driver is PluginDriverAdapter {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
-            try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            let sessionStartedAt = session(for: connectionId)?.connectedAt
+            let adapter = try await sessionDriverGate.withExclusiveAccess(connectionId) {
+                try Task.checkCancellation()
+                guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                    throw CancellationError()
+                }
+                guard let adapter = self.driver(for: connectionId) as? PluginDriverAdapter else {
+                    throw DatabaseError.notConnected
+                }
                 try await adapter.switchDatabase(to: database)
                 if grouping == .bySchema {
                     await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
                 }
+                return adapter
             }
             updateSession(connectionId) { session in
                 session.browseDatabase = database
@@ -369,7 +389,31 @@ extension DatabaseManager {
     /// builds its connection from those very fields. A failed attempt therefore has to put them
     /// back: leaving them on a database the connection never reached aims the next reconnect, and
     /// the next launch, at a database the user only tried once and could not open.
+    ///
+    /// The whole move holds the session driver gate, as the in-place switch does. Those fields name
+    /// the target from the first line while the old driver stays installed until the reconnect
+    /// replaces it, so a lease that ran in between took a driver still on the previous database, or
+    /// one the reconnect was about to disconnect. Counting it as an operation keeps the monitor's
+    /// ping and a waiting lease's verification off the driver while it is being replaced.
+    ///
+    /// A switch can now wait for its turn. A disconnect fails every caller still waiting for one,
+    /// and the session the switch was asked on is checked again once the turn comes: a connection
+    /// closed and opened again is a new session, and moving it would switch, or disconnect, a
+    /// session nobody asked this of.
     private func reconnectOntoDatabase(_ database: String, for connectionId: UUID) async throws {
+        let sessionStartedAt = session(for: connectionId)?.connectedAt
+        try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try Task.checkCancellation()
+            guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                throw CancellationError()
+            }
+            try await trackOperation(sessionId: connectionId) {
+                try await moveSessionOntoDatabase(database, for: connectionId)
+            }
+        }
+    }
+
+    private func moveSessionOntoDatabase(_ database: String, for connectionId: UUID) async throws {
         guard let previous = session(for: connectionId) else {
             throw DatabaseError.notConnected
         }
@@ -416,12 +460,19 @@ extension DatabaseManager {
 
     func switchSchema(to schema: String, for connectionId: UUID) async throws {
         await verifyBeforeUse(connectionId)
-        guard let driver = driver(for: connectionId),
-              let schemaDriver = driver as? SchemaSwitchable else {
+        guard let sessionStartedAt = session(for: connectionId)?.connectedAt,
+              driver(for: connectionId) is SchemaSwitchable else {
             throw DatabaseError.unsupportedOperation
         }
 
         try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try Task.checkCancellation()
+            guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
+                throw CancellationError()
+            }
+            guard let schemaDriver = driver(for: connectionId) as? SchemaSwitchable else {
+                throw DatabaseError.notConnected
+            }
             try await schemaDriver.switchSchema(to: schema)
         }
         updateSession(connectionId) { session in
@@ -725,8 +776,11 @@ extension DatabaseManager {
         userRequestedDisconnects.contains(connectionId)
     }
 
+    /// Drains the driver gate in the same step the entry goes, so nothing still queued for this
+    /// session wakes to find a reopened one under the same id and runs there.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        sessionDriverGate.drain(connectionId: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         forgetVerification(for: connectionId)
         AppEvents.shared.connectionStatusChanged.send(

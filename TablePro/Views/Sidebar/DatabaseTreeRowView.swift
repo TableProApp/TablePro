@@ -39,9 +39,14 @@ struct DatabaseTreeRowContext {
     /// Whether a routine's row shows its bare name or its signature depends on the other rows in
     /// its section, which only the node builder can see, so the row asks rather than deciding.
     var routineDisplayLabel: @MainActor (DatabaseTreeRoutineRef) -> String = { $0.routine.name }
+    /// Whether a partitioned table's row shows its partition count. It follows the same setting
+    /// that decides whether partitions are listed at all, so a hidden set of partitions does not
+    /// leave a number behind on the parent.
+    var showsPartitions: Bool = true
 }
 
 struct DatabaseTreeRowView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let node: DatabaseTreeNode
     let isFavorite: Bool
     let context: DatabaseTreeRowContext
@@ -84,6 +89,8 @@ struct DatabaseTreeRowView: View {
             )
         case .table(let ref):
             tableRow(ref)
+        case .partition(let ref):
+            partitionRow(ref)
         case .routine(let ref):
             RoutineRowView(routine: ref.routine, displayLabel: context.routineDisplayLabel(ref))
         case .trigger(let ref):
@@ -122,7 +129,7 @@ struct DatabaseTreeRowView: View {
 
     private func objectGroupRow(_ kind: SidebarObjectKind) -> some View {
         Label(context.objectKindTitle(kind), systemImage: kind.iconName)
-            .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
             .lineLimit(1)
     }
 
@@ -150,8 +157,63 @@ struct DatabaseTreeRowView: View {
             isPendingTruncate: context.pendingTruncates.contains(ref),
             isPendingDelete: context.pendingDeletes.contains(ref),
             isFavorite: isFavorite,
+            showsPartitionCount: context.showsPartitions,
             onToggleFavorite: { actions.toggleFavorite(ref) }
         )
+    }
+
+    /// A partition that is a relation draws as the table it is, so a staged Drop or Truncate, a
+    /// favourite star and the accessibility status all keep working, with its bound in the caption
+    /// slot beside the name. One that is not a relation has none of those states to show.
+    ///
+    /// The bound truncates from the middle, not the tail: a range bound puts the value that tells
+    /// one partition from the next at both ends, and tail truncation keeps only the opening one.
+    @ViewBuilder
+    private func partitionRow(_ ref: DatabaseTreePartitionRef) -> some View {
+        let caption = SidebarPartitionRow.caption(
+            bound: ref.partition.bound,
+            ordinalPosition: ref.partition.ordinalPosition
+        )
+        if let tableRef = ref.tableRef {
+            TableRow(
+                table: tableRef.table,
+                isPendingTruncate: context.pendingTruncates.contains(tableRef),
+                isPendingDelete: context.pendingDeletes.contains(tableRef),
+                isFavorite: isFavorite,
+                showsPartitionCount: context.showsPartitions,
+                partitionBound: caption,
+                onToggleFavorite: { actions.toggleFavorite(tableRef) }
+            )
+        } else {
+            Label {
+                HStack(spacing: 6) {
+                    Text(ref.partition.name)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    if let caption {
+                        Text(caption)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(caption)
+                    }
+                }
+            } icon: {
+                Image(systemName: SidebarPartitionRow.iconName)
+                    .selectionAwareTint(Color.accentColor)
+                    .frame(width: 16)
+            }
+            .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                SidebarPartitionRow.accessibilityLabel(
+                    name: ref.partition.name,
+                    bound: ref.partition.bound,
+                    ordinalPosition: ref.partition.ordinalPosition
+                )
+            )
+        }
     }
 
     /// Redis rows carry their own count and type rather than reusing `TableRow`, which is built
@@ -207,7 +269,7 @@ struct DatabaseTreeRowView: View {
         } icon: {
             Image(systemName: systemImage)
         }
-        .sidebarRowIcon(visible: AppSettingsManager.shared.general.showObjectIcons)
+        .sidebarRowIcon(visible: settingsManager.general.showObjectIcons)
         .lineLimit(1)
         .sidebarRowForeground(isActive: isActive, isSystem: isSystem)
     }

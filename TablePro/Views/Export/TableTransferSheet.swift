@@ -14,6 +14,7 @@ import TableProPluginKit
 /// DDL into another's, which is a different problem, and getting it half right would leave tables
 /// whose column types quietly disagree with the data now in them.
 struct TableTransferSheet: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "TableTransferSheet")
 
     @Binding var isPresented: Bool
@@ -23,7 +24,7 @@ struct TableTransferSheet: View {
     /// session happened to be browsing and matched the bare names against that one instead.
     var preselectedSchema: String?
 
-    @State private var service = TableTransferService()
+    @StateObject private var service = TableTransferService()
     @State private var destinationConnectionId: UUID?
     @State private var destinationDatabase = ""
     @State private var availableDestinations: [DatabaseConnection] = []
@@ -115,7 +116,7 @@ struct TableTransferSheet: View {
                     Text(connection.name).tag(UUID?.some(connection.id))
                 }
             }
-            .onChange(of: destinationConnectionId) {
+            .onChange(of: destinationConnectionId) { _ in
                 Task {
                     await loadDestinationDatabases()
                     await loadColumnsForSelection()
@@ -294,7 +295,7 @@ struct TableTransferSheet: View {
     /// execution gate, so the list is where that policy has to hold.
     @MainActor
     private func load() async {
-        availableDestinations = DatabaseManager.shared.activeSessions.values
+        availableDestinations = databaseManager.activeSessions.values
             .filter { $0.id != sourceConnection.id && $0.isConnected }
             .map { $0.effectiveConnection ?? $0.connection }
             .filter { !$0.safeModeLevel.blocksAllWrites }

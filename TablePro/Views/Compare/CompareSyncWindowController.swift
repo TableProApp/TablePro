@@ -70,6 +70,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         window.minSize = NSSize(width: 720, height: 460)
         window.title = String(localized: "Compare & Sync")
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.compareSync)
+        window.keepsKeyViewLoopCurrent()
         window.isRestorable = false
         window.isReleasedWhenClosed = false
         super.init(window: window)
@@ -559,7 +560,7 @@ internal final class CompareSyncWindowController: NSWindowController,
     private func adopt(_ mode: CompareSyncMode) {
         guard session.mode != mode else { return }
         session.mode = mode
-        session.resetComparison()
+        session.resetComparison(keepingTableScopes: true)
         refreshEndpointChrome()
     }
 
@@ -701,6 +702,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         guard let item else { return }
         PopoverPresenter.show(
             relativeTo: item,
+            in: window,
             contentSize: NSSize(width: 420, height: 520)
         ) { _ in
             CompareOptionsView(session: self.session)

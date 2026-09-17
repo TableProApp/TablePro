@@ -23,7 +23,11 @@ final class QueryHistoryFocusUITests: UITestCase {
             waitUntilHittable(row, timeout: 10),
             "The drawer must list the queries just run and finish opening"
         )
-        row.click()
+        /// Through a coordinate. AppKit publishes these rows as disabled, and `click()` on one
+        /// selects it through accessibility without delivering a mouse-down, so the table never
+        /// takes first responder and every key after it goes to the SQL editor instead. A person's
+        /// click is a mouse-down, which is what this sends.
+        clickAtCenter(row)
 
         /// The selection is asserted before the preview so a failure says which half broke: the
         /// preview is the detail pane drawing a selected row, so its absence alone cannot tell a

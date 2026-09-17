@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 import TableProOracleCore
@@ -205,17 +206,13 @@ struct ConnectionFormView: View {
     @ViewBuilder
     private func organizationSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
+        let graph = LibraryGroupGraph(groups: appState.groups)
         Section("Organization") {
             Picker("Group", selection: $viewModel.groupId) {
                 Text("None").tag(UUID?.none)
-                ForEach(appState.groups) { group in
-                    HStack {
-                        Circle()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: group.color))
-                            .frame(width: 8, height: 8)
-                        Text(group.name)
-                    }
-                    .tag(Optional(group.id))
+                ForEach(graph.flattened(), id: \.id) { entry in
+                    Text(verbatim: graph.pathNames(to: entry.id).joined(separator: " / "))
+                        .tag(Optional(entry.id))
                 }
             }
             .pickerStyle(.menu)
@@ -223,13 +220,8 @@ struct ConnectionFormView: View {
             Picker("Tag", selection: $viewModel.tagId) {
                 Text("None").tag(UUID?.none)
                 ForEach(appState.tags) { tag in
-                    HStack {
-                        Circle()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: tag.color))
-                            .frame(width: 8, height: 8)
-                        Text(tag.name)
-                    }
-                    .tag(Optional(tag.id))
+                    Text(verbatim: tag.name)
+                        .tag(Optional(tag.id))
                 }
             }
             .pickerStyle(.menu)
@@ -348,6 +340,16 @@ struct ConnectionFormView: View {
                 Text(String(localized: "Normal")).tag(OracleConnectionOptions.Role.normal)
                 Text(verbatim: "SYSDBA").tag(OracleConnectionOptions.Role.sysdba)
                 Text(verbatim: "SYSOPER").tag(OracleConnectionOptions.Role.sysoper)
+            }
+
+            Picker(
+                String(localized: "Network Encryption"),
+                selection: $viewModel.oracleNetworkEncryption
+            ) {
+                Text(String(localized: "Accepted")).tag(OracleConnectionOptions.NetworkEncryption.accepted)
+                Text(String(localized: "Rejected")).tag(OracleConnectionOptions.NetworkEncryption.rejected)
+                Text(String(localized: "Requested")).tag(OracleConnectionOptions.NetworkEncryption.requested)
+                Text(String(localized: "Required")).tag(OracleConnectionOptions.NetworkEncryption.required)
             }
         }
     }

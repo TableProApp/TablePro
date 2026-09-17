@@ -127,6 +127,11 @@ Editing a cell, deleting a row, and sorting a column are all unavailable, and th
 rather than failing at save time. Kafka has no update primitive, no per-message delete, and no
 server-side sort. To change what a consumer sees, produce a new message.
 
+Deleting a topic is available, from the sidebar or with `DROP TOPIC <name>`. The request goes to
+the cluster controller, which accepts it and removes the log directories afterwards, so the topic
+can still appear in the list for a moment. Truncate is not offered: Kafka removes records by
+retention or by an offset per partition, neither of which empties a topic the way Truncate means.
+
 Paging jumps are unavailable. Page two continues from where page one stopped, so a topic being
 written to while you read it will not repeat or skip a message.
 

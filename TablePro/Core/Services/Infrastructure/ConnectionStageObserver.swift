@@ -11,13 +11,12 @@ import TableProPluginKit
 /// panes only on a phase change, so holding the stage here keeps a stage tick from tearing
 /// down and rebuilding the whole SwiftUI subtree.
 @MainActor
-@Observable
-internal final class ConnectionStageObserver {
-    internal private(set) var stage: ConnectionStage?
-    internal private(set) var isTakingLonger = false
+internal final class ConnectionStageObserver: ObservableObject {
+    @Published internal private(set) var stage: ConnectionStage?
+    @Published internal private(set) var isTakingLonger = false
 
-    @ObservationIgnored private var cancellable: AnyCancellable?
-    @ObservationIgnored private var patienceTask: Task<Void, Never>?
+    private var cancellable: AnyCancellable?
+    private var patienceTask: Task<Void, Never>?
 
     private static let patience: Duration = .seconds(12)
 

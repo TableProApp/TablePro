@@ -3,20 +3,20 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import SwiftUI
 
-@MainActor @Observable
-final class DatabaseSwitcherViewModel {
+@MainActor
+final class DatabaseSwitcherViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseSwitcherViewModel")
 
-    var databases: [DatabaseMetadata] = []
-    var searchText = "" {
+    @Published var databases: [DatabaseMetadata] = []
+    @Published var searchText = "" {
         didSet { selectedDatabase = filteredDatabases.first?.name }
     }
-    var selectedDatabases: Set<String> = []
+    @Published var selectedDatabases: Set<String> = []
 
     /// The keyboard path (arrows, Return) drives one row at a time, so it reads and
     /// writes the selection as a single value while the mouse can extend it.
@@ -24,43 +24,45 @@ final class DatabaseSwitcherViewModel {
         get { selectedDatabases.count == 1 ? selectedDatabases.first : nil }
         set { selectedDatabases = newValue.map { [$0] } ?? [] }
     }
-    var isLoading = false
-    var errorMessage: String?
-    var showPreview = false
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var showPreview = false
 
     let switchTarget: ContainerSwitchTarget
 
     private let connectionId: UUID
     private let currentDatabase: String?
     private let databaseType: DatabaseType
-    @ObservationIgnored private let services: AppServices
+    private let services: AppServices
     private let sidebarState: SharedSidebarState?
-    @ObservationIgnored private var hasLoadedOnce = false
-    @ObservationIgnored private var loadToken: UUID?
+    private var hasLoadedOnce = false
+    private var loadToken: UUID?
 
-    private var treeVisibleDatabases: [DatabaseMetadata] {
-        guard switchTarget == .database else { return databases }
-        return DatabaseTreeVisibility.visible(
+    /// The sidebar's database filter narrows a database list only. In schema mode these rows are
+    /// schemas, and the filter names databases.
+    private var listedSections: DatabaseSwitchSections {
+        let selected = switchTarget == .database ? sidebarState?.databaseFilterSelected ?? [] : []
+        return DatabaseSwitchList.sections(
             databases: databases,
-            selected: sidebarState?.databaseFilterSelected ?? [],
+            selected: selected,
             activeDatabase: currentDatabase
         )
     }
 
-    var filteredDatabases: [DatabaseMetadata] {
-        let visible = treeVisibleDatabases
+    /// A search ranks within each section rather than across them, so a system database never
+    /// outranks a user database on screen while the arrow keys walk the same order.
+    var visibleSections: DatabaseSwitchSections {
+        let listed = listedSections
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return visible }
-        return visible
-            .compactMap { database -> (DatabaseMetadata, Int)? in
-                guard let match = FuzzyMatcher.match(query: trimmed, candidate: database.name) else { return nil }
-                return (database, match.score)
-            }
-            .sorted { lhs, rhs in
-                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-                return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
-            }
-            .map(\.0)
+        guard !trimmed.isEmpty else { return listed }
+        return DatabaseSwitchSections(
+            user: Self.ranked(listed.user, matching: trimmed),
+            system: Self.ranked(listed.system, matching: trimmed)
+        )
+    }
+
+    var filteredDatabases: [DatabaseMetadata] {
+        visibleSections.all
     }
 
     init(
@@ -141,12 +143,27 @@ final class DatabaseSwitcherViewModel {
         return try await driver.createDatabaseFormSpec()
     }
 
+    /// Through the container DDL path, like every other write. It used to call the driver straight
+    /// from here, so a read-only connection still offered the row and Safe Mode's confirmation and
+    /// Touch ID tiers never fired. The driver creates the database itself on the engines whose
+    /// create is not a statement, so the gate is given the description rather than SQL.
     func createDatabase(name: String, values: [String: String]) async throws {
-        guard let driver = services.databaseManager.driver(for: connectionId) else {
+        guard let scope = services.databaseManager.resolvedScope(
+            database: nil, schema: nil, for: connectionId
+        ) else {
             throw DatabaseError.notConnected
         }
         let request = CreateDatabaseRequest(name: name, values: values)
-        try await driver.createDatabase(request)
+        let entity = services.pluginManager.containerEntityName(for: databaseType)
+        try await services.databaseManager.runContainerOperation(
+            description: String(format: String(localized: "Create %1$@ \"%2$@\""), entity, name),
+            kind: .schemaMutation,
+            scope: scope,
+            databaseType: databaseType,
+            event: .changed(CatalogChange(connectionId: connectionId, kinds: .databases))
+        ) { driver in
+            try await driver.createDatabase(request)
+        }
     }
 
     /// The selected row the keyboard acts from, in the order the list shows them.
@@ -206,5 +223,18 @@ final class DatabaseSwitcherViewModel {
         case .database: services.pluginManager.systemDatabaseNames(for: databaseType).contains(name)
         case .schema: services.pluginManager.systemSchemaNames(for: databaseType).contains(name)
         }
+    }
+
+    private static func ranked(_ databases: [DatabaseMetadata], matching query: String) -> [DatabaseMetadata] {
+        databases
+            .compactMap { database -> (DatabaseMetadata, Int)? in
+                guard let match = FuzzyMatcher.match(query: query, candidate: database.name) else { return nil }
+                return (database, match.score)
+            }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+                return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
+            }
+            .map(\.0)
     }
 }

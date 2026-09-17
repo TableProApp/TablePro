@@ -12,9 +12,9 @@ import TableProPluginKit
 internal struct TableStructureSnapshot: Hashable {
     internal let name: String
     internal let schema: String?
-    internal let columns: [EditableColumnDefinition]
-    internal let indexes: [EditableIndexDefinition]
-    internal let foreignKeys: [EditableForeignKeyDefinition]
+    internal private(set) var columns: [EditableColumnDefinition]
+    internal private(set) var indexes: [EditableIndexDefinition]
+    internal private(set) var foreignKeys: [EditableForeignKeyDefinition]
     internal let engine: String?
     internal let charset: String?
     internal let collation: String?
@@ -66,6 +66,17 @@ internal struct TableStructureSnapshot: Hashable {
             collation: collation
         )
     }
+
+    /// The same structure with every definition under one shared `id`, so two reads of a table
+    /// nobody touched compare equal. Replacing the three arrays on a copy, rather than rebuilding
+    /// the snapshot, keeps every other field in the comparison.
+    internal func withoutIdentity() -> TableStructureSnapshot {
+        var copy = self
+        copy.columns = columns.map { $0.withoutIdentity() }
+        copy.indexes = indexes.map { $0.withoutIdentity() }
+        copy.foreignKeys = foreignKeys.map { $0.withoutIdentity() }
+        return copy
+    }
 }
 
 internal extension TableStructureSnapshot {
@@ -79,70 +90,12 @@ internal extension TableStructureSnapshot {
         TableStructureSnapshot(
             name: table.name,
             schema: table.schema,
-            columns: columns.map { EditableColumnDefinition.from($0.toColumnInfo()) },
-            indexes: indexes.map { EditableIndexDefinition.from($0.toIndexInfo()) },
-            foreignKeys: Self.groupForeignKeys(foreignKeys),
+            columns: columns.map { EditableColumnDefinition.from(ColumnInfo($0)) },
+            indexes: indexes.map { EditableIndexDefinition.from(IndexInfo($0)) },
+            foreignKeys: EditableForeignKeyDefinition.grouping(foreignKeys.map(ForeignKeyInfo.init)),
             engine: metadata?.engine,
             charset: nil,
             collation: metadata?.collation
-        )
-    }
-
-    private static func groupForeignKeys(_ foreignKeys: [PluginForeignKeyInfo]) -> [EditableForeignKeyDefinition] {
-        var order: [String] = []
-        var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for foreignKey in foreignKeys {
-            if grouped[foreignKey.name] == nil { order.append(foreignKey.name) }
-            grouped[foreignKey.name, default: []].append(foreignKey)
-        }
-        return order.compactMap { name in
-            guard let parts = grouped[name], let first = parts.first else { return nil }
-            return EditableForeignKeyDefinition(
-                id: UUID(),
-                name: name,
-                columns: parts.map { $0.column },
-                referencedTable: first.referencedTable,
-                referencedColumns: parts.map { $0.referencedColumn },
-                referencedSchema: first.referencedSchema,
-                onDelete: EditableForeignKeyDefinition.ReferentialAction(
-                    rawValue: first.onDelete.uppercased()) ?? .noAction,
-                onUpdate: EditableForeignKeyDefinition.ReferentialAction(
-                    rawValue: first.onUpdate.uppercased()) ?? .noAction
-            )
-        }
-    }
-}
-
-private extension PluginColumnInfo {
-    func toColumnInfo() -> ColumnInfo {
-        ColumnInfo(
-            name: name,
-            dataType: dataType,
-            isNullable: isNullable,
-            isPrimaryKey: isPrimaryKey,
-            defaultValue: defaultValue,
-            extra: extra,
-            charset: charset,
-            collation: collation,
-            comment: comment,
-            isGenerated: isGenerated,
-            allowedValues: allowedValues,
-            generationExpression: generationExpression,
-            generationKind: generationKind
-        )
-    }
-}
-
-private extension PluginIndexInfo {
-    func toIndexInfo() -> IndexInfo {
-        IndexInfo(
-            name: name,
-            columns: columns,
-            isUnique: isUnique,
-            isPrimary: isPrimary,
-            type: type,
-            columnPrefixes: columnPrefixes,
-            whereClause: whereClause
         )
     }
 }

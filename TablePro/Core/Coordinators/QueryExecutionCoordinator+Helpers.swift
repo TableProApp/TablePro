@@ -41,7 +41,12 @@ extension QueryExecutionCoordinator {
     func parseSchemaMetadata(_ schema: FetchedTableSchema) -> ParsedSchemaMetadata {
         QueryExecutor.parseSchemaMetadata(
             schema,
-            rowMatchExcludedTypePrefixes: PluginManager.shared.rowMatchExcludedTypePrefixes(for: parent.connection.type)
+            rowMatchExcludedTypePrefixes: PluginManager.shared.rowMatchExcludedTypePrefixes(
+                for: parent.connection.type
+            ),
+            rowMatchTextTypePrefixes: PluginManager.shared.rowMatchTextTypePrefixes(
+                for: parent.connection.type
+            )
         )
     }
 
@@ -115,7 +120,7 @@ extension QueryExecutionCoordinator {
         var columnComments: [String: String] = [:]
         var columnIdentity: [String: IdentityKind] = [:]
         var generatedColumns: Set<String> = []
-        var rowMatchExcludedColumns: Set<String> = []
+        var rowMatchPolicy: RowMatchPolicy = .none
         var hasAuthoritativeSchema = false
         var foreignKeysFetched = false
     }
@@ -148,7 +153,7 @@ extension QueryExecutionCoordinator {
             resolved.columnComments = metadata.columnComments
             resolved.columnIdentity = metadata.columnIdentity
             resolved.generatedColumns = metadata.generatedColumns
-            resolved.rowMatchExcludedColumns = metadata.rowMatchExcludedColumns
+            resolved.rowMatchPolicy = metadata.rowMatchPolicy
             resolved.hasAuthoritativeSchema = metadata.isAuthoritative
             resolved.foreignKeysFetched = metadata.columnForeignKeys != nil
             for (col, vals) in metadata.columnEnumValues {
@@ -180,7 +185,8 @@ extension QueryExecutionCoordinator {
         queryParameterValues: [QueryParameter]? = nil,
         historySQL: String? = nil,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        viewport: GridReloadIntent = .firstRow
     ) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -227,13 +233,13 @@ extension QueryExecutionCoordinator {
             columnComments: resolved.columnComments,
             columnIdentity: resolved.columnIdentity,
             generatedColumns: generatedColumns,
-            rowMatchExcludedColumns: resolved.rowMatchExcludedColumns,
+            rowMatchPolicy: resolved.rowMatchPolicy,
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         parent.flushBufferToActiveResult(tabId: existingTabId, pinnedOnly: true)
-        parent.setActiveTableRows(newTableRows, for: existingTabId)
+        parent.setActiveTableRows(newTableRows, for: existingTabId, viewport: viewport)
 
         parent.tabManager.mutate(at: idx) { tab in
             tab.schemaVersion += 1
@@ -308,7 +314,7 @@ extension QueryExecutionCoordinator {
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type,
                 generatedColumns: generatedColumns,
-                rowMatchExcludedColumns: resolved.rowMatchExcludedColumns
+                rowMatchPolicy: resolved.rowMatchPolicy
             )
         }
 
@@ -538,7 +544,7 @@ extension QueryExecutionCoordinator {
             columnComments: parsed.columnComments,
             columnIdentity: parsed.columnIdentity,
             generatedColumns: parsed.generatedColumns,
-            rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
+            rowMatchPolicy: parsed.rowMatchPolicy,
             hasAuthoritativeSchema: parsed.isAuthoritative
         )
         if !parsed.primaryKeyColumns.isEmpty {
@@ -583,7 +589,7 @@ extension QueryExecutionCoordinator {
                 columnComments: parsed.columnComments,
                 columnIdentity: parsed.columnIdentity,
                 generatedColumns: parsed.generatedColumns,
-                rowMatchExcludedColumns: parsed.rowMatchExcludedColumns,
+                rowMatchPolicy: parsed.rowMatchPolicy,
                 hasAuthoritativeSchema: parsed.isAuthoritative
             )
         }
@@ -607,7 +613,7 @@ extension QueryExecutionCoordinator {
 
         if parent.tabManager.selectedTabId == tabId {
             parent.changeManager.setGeneratedColumns(parsed.generatedColumns)
-            parent.changeManager.setRowMatchExcludedColumns(parsed.rowMatchExcludedColumns)
+            parent.changeManager.setRowMatchPolicy(parsed.rowMatchPolicy)
         }
 
         let refreshed = isActiveTab(tabId)

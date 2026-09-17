@@ -163,7 +163,7 @@ extension MainContentCoordinator {
             Self.rewindLogger.info("Rewind restored \(result.restoredRows, privacy: .public) rows")
             rewindPlan = nil
             if tabManager.selectedTab?.tableContext.tableName == plan.record.target.table {
-                runQuery()
+                runQuery(viewport: .keepPlace)
             }
         } catch {
             let writeError = error as? DataWriteError

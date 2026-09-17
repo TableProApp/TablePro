@@ -45,7 +45,6 @@ final class LibPQDriverCore: @unchecked Sendable {
     }
     var serverVersionNumber: Int32 { libpqConnection?.serverVersionNumber() ?? 0 }
     var standardConformingStrings: Bool { libpqConnection?.standardConformingStrings ?? true }
-    var isInsideTransactionBlock: Bool { libpqConnection?.isInsideTransactionBlock ?? false }
 
     init(
         config: DriverConnectionConfig,
@@ -151,6 +150,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeTransactionScopedRead(statement)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
@@ -218,6 +231,11 @@ final class LibPQDriverCore: @unchecked Sendable {
 
 protocol LibPQBackedDriver: PluginDatabaseDriver {
     var core: LibPQDriverCore { get }
+
+    /// A requirement rather than an extension member alone, because the extension's own
+    /// `fetchSchemaDetails` reads it: a protocol-extension property is statically dispatched, so a
+    /// sibling class overriding it would never be asked.
+    var supportsSchemaACLIntrospection: Bool { get }
 }
 
 extension LibPQBackedDriver {

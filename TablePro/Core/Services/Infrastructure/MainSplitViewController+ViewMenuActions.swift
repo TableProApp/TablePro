@@ -51,6 +51,26 @@ extension MainSplitViewController {
         commandActions?.focusSidebarSearch()
     }
 
+    @objc func focusObjectList(_ sender: Any?) {
+        focusSidebarObjectList()
+    }
+
+    @objc func focusEditor(_ sender: Any?) {
+        focusQueryEditor()
+    }
+
+    @objc func focusResults(_ sender: Any?) {
+        focusResultGrid()
+    }
+
+    @objc func focusInspector(_ sender: Any?) {
+        focusInspectorPane()
+    }
+
+    @objc func focusAssistant(_ sender: Any?) {
+        focusAssistantPane()
+    }
+
     @objc func filterDatabases(_ sender: Any?) {
         presentDatabaseFilter()
     }
@@ -98,20 +118,16 @@ extension MainSplitViewController {
     @objc func closeResultTab(_ sender: Any?) {
         commandActions?.closeResultTab()
     }
+}
 
-    @objc func increaseEditorTextSize(_ sender: Any?) {
-        adjustEditorTextSize(by: 1)
+/// The window's answer when nothing nearer the focus zooms: a focused diagram's scroll view claims
+/// these first, so this is what Zoom In means everywhere else.
+extension MainSplitViewController: ZoomCommandResponding {
+    @objc func zoomIn(_ sender: Any?) {
+        ThemeEngine.shared.adjustEditorFontSize(by: 1)
     }
 
-    @objc func decreaseEditorTextSize(_ sender: Any?) {
-        adjustEditorTextSize(by: -1)
-    }
-
-    private func adjustEditorTextSize(by delta: Int) {
-        var typography = AppSettingsManager.shared.typography
-        let size = TypographySettings.clamp(typography.editorFontSize + delta)
-        guard size != typography.editorFontSize else { return }
-        typography.editorFontSize = size
-        AppSettingsManager.shared.typography = typography
+    @objc func zoomOut(_ sender: Any?) {
+        ThemeEngine.shared.adjustEditorFontSize(by: -1)
     }
 }

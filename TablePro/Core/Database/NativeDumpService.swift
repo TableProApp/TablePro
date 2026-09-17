@@ -8,8 +8,8 @@
 //  progress, cancel and result handling that spawning a process already had.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -173,18 +173,17 @@ protocol NativeDumpRunner: AnyObject {
 // MARK: - Service
 
 @MainActor
-@Observable
-final class NativeDumpService {
+final class NativeDumpService: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "NativeDumpService")
 
     let kind: NativeDumpKind
-    private(set) var state: NativeDumpState = .idle
+    @Published private(set) var state: NativeDumpState = .idle
 
-    @ObservationIgnored private let runnerFactory: @MainActor (NativeDumpJob) -> any NativeDumpRunner
-    @ObservationIgnored private var runner: (any NativeDumpRunner)?
-    @ObservationIgnored private var byteSizeTask: Task<Void, Never>?
-    @ObservationIgnored private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
-    @ObservationIgnored private var toolName = "dump"
+    private let runnerFactory: @MainActor (NativeDumpJob) -> any NativeDumpRunner
+    private var runner: (any NativeDumpRunner)?
+    private var byteSizeTask: Task<Void, Never>?
+    private var stateObservers: [UUID: AsyncStream<NativeDumpState>.Continuation] = [:]
+    private var toolName = "dump"
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -256,7 +255,18 @@ final class NativeDumpService {
         }
 
         let effective = session?.effectiveConnection ?? connection
-        let password = ConnectionStorage.shared.loadPassword(for: connection.id) ?? session?.cachedPassword
+        /// The same resolution the connect used. Reading the Keychain directly, which this used to
+        /// do, meant a dump of a connection whose password comes from a `PasswordSource`, from
+        /// `~/.pgpass` or from an AWS IAM token ran with no password at all.
+        /// The error is raised, not swallowed. A password source whose file is missing, whose
+        /// command failed, or whose store is untrusted used to become a missing password and a
+        /// misleading authentication failure from the server.
+        let password = try await ConnectionCredentialResolver.resolvePassword(
+            for: effective,
+            fields: DatabaseDriverFactory.resolvedAdditionalFields(for: effective)
+                ?? effective.additionalFields,
+            override: session?.cachedPassword
+        )
         let localFilePath = Self.localFilePath(for: effective)
         let catalog = descriptor.engineStatements == nil
             ? nil

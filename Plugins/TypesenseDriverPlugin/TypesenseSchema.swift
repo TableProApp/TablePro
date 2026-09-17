@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProDocumentPath
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -170,31 +171,9 @@ enum TypesenseSchema {
             let flat = flatten(document)
             return columns.map { column in
                 if let value = flat[column] { return value }
-                return cell(rawValue(in: document, atPath: column))
+                return cell(DocumentPath.value(in: document, atPath: column))
             }
         }
-    }
-
-    /// An `object[]` field is reported by the schema as its dotted leaves (`variants.sku`) while
-    /// the document keeps the original array of objects, so walking dictionaries alone reaches
-    /// nothing and every value of such a column renders blank. An array is a container rather than
-    /// a level of the path: the remaining keys are read from each of its elements, which is the
-    /// same shape Typesense gives the leaf, a `string[]` of one value per element.
-    static func rawValue(in document: [String: Any], atPath path: String) -> Any? {
-        value(in: document, keys: path.split(separator: ".").map(String.init)[...])
-    }
-
-    private static func value(in current: Any, keys: ArraySlice<String>) -> Any? {
-        guard let key = keys.first else { return current }
-        if let dictionary = current as? [String: Any] {
-            guard let next = dictionary[key] else { return nil }
-            return value(in: next, keys: keys.dropFirst())
-        }
-        if let array = current as? [Any] {
-            let collected = array.compactMap { value(in: $0, keys: keys) }
-            return collected.isEmpty ? nil : collected
-        }
-        return nil
     }
 
     static func flatten(_ document: [String: Any]) -> [String: PluginCellValue] {

@@ -55,13 +55,18 @@ struct RemoteFileManifest: Codable, Sendable, Equatable {
     /// report a conflict that was not there.
     var remoteWriteAheadLogSize: UInt64?
 
+    /// The log's modification time when the copy was taken. Optional, so a manifest written before
+    /// this field existed decodes with nil and the copy is refetched once to gain a full baseline.
+    var remoteWriteAheadLogModified: Date?
+
     var downloadedSHA256: String
     let snapshotMethod: RemoteSnapshotMethod
     var fingerprint: RemoteFileFingerprint {
         RemoteFileFingerprint(
             mainSize: remoteSize,
             mainModified: remoteModified,
-            writeAheadLogSize: remoteWriteAheadLogSize
+            writeAheadLogSize: remoteWriteAheadLogSize,
+            writeAheadLogModified: remoteWriteAheadLogModified
         )
     }
 
@@ -183,6 +188,49 @@ actor RemoteDatabaseFileStore {
     func discard(_ identity: RemoteFileIdentity) {
         try? FileManager.default.removeItem(at: directory(for: identity))
         Self.logger.info("Discarded the working copy for \(identity.displayOrigin, privacy: .public)")
+    }
+
+    /// Marks a copy as used, so a reuse counts against the abandonment clock the same as a fresh
+    /// fetch. Reading a file does not move a directory's modification time, so reuse would otherwise
+    /// leave a copy that is opened daily looking abandoned once the server stopped changing.
+    func touch(_ identity: RemoteFileIdentity) {
+        try? FileManager.default.setAttributes(
+            [.modificationDate: Date()], ofItemAtPath: directory(for: identity).path
+        )
+    }
+
+    /// Removes working copies nothing has used within `maxAge`, which is how a copy left behind by a
+    /// deleted connection or a changed path is eventually reclaimed. Nothing else deletes them:
+    /// `discard` has no routine caller, because a copy keyed by the resolved server path cannot be
+    /// found from a connection's unresolved one at delete time.
+    ///
+    /// Sweeping a copy is safe. A remote file connection is read-only and re-fetches on next open,
+    /// so a removed copy costs one download and never loses data. This runs at launch, before any
+    /// connection materializes a copy, so removing one that is about to be reopened only means it is
+    /// fetched again. The directory's modification time is the last-used mark, moved forward by a
+    /// fresh fetch and by `touch` on every reuse.
+    func pruneAbandoned(olderThan maxAge: TimeInterval = 30 * 24 * 60 * 60, now: Date = Date()) {
+        Self.pruneAbandoned(in: root, olderThan: maxAge, now: now)
+    }
+
+    /// The filesystem half of `pruneAbandoned`, taking its root explicitly so a test can point it at
+    /// a temporary directory rather than the app's real store.
+    static func pruneAbandoned(in root: URL, olderThan maxAge: TimeInterval, now: Date) {
+        let fileManager = FileManager.default
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for url in entries {
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+            guard values?.isDirectory == true else { continue }
+            let modified = values?.contentModificationDate ?? .distantPast
+            guard now.timeIntervalSince(modified) > maxAge else { continue }
+            try? fileManager.removeItem(at: url)
+            logger.info("Pruned a remote database working copy unused for over \(Int(maxAge / 86_400)) days")
+        }
     }
 }
 

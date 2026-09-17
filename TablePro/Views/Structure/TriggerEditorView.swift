@@ -5,12 +5,13 @@
 //  DDL-first editor sheet for creating and editing triggers.
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
 struct TriggerEditorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     enum Mode {
         case create
         case edit(originalName: String, originalDefinition: String)
@@ -72,13 +73,10 @@ struct TriggerEditorView: View {
             }
         }
         .frame(minWidth: 560, idealWidth: 680, minHeight: 360, idealHeight: 460)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
         }
-        .onReceive(AppEvents.shared.themeChanged) { _ in
-            editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-        }
-        .onChange(of: fontSize) { _, newSize in
+        .onChange(of: fontSize) { newSize in
             editorConfiguration = Self.makeConfiguration(fontSize: newSize)
         }
     }

@@ -72,6 +72,31 @@ extension PluginMetadataRegistry {
         )
     }
 
+    /// A name is a system database or schema when either the plugin or the app's curated entry lists it. An installed
+    /// plugin can predate the app's list or report none at all: every published Oracle plugin lists no system
+    /// schemas, which left `SYS` and `XDB` among the user schemas whichever plugin version was installed.
+    static func adoptCuratedSystemNames(
+        _ snapshot: inout PluginMetadataSnapshot,
+        registryDefault: PluginMetadataSnapshot
+    ) {
+        let databases = mergedSystemNames(
+            reported: snapshot.schema.systemDatabaseNames,
+            curated: registryDefault.schema.systemDatabaseNames
+        )
+        let schemas = mergedSystemNames(
+            reported: snapshot.schema.systemSchemaNames,
+            curated: registryDefault.schema.systemSchemaNames
+        )
+        guard databases != snapshot.schema.systemDatabaseNames
+            || schemas != snapshot.schema.systemSchemaNames else { return }
+        snapshot = snapshot.withSystemNames(databases: databases, schemas: schemas)
+    }
+
+    private static func mergedSystemNames(reported: [String], curated: [String]) -> [String] {
+        var seen = Set(reported)
+        return reported + curated.filter { seen.insert($0).inserted }
+    }
+
     /// A plugin built before its engine moved to schema-only switching still
     /// declares database switching with bySchema grouping. The app's registry
     /// default is the ground truth for routing, so its switch fields win.

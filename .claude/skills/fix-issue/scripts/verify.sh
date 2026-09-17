@@ -19,7 +19,7 @@
 #   verify.sh          tail   <log> [lines]     # re-read a stored log without rerunning
 #   verify.sh          parse  <log>             # re-read the verdict for a stored log
 #
-# Options:
+# Options, accepted before or after the step:
 #   --run <dir>     run directory for logs (default: <repo>/.analysis/<branch>)
 #   --root <dir>    repository root (default: the checkout this script lives in)
 #   --no-wait       do not wait for a concurrent xcodebuild to finish
@@ -50,6 +50,11 @@ need_value() {
     [ "$1" -ge 2 ] || { echo "$2 needs a value" >&2; usage; }
 }
 
+# Options are read wherever they appear, not only before the step. The loop used to stop at the
+# first non-option, so everything after the step name reached the step as an argument: `verify.sh
+# build --offline` built a scheme named `--offline` and reported FAIL rather than a usage error,
+# which reads like the change broke the build.
+POSITIONAL=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --run) need_value $# "--run"; RUN_DIR="$2"; shift 2 ;;
@@ -65,9 +70,11 @@ while [ $# -gt 0 ]; do
         --offline) OFFLINE=1; shift ;;
         -h | --help) usage 0 ;;
         --*) echo "unknown option: $1" >&2; usage ;;
-        *) break ;;
+        *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+# bash 3.2 treats an unset array as unbound under `set -u`, so an options-only run needs the guard.
+set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 
 [ $# -ge 1 ] || usage
 STEP="$1"; shift
@@ -302,6 +309,37 @@ run_logged() {
     return $?
 }
 
+# SwiftLint applies `.swiftlint.yml`'s `included:` to a DIRECTORY argument but not to a file
+# argument, so `swiftlint lint --strict TableProTests` reports zero violations having linted
+# nothing at all. Measured 2026-09-15: that command found 0 and `TableProTests/**/*.swift` found
+# 1227. Name the directories a run was handed and then dropped, so a clean result is not read as
+# coverage it never had.
+swiftlint_filtered_dirs() {
+    local config="$REPO_ROOT/.swiftlint.yml"
+    [ -f "$config" ] || return 0
+    local roots
+    roots="$(awk '/^included:/ { inside = 1; next }
+                  /^[A-Za-z_]+:/ { inside = 0 }
+                  inside && /^[[:space:]]*-[[:space:]]*/ {
+                      sub(/^[[:space:]]*-[[:space:]]*/, "")
+                      gsub(/["'"'"']/, "")
+                      print
+                  }' "$config")"
+    [ -n "$roots" ] || return 0
+    local dropped="" path root covered
+    for path in "$@"; do
+        [ -d "$REPO_ROOT/$path" ] || continue
+        covered=0
+        for root in $roots; do
+            case "${path%/}/" in
+                "${root%/}/"*) covered=1 ;;
+            esac
+        done
+        [ "$covered" -eq 1 ] || dropped="$dropped $path"
+    done
+    printf '%s' "${dropped# }"
+}
+
 case "$STEP" in
     tail)
         [ $# -ge 1 ] || usage
@@ -431,6 +469,7 @@ case "$STEP" in
         STEP_DETAIL="$# path(s)"
         setup_toolchain
         log="$(new_log lint)"
+        filtered="$(swiftlint_filtered_dirs "$@")"
         run_logged "$log" swiftlint lint --strict "$@"
         code=$?
         if grep -q 'Loading sourcekitdInProc.framework .* failed' "$log" 2> /dev/null; then
@@ -442,6 +481,10 @@ case "$STEP" in
         else
             STATUS=FAIL
             note "$(grep -E ':[0-9]+:[0-9]+: (error|warning):' "$log" 2> /dev/null | sed 's/^/  /' | head -15)"
+        fi
+        if [ -n "$filtered" ]; then
+            note "NOT LINTED, outside .swiftlint.yml included: $filtered"
+            note "  a directory argument is filtered, a file argument is not: <dir>/**/*.swift"
         fi
 
         # Lint the agent-facing docs in the same pass. They are instructions the next run acts on,

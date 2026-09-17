@@ -262,6 +262,13 @@ struct TriggerApplyExecutionTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: "public")
         let pooledStub = StubTriggerDriver()
         pooledStub.transactionalDDL = true
+        /// The drop statement is built on the driver that will run it, because an engine that
+        /// qualifies its DDL with the connection's current database would otherwise write the
+        /// session's database into a statement the pooled connection runs somewhere else. Both
+        /// stubs can produce it, so the assertions below are what say which one was asked: a
+        /// regression back to the session driver shows up as a query it executed rather than as a
+        /// statement nobody could generate.
+        pooledStub.dropToReturn = "DROP TRIGGER t"
         let pooledAdapter = PluginDriverAdapter(connection: connection, pluginDriver: pooledStub)
         try await pooledAdapter.connect()
         MetadataConnectionPool.shared.injectEntry(pooledAdapter, scope: scope)

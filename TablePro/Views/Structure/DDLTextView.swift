@@ -2,16 +2,17 @@
 //  DDLTextView.swift
 //  TablePro
 //
-//  Read-only DDL view with tree-sitter syntax highlighting via CodeEditSourceEditor
+//  Read-only DDL view with tree-sitter syntax highlighting via TableProEditorKit
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
 
-/// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor
+/// Read-only DDL display with syntax highlighting powered by TableProEditorKit
 struct DDLTextView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let ddl: String
     @Binding var fontSize: Double
     var databaseType: DatabaseType?
@@ -32,7 +33,7 @@ struct DDLTextView: View {
 
     var body: some View {
         if ddl.isEmpty {
-            ThemeEngine.shared.palette.color(.editorBackground)
+            Color(nsColor: .textBackgroundColor)
         } else {
             SourceEditor(
                 $text,
@@ -41,16 +42,13 @@ struct DDLTextView: View {
                 state: $editorState,
                 foldProvider: foldProvider
             )
-            .onChange(of: ddl) { _, newDDL in
+            .onChange(of: ddl) { newDDL in
                 text = newDDL
             }
-            .onChange(of: colorScheme) {
+            .onChange(of: colorScheme) { _ in
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }
-            .onReceive(AppEvents.shared.themeChanged) { _ in
-                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
-            }
-            .onChange(of: fontSize) { _, newSize in
+            .onChange(of: fontSize) { newSize in
                 editorConfiguration = Self.makeConfiguration(fontSize: newSize)
             }
         }

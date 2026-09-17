@@ -168,18 +168,24 @@ struct IndexDefinitionTests {
         #expect(convertedBack.type == "FULLTEXT")
     }
 
-    @Test("type mapping defaults to BTREE for unknown type")
-    func typeMappingUnknownDefaultsToBtree() {
-        let indexInfo = IndexInfo(
-            name: "idx_test",
-            columns: ["id"],
-            isUnique: false,
-            isPrimary: false,
-            type: "UNKNOWN"
-        )
+    /// Replaces "type mapping defaults to BTREE for unknown type", which pinned the defect: every type
+    /// outside a closed list of seven was read as BTREE, so an index written from its fields came
+    /// back as a b-tree on the server.
+    @Test("type mapping keeps the type the engine reports")
+    func typeMappingKeepsReportedType() {
+        for reported in ["bloom", "spgist", "hnsw", "CLUSTERED", "DATA_SKIPPING"] {
+            let indexInfo = IndexInfo(
+                name: "idx_test",
+                columns: ["id"],
+                isUnique: false,
+                isPrimary: false,
+                type: reported
+            )
 
-        let editable = EditableIndexDefinition.from(indexInfo)
-        #expect(editable.type == .btree)
+            let editable = EditableIndexDefinition.from(indexInfo)
+            #expect(editable.type.rawValue == reported.uppercased())
+            #expect(editable.toIndexInfo().type == reported.uppercased())
+        }
     }
 
     @Test("full round-trip preserves data integrity")

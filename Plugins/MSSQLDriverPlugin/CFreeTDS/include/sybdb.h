@@ -109,6 +109,9 @@ extern RETCODE dbcmd(DBPROCESS *dbproc, const char *cmdstring);
 extern RETCODE dbsqlexec(DBPROCESS *dbproc);
 extern RETCODE dbresults(DBPROCESS *dbproc);
 extern RETCODE dbnextrow(DBPROCESS *dbproc);
+// Rows the current result set reported, which for a statement that returns no rows is the count
+// the server put in DONE_IN_PROC. Valid only after dbresults() for that statement.
+extern DBINT dbcount(DBPROCESS *dbproc);
 
 extern int dbnumcols(DBPROCESS *dbproc);
 extern char *dbcolname(DBPROCESS *dbproc, int colnum);

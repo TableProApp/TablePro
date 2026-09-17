@@ -10,7 +10,7 @@ import SwiftUI
 /// Stopping asks first, the way the export and backup sheets do. An import writes rows, so an
 /// accidental press is the expensive one of the three: statements already run stay committed.
 struct ImportProgressView: View {
-    let service: ImportService
+    @ObservedObject var service: ImportService
     let onStop: () -> Void
 
     @State private var showStopConfirmation = false

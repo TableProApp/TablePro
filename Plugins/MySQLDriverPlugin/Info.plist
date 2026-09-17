@@ -3,13 +3,14 @@
 <plist version="1.0">
 <dict>
 	<key>TableProPluginKitVersion</key>
-	<integer>29</integer>
+	<integer>32</integer>
 	<key>TableProProvidesDatabaseTypeIds</key>
 	<array>
 		<string>MySQL</string>
 		<string>MariaDB</string>
 		<string>TiDB</string>
 		<string>Databend</string>
+		<string>OceanBase</string>
 	</array>
 </dict>
 </plist>

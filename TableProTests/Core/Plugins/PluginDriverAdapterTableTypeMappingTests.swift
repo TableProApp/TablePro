@@ -217,7 +217,7 @@ struct PluginDriverAdapterTableTypeMappingTests {
         #expect(tables[1].type == .table)
     }
 
-    @Test("fetchPartitions bridges plugin rows and resolves the schema")
+    @Test("fetchPartitionDetails bridges plugin rows and resolves the schema")
     func fetchPartitionsBridgesRows() async throws {
         let driver = StubTableTypeDriver()
         driver.stubbedPartitions = [
@@ -225,12 +225,15 @@ struct PluginDriverAdapterTableTypeMappingTests {
             PluginTableInfo(name: "orders_2024_02", type: "PARTITIONED TABLE")
         ]
         let adapter = makeAdapter(driver: driver)
-        let partitions = try await adapter.fetchPartitions(table: "orders", schema: "app")
+        let partitions = try await adapter.fetchPartitionDetails(table: "orders", schema: "app")
         #expect(driver.requestedPartitionTable == "orders")
         #expect(partitions.map(\.name) == ["orders_2024_01", "orders_2024_02"])
-        #expect(partitions[0].type == .table)
-        #expect(partitions[1].type == .partitionedTable)
+        #expect(partitions[0].isSubpartitioned == false)
+        #expect(partitions[1].isSubpartitioned)
+        #expect(partitions.allSatisfy { $0.isSeparateRelation })
         #expect(partitions.allSatisfy { $0.schema == "app" })
+        let asTables = partitions.compactMap { $0.asTableInfo }
+        #expect(asTables.map(\.type) == [.table, .partitionedTable])
     }
 
     @Test("Plugin schema propagates to TableInfo when set on PluginTableInfo")

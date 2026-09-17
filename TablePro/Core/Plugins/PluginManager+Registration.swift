@@ -487,6 +487,22 @@ extension PluginManager {
             .schema.defaultSchemaName ?? "public"
     }
 
+    /// Whether a live statement on the open connection moves that connection alone to another
+    /// database. The pair `pin(_:to:)` already trusts before it calls `switchDatabase`, so a caller
+    /// reading this issues no statement the session driver does not issue for the same scope, plus
+    /// the isolation the pool assumes: on an engine whose pooled drivers share one session, the same
+    /// statement moves every other pooled scope with it.
+    func switchesDatabaseWithoutReconnecting(for databaseType: DatabaseType) -> Bool {
+        supportsDatabaseSwitching(for: databaseType)
+            && !requiresReconnectForDatabaseSwitch(for: databaseType)
+            && !pooledDriversShareOneSession(for: databaseType)
+    }
+
+    func pooledDriversShareOneSession(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.pooledDriversShareOneSession ?? false
+    }
+
     func requiresReconnectForDatabaseSwitch(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.requiresReconnectForDatabaseSwitch ?? false
@@ -523,6 +539,12 @@ extension PluginManager {
     func supportsRemoteDatabaseFile(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.supportsRemoteDatabaseFile ?? false
+    }
+
+    /// Whether this type can run its statements on an SSH server against a live database file.
+    func supportsRemoteDatabaseSession(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsRemoteDatabaseSession ?? false
     }
 
     func supportsSSL(for databaseType: DatabaseType) -> Bool {
@@ -592,8 +614,27 @@ extension PluginManager {
             .capabilities.supportsRenameSchema ?? false
     }
 
+    func supportsCreateSchema(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsCreateSchema ?? false
+    }
+
+    func supportsSchemaOwner(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsSchemaOwner ?? false
+    }
+
+    func supportsSchemaPrivileges(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?
+            .capabilities.supportsSchemaPrivileges ?? false
+    }
+
     func rowMatchExcludedTypePrefixes(for databaseType: DatabaseType) -> [String] {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchExcludedTypePrefixes ?? []
+    }
+
+    func rowMatchTextTypePrefixes(for databaseType: DatabaseType) -> [String] {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.schema.rowMatchTextTypePrefixes ?? []
     }
 
     func supportsPrincipalConnectionLimit(for databaseType: DatabaseType) -> Bool {

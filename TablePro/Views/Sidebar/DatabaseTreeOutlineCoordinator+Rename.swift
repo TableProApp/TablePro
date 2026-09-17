@@ -21,7 +21,7 @@ extension DatabaseTreeOutlineCoordinator {
         let name: String
         switch target {
         case .table(let ref):
-            nodeId = isRecentRow ? DatabaseTreeNode.recentTableId(ref) : DatabaseTreeNode.tableId(ref)
+            nodeId = isRecentRow ? DatabaseTreeNode.recentTableId(ref) : tableNodeId(for: ref)
             name = ref.table.name
         case .container(let ref):
             nodeId = ref.kind == .schema
@@ -87,6 +87,23 @@ extension DatabaseTreeOutlineCoordinator {
         guard let field = cell.editor else { return }
         outlineView?.window?.makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+    }
+
+    /// A table has two possible rows: its own, and the partition row a PostgreSQL partition draws
+    /// under its parent. Both resolve to the same reference, so the id comes from the row that is
+    /// actually on screen rather than from whichever node the cache happens to hold.
+    ///
+    /// Presence in `nodeCache` is not enough. The cache outlives a reload, so a table attached as a
+    /// partition keeps its old `.table` node there long after the tree stopped drawing it, and
+    /// renaming through that id asks the outline for row -1 and silently does nothing.
+    private func tableNodeId(for ref: DatabaseTreeTableRef) -> String {
+        let tableId = DatabaseTreeNode.tableId(ref)
+        let candidates = [nodeCache[tableId]].compactMap { $0 } + nodeCache.values.filter { node in
+            guard case .partition = node.kind else { return false }
+            return node.tableRef == ref
+        }
+        let mounted = candidates.first { (outlineView?.row(forItem: $0) ?? -1) >= 0 }
+        return mounted?.id ?? candidates.first?.id ?? tableId
     }
 
     private func renameCell(forNodeId nodeId: String) -> DatabaseTreeCellView? {

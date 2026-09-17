@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProMSSQLCore
+import XCTest
 
 final class MSSQLColumnTypeTests: XCTestCase {
     func testIsBinaryCoversBinaryFamily() {

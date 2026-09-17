@@ -42,6 +42,7 @@ final class InspectorWindowController: NSWindowController, NSWindowDelegate, NST
         window.titleVisibility = .visible
         window.isReleasedWhenClosed = false
         window.identifier = NSUserInterfaceItemIdentifier("main-inspector")
+        window.keepsKeyViewLoopCurrent()
 
         super.init(window: window)
         documentRef = nsDocument

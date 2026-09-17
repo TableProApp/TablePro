@@ -91,6 +91,8 @@ enum KafkaErrorCode {
     static let notCoordinator: Int16 = 16
     static let illegalSaslState: Int16 = 34
     static let unsupportedVersion: Int16 = 35
+    static let notController: Int16 = 41
+    static let topicDeletionDisabled: Int16 = 72
     static let topicAuthorizationFailed: Int16 = 29
     static let groupAuthorizationFailed: Int16 = 30
     static let clusterAuthorizationFailed: Int16 = 31

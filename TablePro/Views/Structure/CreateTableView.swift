@@ -32,16 +32,21 @@ struct CreateTableView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "CreateTableView")
 
     let connection: DatabaseConnection
+
+    /// The tab's own scope, which is where the table is created. The browse cursor moves when the
+    /// user clicks another database in the sidebar and the open Create Table tab does not follow it,
+    /// so taking the cursor created the table somewhere the tab never named.
+    let scope: DatabaseScope?
     var coordinator: MainContentCoordinator?
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) private var services
 
     /// The definition in progress. Held outside this view because the view is destroyed the moment
     /// the tab is deselected, and nothing in a Create Table tab exists anywhere else yet.
-    @Bindable var draft: CreateTableDraft
+    @ObservedObject var draft: CreateTableDraft
 
-    @State private var wrappedChangeManager: AnyChangeManager
+    @StateObject private var wrappedChangeManager: AnyChangeManager
 
     private var structureChangeManager: StructureChangeManager { draft.changeManager }
 
@@ -60,17 +65,19 @@ struct CreateTableView: View {
 
     init(
         connection: DatabaseConnection,
+        scope: DatabaseScope?,
         coordinator: MainContentCoordinator?,
         selectionState: GridSelectionState,
         draft: CreateTableDraft
     ) {
         self.connection = connection
+        self.scope = scope
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.draft = draft
 
         let manager = draft.changeManager
-        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
+        _wrappedChangeManager = StateObject(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
             structureChangeManager: manager,
             structureTab: .columns,
@@ -126,9 +133,9 @@ struct CreateTableView: View {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: selectedRows) { _, newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { updateGridDelegate() }
-        .onChange(of: isReadyToCreate) { updateCreateTablePendingState() }
+        .onChange(of: selectedRows) { newRows in selectionState.indices = newRows }
+        .onChange(of: selectedTab) { _ in updateGridDelegate() }
+        .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -178,8 +185,8 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
-        .background(ThemeEngine.shared.palette.color(.panelBackground))
-        .onChange(of: draft.tableOptions.charset) { _, newCharset in
+        .background(Color(nsColor: .controlBackgroundColor))
+        .onChange(of: draft.tableOptions.charset) { newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 draft.tableOptions.collation = first
             }
@@ -405,9 +412,15 @@ struct CreateTableView: View {
     }
 
     private func currentStatements() -> CreateTableStatements {
+        statements(composedWith: DatabaseManager.shared.driver(for: connection.id))
+    }
+
+    /// Several visual-editor drivers write their own current schema or catalog into the statement as
+    /// an explicit qualifier, so the driver the SQL is composed on decides where the table lands.
+    /// Composing on the session driver and executing on the tab's scope pinned only half of it.
+    private func statements(composedWith driver: DatabaseDriver?) -> CreateTableStatements {
         let plan = currentPlan
-        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?
-            .schemaPluginDriver else {
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
             return CreateTableStatements(statements: [], issues: plan.issues, tableName: nil)
         }
         return CreateTableStatementComposer.compose(plan: plan, driver: pluginDriver)
@@ -433,13 +446,12 @@ struct CreateTableView: View {
     /// keep the app's own DDL off the user's connection.
     private func createTable() {
         guard !isCreating else { return }
-        let composed = currentStatements()
-        guard composed.issues.isEmpty, !composed.statements.isEmpty else {
-            errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+        guard currentStatements().issues.isEmpty else {
+            errorMessage = currentStatements().issues.map(\.qualifiedMessage).joined(separator: "\n")
             showError = true
             return
         }
-        guard let scope = DatabaseManager.shared.browseScope(for: connection.id) else {
+        guard let scope else {
             errorMessage = String(localized: "Not connected to database")
             showError = true
             return
@@ -449,17 +461,26 @@ struct CreateTableView: View {
         errorMessage = nil
         updateCreateTablePendingState()
 
-        let statements = composed.statements
-        let createdName = composed.tableName ?? draft.tableName
         Task {
             defer { isCreating = false }
             do {
+                let composed = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                    await MainActor.run { statements(composedWith: driver) }
+                }
+                guard composed.issues.isEmpty, !composed.statements.isEmpty else {
+                    errorMessage = composed.issues.map(\.qualifiedMessage).joined(separator: "\n")
+                    showError = true
+                    return
+                }
+                let createdName = composed.tableName ?? draft.tableName
                 try await DatabaseManager.shared.executeCreateTable(
-                    statements: statements,
+                    statements: composed.statements,
                     databaseType: connection.type,
                     scope: scope
                 )
-                coordinator?.openTableTab(createdName)
+                coordinator?.openTableTab(
+                    createdName, schema: scope.schema, database: scope.database.nilIfEmpty
+                )
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")

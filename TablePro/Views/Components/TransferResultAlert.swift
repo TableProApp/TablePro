@@ -22,8 +22,14 @@ internal enum TransferResultAlert {
     /// An export that finished with something to report says so here, the way an import already
     /// does. The suppression checkbox is offered only on a clean run: the alert the user turned
     /// off is the routine one, and hiding a warning behind that switch loses it for good.
+    ///
+    /// `notes` are what the export wrote and `warnings` are what went wrong with it, so only the
+    /// second decides the title, the icon and whether the checkbox appears. Both go in the body,
+    /// notes first, which is the order `presentTransferSuccess` and `presentImportSuccess` already
+    /// put their own summaries in.
     internal static func presentExportSuccess(
         warnings: [String],
+        notes: [String] = [],
         window: NSWindow?,
         completion: @escaping @MainActor (ExportChoice) -> Void
     ) {
@@ -32,7 +38,7 @@ internal enum TransferResultAlert {
             ? String(localized: "Export completed")
             : String(localized: "Export completed with warnings")
         alert.alertStyle = warnings.isEmpty ? .informational : .warning
-        alert.informativeText = warnings.joined(separator: "\n\n")
+        alert.informativeText = (notes + warnings).joined(separator: "\n\n")
         alert.addButton(withTitle: String(localized: "Open in Finder"))
         /// `NSAlert` binds Escape by matching a button's title against "Cancel", which stops
         /// matching in every localized build and never matched "Done" at all. Without this the

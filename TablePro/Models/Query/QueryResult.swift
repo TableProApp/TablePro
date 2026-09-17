@@ -120,6 +120,14 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     let schema: String?
     let comment: String?
 
+    /// How many partitions this table holds, when the engine reports it with the listing. Nil for
+    /// an engine that says nothing, which is not the same as zero: a partitioned table with no
+    /// partitions yet answers 0.
+    ///
+    /// It is not part of the table's identity, because the same table with one more partition is
+    /// the same table.
+    let partitionCount: Int?
+
     enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
         case view = "VIEW"
@@ -151,12 +159,20 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         }
     }
 
-    init(name: String, type: TableType, rowCount: Int?, schema: String? = nil, comment: String? = nil) {
+    init(
+        name: String,
+        type: TableType,
+        rowCount: Int?,
+        schema: String? = nil,
+        comment: String? = nil,
+        partitionCount: Int? = nil
+    ) {
         self.name = name
         self.type = type
         self.rowCount = rowCount
         self.schema = schema
         self.comment = comment
+        self.partitionCount = partitionCount
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
@@ -191,6 +207,13 @@ struct ColumnInfo: Identifiable, Hashable {
     let allowedValues: [String]?
     let generationExpression: String?
     let generationKind: GenerationKind?
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` and
+    /// `PluginColumnInfo.ddlCollation` say why they differ.
+    let ddlSpelling: String?
+    let ddlDefault: String?
+    let ddlGenerationExpression: String?
+    let ddlCollation: String?
 
     init(
         name: String,
@@ -206,7 +229,11 @@ struct ColumnInfo: Identifiable, Hashable {
         isGenerated: Bool = false,
         allowedValues: [String]? = nil,
         generationExpression: String? = nil,
-        generationKind: GenerationKind? = nil
+        generationKind: GenerationKind? = nil,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -222,6 +249,10 @@ struct ColumnInfo: Identifiable, Hashable {
         self.allowedValues = allowedValues
         self.generationExpression = generationExpression
         self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 }
 
@@ -254,6 +285,14 @@ struct IndexInfo: Identifiable, Hashable {
     let type: String  // BTREE, HASH, FULLTEXT, etc.
     let columnPrefixes: [String: Int]?
     let whereClause: String?
+    /// The entries of `columns` that are expressions. `PluginIndexInfo.expressions` says why a writer
+    /// needs to know.
+    let expressions: [String]?
+    let includedColumns: [String]?
+    /// The server's own spellings for a `CREATE INDEX` on another schema.
+    /// `PluginIndexInfo.ddlMethodAndKeys` says why they differ from the fields.
+    let ddlMethodAndKeys: String?
+    let ddlWhereClause: String?
 
     init(
         name: String,
@@ -262,7 +301,11 @@ struct IndexInfo: Identifiable, Hashable {
         isPrimary: Bool,
         type: String,
         columnPrefixes: [String: Int]? = nil,
-        whereClause: String? = nil
+        whereClause: String? = nil,
+        expressions: [String]? = nil,
+        includedColumns: [String]? = nil,
+        ddlMethodAndKeys: String? = nil,
+        ddlWhereClause: String? = nil
     ) {
         self.name = name
         self.columns = columns
@@ -271,6 +314,10 @@ struct IndexInfo: Identifiable, Hashable {
         self.type = type
         self.columnPrefixes = columnPrefixes
         self.whereClause = whereClause
+        self.expressions = expressions
+        self.includedColumns = includedColumns
+        self.ddlMethodAndKeys = ddlMethodAndKeys
+        self.ddlWhereClause = ddlWhereClause
     }
 }
 
@@ -281,6 +328,10 @@ struct ForeignKeyInfo: Identifiable, Hashable {
     let column: String
     let referencedTable: String
     let referencedColumn: String
+    /// Set only by an engine that names objects in three parts and reports a key pointing outside
+    /// the database it was read from. An engine with no schema layer names its referenced database
+    /// in `referencedSchema` instead, because that is the column its catalog puts it in.
+    let referencedDatabase: String?
     let referencedSchema: String?
     let onDelete: String  // CASCADE, SET NULL, RESTRICT, NO ACTION
     let onUpdate: String
@@ -290,6 +341,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         column: String,
         referencedTable: String,
         referencedColumn: String,
+        referencedDatabase: String? = nil,
         referencedSchema: String? = nil,
         onDelete: String = "NO ACTION",
         onUpdate: String = "NO ACTION"
@@ -298,6 +350,7 @@ struct ForeignKeyInfo: Identifiable, Hashable {
         self.column = column
         self.referencedTable = referencedTable
         self.referencedColumn = referencedColumn
+        self.referencedDatabase = referencedDatabase
         self.referencedSchema = referencedSchema
         self.onDelete = onDelete
         self.onUpdate = onUpdate

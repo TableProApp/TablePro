@@ -31,24 +31,19 @@ import SwiftUI
 /// elements" (WWDC25 session 219). The band is already the system's glass, so these fills are the
 /// top layer on it rather than a second pane of it.
 internal struct EditorTabStrip: View {
-    internal let tabManager: QueryTabManager
+    @ObservedObject internal var tabManager: QueryTabManager
     /// The pointer's owner. AppKit measures the run and drives every press; this view draws what
     /// that produced. Nothing here reads a mouse.
-    internal let interaction: EditorTabStripInteraction
+    @ObservedObject internal var interaction: EditorTabStripInteraction
     /// The dimension this engine's tabs are anchored to, so a label can name the container it
     /// shares a title with. Resolved by the window, because a view has no business asking the
     /// plugin registry what kind of container a connection has.
     internal let containerTarget: ContainerSwitchTarget?
-    /// Which tabs are running something. Read from the coordinator rather than pushed in, because
-    /// `tabExecution` is a stored property of an `@Observable`, so a claim opening or settling
-    /// invalidates this strip the same way it invalidates the result pane. A tab that is not the
+    /// Which tabs are running something. Observed rather than pushed in, so a claim opening or
+    /// settling redraws this strip the same way it redraws the result pane. A tab that is not the
     /// selected one has no status bar on screen, and its progress used to show as the window-wide
     /// spinner in the centre of the toolbar.
-    ///
-    /// Weak for the reason `MainWindowToolbar.coordinator` is: the coordinator leaves
-    /// `activeCoordinators` only on deinit, so a strong reference held by a pane that outlives the
-    /// workspace would keep a torn-down connection voting in every aggregate that walks it.
-    internal weak var executionOwner: MainContentCoordinator?
+    @ObservedObject internal var execution: TabExecutionObservation
     internal let onNewTab: () -> Void
     /// Left unset by the app, which reads the two accessibility settings instead. A test sets it,
     /// because glass does not rasterise.
@@ -56,7 +51,7 @@ internal struct EditorTabStrip: View {
 
     /// Read here rather than pushed in at build time, so changing the preference re-lays every
     /// open strip at once instead of the next time an unrelated pane happens to rebuild.
-    @State private var settings = AppSettingsManager.shared
+    @ObservedObject private var settings = AppSettingsManager.shared
 
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -78,16 +73,17 @@ internal struct EditorTabStrip: View {
         .padding(.horizontal, EditorTabStripLayout.stripInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         /// A closed tab leaves its id behind, and the tab that slides into its place would
-        /// otherwise light up under a pointer that never moved onto it.
-        .onChange(of: tabManager.tabs.map(\.id), initial: true) { _, ids in
+        /// otherwise light up under a pointer that never moved onto it. The initial list is seeded
+        /// where the strip is built, so these two carry changes only.
+        .onChange(of: tabManager.tabs.map(\.id)) { ids in
             interaction.dropClosedTabs(keeping: ids)
         }
-        .onChange(of: settings.tabs.overflow, initial: true) { _, style in
+        .onChange(of: settings.tabs.overflow) { style in
             interaction.overflow = style
         }
         /// Cmd+1..9, opening a table from the sidebar and closing a tab can all land on a tab that
         /// is scrolled out of sight, so the selection pulls itself into view.
-        .onChange(of: tabManager.selectedTabId) { _, newValue in
+        .onChange(of: tabManager.selectedTabId) { newValue in
             guard let newValue else { return }
             withMotion(.easeOut(duration: 0.15)) {
                 interaction.revealTab(id: newValue)
@@ -95,7 +91,7 @@ internal struct EditorTabStrip: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Editor Tabs"))
-        .accessibilityAddTraits(.isTabBar)
+        .modifier(TabBarAccessibilityTrait())
     }
 
     private var trackHeight: CGFloat {
@@ -125,9 +121,15 @@ internal struct EditorTabStrip: View {
     /// press owns the wheel and the autoscroll too, so one object decides where a tab is and the
     /// drawing follows it rather than the two agreeing by construction.
     private var track: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(Array(displayedTabs.enumerated()), id: \.element.id) { index, tab in
-                item(for: tab, at: index, in: displayedTabs, label: labels[tab.id])
+        /// The run and the list are read once, together, and the placement is handed to each item
+        /// rather than looked up again inside the `ForEach`, whose closures SwiftUI evaluates
+        /// lazily. One paint is then measured against one run: a tab drawn from a list the run was
+        /// not built for has no rectangle, and is drawn nowhere.
+        let run = interaction.run
+        let tabs = displayedTabs
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                item(for: tab, at: index, in: tabs, placement: run.placement(at: index), label: labels[tab.id])
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -135,10 +137,10 @@ internal struct EditorTabStrip: View {
         /// is cut by that curve instead of squaring it off. A capsule only stays right for one
         /// row: its radius is half the height, so a wrapped track would curve away most of the
         /// first row's close target while the pointer still hit-tests the whole rectangle.
-        .clipShape(EditorTabStripLayout.trackShape(forRowCount: interaction.run.rowCount))
+        .clipShape(EditorTabStripLayout.trackShape(forRowCount: run.rowCount))
         .padding(EditorTabStripLayout.trackPadding)
         .frame(height: trackHeight)
-        .trackSurface(rowCount: interaction.run.rowCount)
+        .trackSurface(rowCount: run.rowCount)
     }
 
     private var displayedTabs: [QueryTab] {
@@ -155,9 +157,10 @@ internal struct EditorTabStrip: View {
         for tab: QueryTab,
         at index: Int,
         in tabs: [QueryTab],
+        placement: EditorTabPlacement?,
         label: EditorTabLabelResolver.Label?
     ) -> some View {
-        if let placement = interaction.run.placement(at: index) {
+        if let placement {
             EditorTabStripItem(
                 tab: tab,
                 label: label ?? EditorTabLabelResolver.Label(text: tab.title, description: tab.title),
@@ -174,7 +177,7 @@ internal struct EditorTabStrip: View {
                 ),
                 position: index + 1,
                 count: tabs.count,
-                isBusy: executionOwner?.tabExecution.isBusy(tab.id) ?? false,
+                isBusy: execution.isBusy(tab.id),
                 commands: interaction.commands
             )
             .opacity(opacity(of: tab))
@@ -448,8 +451,8 @@ private struct EditorTabStripCloseButtonStyle: ButtonStyle {
     }
 
     private func fill(isPressed: Bool) -> Color {
-        if isPressed { return Color(nsColor: .tertiarySystemFill) }
-        return isHovering ? Color(nsColor: .quaternarySystemFill) : .clear
+        if isPressed { return Color(nsColor: .tertiaryFill) }
+        return isHovering ? Color(nsColor: .quaternaryFill) : .clear
     }
 }
 
@@ -562,6 +565,19 @@ private extension View {
                         y: isLightAppearance ? 0.5 : 0
                     )
             )
+        }
+    }
+}
+
+/// `AccessibilityTraits.isTabBar` is macOS 14. Without it VoiceOver announces the strip as a
+/// plain container; the label and the per-tab elements are unchanged.
+private struct TabBarAccessibilityTrait: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.accessibilityAddTraits(.isTabBar)
+        } else {
+            content
         }
     }
 }

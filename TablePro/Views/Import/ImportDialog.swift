@@ -13,6 +13,7 @@ import TableProPluginKit
 import UniformTypeIdentifiers
 
 struct ImportDialog: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDialog")
     @Binding var isPresented: Bool
     let connection: DatabaseConnection
@@ -125,7 +126,7 @@ struct ImportDialog: View {
                 .interactiveDismissDisabled()
             }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
@@ -138,7 +139,7 @@ struct ImportDialog: View {
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .onChange(of: showErrorDialog) { _, isShowing in
+        .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
@@ -153,7 +154,7 @@ struct ImportDialog: View {
     /// configured for row import" once the user pressed Import.
     private var availableFormats: [any ImportFormatPlugin] {
         let dbTypeId = connection.type.rawValue
-        return PluginManager.shared.allImportPlugins()
+        return pluginManager.allImportPlugins()
             .filter { plugin in
                 let pluginType = type(of: plugin)
                 return ImportRouting.isStatementFormat(
@@ -167,7 +168,7 @@ struct ImportDialog: View {
     }
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugin(forFormat: selectedFormatId)
+        pluginManager.importPlugin(forFormat: selectedFormatId)
     }
 
     // MARK: - View Components
@@ -285,7 +286,7 @@ struct ImportDialog: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _, _ in
+                    .onChange(of: selectedEncoding) { _ in
                         loadFileTask?.cancel()
                         if let url = fileURL {
                             loadFileTask = Task {
@@ -505,6 +506,9 @@ struct ImportDialog: View {
                     showErrorDialog = true
                 }
             }
+            /// A SQL file can create, alter or drop anything, and one that failed or was cancelled
+            /// part way has already run every statement before that point.
+            CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .everything)))
         }
     }
 

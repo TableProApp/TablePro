@@ -31,7 +31,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         _ = InspectorDocumentController()
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
-        FeatureTipsBootstrap.configure()
+        if #available(macOS 14.0, *) {
+            FeatureTipsBootstrap.configure()
+        }
         PluginManager.shared.loadPlugins()
         LaunchTracer.shared.mark(.pluginsDiscovered)
         LaunchTracer.shared.mark(.willFinishLaunchingEnded)
@@ -66,7 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         /// Only a screenshot run overrides the mode, so only a screenshot run resolves it twice.
         if let screenshotMode = ScreenshotEnvironment.appearanceMode {
             let appearanceSettings = AppSettingsManager.shared.appearance
-            ThemeEngine.shared.apply(
+            ThemeEngine.shared.updateAppearanceAndTheme(
                 mode: screenshotMode,
                 lightThemeId: appearanceSettings.preferredLightThemeId,
                 darkThemeId: appearanceSettings.preferredDarkThemeId
@@ -102,6 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await CloudflareTunnelManager.shared.sweepStalePidsIfNeeded() }
         Task { await CloudSQLProxyManager.shared.sweepStalePidsIfNeeded() }
         Task { await TunnelCommandManager.shared.sweepStalePidsIfNeeded() }
+        Task { await RemoteDatabaseFileStore.shared.pruneAbandoned() }
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(handleSystemDidWake),
@@ -112,6 +115,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil
         )
+
+        RecentConnectionsRecorder.shared.start()
 
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()
@@ -129,6 +134,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        SoftwareUpdater.shared.start()
         AnalyticsService.shared.startPeriodicHeartbeat()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
@@ -196,6 +202,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudflareTunnelManager.shared.terminateAllProcessesSync()
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
+        RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
     }
 
     private func persistOpenConnectionsForRecovery() {

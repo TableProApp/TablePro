@@ -15,11 +15,27 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         case sysoper
     }
 
+    /// The client's Oracle Native Network Encryption level, matching
+    /// `SQLNET.ENCRYPTION_CLIENT`. Oracle's own clients default to `accepted`: they
+    /// offer encryption without insisting on it, so a server that merely permits it
+    /// stays in clear text while a server that requires it negotiates AES.
+    ///
+    /// - Note: The driver negotiates encryption and the data-integrity checksum in one
+    ///         exchange and offers both at the same level, so this also sets what Oracle
+    ///         configures separately as `SQLNET.CRYPTO_CHECKSUM_CLIENT`.
+    public enum NetworkEncryption: String, Sendable, Equatable, Codable, CaseIterable {
+        case rejected
+        case accepted
+        case requested
+        case required
+    }
+
     public enum AdditionalFieldKey {
         public static let connectionType = "oracleConnectionType"
         public static let serviceName = "oracleServiceName"
         public static let sid = "oracleSID"
         public static let role = "oracleRole"
+        public static let networkEncryption = "oracleNetworkEncryption"
     }
 
     public static let defaultPort = 1_521
@@ -35,6 +51,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
     public var sid: String
     public var role: Role
     public var tls: OracleTLSDescription
+    public var networkEncryption: NetworkEncryption
     public var loginTimeoutSeconds: Double
 
     public init(
@@ -48,6 +65,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         sid: String = "",
         role: Role = .normal,
         tls: OracleTLSDescription = OracleTLSDescription(),
+        networkEncryption: NetworkEncryption = .accepted,
         loginTimeoutSeconds: Double = OracleConnectionOptions.defaultLoginTimeoutSeconds
     ) {
         self.host = host
@@ -60,6 +78,7 @@ public struct OracleConnectionOptions: Sendable, Equatable {
         self.sid = sid
         self.role = role
         self.tls = tls
+        self.networkEncryption = networkEncryption
         self.loginTimeoutSeconds = loginTimeoutSeconds
     }
 
@@ -74,5 +93,9 @@ public struct OracleConnectionOptions: Sendable, Equatable {
 
     public static func role(from additionalFields: [String: String]) -> Role {
         Role(rawValue: additionalFields[AdditionalFieldKey.role] ?? "") ?? .normal
+    }
+
+    public static func networkEncryption(from additionalFields: [String: String]) -> NetworkEncryption {
+        NetworkEncryption(rawValue: additionalFields[AdditionalFieldKey.networkEncryption] ?? "") ?? .accepted
     }
 }

@@ -170,19 +170,11 @@ struct SettingsView: View {
     }
 
     private func runSync() async {
-        await appState.syncCoordinator.sync(
-            localConnections: appState.connections,
-            localGroups: appState.groups,
-            localTags: appState.tags
-        )
+        await appState.syncCoordinator.sync()
     }
 
     private func runRefresh() async {
-        await appState.syncCoordinator.resetSyncToken(
-            localConnections: appState.connections,
-            localGroups: appState.groups,
-            localTags: appState.tags
-        )
+        await appState.syncCoordinator.resetSyncToken()
     }
 
     private var defaultsSection: some View {

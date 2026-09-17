@@ -9,20 +9,36 @@ import SwiftUI
 
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
+    @ObservedObject private var slashCommandStorage = CustomSlashCommandStorage.shared
     private static let warningBackgroundOpacity: Double = 0.1
 
     let connection: DatabaseConnection
     var currentQuery: String?
     var queryResults: String?
 
-    @Bindable var viewModel: AIChatViewModel
-    private let settingsManager = AppSettingsManager.shared
+    @ObservedObject var viewModel: AIChatViewModel
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var bottomVisibleMessageID: UUID?
     @State private var pinnedToBottom: Bool = true
-    @State private var mentionState = MentionPopoverState()
+    @State private var scrollToBottomRequest: UUID?
+
+    private static let bottomAnchorID = "chat.bottom.anchor"
+    @StateObject private var mentionState = MentionPopoverState()
 
     private var hasConfiguredProvider: Bool {
         settingsManager.ai.hasActiveProvider
+    }
+
+    /// The first call still waiting, in transcript order, which is the only one Return may answer.
+    private var primaryPendingToolUseId: String? {
+        for turn in viewModel.messages {
+            for block in turn.blocks {
+                guard case .toolUse(let useBlock) = block.kind,
+                      case .pending = useBlock.approvalState else { continue }
+                return useBlock.id
+            }
+        }
+        return nil
     }
 
     var body: some View {
@@ -43,10 +59,12 @@ struct AIChatPanelView: View {
                 inputArea
             }
         }
+        .environment(\.chatPrimaryPendingToolUseId, primaryPendingToolUseId)
+        .environment(\.chatApprovalConnectionName, connection.name)
         .onAppear {
             viewModel.connection = connection
         }
-        .onChange(of: connection.id) {
+        .onChange(of: connection.id) { _ in
             viewModel.connection = connection
         }
         .task(id: settingsManager.ai.providers.map(\.id)) {
@@ -105,6 +123,8 @@ struct AIChatPanelView: View {
             && bottomVisibleMessageID != lastMessageID
 
         return ZStack(alignment: .bottom) {
+            ScrollViewReader { proxy in
+            GeometryReader { viewport in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(visibleMessages) { message in
@@ -129,39 +149,59 @@ struct AIChatPanelView: View {
                         .padding(.vertical, 4)
                         .id(message.id)
                     }
+                    /// The bottom sentinel. `scrollPosition(id:anchor:)` reported which row sat at
+                    /// the bottom edge, which is macOS 14; measuring the last row against the
+                    /// viewport answers the only question that read was asked: is the reader at the
+                    /// end, or have they scrolled up.
+                    Color.clear
+                        .frame(height: 1)
+                        .id(Self.bottomAnchorID)
+                        .background(
+                            GeometryReader { row in
+                                Color.clear.preference(
+                                    key: ChatAtBottomKey.self,
+                                    value: row.frame(in: .global).maxY
+                                        <= viewport.frame(in: .global).maxY + 24
+                                )
+                            }
+                        )
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
-                .scrollTargetLayout()
             }
-            .defaultScrollAnchor(.bottom)
             .scrollIndicators(.hidden)
-            .scrollPosition(id: $bottomVisibleMessageID, anchor: .bottom)
-            .onChange(of: bottomVisibleMessageID) { _, newValue in
-                pinnedToBottom = newValue == nil || newValue == lastMessageID
+            .onPreferenceChange(ChatAtBottomKey.self) { atBottom in
+                pinnedToBottom = atBottom
+                bottomVisibleMessageID = atBottom ? lastMessageID : visibleMessages.dropLast().last?.id
             }
-            .onChange(of: visibleMessages.count) {
+            .onAppear { proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom) }
+            .onChange(of: visibleMessages.count) { _ in
                 if pinnedToBottom {
-                    bottomVisibleMessageID = lastMessageID
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            .onChange(of: viewModel.activeConversationID) {
+            .onChange(of: viewModel.activeConversationID) { _ in
                 pinnedToBottom = true
-                bottomVisibleMessageID = lastMessageID
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
             }
-            .onChange(of: viewModel.isStreaming) { _, newValue in
+            .onChange(of: viewModel.isStreaming) { newValue in
                 if !newValue, pinnedToBottom {
-                    bottomVisibleMessageID = lastMessageID
+                    proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
                 }
             }
-            .environment(viewModel)
+            .onChange(of: scrollToBottomRequest) { _ in
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            }
+            .environmentObject(viewModel)
+            }
+            }
 
             if isUserScrolledUp {
                 Button {
                     pinnedToBottom = true
                     withMotion(.easeOut(duration: 0.2)) {
-                        bottomVisibleMessageID = lastMessageID
+                        scrollToBottomRequest = UUID()
                     }
                 } label: {
                     Image(systemName: "arrow.down.circle.fill")
@@ -294,13 +334,12 @@ struct AIChatPanelView: View {
                 Image(systemName: settingsManager.ai.chatMode.symbolName)
                 Text(settingsManager.ai.chatMode.displayName)
                     .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .help(settingsManager.ai.chatMode.helpText)
     }
@@ -361,14 +400,13 @@ struct AIChatPanelView: View {
                     Text(label)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .help(String(localized: "Choose AI provider and model"))
         }
     }
@@ -419,16 +457,17 @@ struct AIChatPanelView: View {
                 Image(systemName: "at")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel(String(localized: "Attach context"))
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
             .fixedSize()
             .help(String(localized: "Attach context"))
-            .accessibilityLabel(String(localized: "Attach context"))
         }
     }
 
     private var slashCommandMenu: some View {
-        let customCommands = CustomSlashCommandStorage.shared.commands.filter(\.isValid)
+        let customCommands = slashCommandStorage.commands.filter(\.isValid)
         return Menu {
             ForEach(SlashCommand.allCommands) { command in
                 Button {
@@ -459,11 +498,12 @@ struct AIChatPanelView: View {
             Image(systemName: "command")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel(String(localized: "Slash commands"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .help(String(localized: "Slash commands"))
-        .accessibilityLabel(String(localized: "Slash commands"))
     }
 
     @ViewBuilder
@@ -633,5 +673,15 @@ struct AIChatPanelView: View {
             && message.id == viewModel.messages.last?.id
             && !viewModel.isStreaming
             && !message.plainText.isEmpty
+    }
+}
+
+/// Whether the conversation's last row is inside the viewport. Replaces reading
+/// `scrollPosition(id:anchor:)`, which is macOS 14.
+private struct ChatAtBottomKey: PreferenceKey {
+    static let defaultValue = true
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
     }
 }

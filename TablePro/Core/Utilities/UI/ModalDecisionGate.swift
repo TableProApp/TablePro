@@ -45,11 +45,6 @@ internal final class ModalDecisionGate<Value: Sendable> {
             waiter = continuation
         }
     }
-
-    internal func result() throws -> Value {
-        guard let outcome else { return try cancellationOutcome.get() }
-        return try outcome.get()
-    }
 }
 
 internal extension ModalDecisionGate where Value == PairingApproval {
@@ -77,6 +72,51 @@ internal final class ModalDecisionWindow: NSWindow {
 
     override internal func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+}
+
+/// How large a hosted decision's window is allowed to be.
+///
+/// A content size has to be bounded before it reaches a window, not merely finite. `NSWindow`
+/// asserts its frame lies inside `CGRect(INT_MIN, INT_MIN, INT_MAX - INT_MIN, INT_MAX - INT_MIN)`,
+/// and a greedy SwiftUI root answers an unbounded proposal with `CGFloat.greatestFiniteMagnitude`,
+/// which passes `isFinite` and fails that assertion. The `NSInternalInconsistencyException` it
+/// raises is not contained: it unwinds a Swift concurrency job past the bare `leave()` that
+/// `swift_job_runImpl` pops its `ExecutorTrackingInfo` with, leaving the main thread a dangling
+/// executor for the next main-actor isolation check anywhere in the app to dereference. (#2930)
+internal enum ModalDecisionWindowSizing {
+    /// A process the MCP bridge started can route a decision with no window and no `NSScreen.main`.
+    internal static let fallbackScreenSize = NSSize(width: 1_280, height: 800)
+
+    @MainActor
+    internal static func availableSize(for window: NSWindow?) -> NSSize {
+        (window?.screen ?? NSScreen.main)?.visibleFrame.size ?? fallbackScreenSize
+    }
+
+    /// A screen's visible frame bounds the *window*, and a titled window is taller than its content
+    /// by its chrome, so the content gets what is left after the chrome rather than the whole frame.
+    internal static func contentBudget(within available: NSSize, styleMask: NSWindow.StyleMask) -> NSSize {
+        let content = NSWindow.contentRect(
+            forFrameRect: NSRect(origin: .zero, size: available),
+            styleMask: styleMask
+        ).size
+        return NSSize(width: max(content.width, 0), height: max(content.height, 0))
+    }
+
+    internal static func proposal(width: CGFloat, within available: NSSize) -> NSSize {
+        NSSize(width: width, height: available.height)
+    }
+
+    internal static func contentSize(fitting fitted: NSSize, within available: NSSize) -> NSSize {
+        NSSize(
+            width: bounded(fitted.width, by: available.width),
+            height: bounded(fitted.height, by: available.height)
+        )
+    }
+
+    private static func bounded(_ value: CGFloat, by limit: CGFloat) -> CGFloat {
+        guard value.isFinite, value > 0 else { return limit }
+        return min(value, limit)
     }
 }
 

@@ -34,4 +34,37 @@ struct SSHConfigurationTests {
     func unknownFallsBackToPassword() throws {
         #expect(try decode(authMethod: "totp-only").authMethod == .password)
     }
+
+    // MARK: - Sync round trip preserves the macOS fields
+
+    private func reencodedFields(_ macJSON: String) throws -> [String: Any] {
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(macJSON.utf8))
+        let reencoded = try JSONEncoder().encode(decoded)
+        return try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+    }
+
+    @Test("The macOS SSH enabled flag, remote file path and access mode survive an iOS round trip")
+    func preservesMacRemoteFileFields() throws {
+        let macJSON = """
+        {"enabled":true,"host":"prod-1","port":22,"username":"deploy","authMethod":"password",
+         "jumpHosts":[],"agentSocketPath":"/tmp/agent.sock","remoteFilePath":"/srv/app.db",
+         "remoteFileAccess":"onServer","totpMode":"totp","totpDigits":6}
+        """
+        let fields = try reencodedFields(macJSON)
+        #expect(fields["enabled"] as? Bool == true)
+        #expect(fields["remoteFilePath"] as? String == "/srv/app.db")
+        #expect(fields["remoteFileAccess"] as? String == "onServer")
+        #expect(fields["agentSocketPath"] as? String == "/tmp/agent.sock")
+        #expect(fields["totpMode"] as? String == "totp")
+    }
+
+    @Test("A configuration this model creates omits the macOS-only keys, so the host inference is unchanged")
+    func iosCreatedConfigOmitsMacKeys() throws {
+        let config = SSHConfiguration(host: "prod-1", username: "deploy")
+        let reencoded = try JSONEncoder().encode(config)
+        let fields = try #require(JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        #expect(fields["enabled"] == nil)
+        #expect(fields["remoteFilePath"] == nil)
+        #expect(fields["agentSocketPath"] == nil)
+    }
 }

@@ -9,10 +9,13 @@ set -euo pipefail
 # to keep in sync. A reported diff is a real ABI change to act on:
 #
 #   Additive (a new requirement WITH a default implementation, a new field on a non-@frozen struct,
-#   a new case on a non-@frozen enum): no version bump needed.
+#   a new case on a non-@frozen enum): bump currentPluginKitVersion in PluginManager.swift and
+#   TableProPluginKitVersion in every plugin Info.plist, leave minimumCompatiblePluginKitVersion
+#   alone, and re-publish nothing. Already-built plugins keep loading; the bump is what makes an
+#   older app refuse a plugin REBUILT against this API instead of failing its load.
 #   Breaking (changed/removed/renamed signature, a new case on a @frozen enum, a changed frozen
-#   layout): bump currentPluginKitVersion in PluginManager.swift, raise TableProPluginKitVersion in
-#   every plugin Info.plist, then run scripts/release-all-plugins.sh <newVersion>.
+#   layout): the same bumps, plus raise minimumCompatiblePluginKitVersion, then run
+#   scripts/release-all-plugins.sh <newVersion>.
 #
 # Both sides are generated from their project.yml first, so this regenerates
 # TablePro.xcodeproj in the working tree as well as in the base checkout.
@@ -98,9 +101,12 @@ cat <<'EOF'
 
 TableProPluginKit public ABI changed vs base (diff above). Decide additive vs breaking:
   Additive: a new requirement with a default, a reordering, or a field on a non-frozen transfer
-            struct. No version bump, nothing further to do.
+            struct. Bump currentPluginKitVersion and every plugin Info.plist
+            TableProPluginKitVersion; leave minimumCompatiblePluginKitVersion alone and re-publish
+            nothing. Shipped plugins keep loading; the bump makes an older app refuse a plugin
+            rebuilt against this API rather than failing its load.
   Breaking: a changed or removed requirement, a requirement without a default, a case on a @frozen
-            enum, or a frozen type's layout. Bump currentPluginKitVersion and every plugin
-            Info.plist TableProPluginKitVersion, then run scripts/release-all-plugins.sh <version>.
+            enum, or a frozen type's layout. The same bumps, plus raise
+            minimumCompatiblePluginKitVersion, then run scripts/release-all-plugins.sh <version>.
 EOF
 exit 1

@@ -94,7 +94,7 @@ struct MCPTokenRevealSheet: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: tokenCopied ? "checkmark" : "doc.on.doc")
-                        .contentTransition(.symbolEffect(.replace))
+                        .symbolReplaceTransition()
                     Text(tokenCopied
                         ? String(localized: "Copied")
                         : String(localized: "Copy Token"))

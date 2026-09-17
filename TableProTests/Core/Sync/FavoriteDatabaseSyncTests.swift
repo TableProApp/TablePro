@@ -5,10 +5,9 @@
 
 import CloudKit
 import Foundation
-import Testing
-import TableProSyncTransport
-
 @testable import TablePro
+import TableProSyncTransport
+import Testing
 
 @Suite("Favorite database sync")
 struct FavoriteDatabaseSyncTests {
@@ -20,16 +19,16 @@ struct FavoriteDatabaseSyncTests {
     /// `FavoriteDatabase` is declared but not deployed to the CloudKit Production schema, so every
     /// field is unverified and the gated subscript drops every write. That is what keeps the type
     /// inert: nothing reaches CloudKit until the schema ships and both sets flip together.
-    @Test("The record type is declared but withheld until the schema is deployed")
-    func recordTypeIsWithheld() {
+    @Test("The record type is deployed and every declared field is writable")
+    func recordTypeIsWritable() {
         #expect(SyncRecordType.allCases.contains(.favoriteDatabase))
-        #expect(!SyncRecordType.favoriteDatabase.isWritable)
-        #expect(FavoriteDatabaseSyncField.writableKeys.isEmpty)
+        #expect(SyncRecordType.favoriteDatabase.isWritable)
+        #expect(FavoriteDatabaseSyncField.writableKeys == FavoriteDatabaseSyncField.declaredKeys)
         #expect(!FavoriteDatabaseSyncField.declaredKeys.isEmpty)
     }
 
-    @Test("A record of the withheld type is never published")
-    func recordsAreNotPublished() {
+    @Test("A record of the deployed type is published")
+    func recordsArePublished() {
         let record = CKRecord(
             recordType: SyncRecordType.favoriteDatabase.rawValue,
             recordID: CKRecord.ID(
@@ -38,9 +37,9 @@ struct FavoriteDatabaseSyncTests {
             )
         )
 
-        #expect(SyncSchemaGate.publishable(records: [record]).isEmpty)
-        #expect(SyncSchemaGate.withheldRecordTypes(in: [record]) == ["FavoriteDatabase"])
-        #expect(SyncSchemaGate.publishable(deletions: [record.recordID]).isEmpty)
+        #expect(SyncSchemaGate.publishable(records: [record]) == [record])
+        #expect(SyncSchemaGate.withheldRecordTypes(in: [record]).isEmpty)
+        #expect(SyncSchemaGate.publishable(deletions: [record.recordID]) == [record.recordID])
     }
 
     /// `FavoriteDatabase_` has to beat `Favorite_` when a record name is parsed back, which the
@@ -106,10 +105,9 @@ struct FavoriteDatabaseSyncTests {
         }
     }
 
-    /// Encoding writes through the gated subscript, so an unverified field lands nowhere. The record
-    /// is still well formed and correctly named; only its payload waits for the deploy.
-    @Test("Encoding produces the right record identity and writes no undeployed field")
-    func encodeIsInert() {
+    /// Encoding writes through the gated subscript, which now passes every field of this type.
+    @Test("Encoding produces the right record identity and writes its fields")
+    func encodeWritesFields() {
         let entry = FavoriteDatabaseEntry(
             connectionId: UUID(),
             database: "app",
@@ -122,7 +120,7 @@ struct FavoriteDatabaseSyncTests {
             record.recordID.recordName
                 == SyncRecordType.favoriteDatabase.recordName(for: FavoriteDatabasesStorage.syncId(for: entry))
         )
-        #expect(record["database"] == nil)
-        #expect(record["environment"] == nil)
+        #expect(record["database"] as? String == "app")
+        #expect(record["environment"] as? String == FavoriteDatabaseEnvironment.production.rawValue)
     }
 }

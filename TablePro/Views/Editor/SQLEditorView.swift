@@ -2,24 +2,27 @@
 //  SQLEditorView.swift
 //  TablePro
 //
-//  SwiftUI wrapper for CodeEditSourceEditor-based SQL editor
+//  SwiftUI wrapper for TableProEditorKit-based SQL editor
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
-import CodeEditTextView
 import Combine
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 import TableProPluginKit
+import TableProTextEngine
 
 // MARK: - SQLEditorView
 
-/// SwiftUI SQL editor powered by CodeEditSourceEditor
+/// SwiftUI SQL editor powered by TableProEditorKit
 struct SQLEditorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     @Binding var cursorPositions: [CursorPosition]
     @State private var completionProfile: QueryCompletionProfile?
+    @State private var observedProfileRevision = 0
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
     var databaseScope: DatabaseScope?
@@ -47,7 +50,7 @@ struct SQLEditorView: View {
 
     @State private var editorState = SourceEditorState()
     @State private var completionAdapter = QueryCompletionAdapter(schemaProvider: nil, databaseType: nil)
-    @State private var coordinator = SQLEditorCoordinator()
+    @StateObject private var coordinator = SQLEditorCoordinator()
     @State private var editorConfiguration = makeConfiguration()
     @State private var favoritesCancellables: Set<AnyCancellable> = []
     @Environment(\.colorScheme) private var colorScheme
@@ -58,7 +61,7 @@ struct SQLEditorView: View {
         coordinator.onExecuteQuery = onExecuteQuery
         coordinator.onRunStatement = onRunStatement
         coordinator.setStatementRunControlsEnabled(!isExecuting)
-        coordinator.setStatementHighlightEnabled(AppSettingsManager.shared.editor.highlightCurrentStatement)
+        coordinator.setStatementHighlightEnabled(settingsManager.editor.highlightCurrentStatement)
         coordinator.onAIExplain = onAIExplain
         coordinator.onAIOptimize = onAIOptimize
         coordinator.onSaveAsFavorite = onSaveAsFavorite
@@ -92,12 +95,12 @@ struct SQLEditorView: View {
         /// Applied on change rather than while building the view: this is an event, and an editor that is already
         /// mounted never rebuilds from scratch to notice a new value. Cleared whether or not the statement was still
         /// there, so a request that cannot be honoured does not sit pending and block the next one.
-        .onChange(of: pendingStatementJump) { _, newValue in
+        .onChange(of: pendingStatementJump) { newValue in
             guard let newValue else { return }
             coordinator.jumpToStatement(newValue)
             onStatementJumpHandled?()
         }
-        .onChange(of: editorState.cursorPositions) { _, newValue in
+        .onChange(of: editorState.cursorPositions) { newValue in
             guard let positions = newValue else { return }
             // Skip cursor propagation when the editor doesn't have focus
             // (e.g., find panel match highlighting). Propagating triggers
@@ -115,13 +118,13 @@ struct SQLEditorView: View {
             }
             cursorPositions = positions
         }
-        .onChange(of: editorState.collapsedFoldRanges) { _, newValue in
+        .onChange(of: editorState.collapsedFoldRanges) { newValue in
             onFoldRangesChanged?(newValue ?? [])
         }
-        .onChange(of: tabID) { _, _ in
+        .onChange(of: tabID) { _ in
             coordinator.repointFolds(to: restoredFoldRanges)
         }
-        .onChange(of: connectionId) { _, _ in
+        .onChange(of: connectionId) { _ in
             configureCompletion()
             setupFavoritesObserver()
         }
@@ -129,17 +132,20 @@ struct SQLEditorView: View {
         /// moves. Without this the editor keeps completing against the previous database's
         /// provider until the profile resolution returns, which leases a metadata driver and on a
         /// non-poolable engine can queue behind a running query.
-        .onChange(of: databaseScope) { _, _ in
+        .onChange(of: databaseScope) { _ in
             completionProfile = nil
             configureCompletion()
+        }
+        .onReceive(completionRevisionChanges) { revision in
+            observedProfileRevision = revision
         }
         .task(id: completionProfileRequest) {
             await resolveCompletionProfile()
         }
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) {
+        .onChange(of: settingsManager.editor) { _ in
             editorConfiguration = Self.makeConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in
@@ -147,7 +153,6 @@ struct SQLEditorView: View {
         }
         .onReceive(AppEvents.shared.themeChanged) { _ in
             editorConfiguration = Self.makeConfiguration()
-            coordinator.reapplyThemeColors()
         }
         .onAppear {
             initializeEditor()
@@ -155,7 +160,7 @@ struct SQLEditorView: View {
         .onDisappear {
             teardownFavoritesObserver()
         }
-        .onChange(of: coordinator.vimMode) { _, newMode in
+        .onChange(of: coordinator.vimMode) { newMode in
             vimMode = newMode
         }
     }
@@ -179,14 +184,24 @@ struct SQLEditorView: View {
         )
     }
 
-    /// Reading `revision` here is what subscribes this body to its own scope's invalidations, and
-    /// only its own: the registry is not `@Observable`, so the dependency lands on this one box.
+    /// This scope's box alone, never the registry. The registry publishes on every fetch, and an
+    /// editor redrawn for each of them would redraw while the user types. A `@Published` publisher
+    /// delivers its current value on subscribe, so the key starts in step with the box.
+    private var completionRevisionChanges: AnyPublisher<Int, Never> {
+        guard let databaseScope else { return Empty().eraseToAnyPublisher() }
+        return QueryCompletionProfileRegistry.shared.revisionBox(for: databaseScope).$revision
+            .eraseToAnyPublisher()
+    }
+
+    /// The revision is part of the key, so an invalidation of this scope restarts the resolution.
+    /// It is the value `completionRevisionChanges` last delivered, not a read of the box: the box is
+    /// an `ObservableObject`, and reading it from a body subscribes nothing.
     private var completionProfileRequest: CompletionProfileRequest? {
         guard let databaseScope, let databaseType else { return nil }
         return CompletionProfileRequest(
             scope: databaseScope,
             databaseType: databaseType,
-            profileRevision: QueryCompletionProfileRegistry.shared.revisionBox(for: databaseScope).revision
+            profileRevision: observedProfileRevision
         )
     }
 
@@ -249,17 +264,17 @@ struct SQLEditorView: View {
             appearance: .init(
                 theme: TableProEditorTheme.make(),
                 font: ThemeEngine.shared.editorFonts.font,
-                wrapLines: AppSettingsManager.shared.editor.wordWrap,
-                tabWidth: AppSettingsManager.shared.editor.clampedTabWidth
+                wrapLines: ThemeEngine.shared.wordWrap,
+                tabWidth: ThemeEngine.shared.tabWidth
             ),
             behavior: .init(
-                indentOption: .spaces(count: AppSettingsManager.shared.editor.clampedTabWidth)
+                indentOption: .spaces(count: ThemeEngine.shared.tabWidth)
             ),
             layout: .init(
                 contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
             ),
             peripherals: EditorPeripherals.editor(
-                lineNumbers: AppSettingsManager.shared.editor.showLineNumbers,
+                lineNumbers: ThemeEngine.shared.showLineNumbers,
                 folding: AppSettingsManager.shared.editor.codeFoldingEnabled,
                 statementRunControls: AppSettingsManager.shared.editor.showStatementRunControls,
                 invisibleCharacters: AppSettingsManager.shared.editor.showInvisibleCharacters

@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import TableProR2SQLCore
+import Testing
 
 @Suite("R2 SQL request")
 struct R2SQLRequestBuilderTests {

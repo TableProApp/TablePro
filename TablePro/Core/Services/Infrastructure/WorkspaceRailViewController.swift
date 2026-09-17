@@ -43,6 +43,7 @@ internal final class WorkspaceRailTableView: NSTableView {
 
 @MainActor
 internal final class WorkspaceRailViewController: NSViewController {
+    private var rowSizeObservation: AnyCancellable?
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WorkspaceRail")
     private static let reorderType = NSPasteboard.PasteboardType("com.TablePro.workspaceRailEntry")
 
@@ -323,14 +324,14 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     /// Re-arms itself, because `withObservationTracking` fires once per registration.
     private func observeRowSizePreference() {
-        withObservationTracking {
-            _ = AppSettingsManager.shared.general.sidebarRowSize
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.refreshLayoutIfNeeded()
-                self.observeRowSizePreference()
-            }
+        /// `objectWillChange` covers every settings group, so the row size is compared here
+        /// to keep the rebuild as rare as the per-property tracking made it.
+        var lastRowSize = AppSettingsManager.shared.general.sidebarRowSize
+        rowSizeObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+            let current = AppSettingsManager.shared.general.sidebarRowSize
+            guard current != lastRowSize else { return }
+            lastRowSize = current
+            self?.refreshLayoutIfNeeded()
         }
     }
 

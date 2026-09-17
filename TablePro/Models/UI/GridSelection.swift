@@ -4,6 +4,15 @@ struct GridSelection: Equatable {
     var rectangles: [GridRect]
     var activeCell: GridCoord?
     var anchor: GridCoord?
+    /// The display positions the user picked *as columns*, by clicking their headings.
+    ///
+    /// Recorded rather than re-derived, because geometry cannot tell the gestures apart. A
+    /// rectangle spanning every row is what a heading click builds, and equally what Select All,
+    /// Shift+Space and an ordinary cell drag build whenever the page is short enough. Reading the
+    /// intent back out of the shape painted the whole heading row as selected on Cmd+A, hid a
+    /// swept block's own outline, and armed the CSV inspector's Delete Column on every column of
+    /// the file.
+    var columns: IndexSet = []
 
     static let empty = GridSelection(rectangles: [], activeCell: nil, anchor: nil)
 
@@ -75,18 +84,50 @@ struct GridSelection: Equatable {
                   coord.displayColumn >= 0, coord.displayColumn < columnLimit else { return nil }
             return coord
         }
-        return GridSelection(rectangles: fitted, activeCell: fit(activeCell), anchor: fit(anchor))
+        /// A marker only survives while its block still covers the column. The row count can have
+        /// grown as well as shrunk, and a result that gained rows leaves the old block short of the
+        /// end: keeping the marker then told the heading and the column commands they had a whole
+        /// column while the fill, the copy and the affected rows stopped short, and
+        /// `removeEntireColumn` could no longer match the stale block to take it back off.
+        ///
+        /// Checking the geometry here is not the inference this field replaced. It validates a
+        /// recorded intent against the result now in front of it, rather than inventing one.
+        let stillWholeColumns = columns.filteredIndexSet { position in
+            guard position >= 0, position < columnLimit else { return false }
+            return fitted.contains { rect in
+                rect.columns.contains(position) && rect.rows.lowerBound <= 0 && rect.rows.upperBound >= rowLimit - 1
+            }
+        }
+        return GridSelection(
+            rectangles: fitted,
+            activeCell: fit(activeCell),
+            anchor: fit(anchor),
+            columns: stillWholeColumns
+        )
     }
 
     func union(_ other: GridSelection) -> GridSelection {
         GridSelection(
             rectangles: rectangles + other.rectangles,
             activeCell: other.activeCell ?? activeCell,
-            anchor: other.anchor ?? anchor
+            anchor: other.anchor ?? anchor,
+            columns: columns.union(other.columns)
         )
     }
 
     static func single(_ rect: GridRect, anchor: GridCoord, active: GridCoord) -> GridSelection {
         GridSelection(rectangles: [rect], activeCell: active, anchor: anchor)
+    }
+
+    /// One whole column the user picked by its heading, carrying the position as well as the block,
+    /// so the heading knows it was chosen rather than merely covered.
+    static func column(_ displayColumn: Int, totalRows: Int) -> GridSelection {
+        let anchor = GridCoord(row: 0, displayColumn: displayColumn)
+        return GridSelection(
+            rectangles: [GridRect(rows: 0...(totalRows - 1), columns: displayColumn...displayColumn)],
+            activeCell: anchor,
+            anchor: anchor,
+            columns: IndexSet(integer: displayColumn)
+        )
     }
 }

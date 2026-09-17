@@ -7,7 +7,6 @@
 
 import Combine
 import Foundation
-import Observation
 import os
 
 /// Why a cached license blob was not adopted at launch.
@@ -32,14 +31,14 @@ internal enum CachedLicenseResolution: Equatable {
 }
 
 /// Manages the app's license state with offline-first verification
-@MainActor @Observable
-final class LicenseManager {
+@MainActor
+final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseManager")
 
     /// Current cached license (nil = unlicensed)
-    private(set) var license: License?
+    @Published private(set) var license: License?
 
     /// Current license status.
     ///
@@ -48,18 +47,19 @@ final class LicenseManager {
     /// reporting a healthy sync for a license that no longer existed until the next launch.
     /// The observer subscribes with `.receive(on: RunLoop.main)`, so this cannot re-enter a
     /// mutation that is still in progress.
-    private(set) var status: LicenseStatus = .unlicensed {
+    @Published private(set) var status: LicenseStatus = .unlicensed {
         didSet {
             guard status != oldValue else { return }
             AppEvents.shared.licenseStatusDidChange.send(())
         }
     }
 
-    /// Whether a network operation is in progress
-    private(set) var isValidating: Bool = false
+    /// Whether a network operation is in progress. Published, because the License and Sync panes
+    /// disable their buttons on it while a check runs.
+    @Published private(set) var isValidating: Bool = false
 
     /// Last error from an operation (cleared on success)
-    private(set) var lastError: LicenseError?
+    @Published private(set) var lastError: LicenseError?
 
     private let storage = LicenseStorage.shared
     private let apiClient = LicenseAPIClient.shared
@@ -74,54 +74,54 @@ final class LicenseManager {
     /// What the server last told us about this license, when that was a rejection rather than a
     /// new payload. Deliberately not persisted: it can only take entitlement away, and writing it
     /// to disk would put licensing state back outside the signature.
-    private var serverRejection: LicenseStatus?
+    @Published private var serverRejection: LicenseStatus?
 
     /// When the server last confirmed this license, measured by this Mac's clock. Held in memory
     /// only, so nothing on disk can forge it and a relaunch falls back to the signed issue date.
     /// It exists so a server clock far behind the Mac cannot expire the grace period on a license
     /// the server has just approved.
-    private var lastServerContact: Date?
+    @Published private var lastServerContact: Date?
 
     /// Whether this Mac's license was removed here rather than never having existed. It is what
     /// separates `.deactivated` from `.unlicensed`, and it is deliberately not persisted: a relaunch
     /// with no license is simply unlicensed.
-    private var wasDeactivatedLocally = false
+    @Published private var wasDeactivatedLocally = false
 
     /// The seats this license is activated on. Owned here rather than by the settings view so the
     /// list survives the pane being reselected, and so an activation elsewhere can reset it.
     /// See `LicenseManager+Devices`.
-    internal var devices: [LicenseActivationInfo] = []
+    @Published internal var devices: [LicenseActivationInfo] = []
 
-    internal var maxDevices: Int = 0
+    @Published internal var maxDevices: Int = 0
 
-    internal var deviceListState: LicenseDeviceListState = .idle
+    @Published internal var deviceListState: LicenseDeviceListState = .idle
 
     /// A reload of a list that already has content. Separate from `deviceListState` so a refresh
     /// never blanks the seats it is refreshing, per the CLAUDE.md invariant.
-    internal var isRefreshingDevices = false
+    @Published internal var isRefreshingDevices = false
 
     /// Seats with a release in flight, so a row cannot be released twice.
-    internal var releasingMachineIds: Set<String> = []
+    @Published internal var releasingMachineIds: Set<String> = []
 
     /// Why the last release did not go through. Kept apart from `deviceListState` so a failure on
     /// one seat is reported beside the list rather than replacing every other seat with an error.
-    internal var releaseErrorMessage: String?
+    @Published internal var releaseErrorMessage: String?
 
     /// Why the last refresh of an already-loaded list did not go through. Separate from
     /// `releaseErrorMessage` because its wording is about reloading, not about giving up a seat.
-    internal var refreshErrorMessage: String?
+    @Published internal var refreshErrorMessage: String?
 
     /// The team roster, for a Team license. See `LicenseManager+Team`.
-    internal var team: LicenseTeamResponse?
+    @Published internal var team: LicenseTeamResponse?
 
-    internal var teamListState: LicenseDeviceListState = .idle
+    @Published internal var teamListState: LicenseDeviceListState = .idle
 
     nonisolated internal static let deviceLogger = Logger(
         subsystem: "com.TablePro",
         category: "LicenseDevices"
     )
 
-    @ObservationIgnored private var revalidationTask: Task<Void, Never>?
+    private var revalidationTask: Task<Void, Never>?
 
     private init() {
         loadCachedLicense()

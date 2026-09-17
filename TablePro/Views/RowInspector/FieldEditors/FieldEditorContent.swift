@@ -32,7 +32,7 @@ internal struct FieldEditorContent: View {
     /// take away the control that changes it back.
     private var isPicker: Bool {
         switch kind {
-        case .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker: return true
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker: return true
         case .json, .phpSerialized, .image, .blobHex, .schemaText, .multiLine, .singleLine: return false
         }
     }
@@ -44,8 +44,8 @@ internal struct FieldEditorContent: View {
         guard !state.isPending else { return false }
         switch kind {
         case .json, .phpSerialized, .multiLine: return true
-        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker,
-             .schemaText, .singleLine:
+        case .image, .blobHex, .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker,
+             .valuePicker, .schemaText, .singleLine:
             return false
         }
     }
@@ -58,7 +58,8 @@ internal struct FieldEditorContent: View {
         case .image: return 200
         case .blobHex: return 60
         case .multiLine: return ResizableFieldMetrics.defaultTextHeight
-        case .boolean, .enumPicker, .setPicker, .typePicker, .valuePicker, .schemaText, .singleLine:
+        case .boolean, .enumPicker, .setPicker, .arrayElements, .typePicker, .valuePicker,
+             .schemaText, .singleLine:
             return nil
         }
     }
@@ -80,6 +81,14 @@ internal struct FieldEditorContent: View {
             EnumPickerView(context: context, values: values, onSetNull: onSetNull, onSetDefault: onSetDefault)
         case .setPicker(let values):
             SetPickerView(context: context, values: values, onSetNull: onSetNull, onSetDefault: onSetDefault)
+        case .arrayElements(let element, let values):
+            ArrayFieldEditorView(
+                context: context,
+                elementEditor: element,
+                allowedValues: values,
+                onSetNull: onSetNull,
+                onSetDefault: onSetDefault
+            )
         case .typePicker:
             TypePickerFieldView(context: context, databaseType: databaseType)
         case .valuePicker(let options):
@@ -96,17 +105,18 @@ internal struct FieldEditorContent: View {
 
 /// What a field shows in place of its editor once the user has asked for NULL or DEFAULT.
 internal struct PendingStatePill: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     internal let state: FieldValueState
     internal var minHeight: CGFloat?
 
     var body: some View {
         Text(state.placeholder ?? "")
-            .font(ThemeEngine.shared.valueFontSwiftUI)
+            .font(themeEngine.valueFontSwiftUI)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(ThemeEngine.shared.palette.color(.panelControlBackground), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+            .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }

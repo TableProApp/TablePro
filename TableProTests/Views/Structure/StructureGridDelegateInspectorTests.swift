@@ -119,6 +119,31 @@ struct StructureGridDelegateInspectorTests {
         #expect(manager.workingColumns[1].isNullable == false)
     }
 
+    /// The Foreign Keys inspector offers the same reference lists the grid does. One built before a
+    /// list arrived holds only `Loading…`, and nothing rebuilt it, because only Create Table moved
+    /// the inspector's revision when a list landed.
+    @Test("A reference list landing rebuilds the structure inspector")
+    func referenceListArrivalRebuildsInspector() {
+        let coordinator = MainContentCoordinator(
+            connection: connection(),
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState()
+        )
+        let delegate = StructureGridDelegate(
+            structureChangeManager: loadedManager(),
+            selectedTab: .foreignKeys,
+            connection: connection(),
+            tableName: "users",
+            coordinator: coordinator
+        )
+        let revision = coordinator.inspectorRowSourceRevision
+
+        delegate.referenceMenus.onListsChanged?()
+
+        #expect(coordinator.inspectorRowSourceRevision == revision + 1)
+    }
+
     @Test("Without a provider the delegate publishes nothing")
     func withoutProviderPublishesNothing() {
         let delegate = StructureGridDelegate(

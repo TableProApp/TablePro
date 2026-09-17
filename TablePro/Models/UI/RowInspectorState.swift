@@ -3,15 +3,17 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 
 /// The inspector surface's own state: which rendering of the row is showing, what the row is, and
 /// the two models that draw it.
-@MainActor @Observable internal final class RowInspectorState {
-    @ObservationIgnored private let connectionId: UUID?
-    @ObservationIgnored private let defaults: UserDefaults
+@MainActor
+internal final class RowInspectorState: ObservableObject {
+    private let connectionId: UUID?
+    private let defaults: UserDefaults
 
-    internal var viewMode: InspectorViewMode {
+    @Published internal var viewMode: InspectorViewMode {
         didSet {
             guard let connectionId else { return }
             defaults.set(viewMode.rawValue, forKey: Self.viewModeKey(connectionId))
@@ -23,7 +25,7 @@ import Foundation
     /// A view's `onChange` runs after the render that already observed the new value, so the view
     /// drew one frame of the previous record's tree before the model caught up and moving between
     /// rows flickered. Writing both in the same turn means every render sees one consistent row.
-    internal var context: RowInspectorContext = .empty {
+    @Published internal var context: RowInspectorContext = .empty {
         didSet {
             guard context != oldValue else { return }
             jsonViewModel.update(snapshot: context.jsonRow)

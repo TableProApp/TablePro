@@ -62,7 +62,9 @@ public enum FavoriteDatabaseSyncField: String, SyncSchemaField {
     case modifiedAtLocal
     case schemaVersion
 
-    public static let verifiedInProduction: Set<Self> = []
+    public static let verifiedInProduction: Set<Self> = [
+        .connectionId, .database, .environment, .modifiedAtLocal, .schemaVersion
+    ]
 }
 
 public enum SQLFavoriteSyncField: String, SyncSchemaField {
@@ -98,6 +100,27 @@ public enum SQLFavoriteFolderSyncField: String, SyncSchemaField {
     public static let verifiedInProduction: Set<Self> = [
         .folderId, .name, .parentId, .connectionId,
         .sortOrder, .createdAt, .updatedAt, .modifiedAtLocal, .schemaVersion
+    ]
+}
+
+/// Everything except the password, which stays in the Keychain, and except the payload of a
+/// `.source` password mode, which can name a shell command this Mac would then run. `passwordMode`
+/// therefore travels as `stored`, `prompt` or `pgpass` only, and a profile using a source arrives
+/// as `prompt` on a second Mac until its owner re-authors it there.
+///
+public enum CredentialProfileSyncField: String, SyncSchemaField {
+    case profileId
+    case name
+    case username
+    case passwordMode
+    case secureFieldIdsJson
+    case sortOrder
+    case modifiedAtLocal
+    case schemaVersion
+
+    public static let verifiedInProduction: Set<Self> = [
+        .profileId, .name, .username, .passwordMode,
+        .secureFieldIdsJson, .sortOrder, .modifiedAtLocal, .schemaVersion
     ]
 }
 

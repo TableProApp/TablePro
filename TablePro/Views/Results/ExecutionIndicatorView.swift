@@ -12,6 +12,7 @@ import TableProPluginKit
 /// where AppKit dropped it whole as soon as the window narrowed. Every comparable client puts this
 /// in a bottom bar, and so does the rest of what this bar already reports.
 struct ExecutionIndicatorView: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let isExecuting: Bool
     let lastTiming: PluginQueryTiming?
     var onCancel: (() -> Void)?
@@ -41,7 +42,7 @@ struct ExecutionIndicatorView: View {
     /// Resolved from the user's own binding rather than written into the string. A hint naming a
     /// key nobody bound is the same defect as a toolbar tooltip that outlived a rebind (#2185).
     private var cancelHint: String {
-        AppSettingsManager.shared.keyboard.shortcutHint(String(localized: "Cancel Query"), for: .cancelQuery)
+        settingsManager.keyboard.shortcutHint(String(localized: "Cancel Query"), for: .cancelQuery)
     }
 
     var body: some View {
@@ -69,7 +70,7 @@ struct ExecutionIndicatorView: View {
                 durationReadout(timing)
             }
         }
-        .onChange(of: isExecuting) { _, nowExecuting in
+        .onChange(of: isExecuting) { nowExecuting in
             if nowExecuting { showsBreakdown = false }
         }
         .loadingRevealGate(isActive: isExecuting, isRevealed: $showsExecution)

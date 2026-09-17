@@ -3,7 +3,7 @@ title: MySQL
 description: Connect to MySQL 5.7 and later with the bundled MariaDB Connector/C driver
 ---
 
-MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same bundled driver covers 5.7 and later, plus [MariaDB](/databases/mariadb), [TiDB](/databases/tidb), and [Databend](/databases/databend).
+MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no auth plugin to switch over. The same bundled driver covers 5.7 and later, plus [MariaDB](/databases/mariadb), [TiDB](/databases/tidb), [Databend](/databases/databend), and [OceanBase](/databases/oceanbase).
 
 ## Quick setup
 
@@ -24,7 +24,7 @@ MySQL 8 accounts on `caching_sha2_password` connect on the first try, with no au
 | **Port** | `3306` | |
 | **Username** | empty | An empty field connects as your macOS login name |
 | **Password** | empty | Stored in the macOS Keychain |
-| **Database** | empty | Optional. Leave it empty to browse every database |
+| **Database** | empty | Optional. Leave it empty and open one with `Cmd+K` |
 
 Every connection sets its session character set to `utf8mb4` once it logs in, over any `init_connect` the server runs, so emoji and non-Latin text round-trip untouched. A connect attempt gives up after 10 seconds.
 
@@ -62,9 +62,13 @@ Opening a URL connects directly. See [Connection URL Reference](/connections/url
 
 ## Browsing
 
-The sidebar lists every accessible database with each table's structure and DDL. Switch databases with `Cmd+K`. A tab keeps the database it was opened on; MySQL switches database in place, so that tab runs on the same connection rather than a second one.
+The sidebar lists one database's tables, or every accessible database with **View > Sidebar as Tree**. Switch databases with `Cmd+K`. A connection with an empty **Database** field opens on **No Database Selected** in the flat list: click **Open Database…** to pick one. A tab keeps the database it was opened on; MySQL switches database in place, so that tab runs on the same connection rather than a second one.
 
 Table and column comments show in the UI: dimmed after a table's name in the sidebar, and in the grid header tooltip. Turn that off under **View Options**, the button beside the sidebar’s filter field.
+
+A partitioned table shows how many partitions it holds and lists them under it. A `RANGE` partition is labelled `VALUES LESS THAN (2024)` and a `LIST` one `VALUES IN (1,2,3)`; `HASH` and `KEY` partitions state no bound, so their rows carry the position instead. Subpartitions nest under the partition they subdivide.
+
+A MySQL partition belongs to its table rather than standing as one, so its row offers **Copy Name**, **Copy Bound** and **Copy Table Name** and nothing that writes. Query one with `SELECT * FROM orders PARTITION (p2024)` in the editor.
 
 ## Releasing an idle connection
 
@@ -127,8 +131,25 @@ New connections default to **Preferred**: TLS first, dropping to plain text only
 
 ## Troubleshooting
 
-**Connection refused**: check the server is running (`brew services start mysql`), the port is right, and `skip-networking` is not set.
+### Connection refused
 
-**Access denied for user '…'@'…' (using password: YES)**: the password is wrong, or the grant does not cover the host you are connecting from. Check both with `SHOW GRANTS FOR 'user'@'host';`.
+Nothing answered on that host and port. Check the server is running (`brew services start mysql`), the port is right, and `skip-networking` is off.
 
-**Auth plugin errors**: `caching_sha2_password` needs no configuration. For any other plugin error, read the account's plugin with `SELECT user, plugin FROM mysql.user;`.
+### Access denied for user '…'@'…' (using password: YES)
+
+The password is wrong, or no account covers the host you connect from. Sign in with an account that can read the `mysql` schema and run `SHOW GRANTS FOR 'name'@'host';` with the real user name and host. Without that access, the statement fails with `SELECT command denied`.
+
+### Access denied for user '…'@'…' to database '…'
+
+The account can see the database in the list but holds no privilege in it, so the server refuses to open it. An account whose only privilege there covers routines, such as `EXECUTE`, opens the database and lists no tables. Check what the server matched and granted:
+
+```sql
+SELECT CURRENT_USER();
+SHOW GRANTS;
+```
+
+`CURRENT_USER()` can name a different account from the one you typed, such as `'name'@'%'` when `'name'@'localhost'` holds the grants. A role listed in `SHOW GRANTS` grants nothing until it is active, and a new connection starts with its default roles only: ask for `SET DEFAULT ROLE ALL TO 'name'@'host';`. Otherwise ask for `SELECT` on the database.
+
+### Authentication plugin errors
+
+`caching_sha2_password` needs no configuration. For any other plugin, read the account's plugin with `SELECT user, plugin FROM mysql.user;`.

@@ -84,8 +84,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case runStatementAndAdvance
     case previewSQL
     case find
+    case findAndReplace
     case findNext
     case findPrevious
+    case useSelectionForFind
     case aiExplainQuery
     case aiOptimizeQuery
 
@@ -137,6 +139,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case pinResultTab
     case closeResultTab
     case focusSidebarSearch
+    case focusObjectList
+    case focusEditor
+    case focusResults
+    case focusInspector
+    case focusAssistant
     case showPreviousTab
     case showNextTab
     case toggleWorkspaceRail
@@ -153,7 +160,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .executeQueryWithoutLimit, .cancelQuery, .explainQuery, .formatQuery,
              .removeInvisibleCharacters, .foldAll, .unfoldAll, .toggleFold,
              .previousStatement, .nextStatement, .runStatementAndAdvance,
-             .previewSQL, .find, .findNext, .findPrevious, .aiExplainQuery, .aiOptimizeQuery:
+             .previewSQL, .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind,
+             .aiExplainQuery, .aiOptimizeQuery:
             return .editor
         case .undo, .redo, .cut, .copy, .copyRowsExplicit, .copyWithHeaders, .copyAsJson,
              .paste, .delete, .selectAll, .clearSelection, .addRow, .duplicateRow,
@@ -166,6 +174,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .toggleInspector, .toggleAssistant, .toggleFilters, .toggleHistory, .toggleResults,
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
+             .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
              .showPreviousTab, .showNextTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
@@ -177,7 +186,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     /// the two menu items that end up claiming it. The three find commands all route that way.
     var context: ShortcutContext {
         switch self {
-        case .find, .findNext, .findPrevious:
+        case .find, .findAndReplace, .findNext, .findPrevious, .useSelectionForFind:
             return .global
         case .executeQuery, .executeAllStatements, .executeQueryWithoutLimit,
              .cancelQuery, .explainQuery, .formatQuery, .removeInvisibleCharacters, .foldAll, .unfoldAll,
@@ -235,8 +244,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .nextStatement: return String(localized: "Next Statement")
         case .runStatementAndAdvance: return String(localized: "Run Statement and Advance")
         case .find: return String(localized: "Find")
+        case .findAndReplace: return String(localized: "Find and Replace")
         case .findNext: return String(localized: "Find Next")
         case .findPrevious: return String(localized: "Find Previous")
+        case .useSelectionForFind: return String(localized: "Use Selection for Find")
         case .export: return String(localized: "Export")
         case .importData: return String(localized: "Import")
         case .jumpToColumn: return String(localized: "Jump to Column")
@@ -273,6 +284,11 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .pinResultTab: return String(localized: "Pin Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .focusSidebarSearch: return String(localized: "Focus Sidebar Filter")
+        case .focusObjectList: return String(localized: "Focus Object List")
+        case .focusEditor: return String(localized: "Focus Editor")
+        case .focusResults: return String(localized: "Focus Results")
+        case .focusInspector: return String(localized: "Focus Inspector")
+        case .focusAssistant: return String(localized: "Focus Assistant")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
         case .toggleWorkspaceRail: return String(localized: "Toggle Connections")
@@ -299,7 +315,6 @@ extension ShortcutAction {
         (.special(.space, control: true), String(localized: "Show Completions")),
         (.special(.upArrow, option: true), String(localized: "Move Line Up")),
         (.special(.downArrow, option: true), String(localized: "Move Line Down")),
-        (.character("j", command: true, control: true), String(localized: "Jump to Definition")),
         (.special(.upArrow, shift: true, option: true), String(localized: "Extend Selection to Previous Statement")),
         (.special(.downArrow, shift: true, option: true), String(localized: "Extend Selection to Next Statement"))
     ]
@@ -538,8 +553,10 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleFold: .special(.leftArrow, command: true, option: true),
         .previewSQL: .character("p", command: true, shift: true),
         .find: .character("f", command: true),
+        .findAndReplace: .character("f", command: true, option: true),
         .findNext: .character("g", command: true),
         .findPrevious: .character("g", command: true, shift: true),
+        .useSelectionForFind: .character("e", command: true),
         .aiExplainQuery: .character("l", command: true),
         .aiOptimizeQuery: .character("l", command: true, option: true),
         .export: .character("e", command: true, shift: true),
@@ -556,7 +573,6 @@ struct KeyboardSettings: Codable, Equatable {
         .paste: .character("v", command: true),
         .delete: .special(.delete, command: true),
         .selectAll: .character("a", command: true),
-        .clearSelection: .special(.escape),
         .addRow: .character("n", command: true, shift: true),
         .duplicateRow: .character("d", command: true, shift: true),
         .truncateTable: .special(.delete, option: true),
@@ -586,7 +602,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
         .toggleAssistant: .character("a", command: true, option: true),
-        .toggleFilters: .character("f", command: true, option: true),
+        .toggleFilters: .character("f", command: true, shift: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),
         .previousResultTab: .character("[", command: true, option: true),
@@ -594,6 +610,11 @@ struct KeyboardSettings: Codable, Equatable {
         .pinResultTab: .character("p", command: true, option: true),
         .closeResultTab: .character("w", command: true, shift: true),
         .focusSidebarSearch: .character("f", command: true, option: true, control: true),
+        .focusObjectList: .character("l", command: true, option: true, control: true),
+        .focusEditor: .character("e", command: true, option: true, control: true),
+        .focusResults: .character("r", command: true, option: true, control: true),
+        .focusInspector: .character("i", command: true, option: true, control: true),
+        .focusAssistant: .character("a", command: true, option: true, control: true),
         .showPreviousTab: .character("[", command: true, shift: true),
         .showNextTab: .character("]", command: true, shift: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),

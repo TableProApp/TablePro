@@ -4,9 +4,9 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class InlineSuggestionManager {
@@ -21,12 +21,10 @@ final class InlineSuggestionManager {
     private var suggestionOffset: Int = 0
     private var debounceTask: Task<Void, Never>?
     private var requestTask: Task<Void, Never>?
-    private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(uncheckedState: nil)
     private(set) var isEditorFocused = false
     private var isUninstalled = false
 
     deinit {
-        if let monitor = _keyEventMonitor.withLockUnchecked({ $0 }) { NSEvent.removeMonitor(monitor) }
     }
 
     // MARK: - Install / Uninstall
@@ -43,14 +41,12 @@ final class InlineSuggestionManager {
     func editorDidFocus() {
         guard !isEditorFocused else { return }
         isEditorFocused = true
-        installKeyEventMonitor()
     }
 
     func editorDidBlur() {
         guard isEditorFocused else { return }
         isEditorFocused = false
         dismissSuggestion()
-        removeKeyEventMonitor()
     }
 
     func uninstall() {
@@ -64,7 +60,6 @@ final class InlineSuggestionManager {
         requestTask = nil
 
         renderer.uninstall()
-        removeKeyEventMonitor()
 
         sourceResolver = nil
         controller = nil
@@ -206,24 +201,18 @@ final class InlineSuggestionManager {
         currentSuggestion = nil
     }
 
-    // MARK: - Key Event Monitor
+    // MARK: - Key Handling
 
-    private func installKeyEventMonitor() {
-        removeKeyEventMonitor()
-        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
-            nonisolated(unsafe) let event = nsEvent
-            let consumed = MainActor.assumeIsolated { () -> Bool in
-                self?.consumesKeyDown(event) ?? false
-            }
-            return consumed ? nil : nsEvent
-        }
-        _keyEventMonitor.withLockUnchecked { $0 = monitor }
-    }
-
+    /// Called from the editor's single key-down chain rather than from a monitor of this manager's
+    /// own. As one, its Tab raced the completion list's Tab and the editor's own indent with no
+    /// defined order.
+    ///
+    /// Ghost text yields to an open completion list: that list is a surface the user is navigating
+    /// and Tab belongs to its selection, so this claims Tab only when nothing else is showing.
     internal func consumesKeyDown(_ event: NSEvent) -> Bool {
         guard isEditorFocused, currentSuggestion != nil else { return false }
 
-        guard let textView = controller?.textView,
+        guard let controller, let textView = controller.textView,
               event.window === textView.window,
               textView.window?.firstResponder === textView else { return false }
 
@@ -231,16 +220,10 @@ final class InlineSuggestionManager {
             dismissSuggestion()
             return false
         }
+        guard !controller.isShowingCompletions else { return false }
 
         acceptSuggestion()
         return true
-    }
-
-    private func removeKeyEventMonitor() {
-        _keyEventMonitor.withLockUnchecked {
-            if let monitor = $0 { NSEvent.removeMonitor(monitor) }
-            $0 = nil
-        }
     }
 
     // MARK: - Helpers

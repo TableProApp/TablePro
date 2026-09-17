@@ -72,6 +72,29 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
                     label: "SYSOPER"
                 )
             ])
+        ),
+        ConnectionField(
+            id: OracleConnectionOptions.AdditionalFieldKey.networkEncryption,
+            label: "Network Encryption",
+            defaultValue: OracleConnectionOptions.NetworkEncryption.accepted.rawValue,
+            fieldType: .dropdown(options: [
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.NetworkEncryption.accepted.rawValue,
+                    label: "Accepted"
+                ),
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.NetworkEncryption.rejected.rawValue,
+                    label: "Rejected"
+                ),
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.NetworkEncryption.requested.rawValue,
+                    label: "Requested"
+                ),
+                ConnectionField.DropdownOption(
+                    value: OracleConnectionOptions.NetworkEncryption.required.rawValue,
+                    label: "Required"
+                )
+            ])
         )
     ]
 
@@ -161,105 +184,6 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         OraclePluginDriver(config: config)
     }
-
-    func diagnose(error: Error) -> PluginDiagnostic? {
-        guard let oracleError = (error as? OraclePluginError)?.core else { return nil }
-        let message = oracleError.errorDescription ?? ""
-        let issuesURL = URL(string: "https://github.com/TableProApp/TablePro/issues")
-        switch oracleError {
-        case .authVerifierUnsupported(let flag):
-            return PluginDiagnostic(
-                title: String(localized: "Unsupported Password Verifier"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Verify the user account exists and the password is correct."),
-                    String(localized: "Ask your DBA to confirm the user has an 11G or 12C password verifier (SELECT password_versions FROM dba_users WHERE username = '<USER>')."),
-                    String(localized: "If the verifier is brand-new (e.g. 23ai), file an issue with the verifier flag below.")
-                ],
-                diagnosticInfo: [
-                    DiagnosticEntry(label: "Verifier flag", value: flag)
-                ],
-                supportURL: issuesURL
-            )
-        case .authConnectionDropped(let phase):
-            return PluginDiagnostic(
-                title: String(localized: "Connection Dropped During Handshake"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake."),
-                    String(localized: "If the listener endpoint is TLS-only (TCPS), set the SSL mode in the connection's SSL settings."),
-                    String(localized: "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic."),
-                    String(localized: "If this is Oracle 11g, open an issue and include the handshake phase shown below.")
-                ],
-                diagnosticInfo: phase.map { [DiagnosticEntry(label: String(localized: "Handshake phase"), value: $0)] } ?? [],
-                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
-            )
-        case .authVersionNotSupported:
-            return PluginDiagnostic(
-                title: String(localized: "Server Version Not Supported"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)."),
-                    String(localized: "Upgrade the database to 11.2 or later, or connect with a client that bundles Oracle's OCI client such as SQL Developer or DataGrip.")
-                ],
-                supportURL: issuesURL
-            )
-        case .protocolError:
-            return PluginDiagnostic(
-                title: String(localized: "Connection Reset"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
-                    String(localized: "If the same query keeps failing, the server may be returning data the driver cannot decode. File an issue with your Oracle version.")
-                ],
-                supportURL: URL(string: "https://github.com/TableProApp/TablePro/issues/483")
-            )
-        case .nativeEncryptionFailed:
-            return PluginDiagnostic(
-                title: String(localized: "Native Network Encryption Not Completed"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "The server requires Oracle native network encryption, and negotiating it with this server did not complete."),
-                    String(localized: "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum."),
-                    String(localized: "File an issue with your Oracle version and the details below so the driver can add support.")
-                ],
-                supportURL: issuesURL
-            )
-        case .loginTimedOut:
-            return PluginDiagnostic(
-                title: String(localized: "Login Handshake Timed Out"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Check for a firewall, VPN, or proxy between you and the server that stalls connections after the TCP handshake."),
-                    String(localized: "Confirm the host and port reach the database listener directly.")
-                ],
-                supportURL: issuesURL
-            )
-        case .queryTimedOut:
-            return PluginDiagnostic(
-                title: String(localized: "Query Timed Out"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Run the query again. TablePro reconnects to the server automatically."),
-                    String(localized: "If the query legitimately needs more time, raise the query timeout in Settings > General."),
-                    String(localized: "If a metadata query timed out, the schema may hold a very large number of objects; try again once the server is less busy.")
-                ],
-                supportURL: issuesURL
-            )
-        case .certificateUnavailable:
-            return PluginDiagnostic(
-                title: String(localized: "Certificate Not Available"),
-                message: message,
-                suggestedActions: [
-                    String(localized: "Check the certificate paths in the connection's SSL settings."),
-                    String(localized: "Certificate files are not part of a synced connection, so a connection set up on another device needs its certificates added here.")
-                ],
-                supportURL: issuesURL
-            )
-        case .notConnected, .connectionFailed, .queryFailed, .cancelled, .tlsHandshakeFailed:
-            return nil
-        }
-    }
 }
 
 final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
@@ -313,7 +237,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             serviceName: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
             role: OracleConnectionOptions.role(from: config.additionalFields),
-            tls: config.ssl.oracleTLSDescription
+            tls: config.ssl.oracleTLSDescription,
+            networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields)
         ))
         do {
             try await connection.connect()
@@ -391,7 +316,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.toPluginResult(executionTime: executionTime)
     }
 
-    private func rawQuery(_ query: String) async throws -> OracleRawResult {
+    internal func rawQuery(_ query: String) async throws -> OracleRawResult {
         guard let core else { throw OraclePluginError(core: .notConnected) }
         do {
             return try await core.executeQuery(query)
@@ -472,8 +397,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let result = try await rawQuery(OracleSchemaQueries.tables(schema: effectiveSchema(schema)))
-        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map {
-            PluginTableInfo(name: $0.name, type: $0.isView ? "VIEW" : "TABLE")
+        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map { row in
+            PluginTableInfo(
+                name: row.name,
+                type: row.isView ? "VIEW" : (row.isPartitioned ? "PARTITIONED TABLE" : "TABLE"),
+                comment: nil,
+                partitionCount: row.partitionCount
+            )
         }
     }
 
@@ -1325,7 +1255,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
         )
     }
-
 
     // MARK: - Private Helpers
 

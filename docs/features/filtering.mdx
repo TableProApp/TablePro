@@ -3,14 +3,14 @@ title: Filtering
 description: Build a WHERE clause from the filter bar, or write one by hand, and save it as a preset
 ---
 
-A filter is a WHERE clause, and it runs at the database. That is the difference between filtering and the find bar: matches come from every row in the table, not from the page you are looking at. Open the filter bar with `Cmd+Option+F`, type a condition into the row that appears, and press `Enter`.
+A filter is a WHERE clause, and it runs at the database. That is the difference between filtering and the find bar: matches come from every row in the table, not from the page you are looking at. Open the filter bar with `Cmd+Shift+F`, type a condition into the row that appears, and press `Enter`.
 
 <Frame caption="Filter panel with column and raw SQL conditions">
   <img className="block dark:hidden" src="/images/filter-panel.png" alt="Filter panel above the data grid" />
   <img className="hidden dark:block" src="/images/filter-panel-dark.png" alt="Filter panel above the data grid" />
 </Frame>
 
-Each row has a drag grip, a checkbox, a column picker, an operator, a value field, and **+**/**−** buttons. Right-clicking a column header in the grid and choosing **Filter with column** pre-fills a row for that column.
+Each row has a drag grip, a checkbox, a column picker, an operator, a value field, and **+**/**−** buttons. Right-clicking a column header in the grid and choosing **Filter with column** pre-fills a row for that column. A value field suggests column names and keywords as you type; `Enter` runs what you typed, and `Down` then `Enter` takes a suggestion instead.
 
 | Control | What it does |
 |---------|--------------|
@@ -100,7 +100,7 @@ A new row starts in raw SQL, unless **Default Column** in the settings says othe
 created_at > NOW() - INTERVAL 7 DAY
 ```
 
-Autocomplete offers the table's columns and SQL keywords at every position, after AND and OR included. Arrow keys pick a suggestion, `Tab` or `Return` inserts it, `Escape` dismisses the list without closing the filter bar. On a database that does not speak SQL the row is labeled **Raw Filter** and takes that database's own syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
+Autocomplete offers the table's columns and SQL keywords, after AND and OR included, on the same rules as the [query editor](/features/autocomplete): a typed character opens it, so does a dot and a `::` cast, and a position where the whole column list would be noise stays shut. Nothing in the list is selected until `Up` or `Down` selects it, so `Return` applies the filter. Once a suggestion is selected, `Return` or `Tab` inserts it. `Escape` dismisses the list without closing the filter bar. On a database that does not speak SQL the row is labeled **Raw Filter** and takes that database's own syntax: on MongoDB, a filter document such as `{"customer.country": "US"}`.
 
 <Warning>
 The text goes into the WHERE clause as written. A condition whose syntax does not match the database fails the query.

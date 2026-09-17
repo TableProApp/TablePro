@@ -3,13 +3,13 @@
 //  TablePro
 //
 //  Runs the language's diagnostic producer on a debounce and renders the result as underlines
-//  through CodeEditTextView's EmphasisManager, which owns its own drawing layer.
+//  through TableProTextEngine's EmphasisManager, which owns its own drawing layer.
 //
 
 import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
+import TableProEditorKit
+import TableProTextEngine
 
 @MainActor
 final class QueryDiagnosticsController {
@@ -75,14 +75,6 @@ final class QueryDiagnosticsController {
         apply(produced, in: controller)
     }
 
-    /// An emphasis bakes its colour into a `CAShapeLayer`, so a theme change inside one appearance
-    /// leaves an existing underline on the previous colour. `refresh(for:)` cannot repaint it: the
-    /// diagnostics themselves have not changed, so it returns early.
-    func reapplyColors(in controller: TextViewController) {
-        guard !diagnostics.isEmpty else { return }
-        apply(diagnostics, in: controller)
-    }
-
     func clear(in controller: TextViewController?) {
         pendingTask?.cancel()
         pendingTask = nil
@@ -112,8 +104,8 @@ final class QueryDiagnosticsController {
 
     private func color(for severity: QueryDiagnostic.Severity) -> NSColor {
         switch severity {
-        case .error: return ThemeEngine.shared.palette[.statusError]
-        case .warning: return ThemeEngine.shared.palette[.statusWarning]
+        case .error: return .systemRed
+        case .warning: return .systemOrange
         }
     }
 }

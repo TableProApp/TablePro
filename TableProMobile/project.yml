@@ -85,7 +85,9 @@ targets:
       - package: TableProCore
         products:
           - TableProAnalytics
+          - TableProConnectionLibrary
           - TableProDatabase
+          - TableProGeometry
           - TableProImport
           - TableProModels
           - TableProMSSQLCore

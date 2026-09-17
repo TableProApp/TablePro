@@ -22,10 +22,10 @@ final class MongoCompletionService: QueryCompletionService {
     var triggerCharacters: Set<String> { [".", "$", "{", "[", "\"", "'", ":", " "] }
 
     func seedItems() -> [SQLCompletionItem] {
-        MongoVocabulary.shellCommands.map { SQLCompletionItem.keyword($0.name, documentation: $0.detail) }
+        MongoVocabulary.shellCommands.map {
+            SQLCompletionItem.keyword($0.name, documentation: $0.detail, caseFolding: .fixed)
+        }
     }
-
-    func prepare() async {}
 
     func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
         favoriteKeywords = keywords
@@ -94,7 +94,9 @@ final class MongoCompletionService: QueryCompletionService {
         case .suppressed:
             return []
         case .statementStart:
-            return seedItems() + favoriteItems() + [SQLCompletionItem.keyword("db", documentation: "Current database")]
+            return seedItems() + favoriteItems() + [
+                SQLCompletionItem.keyword("db", documentation: "Current database", caseFolding: .fixed)
+            ]
         case .databaseMember:
             return await collectionItems() + methodItems(MongoVocabulary.databaseMethods)
         case .collectionMethod:
@@ -126,24 +128,28 @@ final class MongoCompletionService: QueryCompletionService {
     }
 
     private func methodItems(_ methods: [(name: String, detail: String)]) -> [SQLCompletionItem] {
-        methods.map { SQLCompletionItem.function($0.name, signature: "()", documentation: $0.detail) }
+        methods.map {
+            SQLCompletionItem.function($0.name, signature: "()", documentation: $0.detail, caseFolding: .fixed)
+        }
     }
 
     private func operatorItems(_ operators: [(name: String, detail: String)]) -> [SQLCompletionItem] {
-        operators.map { SQLCompletionItem.operator($0.name, documentation: $0.detail) }
+        operators.map { SQLCompletionItem.operator($0.name, documentation: $0.detail, caseFolding: .fixed) }
     }
 
     private func stageItems(_ stages: [(name: String, detail: String)]) -> [SQLCompletionItem] {
-        stages.map { SQLCompletionItem.keyword($0.name, documentation: $0.detail) }
+        stages.map { SQLCompletionItem.keyword($0.name, documentation: $0.detail, caseFolding: .fixed) }
     }
 
     private func variableItems() -> [SQLCompletionItem] {
-        MongoVocabulary.systemVariables.map { SQLCompletionItem.keyword($0.name, documentation: $0.detail) }
+        MongoVocabulary.systemVariables.map {
+            SQLCompletionItem.keyword($0.name, documentation: $0.detail, caseFolding: .fixed)
+        }
     }
 
     private func constructorItems() -> [SQLCompletionItem] {
         MongoVocabulary.bsonConstructors.map {
-            SQLCompletionItem.function($0.name, signature: "()", documentation: $0.detail)
+            SQLCompletionItem.function($0.name, signature: "()", documentation: $0.detail, caseFolding: .fixed)
         }
     }
 

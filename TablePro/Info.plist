@@ -14,6 +14,12 @@
 	<string>https://raw.githubusercontent.com/TableProApp/TablePro/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>EongGFyuahKlYPZwgmnFx8nW3s1CqWlSSU5BDqY6n6Q=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -415,6 +421,7 @@
 				<string>mysql</string>
 				<string>mariadb</string>
 				<string>tidb</string>
+				<string>oceanbase</string>
 				<string>sqlite</string>
 				<string>mongodb</string>
 				<string>redis</string>

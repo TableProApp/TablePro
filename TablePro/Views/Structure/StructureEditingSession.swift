@@ -3,8 +3,8 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import TableProPluginKit
 
 /// Everything one tab's structure editor is, held outside the view that presents it.
@@ -32,8 +32,7 @@ import TableProPluginKit
 /// way back in. Holding the baseline here is what lets the rebuild skip the fetch, and skipping the
 /// fetch is the only version of this that keeps the edits.
 @MainActor
-@Observable
-internal final class StructureEditingSession {
+internal final class StructureEditingSession: ObservableObject {
     /// The scope and table this session was opened against. A tab retargeted to another table gets
     /// a new session rather than inheriting edits staged against the old one.
     internal let identity: String
@@ -61,48 +60,48 @@ internal final class StructureEditingSession {
         DatabaseScope(connectionId: connection.id, database: databaseName, schema: schemaName)
     }
 
-    internal var columns: [ColumnInfo] = []
-    internal var indexes: [IndexInfo] = []
-    internal var foreignKeys: [ForeignKeyInfo] = []
-    internal var checkConstraints: [CheckConstraintInfo] = []
-    internal var triggers: [TriggerInfo] = []
-    internal var ddlStatement: String = ""
-    internal var tabData = StructureTabDataState()
+    @Published internal var columns: [ColumnInfo] = []
+    @Published internal var indexes: [IndexInfo] = []
+    @Published internal var foreignKeys: [ForeignKeyInfo] = []
+    @Published internal var checkConstraints: [CheckConstraintInfo] = []
+    @Published internal var triggers: [TriggerInfo] = []
+    @Published internal var ddlStatement: String = ""
+    @Published internal var tabData = StructureTabDataState()
 
     /// Where the user was. Held here rather than in the view because two tabs on one table are two
     /// editors: one being on Indexes must not move the other, and neither should lose its place to
     /// a trip through the Data view.
-    internal var selectedTab: StructureTab = .columns
-    internal var searchText = ""
-    internal var sortState = SortState()
-    internal var sortDescriptor: StructureSortDescriptor?
-    internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
-    internal var serverSupport = StructureServerSupport.unrestricted
+    @Published internal var selectedTab: StructureTab = .columns
+    @Published internal var searchText = ""
+    @Published internal var sortState = SortState()
+    @Published internal var sortDescriptor: StructureSortDescriptor?
+    @Published internal var columnLayouts: [StructureTab: ColumnLayoutState] = [:]
+    @Published internal var serverSupport = StructureServerSupport.unrestricted
 
     /// What the bottom bar offers while this tab is showing its structure.
     ///
     /// Keyed by tab through the session, so two structure tabs cannot answer for each other. The
     /// shape this replaces was one app-wide object with a `currentOwner` guard, and the guard
     /// existed only to work out which structure view the buttons currently belonged to.
-    internal var footer = StructureFooterCapability()
+    @Published internal var footer = StructureFooterCapability()
 
     /// Whether the opening fetch has already run. True only after a real load, so a rebuild adopts
     /// what is here instead of refetching, while a genuine refresh still goes through
     /// `onRefreshData`, which asks before discarding.
-    internal var hasLoaded = false
+    @Published internal var hasLoaded = false
 
     /// Bumped when `applyStagedChanges` has written to the database. A mounted view watches it and
     /// refreshes what it is showing; an unmounted one does not need to, because the apply already
     /// marked the tab data stale and cleared `hasLoaded`.
-    internal private(set) var appliedVersion = 0
+    @Published internal private(set) var appliedVersion = 0
 
     /// Raised across a save so the `onChange` handlers watching `columns`, `indexes` and
     /// `foreignKeys` do not mistake the post-save reload for the user editing.
-    internal var isApplying = false
+    @Published internal var isApplying = false
 
     /// When the last apply landed, used to keep an incoming refresh notification from re-fetching
     /// what the save has just re-fetched.
-    internal var lastAppliedAt: Date?
+    @Published internal var lastAppliedAt: Date?
 
     internal init(
         identity: String,

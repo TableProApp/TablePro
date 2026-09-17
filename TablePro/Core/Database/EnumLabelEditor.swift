@@ -96,7 +96,9 @@ struct EnumLabelEditor {
             _ = try await driver.execute(query: sql)
         }
         await recordHistory(sql, executionTime: Date().timeIntervalSince(startedAt))
-        await refreshListings()
+        CatalogChangeService.shared.record(
+            .changed(CatalogChange(connectionId: connection.id, database: objectRef.database, kinds: .types))
+        )
         AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
     }
 
@@ -113,30 +115,5 @@ struct EnumLabelEditor {
                 wasSuccessful: true
             )
         )
-    }
-
-    /// The sidebar row's tooltip and the quick switcher both carry the labels the listing read,
-    /// so both listings are reloaded rather than left describing the type as it was. The open
-    /// grids get the same refresh a trigger edit sends, because a column of this enum offers its
-    /// labels as a picker and would go on offering the old set.
-    private func refreshListings() async {
-        let connectionId = connection.id
-        await DatabaseTreeMetadataService.shared.refreshUserDefinedTypeObjects(
-            connectionId: connectionId,
-            database: objectRef.database,
-            schema: objectRef.schema
-        )
-        let scope = DatabaseManager.shared.browseScope(for: connectionId)
-        do {
-            try await DatabaseManager.shared.withBrowseMetadataDriver(connectionId: connectionId) { driver in
-                await SchemaService.shared.reloadUserDefinedTypes(
-                    connectionId: connectionId,
-                    driver: driver,
-                    scope: scope
-                )
-            }
-        } catch {
-            Self.logger.warning("type listing refresh failed: \(error.localizedDescription, privacy: .public)")
-        }
     }
 }

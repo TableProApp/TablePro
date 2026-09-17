@@ -60,32 +60,4 @@ extension PostgreSQLPluginDriver {
             hasUsableUniqueIndex: row[1].asText == "1"
         )
     }
-
-    /// Reads with `search_path` emptied so every name the server deparses comes back qualified.
-    ///
-    /// A pooled connection is never inside a transaction, and there the prefix and the read form
-    /// one implicit transaction that restores the path as it ends. PGlite has no pool, so its reads
-    /// share the connection a query tab may have left inside `BEGIN`; the prefix would then outlive
-    /// the read and every later unqualified name in that tab would fail. A savepoint scopes it there.
-    private func executeQualifiedRead(_ query: String) async throws -> PluginQueryResult {
-        let statement = PostgreSQLViewDefinition.qualifiedReadPrefix + query
-        guard core.isInsideTransactionBlock else {
-            return try await execute(query: statement)
-        }
-        let savepoint = "tablepro_qualified_read"
-        _ = try await execute(query: "SAVEPOINT \(savepoint)")
-        /// The rollback is best effort on both paths. It undoes a `SET LOCAL` in a transaction that
-        /// is about to end anyway, so a connection lost between the read and the rollback has taken
-        /// the whole transaction with it, and reporting that instead of the definition just read
-        /// would lose the answer to a failure that no longer matters.
-        let release = "ROLLBACK TO SAVEPOINT \(savepoint); RELEASE SAVEPOINT \(savepoint)"
-        do {
-            let result = try await execute(query: statement)
-            _ = try? await execute(query: release)
-            return result
-        } catch {
-            _ = try? await execute(query: release)
-            throw error
-        }
-    }
 }

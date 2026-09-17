@@ -3,8 +3,8 @@ import SwiftUI
 
 struct MCPSection: View {
     @Binding var settings: MCPSettings
-    @State private var manager = MCPServerManager.shared
-    @State private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var manager = MCPServerManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     @State private var tokenList: [MCPAuthToken] = []
     @State private var showSetupSheet = false
     @State private var showCreateSheet = false
@@ -187,7 +187,7 @@ struct MCPSection: View {
 }
 
 private struct MCPStatusIndicator: View {
-    @State private var manager = MCPServerManager.shared
+    @ObservedObject private var manager = MCPServerManager.shared
 
     var body: some View {
         IntegrationStatusIndicator(status: status, label: statusText)

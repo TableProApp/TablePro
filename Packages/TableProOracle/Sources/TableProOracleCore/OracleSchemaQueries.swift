@@ -3,6 +3,25 @@ import Foundation
 public struct OracleTableRow: Sendable, Equatable {
     public let name: String
     public let isView: Bool
+    /// Whether the table is partitioned at all, which is not the same question as how many
+    /// partitions it holds: an interval-partitioned table is partitioned and reports no usable
+    /// count.
+    public let isPartitioned: Bool
+    public let partitionCount: Int?
+
+    public init(name: String, isView: Bool, isPartitioned: Bool = false, partitionCount: Int? = nil) {
+        self.name = name
+        self.isView = isView
+        self.isPartitioned = isPartitioned
+        self.partitionCount = partitionCount
+    }
+}
+
+public struct OraclePartitionRow: Sendable, Equatable {
+    public let name: String
+    public let position: Int?
+    public let rowCount: Int?
+    public let isSubpartitioned: Bool
 }
 
 public struct OracleColumnRow: Sendable, Equatable {
@@ -60,14 +79,53 @@ public enum OracleSchemaQueries {
         "ALTER SESSION SET CURRENT_SCHEMA = \(quoteIdentifier(schema))"
     }
 
+    /// `ALL_PART_TABLES` carries the partition count without reading a LONG column, which this
+    /// driver cannot decode. Its `INTERVAL` column is the flag for interval partitioning, where the
+    /// count is a placeholder for a range the server extends on demand rather than a number of
+    /// partitions that exist, so those report no count instead of a fabricated one.
+    ///
+    /// Being partitioned is projected separately from the count for exactly that reason: an
+    /// interval-partitioned table has partitions and no count to state, and reading the missing
+    /// count as "not partitioned" would take its partitions out of the tree.
     public static func tables(schema: String) -> String {
         let owner = escapeLiteral(schema)
         return """
-            SELECT table_name, 'BASE TABLE' AS table_type FROM all_tables WHERE owner = '\(owner)'
+            SELECT t.table_name, 'BASE TABLE' AS table_type,
+                   CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END AS is_partitioned,
+                   CASE WHEN pt.interval IS NULL THEN pt.partition_count END AS partition_count
+            FROM all_tables t
+            LEFT JOIN all_part_tables pt ON pt.owner = t.owner AND pt.table_name = t.table_name
+            WHERE t.owner = '\(owner)'
             UNION ALL
-            SELECT view_name, 'VIEW' FROM all_views WHERE owner = '\(owner)'
+            SELECT view_name, 'VIEW', 'N', NULL FROM all_views WHERE owner = '\(owner)'
             ORDER BY 1
             """
+    }
+
+    /// One partitioned table's partitions. `HIGH_VALUE` is deliberately absent: it is a LONG
+    /// column, the datatype this driver already avoids reading because OracleNIO cannot decode it,
+    /// so an Oracle partition states its position rather than its bound.
+    public static func partitions(schema: String, table: String) -> String {
+        """
+        SELECT p.partition_name, p.partition_position, p.num_rows, p.subpartition_count
+        FROM all_tab_partitions p
+        WHERE p.table_owner = '\(escapeLiteral(schema))'
+          AND p.table_name = '\(escapeLiteral(table))'
+        ORDER BY p.partition_position
+        """
+    }
+
+    /// Every subpartition of one table, in one statement. `ALL_TAB_SUBPARTITIONS` carries the
+    /// parent `PARTITION_NAME`, so the rows group in memory: asking per partition instead would be
+    /// one round trip per partition, and one timeout among hundreds discards the whole answer.
+    public static func subpartitions(schema: String, table: String) -> String {
+        """
+        SELECT s.partition_name, s.subpartition_name, s.subpartition_position, s.num_rows
+        FROM all_tab_subpartitions s
+        WHERE s.table_owner = '\(escapeLiteral(schema))'
+          AND s.table_name = '\(escapeLiteral(table))'
+        ORDER BY s.partition_name, s.subpartition_position
+        """
     }
 
     public static func columns(schema: String, table: String) -> String {
@@ -141,7 +199,36 @@ public enum OracleSchemaQueries {
 
     public static func parseTableRow(_ row: [OracleRawCell]) -> OracleTableRow? {
         guard let name = row[safe: 0]?.stringValue else { return nil }
-        return OracleTableRow(name: name, isView: row[safe: 1]?.stringValue == "VIEW")
+        return OracleTableRow(
+            name: name,
+            isView: row[safe: 1]?.stringValue == "VIEW",
+            isPartitioned: row[safe: 2]?.stringValue == "Y",
+            partitionCount: row[safe: 3]?.stringValue.flatMap(Int.init)
+        )
+    }
+
+    public static func parsePartitionRow(_ row: [OracleRawCell]) -> OraclePartitionRow? {
+        guard let name = row[safe: 0]?.stringValue else { return nil }
+        return OraclePartitionRow(
+            name: name,
+            position: row[safe: 1]?.stringValue.flatMap(Int.init),
+            rowCount: row[safe: 2]?.stringValue.flatMap(Int.init),
+            isSubpartitioned: (row[safe: 3]?.stringValue.flatMap(Int.init) ?? 0) > 0
+        )
+    }
+
+    /// The parent partition's name comes first, because the caller groups by it.
+    public static func parseSubpartitionRow(_ row: [OracleRawCell]) -> (parent: String, row: OraclePartitionRow)? {
+        guard let parent = row[safe: 0]?.stringValue, let name = row[safe: 1]?.stringValue else { return nil }
+        return (
+            parent,
+            OraclePartitionRow(
+                name: name,
+                position: row[safe: 2]?.stringValue.flatMap(Int.init),
+                rowCount: row[safe: 3]?.stringValue.flatMap(Int.init),
+                isSubpartitioned: false
+            )
+        )
     }
 
     public static func parseColumnRow(_ row: [OracleRawCell]) -> OracleColumnRow? {

@@ -23,14 +23,15 @@ internal struct PhpTreeView: View {
 // MARK: - Row View
 
 private struct PhpTreeRowView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let node: PhpTreeNode
 
     var body: some View {
         HStack(spacing: 4) {
             if let key = node.key {
                 Text(key)
-                    .font(ThemeEngine.shared.valueFontEmphasizedSwiftUI)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.syntaxKeyword))
+                    .font(themeEngine.valueFontEmphasizedSwiftUI)
+                    .foregroundStyle(.blue)
                     .lineLimit(1)
                 if let badge = node.visibilityBadge {
                     Text(badge)
@@ -41,7 +42,7 @@ private struct PhpTreeRowView: View {
                     .foregroundStyle(.secondary)
             }
             Text(node.displayValue)
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .foregroundStyle(Color(nsColor: node.nodeType.color))
                 .lineLimit(1)
             Spacer(minLength: 4)

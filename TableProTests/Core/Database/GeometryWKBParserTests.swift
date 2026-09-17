@@ -175,4 +175,57 @@ struct GeometryWKBParserTests {
         let result = GeometryWKBParser.parse(data)
         #expect(result == "POINT(100.0 200.0)")
     }
+
+    /// The SRID used to be read only to be skipped, which left the app unable to tell 4326 from
+    /// 3857 from "nobody said" for a MySQL geometry column. It now reaches the text, spelled the
+    /// way PostGIS spells it.
+    @Test("A non-zero SRID reaches the output as an EWKT prefix")
+    func sridBecomesAnEWKTPrefix() {
+        let data = mysqlGeometry(srid: 4326, wkb: wkbPoint(-122.4194, 37.7749))
+        #expect(GeometryWKBParser.parse(data) == "SRID=4326;POINT(-122.4194 37.7749)")
+    }
+
+    /// MySQL stores a literal 0 for "no SRID", which means unknown rather than a coordinate system
+    /// numbered zero, so it prints no prefix. PostGIS does the same.
+    @Test("SRID 0 prints no prefix")
+    func zeroSRIDHasNoPrefix() {
+        let data = mysqlGeometry(srid: 0, wkb: wkbPoint(1, 2))
+        #expect(GeometryWKBParser.parse(data) == "POINT(1.0 2.0)")
+    }
+
+    /// **The orientation guard.**
+    ///
+    /// These are the verbatim bytes MySQL 8.4.11 and MariaDB 12.3.3 both store for a SRID-4326
+    /// point at San Francisco, measured byte-identical. MySQL's own `ST_AsText` prints this value
+    /// latitude-first, so "make the parser agree with ST_AsText" is the plausible-looking change
+    /// that would move every MySQL point into the Southern Ocean. The storage is longitude-first.
+    @Test("Stored geometry is longitude-first, whatever ST_AsText prints")
+    func storageIsLongitudeFirst() {
+        let bytes: [UInt8] = [
+            0xE6, 0x10, 0x00, 0x00,
+            0x01, 0x01, 0x00, 0x00, 0x00,
+            0x50, 0xFC, 0x18, 0x73, 0xD7, 0x9A, 0x5E, 0xC0,
+            0xD0, 0xD5, 0x56, 0xEC, 0x2F, 0xE3, 0x42, 0x40,
+        ]
+        #expect(GeometryWKBParser.parse(Data(bytes)) == "SRID=4326;POINT(-122.4194 37.7749)")
+    }
+
+    /// The old hand-rolled body produced the invalid `GEOMETRYCOLLECTION()` for an empty
+    /// collection, which no grammar accepts and nothing downstream could read back.
+    @Test("An empty collection uses the EMPTY keyword")
+    func emptyCollectionUsesTheKeyword() {
+        let data = mysqlGeometry(wkb: wkbHeader(type: 7) + uint32Bytes(0))
+        #expect(GeometryWKBParser.parse(data) == "GEOMETRYCOLLECTION EMPTY")
+    }
+
+    /// The old body assumed XY, so a Z or M ordinate desynchronised the cursor and every later
+    /// coordinate in the value was read from the wrong offset.
+    @Test("A Z ordinate does not desynchronise the reader")
+    func threeDimensionalPointReads() {
+        var wkb: [UInt8] = [0x01]
+        wkb += uint32Bytes(1001)
+        wkb += float64Bytes(1) + float64Bytes(2) + float64Bytes(3)
+        let data = mysqlGeometry(wkb: wkb)
+        #expect(GeometryWKBParser.parse(data) == "POINT(1.0 2.0)")
+    }
 }

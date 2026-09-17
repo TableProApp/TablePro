@@ -90,7 +90,7 @@ extension MainContentCoordinator {
                 Self.logger.error(
                     "[schema] initial load failed connId=\(self.connectionId, privacy: .public) error=\(message, privacy: .public)"
                 )
-                services.schemaService.markLoadFailed(connectionId: connectionId, message: message)
+                services.schemaService.markLoadFailed(connectionId: connectionId, message: message, scope: scope)
             }
             return
         }

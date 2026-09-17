@@ -56,10 +56,19 @@ public protocol AnalyticsEnvironmentProvider: AnyObject {
     /// Timestamp of the first query the user successfully executed on this device, or nil if no query has run.
     /// Set once and never overwritten.
     var firstQueryExecutedAt: Date? { get }
+
+    /// How updates install on this device: "automatic", "notify" or "off". Nil where the platform
+    /// has no updater of its own, which is every App Store build.
+    var updateInstallMode: String? { get }
+
+    /// Seconds between scheduled update checks, or nil when checks are off or unavailable.
+    var updateCheckInterval: Int? { get }
 }
 
 public extension AnalyticsEnvironmentProvider {
     var connectionAttemptedAt: Date? { nil }
     var connectionSucceededAt: Date? { nil }
     var firstQueryExecutedAt: Date? { nil }
+    var updateInstallMode: String? { nil }
+    var updateCheckInterval: Int? { nil }
 }

@@ -35,11 +35,13 @@ struct PostgreSQLLiteralQuotingTests {
             ),
             PostgreSQLSchemaQueries.checkConstraintsQuery(schema: schema, table: table),
             PostgreSQLSchemaQueries.allTablesMetadata(schema: schema),
+            PostgreSQLSchemaQueries.approximateRowCount(schema: schema, table: table),
             PostgreSQLObjectQueries.routineList(schema: schema, capabilities: caps),
             PostgreSQLObjectQueries.triggerList(schema: schema, table: table),
             PostgreSQLObjectQueries.routineDefinitionByName(name: table, schema: schema, arguments: nil),
             PostgreSQLObjectQueries.userDefinedTypeList(schema: schema, identity: nil, capabilities: caps),
-            PostgreSQLIndexQueries.indexList(schema: schema, table: table),
+            PostgreSQLIndexQueries.indexList(schema: schema, table: table, capabilities: caps),
+            PostgreSQLIndexQueries.indexDDLQuery(schema: schema, table: table),
             PostgreSQLForeignKeyQueries.foreignKeyList(schema: schema, table: table, capabilities: caps),
             PostgreSQLSequenceQueries.sequenceList(
                 schema: schema, dependentOnTable: table, source: .sequencesView
@@ -194,6 +196,22 @@ struct PostgreSQLLiteralQuotingSourceScanTests {
         #expect(
             offenders.isEmpty,
             "These lines quote a literal themselves instead of calling quoteLiteral: \(offenders)"
+        )
+    }
+
+    @Test("No catalog lookup outside the schema queries resolves its schema through current_schema()")
+    func noCatalogLookupReadsTheSessionSchema() throws {
+        var offenders: [String] = []
+        for source in try Self.sources() where source.name != "PostgreSQLSchemaQueries.swift" {
+            for (offset, line) in source.text.components(separatedBy: "\n").enumerated()
+            where line.replacingOccurrences(of: " ", with: "").contains("nspname=current_schema()") {
+                offenders.append("\(source.name):\(offset + 1)")
+            }
+        }
+
+        #expect(
+            offenders.isEmpty,
+            "These lines read the session's schema instead of the one the caller named: \(offenders)"
         )
     }
 

@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import Observation
 import os
 import SwiftUI
@@ -30,6 +31,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var pendingTruncates: Set<DatabaseTreeTableRef> = []
     private var pendingDeletes: Set<DatabaseTreeTableRef> = []
     internal var showRecentTables = true
+    internal var showSystemContainers = false
+    internal var showsPartitions = true
     private var rowSize: SidebarRowSize = .medium
 
     internal var nodeCache: [String: DatabaseTreeNode] = [:]
@@ -59,6 +62,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
     private var observationGeneration = 0
+    private var appearanceObservation: AnyCancellable?
+    private var treeObservations: [AnyCancellable] = []
 
     internal let schemaService = SchemaService.shared
     private var favoriteTables: Set<FavoriteTablesStorage.FavoriteEntry> = []
@@ -123,18 +128,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     /// sync write-back included. `refreshVisibleRows` reconfigures every row of every open window,
     /// so the two values are compared before it runs.
     private func observeObjectListAppearance() {
-        withObservationTracking {
-            _ = AppSettingsManager.shared.general
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                let appearance = Self.objectListAppearance()
-                if appearance != self.observedAppearance {
-                    self.observedAppearance = appearance
-                    self.refreshVisibleRows()
-                }
-                self.observeObjectListAppearance()
-            }
+        appearanceObservation = AppSettingsManager.shared.onMainActorChange { [weak self] in
+            guard let self else { return }
+            let appearance = Self.objectListAppearance()
+            guard appearance != self.observedAppearance else { return }
+            self.observedAppearance = appearance
+            self.refreshVisibleRows()
         }
     }
 
@@ -173,6 +172,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             || pendingTruncates != view.pendingTruncates
             || pendingDeletes != view.pendingDeletes
             || showRecentTables != view.showRecentTables
+            || showSystemContainers != view.showSystemContainers
+            || showsPartitions != view.showsPartitions
             || rowSize != view.resolvedRowSize
 
         searchText = view.searchText
@@ -182,6 +183,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         pendingTruncates = view.pendingTruncates
         pendingDeletes = view.pendingDeletes
         showRecentTables = view.showRecentTables
+        showSystemContainers = view.showSystemContainers
+        showsPartitions = view.showsPartitions
         rowSize = view.resolvedRowSize
 
         if !hasRenderedOnce || activeChanged {
@@ -214,14 +217,19 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private func beginObserving() {
         observationGeneration += 1
         let generation = observationGeneration
-        withObservationTracking { [weak self] in
-            self?.snapshotDependencies()
-        } onChange: { [weak self] in
-            Task { @MainActor in
-                guard let self, generation == self.observationGeneration else { return }
-                self.scheduleReconcile()
-            }
+        /// `snapshotDependencies` read across four objects, and `objectWillChange` is per
+        /// object, so each one gets its own sink. `scheduleReconcile` already coalesces, which
+        /// is what absorbs the wider wake set.
+        let reconcile: () -> Void = { [weak self] in
+            guard let self, generation == self.observationGeneration else { return }
+            self.scheduleReconcile()
         }
+        treeObservations = [
+            service.onMainActorChange(reconcile),
+            schemaService.onMainActorChange(reconcile),
+            sidebarState?.onMainActorChange(reconcile),
+            sidebarState?.redisKeyTreeViewModel?.onMainActorChange(reconcile),
+        ].compactMap { $0 }
     }
 
     private func scheduleReconcile() {
@@ -267,6 +275,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             case .table(let ref) where ref.table.type == .partitionedTable:
                 _ = service.partitionsLoadState(
                     connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
+                )
+            case .partition(let ref):
+                let source = ref.tableRef ?? ref.parent
+                _ = service.partitionsLoadState(
+                    connectionId: connectionId,
+                    database: source.database ?? "",
+                    schema: source.schema,
+                    table: source.table.name
                 )
             case .recentSection, .recentTable, .table, .routine, .trigger, .userType, .status,
                  .objectKindSection, .containerObjectKindSection,
@@ -424,7 +440,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         let selectedObjects = Set(selectedTables.map(\.table))
         var nodes: [DatabaseTreeNode] = []
         for node in nodeCache.values {
-            guard case .table(let ref) = node.kind, selectedObjects.contains(ref.table) else { continue }
+            guard let ref = node.tableRef, selectedObjects.contains(ref.table) else { continue }
             guard selectionDatabase == nil || ref.database == selectionDatabase else { continue }
             nodes.append(node)
         }
@@ -463,7 +479,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
                 forceNonPreview: forceNonPreview,
                 activateGridFocus: activateGridFocus
             )
-            FeatureTipSignals.sidebarTableOpened()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.sidebarTableOpened()
+            }
             publishSelection()
         }
     }
@@ -564,7 +582,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             },
             routineDisplayLabel: { [weak self] ref in
                 self?.routineDisplayLabels[ref.id] ?? ref.routine.name
-            }
+            },
+            showsPartitions: showsPartitions
         )
     }
 
@@ -669,7 +688,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     ) {
         switch intent {
         case .openPermanently(let ref):
-            FeatureTipSignals.tableKeptOpen()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.tableKeptOpen()
+            }
             pendingOpenWork?.cancel()
             pendingOpenWork = nil
             open(ref, activateGridFocus: true, forceNonPreview: true)
@@ -705,8 +726,19 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDataSource {
         resolvedChildren(of: item)[index]
     }
 
+    /// `DatabaseTreeNode.isExpandable` answers from the node's kind alone and has no settings to
+    /// read, so the hide-partitions gate has to be applied here as well as in the node builder.
+    /// Without it a hidden table kept a disclosure triangle that opened on nothing.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
-        (item as? DatabaseTreeNode)?.isExpandable ?? false
+        guard let node = item as? DatabaseTreeNode, node.isExpandable else { return false }
+        switch node.kind {
+        case .table(let ref) where ref.table.type == .partitionedTable:
+            return showsPartitions
+        case .partition:
+            return showsPartitions
+        default:
+            return true
+        }
     }
 }
 

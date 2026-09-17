@@ -11,26 +11,22 @@ import SwiftUI
 struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?
 
-    @State private var viewport = DiagramViewportController()
+    /// Owned by the plan's `QueryPlanViewState`, because this view goes away on every mode switch.
+    let viewport: DiagramViewportController
 
     /// Derived from the plan on every update, so a second EXPLAIN in the same tab redraws
     /// instead of keeping the layout the first one produced.
     private let layout: QueryPlanDiagramLayout
 
-    init(plan: QueryPlan, selectedNodeId: Binding<UUID?>) {
+    init(plan: QueryPlan, selectedNodeId: Binding<UUID?>, viewport: DiagramViewportController) {
         layout = QueryPlanDiagramLayout(root: plan.rootNode)
         _selectedNodeId = selectedNodeId
+        self.viewport = viewport
     }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            MagnifiableCanvasView(
-                viewport: viewport,
-                contentSize: layout.canvasSize,
-                accessibilityIdentifier: "query-plan-diagram"
-            ) {
-                canvas
-            }
+            canvas
 
             DiagramZoomToolbar(viewport: viewport) {
                 Divider().frame(height: 16)
@@ -48,31 +44,29 @@ struct QueryPlanDiagramView: View {
             }
             .padding(12)
         }
-        .onCopyCommand { DiagramImageExporter.copyItemProviders(of: exportCanvas) }
     }
 
     // MARK: - Canvas
 
+    /// The selection is read here, during `body`, so a change to it re-renders the canvas.
     private var canvas: some View {
-        ZStack(alignment: .topLeading) {
-            arrowLayer
-
-            ForEach(layout.nodes) { positioned in
-                QueryPlanDiagramNodeView(
-                    node: positioned.node,
-                    isSelected: selectedNodeId == positioned.id
-                )
-                .onTapGesture { selectedNodeId = positioned.id }
-                .contextMenu { nodeContextMenu(for: positioned.node) }
-                .popover(isPresented: detailBinding(for: positioned.id)) {
-                    QueryPlanDetailPane(node: positioned.node)
-                        .frame(minWidth: 260, maxWidth: 420)
-                        .padding(4)
+        let layout = layout
+        let selectedNodeId = selectedNodeId
+        let selection = $selectedNodeId
+        let exportCanvas = exportCanvas
+        return MagnifiableCanvasView(
+            viewport: viewport,
+            contentSize: layout.canvasSize,
+            accessibilityIdentifier: "query-plan-diagram",
+            makeDocument: { QueryPlanDiagramCanvasView() },
+            updateDocument: { canvasView in
+                canvasView.update(layout: layout, selectedNodeId: selectedNodeId) { selection.wrappedValue = $0 }
+                canvasView.copyImage = {
+                    guard let image = DiagramImageExporter.image(of: exportCanvas) else { return }
+                    ClipboardService.shared.writeImage(image)
                 }
-                .position(x: positioned.rect.midX, y: positioned.rect.midY)
             }
-        }
-        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+        )
     }
 
     /// A non-interactive copy at natural scale, so an export never captures the current zoom,
@@ -99,28 +93,30 @@ struct QueryPlanDiagramView: View {
         .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
         .background(Color(nsColor: .controlBackgroundColor))
     }
+}
 
-    @ViewBuilder
-    private func nodeContextMenu(for node: QueryPlanNode) -> some View {
-        Button(String(localized: "Copy Operation")) {
-            ClipboardService.shared.writeText(node.operation)
+// MARK: - Drawing
+
+/// What the canvas view hosts: every step and arrow, drawn at the layout's own coordinates. It takes
+/// no input and publishes nothing to accessibility, both of which `QueryPlanDiagramCanvasView` owns.
+struct QueryPlanDiagramDrawing: View {
+    let layout: QueryPlanDiagramLayout
+    let selectedNodeId: UUID?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            QueryPlanArrowsView(arrows: layout.arrows, size: layout.canvasSize)
+
+            ForEach(layout.nodes) { positioned in
+                QueryPlanDiagramNodeView(
+                    node: positioned.node,
+                    isSelected: selectedNodeId == positioned.id
+                )
+                .position(x: positioned.rect.midX, y: positioned.rect.midY)
+            }
         }
-        Button(String(localized: "Copy Node Details")) {
-            ClipboardService.shared.writeText(QueryPlanNodeSummary.text(for: node))
-        }
-    }
-
-    private func detailBinding(for nodeId: UUID) -> Binding<Bool> {
-        Binding(
-            get: { selectedNodeId == nodeId },
-            set: { if !$0 { selectedNodeId = nil } }
-        )
-    }
-
-    // MARK: - Arrows
-
-    private var arrowLayer: some View {
-        QueryPlanArrowsView(arrows: layout.arrows, size: layout.canvasSize)
+        .frame(width: layout.canvasSize.width, height: layout.canvasSize.height)
+        .accessibilityHidden(true)
     }
 }
 
@@ -177,7 +173,7 @@ struct QueryPlanArrowsView: View {
 
 // MARK: - Node
 
-private struct QueryPlanDiagramNodeView: View {
+struct QueryPlanDiagramNodeView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     let node: QueryPlanNode
@@ -237,10 +233,6 @@ private struct QueryPlanDiagramNodeView: View {
             RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius)
                 .stroke(isSelected ? Color.accentColor : tint, lineWidth: isSelected ? 2 : 1)
         )
-        .contentShape(RoundedRectangle(cornerRadius: QueryPlanDiagramMetrics.cornerRadius))
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(QueryPlanNodeSummary.accessibilityLabel(for: node))
     }
 
     private var tint: Color {

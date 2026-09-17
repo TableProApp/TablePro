@@ -21,17 +21,22 @@ internal enum ObjectCopyNamespace {
     /// What this engine calls the namespace of the objects at `endpoint`.
     ///
     /// A schema where the engine has schemas, the database where it has databases but no schemas,
-    /// and nothing at all where it has neither. Derived from the two capabilities the plugin
-    /// registry already publishes rather than from a list of engine names, so a driver added later
-    /// answers without being enumerated here.
+    /// and nothing at all where it has neither. The choice itself is `EngineNamespaceSlot`, shared
+    /// with every other caller that has to make it, so a capability change cannot move one of them
+    /// and leave the other behind.
     internal static func name(
         for endpoint: DatabaseEndpoint,
         supportsSchemas: Bool,
         supportsDatabases: Bool
     ) -> String? {
-        if supportsSchemas { return endpoint.schema?.nilIfEmpty }
-        guard supportsDatabases else { return nil }
-        return endpoint.database.nilIfEmpty
+        switch EngineNamespaceSlot(supportsSchemas: supportsSchemas, supportsDatabases: supportsDatabases) {
+        case .schema:
+            return endpoint.schema?.nilIfEmpty
+        case .database:
+            return endpoint.database.nilIfEmpty
+        case .unqualified:
+            return nil
+        }
     }
 
     /// Whether two endpoints put their objects in the same namespace, which is what decides

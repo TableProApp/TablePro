@@ -3,13 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class SchemaService {
+final class SchemaService: ObservableObject {
     static let shared = SchemaService()
 
     /// The object kinds that are not tables, each behind its own load state so a list that is still
@@ -20,14 +20,14 @@ final class SchemaService {
         var userDefinedTypes: MetadataLoadState<[UserDefinedTypeInfo]> = .idle
     }
 
-    private(set) var states: [UUID: SchemaState] = [:]
-    private(set) var sideObjects: [UUID: SideObjects] = [:]
-    private(set) var schemasInOrder: [UUID: [String]] = [:]
-    private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
-    private(set) var perSchemaSideObjects: [UUID: [String: SideObjects]] = [:]
-    private(set) var generations: [UUID: Int] = [:]
-    private(set) var refreshingConnections: Set<UUID> = []
-    private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
+    @Published private(set) var states: [UUID: SchemaState] = [:]
+    @Published private(set) var sideObjects: [UUID: SideObjects] = [:]
+    @Published private(set) var schemasInOrder: [UUID: [String]] = [:]
+    @Published private(set) var perSchemaStates: [UUID: [String: SchemaState]] = [:]
+    @Published private(set) var perSchemaSideObjects: [UUID: [String: SideObjects]] = [:]
+    @Published private(set) var generations: [UUID: Int] = [:]
+    @Published private(set) var refreshingConnections: Set<UUID> = []
+    @Published private(set) var loadedScopes: [UUID: DatabaseScope] = [:]
 
     func generationToken(for connectionId: UUID) -> Int {
         generations[connectionId] ?? 0
@@ -37,15 +37,15 @@ final class SchemaService {
         generations[connectionId, default: 0] &+= 1
     }
 
-    @ObservationIgnored private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
-    @ObservationIgnored private let routinesDedup = OnceTask<LoadKey, [RoutineInfo]>()
-    @ObservationIgnored private let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
-    @ObservationIgnored private let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
-    @ObservationIgnored private let schemasDedup = OnceTask<LoadKey, [String]>()
-    @ObservationIgnored private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
-    @ObservationIgnored private let perSchemaRoutinesDedup = OnceTask<SchemaKey, [RoutineInfo]>()
-    @ObservationIgnored private let perSchemaTriggersDedup = OnceTask<SchemaKey, [TriggerInfo]>()
-    @ObservationIgnored private let perSchemaTypesDedup = OnceTask<SchemaKey, [UserDefinedTypeInfo]>()
+    private let loadDedup = OnceTask<LoadKey, [TableInfo]>()
+    private let routinesDedup = OnceTask<LoadKey, [RoutineInfo]>()
+    private let triggersDedup = OnceTask<LoadKey, [TriggerInfo]>()
+    private let typesDedup = OnceTask<LoadKey, [UserDefinedTypeInfo]>()
+    private let schemasDedup = OnceTask<LoadKey, [String]>()
+    private let perSchemaDedup = OnceTask<SchemaKey, [TableInfo]>()
+    private let perSchemaRoutinesDedup = OnceTask<SchemaKey, [RoutineInfo]>()
+    private let perSchemaTriggersDedup = OnceTask<SchemaKey, [TriggerInfo]>()
+    private let perSchemaTypesDedup = OnceTask<SchemaKey, [UserDefinedTypeInfo]>()
 
     struct SchemaKey: Hashable, Sendable {
         let connectionId: UUID
@@ -78,11 +78,11 @@ final class SchemaService {
         let continuation: CheckedContinuation<Void, Never>
     }
 
-    @ObservationIgnored private var loadGenerations: [UUID: Int] = [:]
-    @ObservationIgnored private var schemaLoadGenerations: [SchemaKey: Int] = [:]
-    @ObservationIgnored private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
-    @ObservationIgnored private var nextLoadGeneration = 0
-    @ObservationIgnored nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
+    private var loadGenerations: [UUID: Int] = [:]
+    private var schemaLoadGenerations: [SchemaKey: Int] = [:]
+    private var refreshWaiters: [UUID: [RefreshWaiter]] = [:]
+    private var nextLoadGeneration = 0
+    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SchemaService")
 
     func state(for connectionId: UUID) -> SchemaState {
         states[connectionId] ?? .idle
@@ -302,9 +302,13 @@ final class SchemaService {
     /// Re-fetches every schema the user has already expanded, in place. Without this a
     /// non-destructive refresh would leave those lists showing pre-refresh contents.
     func refreshLoadedSchemaObjects(connectionId: UUID, driver: DatabaseDriver) async {
+        /// A schema still loading is reloaded too. Its fetch may have begun before the change this
+        /// refresh answers, and reloading moves its generation so that fetch cannot commit.
         let loadedSchemas = (perSchemaStates[connectionId] ?? [:]).compactMap { schema, state -> String? in
-            guard case .loaded = state else { return nil }
-            return schema
+            switch state {
+            case .loaded, .loading: return schema
+            case .idle, .failed: return nil
+            }
         }
         for schema in loadedSchemas {
             await reloadSchemaObjects(connectionId: connectionId, schema: schema, driver: driver)
@@ -597,28 +601,78 @@ final class SchemaService {
         resumeRefreshWaiters(connectionId)
     }
 
+    /// Leased rather than handed the session driver, which is wherever a tab's execution last
+    /// pinned it. The object list follows the browse cursor, so reading from the shared handle
+    /// refreshed the sidebar with a container the user was not browsing.
     func refresh(connectionId: UUID) async {
         guard let session = DatabaseManager.shared.activeSessions[connectionId],
-              let driver = session.driver else {
+              let scope = DatabaseManager.shared.browseScope(for: connectionId) else {
             markLoadFailed(
                 connectionId: connectionId,
-                message: String(localized: "The connection is not available. Reconnect and try again.")
+                message: String(localized: "The connection is not available. Reconnect and try again."),
+                scope: nil
             )
             return
         }
         await prepareForReload(connectionId: connectionId)
-        await reload(
-            connectionId: connectionId,
-            driver: driver,
-            connection: session.connection,
-            scope: DatabaseManager.shared.browseScope(for: connectionId)
-        )
+        let connection = session.connection
+        do {
+            try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { [self] driver in
+                await reload(
+                    connectionId: connectionId,
+                    driver: driver,
+                    connection: connection,
+                    scope: scope
+                )
+            }
+        } catch {
+            markLoadFailed(connectionId: connectionId, message: error.localizedDescription, scope: scope)
+        }
     }
 
-    func markLoadFailed(connectionId: UUID, message: String) {
-        if case .loaded = state(for: connectionId) { return }
-        states[connectionId] = .failed(message)
+    /// For a load that failed before it could run, so no fetch is left to settle the other object
+    /// kinds. When the failed scope is not the one the loaded objects came from, as after a database
+    /// switch, every kind reports the failure instead of showing the database being left.
+    func markLoadFailed(connectionId: UUID, message: String, scope: DatabaseScope?) {
+        let leftLoadedScope = hasLeftLoadedScope(connectionId, for: scope)
+        guard settleTablesFailed(connectionId, message: message, leftLoadedScope: leftLoadedScope) else { return }
+        if leftLoadedScope {
+            updateSideObjects(connectionId) { $0 = Self.failed($0, message: message) }
+        }
         bumpGeneration(connectionId)
+    }
+
+    /// No recorded scope proves nothing about where the held objects came from: a table fetch that
+    /// failed for the database being browsed clears it while that database's routines still load.
+    private func hasLeftLoadedScope(_ connectionId: UUID, for scope: DatabaseScope?) -> Bool {
+        guard let scope, let loadedScope = loadedScopes[connectionId] else { return false }
+        return loadedScope != scope
+    }
+
+    /// Returns false when nothing changed, so a refresh that failed over tables it keeps publishes nothing.
+    private func settleTablesFailed(_ connectionId: UUID, message: String, leftLoadedScope: Bool) -> Bool {
+        let current = state(for: connectionId)
+        let next = current.settled(byFailure: message, discardingValue: leftLoadedScope)
+        guard next != current || leftLoadedScope else { return false }
+        states[connectionId] = next
+        if leftLoadedScope {
+            loadedScopes.removeValue(forKey: connectionId)
+        }
+        return true
+    }
+
+    /// A kind still idle was never browsed for this connection, so there is no fetch to report as failed.
+    private static func failed(_ side: SideObjects, message: String) -> SideObjects {
+        var next = side
+        next.routines = failed(side.routines, message: message)
+        next.triggers = failed(side.triggers, message: message)
+        next.userDefinedTypes = failed(side.userDefinedTypes, message: message)
+        return next
+    }
+
+    private static func failed<Value>(_ state: MetadataLoadState<Value>, message: String) -> MetadataLoadState<Value> {
+        if case .idle = state { return .idle }
+        return state.settled(by: .failed(message), discardingValue: true)
     }
 
     private func runLoad(
@@ -721,7 +775,9 @@ final class SchemaService {
             Self.logger.warning(
                 "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
             )
-            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+                bumpGeneration(connectionId)
+            }
         }
 
         let routinesOutcome = await routinesTask
@@ -811,7 +867,9 @@ final class SchemaService {
                 types: typesOutcome,
                 discardingValue: scopeChanged
             )
-            markLoadFailed(connectionId: connectionId, message: error.localizedDescription)
+            if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
+                bumpGeneration(connectionId)
+            }
             return
         }
 

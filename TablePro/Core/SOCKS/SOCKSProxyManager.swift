@@ -9,6 +9,7 @@ import os
 
 enum SOCKSProxyError: Error, LocalizedError, Equatable {
     case invalidConfiguration
+    case unsupportedOnThisSystem
     case listenerFailed(String)
     case connectTimedOut(proxyHost: String, proxyPort: Int)
     case connectFailed(proxyHost: String, proxyPort: Int, underlying: String)
@@ -17,6 +18,8 @@ enum SOCKSProxyError: Error, LocalizedError, Equatable {
         switch self {
         case .invalidConfiguration:
             return String(localized: "The SOCKS proxy configuration is incomplete. Enter a proxy host and port.")
+        case .unsupportedOnThisSystem:
+            return String(localized: "SOCKS proxy connections need macOS 14 or later. Use an SSH tunnel instead, or update macOS.")
         case .listenerFailed(let reason):
             return String(format: String(localized: "Could not open a local port for the SOCKS proxy: %@"), reason)
         case .connectTimedOut(let proxyHost, let proxyPort):
@@ -77,6 +80,11 @@ actor SOCKSProxyManager: TunnelManaging {
             try await closeTunnel(connectionId: connectionId)
         }
 
+        /// `ProxyConfiguration` is macOS 14. Network.framework offers no SOCKS5 path before
+        /// it, so the connection is refused with a reason rather than failing obscurely.
+        guard #available(macOS 14.0, *) else {
+            throw SOCKSProxyError.unsupportedOnThisSystem
+        }
         let privacyContext = Self.makePrivacyContext(connectionId: connectionId, config: config, password: password)
         try await probeProxyPath(config: config, privacyContext: privacyContext, targetHost: targetHost, targetPort: targetPort)
 
@@ -249,6 +257,7 @@ actor SOCKSProxyManager: TunnelManaging {
         UInt16(exactly: port).flatMap { $0 > 0 ? NWEndpoint.Port(rawValue: $0) : nil }
     }
 
+    @available(macOS 14.0, *)
     private static func makePrivacyContext(
         connectionId: UUID,
         config: SOCKSProxyConfiguration,

@@ -56,13 +56,16 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         "SELECT * FROM \(quoteIdentifier(table))"
     }
 
+    /// DynamoDB has no truncate. Emptying a table means scanning it and deleting every item in
+    /// batches, which is a long billed job rather than a statement, and DeleteTable plus
+    /// CreateTable loses the table's settings. Neither is what Truncate promises, so it stays
+    /// unoffered rather than offered as something else.
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
-        // DynamoDB does not support TRUNCATE; scan and delete all items
         nil
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        nil
+        DynamoDBOperations.dropTable(named: name, objectType: objectType)
     }
 
     init(config: DriverConnectionConfig) {
@@ -121,6 +124,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
         if DynamoDBQueryBuilder.isTaggedQuery(trimmed) {
             return try await executeTaggedQuery(trimmed, conn: conn, startTime: startTime)
+        }
+
+        if let table = DynamoDBOperations.droppedTableName(in: trimmed) {
+            return try await executeDropTable(table, conn: conn, startTime: startTime)
         }
 
         return try await executePartiQL(trimmed, conn: conn, startTime: startTime)
@@ -778,6 +785,25 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     // MARK: - Tagged Query Execution
+
+    /// Issues DeleteTable for the driver's own `DROP TABLE "x"` statement.
+    ///
+    /// The cached description goes with it, or a table recreated under the same name would be read
+    /// through the old key schema. DeleteTable returns once the table is DELETING rather than gone,
+    /// so the row count is reported as the one table the request named, not as work completed.
+    private func executeDropTable(
+        _ table: String, conn: DynamoDBConnection, startTime: Date
+    ) async throws -> PluginQueryResult {
+        _ = try await conn.deleteTable(tableName: table)
+        lock.withLock { _tableDescriptionCache.removeValue(forKey: table) }
+        return PluginQueryResult(
+            columns: ["result"],
+            columnTypeNames: ["String"],
+            rows: [[.text("DELETING")]],
+            rowsAffected: 1,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
+    }
 
     private func executeTaggedQuery(
         _ query: String, conn: DynamoDBConnection, startTime: Date

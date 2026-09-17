@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct ColumnVisibilityPopover: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
     let columns: [GridColumnEntry]
     let hiddenColumns: Set<String>
     let onToggleColumn: (String) -> Void
@@ -53,7 +54,7 @@ struct ColumnVisibilityPopover: View {
                 Button("Jump to Column…") { onJumpToColumn(searchText) }
                     .buttonStyle(.link)
                     .controlSize(.small)
-                    .help(AppSettingsManager.shared.keyboard.shortcutHint(
+                    .help(settingsManager.keyboard.shortcutHint(
                         String(localized: "Scroll to a column and put the cell cursor in it"),
                         for: .jumpToColumn
                     ))

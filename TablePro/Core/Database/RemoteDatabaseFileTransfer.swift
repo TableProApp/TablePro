@@ -37,10 +37,18 @@ struct RemoteFileFingerprint: Codable, Sendable, Equatable {
     let mainModified: Date
     let writeAheadLogSize: UInt64?
 
+    /// The log's modification time. A commit followed by a checkpoint can leave the main file and
+    /// the log's size unchanged and move only this: measured on Linux with the default
+    /// `journal_size_limit = -1`, three inserts took the row count up while `(mainSize, mainModified,
+    /// walSize)` all stayed put and only the log's mtime advanced. Without it a busy database reads
+    /// as untouched and the stale copy is reused.
+    var writeAheadLogModified: Date?
+
     func differs(from other: RemoteFileFingerprint) -> Bool {
         mainSize != other.mainSize
             || mainModified != other.mainModified
             || writeAheadLogSize != other.writeAheadLogSize
+            || writeAheadLogModified != other.writeAheadLogModified
     }
 }
 
@@ -121,7 +129,8 @@ enum RemoteDatabaseFileTransfer {
         return RemoteFileFingerprint(
             mainSize: main.size,
             mainModified: main.modified,
-            writeAheadLogSize: wal?.size
+            writeAheadLogSize: wal?.size,
+            writeAheadLogModified: wal?.modified
         )
     }
 
@@ -184,6 +193,12 @@ enum RemoteDatabaseFileTransfer {
 
         let workingCopy = destinationDirectory.appendingPathComponent(fileName)
         try replaceLocalItem(at: workingCopy, with: staging)
+        clearStaleSidecars(
+            layout: layout,
+            plan: plan,
+            destinationDirectory: destinationDirectory,
+            fileName: fileName
+        )
 
         let manifest = RemoteFileManifest(
             origin: identity.displayOrigin,
@@ -195,6 +210,7 @@ enum RemoteDatabaseFileTransfer {
             remoteSize: before.mainSize,
             remoteModified: before.mainModified,
             remoteWriteAheadLogSize: before.writeAheadLogSize,
+            remoteWriteAheadLogModified: before.writeAheadLogModified,
             downloadedSHA256: downloaded.sha256,
             snapshotMethod: plan.method
         )
@@ -206,6 +222,31 @@ enum RemoteDatabaseFileTransfer {
             """
         )
         return RemoteFetchResult(workingCopy: workingCopy, manifest: manifest, plan: plan)
+    }
+
+    /// A reader that opens a working copy must not find a `-wal` or `-shm` left over from a previous
+    /// copy of a different file, because SQLite would replay it against bytes it no longer matches.
+    ///
+    /// A snapshot is fully checkpointed and carries no log, so every stale sidecar goes. A direct
+    /// copy keeps the ones it just fetched (the server had them) and clears the rest, which is what
+    /// removes a `-wal` that the server has since checkpointed away.
+    static func clearStaleSidecars(
+        layout: DatabaseFileLayout,
+        plan: RemoteFetchPlan,
+        destinationDirectory: URL,
+        fileName: String
+    ) {
+        let kept: Set<String>
+        if case .directCopy(let sidecars) = plan {
+            kept = Set(sidecars)
+        } else {
+            kept = []
+        }
+        for suffix in layout.staleAfterReplaceSuffixes where !kept.contains(suffix) {
+            try? FileManager.default.removeItem(
+                at: destinationDirectory.appendingPathComponent(fileName + suffix)
+            )
+        }
     }
 
     /// Asks the server to write a consistent snapshot beside the database, fetches that, and removes
@@ -222,8 +263,15 @@ enum RemoteDatabaseFileTransfer {
         let snapshotPath = "\(remotePath).tablepro-snapshot-\(UUID().uuidString)"
         defer { session.remove(snapshotPath) }
 
-        let command = "\(executable) \(LibSSH2ExecChannel.shellQuoted(remotePath)) "
+        /// `umask 077` makes `VACUUM INTO` create the snapshot `0600` from the start, so a full copy
+        /// of a private database is never briefly world-readable beside it. The leading `rm` clears
+        /// any snapshot a previous fetch left behind when its session died before the `defer` above
+        /// could run; the glob is unquoted on purpose so the shell expands it, and errors are
+        /// swallowed because a first run has nothing to remove.
+        let quotedPath = LibSSH2ExecChannel.shellQuoted(remotePath)
+        let vacuum = "\(executable) \(quotedPath) "
             + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(sqlStringLiteral(snapshotPath))")
+        let command = "umask 077; rm -f \(quotedPath).tablepro-snapshot-* 2>/dev/null; \(vacuum)"
         let result = try session.runRemoteCommand(command)
         guard result.succeeded else {
             throw SFTPError.remoteCommandFailed(

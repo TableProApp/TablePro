@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct MultiLineEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
@@ -22,11 +23,11 @@ internal struct MultiLineEditorView: View {
             TextValueEditor(
                 text: context.value,
                 isEditable: !context.isReadOnly,
-                font: ThemeEngine.shared.valueFont,
+                font: themeEngine.valueFont,
                 movesFocusOnTab: true
             )
             .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
             .overlay(alignment: .topLeading) { placeholder }
             .overlay(alignment: .bottomTrailing) { popOutButton }
         }

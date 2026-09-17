@@ -3,9 +3,9 @@
 //  TableProTests
 //
 
+@testable import TablePro
 import TableProPluginKit
 import XCTest
-@testable import TablePro
 
 final class CrossEngineStructureTranslatorTests: XCTestCase {
     private func column(
@@ -20,7 +20,10 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         onUpdate: String? = nil,
         extra: String? = nil,
         generation: String? = nil,
-        isPrimaryKey: Bool = false
+        isPrimaryKey: Bool = false,
+        ddlSpelling: String? = nil,
+        ddlDefault: String? = nil,
+        ddlGenerationExpression: String? = nil
     ) -> EditableColumnDefinition {
         EditableColumnDefinition(
             id: UUID(),
@@ -37,7 +40,10 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
             extra: extra,
             generationExpression: generation,
             generationKind: generation == nil ? nil : .stored,
-            isPrimaryKey: isPrimaryKey
+            isPrimaryKey: isPrimaryKey,
+            ddlSpelling: ddlSpelling,
+            ddlDefault: ddlDefault,
+            ddlGenerationExpression: ddlGenerationExpression
         )
     }
 
@@ -96,6 +102,34 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         XCTAssertFalse(
             CrossEngineStructureTranslator.translate(source, from: .mysql, to: .mariadb).translated
         )
+    }
+
+    func testASameFamilyCopyKeepsTheServersTypeSpelling() {
+        let shape = column("shape", "geometry", ddlSpelling: "public.geometry(Point,4326)")
+        let result = CrossEngineStructureTranslator.translate(
+            snapshot(columns: [shape]), from: .postgresql, to: .postgresql
+        )
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), ["public.geometry(Point,4326)"])
+    }
+
+    /// `DATE` renders as `DATE` on MySQL, so a spelling cleared only by a changed `dataType` would
+    /// have carried PostgreSQL's text into a MySQL table.
+    func testATranslatedColumnCarriesNoSourceSpellings() {
+        let made = column("made", "DATE", defaultValue: "CURRENT_DATE", ddlSpelling: "date", ddlDefault: "CURRENT_DATE")
+        let shape = column(
+            "shape",
+            "geometry",
+            generation: "st_x(shape)",
+            ddlSpelling: "public.geometry(Point,4326)",
+            ddlGenerationExpression: "public.st_x(shape)"
+        )
+        let result = CrossEngineStructureTranslator.translate(
+            snapshot(columns: [made, shape]), from: .postgresql, to: .mysql
+        )
+        XCTAssertTrue(result.translated)
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlSpelling), [nil, nil])
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlDefault), [nil, nil])
+        XCTAssertEqual(result.snapshot.columns.map(\.ddlGenerationExpression), [nil, nil])
     }
 
     // MARK: - Types
@@ -311,7 +345,7 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         let source = snapshot(columns: [column("flag", "TINYINT(1)"), column("made", "DATETIME")])
         let result = CrossEngineStructureTranslator.translate(source, from: .mysql, to: .postgresql)
         XCTAssertEqual(result.targetKinds["flag"], .boolean)
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
     }
 
     /// The kinds describe what was written, not what was read. Carrying the source's answer over
@@ -326,12 +360,12 @@ final class CrossEngineStructureTranslatorTests: XCTestCase {
         ])
         let result = CrossEngineStructureTranslator.translate(source, from: .postgresql, to: .mysql)
 
-        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME", "JSON", "TINYINT(1)"])
-        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: nil, hasTimeZone: false))
+        XCTAssertEqual(result.snapshot.columns.map(\.dataType), ["DATETIME(6)", "JSON", "TINYINT(1)"])
+        XCTAssertEqual(result.targetKinds["made"], .timestamp(precision: 6, hasTimeZone: false))
         XCTAssertEqual(result.targetKinds["tags"], .json)
         XCTAssertEqual(result.targetKinds["live"], .boolean)
 
-        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: nil, hasTimeZone: true))
+        XCTAssertEqual(result.sourceKinds["made"], .timestamp(precision: 6, hasTimeZone: true))
         XCTAssertEqual(result.sourceKinds["tags"], .array(element: .integer(bytes: 4)))
         XCTAssertEqual(result.sourceKinds["live"], .boolean)
     }

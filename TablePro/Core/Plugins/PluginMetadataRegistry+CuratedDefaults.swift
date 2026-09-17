@@ -11,7 +11,7 @@ import TableProPluginKit
 /// The primary type ids here are overwritten by `buildMetadataSnapshot` the moment the plugin
 /// registers, so these are the pre-load answer for those. For a variant id they are the whole
 /// answer: `registerVariant` keeps the curated entry and ignores the plugin's own statics, which
-/// is the only reason MariaDB, TiDB, Databend, Redshift, CockroachDB and PGlite can differ from
+/// is the only reason MariaDB, TiDB, Databend, OceanBase, Redshift, CockroachDB and PGlite can differ from
 /// the plugin that drives them.
 extension PluginMetadataRegistry {
     // swiftlint:disable:next function_body_length
@@ -268,7 +268,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -277,14 +278,18 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
+                    systemDatabaseNames: [
+                        "information_schema", "mysql", "performance_schema", "sys",
+                        "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"
+                    ],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -332,7 +337,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    browsingRequiresSelectedDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -341,14 +347,18 @@ extension PluginMetadataRegistry {
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
-                    systemDatabaseNames: ["information_schema", "mysql", "performance_schema", "sys"],
+                    systemDatabaseNames: [
+                        "information_schema", "mysql", "performance_schema", "sys",
+                        "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA"
+                    ],
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
                     structureColumnFields: [
                         .name, .type, .nullable, .defaultValue, .generated, .generationExpression,
                         .onUpdate, .autoIncrement, .comment, .charset, .collation
-                    ]
+                    ],
+                    rowMatchTextTypePrefixes: mysqlRowMatchTextTypePrefixes
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -392,6 +402,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -411,7 +424,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -458,6 +471,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     defaultSSLMode: .preferred
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
@@ -468,7 +483,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["padb_harvest"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
@@ -523,6 +538,8 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: true,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
                     supportsAddColumn: false,
                     supportsModifyColumn: false,
                     supportsDropColumn: false,
@@ -543,7 +560,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: ["system"],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -590,6 +607,9 @@ extension PluginMetadataRegistry {
                     supportsRenameDatabase: false,
                     supportsRenameSchema: true,
                     supportsDropSchema: true,
+                    supportsCreateSchema: true,
+                    supportsSchemaOwner: true,
+                    supportsSchemaPrivileges: true,
                     supportsRenameColumn: true,
                     supportsTriggers: true,
                     supportsTriggerEditing: true,
@@ -609,7 +629,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["pg_catalog", "information_schema", "pg_toast"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [
@@ -666,7 +686,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     supportsCloudflareTunnel: false,
                     localFilePathField: .database,
-                    supportsRemoteDatabaseFile: true
+                    supportsRemoteDatabaseFile: true,
+                    supportsRemoteDatabaseSession: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

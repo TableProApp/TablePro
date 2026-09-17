@@ -28,7 +28,7 @@ struct ResultSuccessView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.largeTitle)
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusSuccess))
+                .foregroundStyle(.green)
             Text(primaryMessage)
                 .font(.body)
             if let time = executionTime {

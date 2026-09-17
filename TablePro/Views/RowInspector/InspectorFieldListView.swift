@@ -12,7 +12,7 @@ import SwiftUI
 /// 100 columns or 2000. `Form(.formStyle(.grouped))` builds every row eagerly, four subviews each,
 /// and costs 525ms at 2000. A wide table would have paid that on every selection change.
 internal struct InspectorFieldListView: View {
-    internal let editState: MultiRowEditState
+    @ObservedObject internal var editState: MultiRowEditState
     internal let isEditable: Bool
     internal let databaseType: DatabaseType
     internal let userDefinedTypeScope: DatabaseScope?
@@ -37,7 +37,7 @@ internal struct InspectorFieldListView: View {
                 fieldList(fields)
             }
         }
-        .onChange(of: editState.fields.map(\.columnName)) {
+        .onChange(of: editState.fields.map(\.columnName)) { _ in
             expandedFieldID = nil
             focusedField = nil
         }
@@ -101,7 +101,7 @@ internal struct InspectorFieldListView: View {
     }
 
     private var emptyFilterState: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "No Matching Fields"),
             systemImage: "line.3.horizontal.decrease.circle",
             description: Text(String(localized: "No field matches the current filter"))
@@ -129,15 +129,10 @@ internal struct InspectorFieldListView: View {
         /// at 10. `.plain` lands at half of `intercellSpacing` and can be corrected onto the edge.
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .onKeyPress(keys: [.tab]) { press in
-            moveFocus(within: fields, forward: !press.modifiers.contains(.shift))
-        }
-        .onKeyPress(keys: ["n", "d"]) { press in
-            guard press.modifiers.contains(.control), press.modifiers.contains(.option) else {
-                return .ignored
-            }
-            return applyStateShortcut(press.key)
-        }
+        .modifier(InspectorFieldKeyShortcuts(
+            moveFocus: { forward in moveFocus(within: fields, forward: forward) },
+            applyStateShortcut: applyStateShortcut
+        ))
     }
 
     @ViewBuilder
@@ -203,7 +198,7 @@ internal struct InspectorFieldListView: View {
     /// Handled while there is another field to reach, ignored at either end so the key falls
     /// through and focus can leave the list for the search field, the filter and the view-mode
     /// control. Wrapping around instead trapped the keyboard inside the row for good.
-    private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPress.Result {
+    private func moveFocus(within fields: [FieldEditState], forward: Bool) -> KeyPressResultCompat {
         guard !fields.isEmpty else { return .ignored }
         guard let current = focusedField, let index = fields.firstIndex(where: { $0.id == current }) else {
             focusedField = forward ? fields.first?.id : fields.last?.id
@@ -218,7 +213,7 @@ internal struct InspectorFieldListView: View {
         return .handled
     }
 
-    private func applyStateShortcut(_ key: KeyEquivalent) -> KeyPress.Result {
+    private func applyStateShortcut(_ key: Character) -> KeyPressResultCompat {
         guard isEditable,
               let focusedField,
               let field = editState.fields.first(where: { $0.id == focusedField }),
@@ -231,5 +226,42 @@ internal struct InspectorFieldListView: View {
             editState.setFieldToDefault(at: field.columnIndex)
         }
         return .handled
+    }
+}
+
+/// `onKeyPress` is macOS 14, and `KeyPress` cannot appear outside the check, so the handlers
+/// are gated as a pair. Tab still moves focus on macOS 13 through the responder chain; what is
+/// lost there is the Control-Option state shortcut, which the field's own menu also offers.
+private struct InspectorFieldKeyShortcuts: ViewModifier {
+    let moveFocus: (Bool) -> KeyPressResultCompat
+    let applyStateShortcut: (Character) -> KeyPressResultCompat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+                .onKeyPress(keys: [.tab]) { press in
+                    moveFocus(!press.modifiers.contains(.shift)).resolved
+                }
+                .onKeyPress(keys: ["n", "d"]) { press in
+                    guard press.modifiers.contains(.control), press.modifiers.contains(.option) else {
+                        return .ignored
+                    }
+                    return applyStateShortcut(press.characters.first ?? " ").resolved
+                }
+        } else {
+            content
+        }
+    }
+}
+
+/// Mirrors `KeyPress.Result`, which is macOS 14, so the handlers can be declared outside the check.
+internal enum KeyPressResultCompat {
+    case handled
+    case ignored
+
+    @available(macOS 14.0, *)
+    var resolved: KeyPress.Result {
+        self == .handled ? .handled : .ignored
     }
 }

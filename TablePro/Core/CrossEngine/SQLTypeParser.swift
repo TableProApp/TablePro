@@ -46,6 +46,28 @@ internal enum SQLTypeParser {
         )
     }
 
+    /// A column whose catalog also reported the type the way its `CREATE TABLE` writes it.
+    ///
+    /// The two spellings carry different facts. PostgreSQL's `information_schema` reports
+    /// `numeric(10,2)` as `numeric`, `varchar(50)` as `character varying` and `timestamp(3)` as
+    /// `timestamp without time zone`, so a copy read from it alone rounded every amount to a whole
+    /// number and every timestamp to a whole second. `format_type` keeps the modifier, and it is read
+    /// first. It also names a type outside `pg_catalog` by its schema, `public.geometry(Point,4326)`
+    /// or `public.citext`, which no family's table holds while the display spelling `geometry` does,
+    /// so a catalog spelling that names nothing gives way to the display one.
+    internal static func parse(
+        _ dataType: String,
+        catalogSpelling: String?,
+        family: SQLTypeFamily
+    ) -> CanonicalColumnType {
+        guard let catalogSpelling, !catalogSpelling.isEmpty else {
+            return parse(dataType, family: family)
+        }
+        let catalog = parse(catalogSpelling, family: family)
+        guard catalog.kind.isUnsupported else { return catalog }
+        return parse(dataType, family: family)
+    }
+
     // MARK: - Shape
 
     /// ClickHouse writes nullability and its dictionary encoding into the type itself, and both
@@ -172,8 +194,19 @@ internal enum SQLTypeParser {
 
     internal static func length(_ params: String?) -> Int? { integers(in: params).first }
 
+    /// The precision a decimal that declares none is read with, everywhere but PostgreSQL.
+    ///
+    /// MySQL, SQL Server and ClickHouse report one on every column, and a spelling without one means
+    /// a fixed default rather than no limit. Oracle reports none both for an unconstrained `NUMBER`
+    /// and for an `INTEGER`, whose scale is zero, and 38 digits with no scale keeps every such
+    /// integer exact on the target.
+    internal static let undeclaredDecimalPrecision = 38
+
     internal static func decimalKind(_ params: String?) -> CanonicalTypeKind {
         let numbers = integers(in: params)
-        return .decimal(precision: numbers.first, scale: numbers.count > 1 ? numbers[1] : nil)
+        return .decimal(
+            precision: numbers.first ?? undeclaredDecimalPrecision,
+            scale: numbers.count > 1 ? numbers[1] : nil
+        )
     }
 }

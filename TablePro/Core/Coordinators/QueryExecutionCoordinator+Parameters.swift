@@ -33,7 +33,7 @@ private struct PreparedStatement: @unchecked Sendable {
 /// so the tab, the history and the error sheet are updated after the driver is released.
 private enum MultiStatementOutcome {
     case completed(results: [QueryResult])
-    case failed(results: [QueryResult], failedSQL: String?, errorDescription: String)
+    case failed(results: [QueryResult], failure: MultiStatementFailure, errorDescription: String)
     case cancelled
 }
 
@@ -164,6 +164,9 @@ extension QueryExecutionCoordinator {
                         rowCap: rowCap
                     )
                 }
+                CatalogChangeService.post(
+                    .statementsRan(connectionId: conn.id, statements: [statement.sql], databaseType: conn.type)
+                )
 
                 guard !Task.isCancelled else {
                     schemaTask?.cancel()
@@ -212,6 +215,9 @@ extension QueryExecutionCoordinator {
                 }
             } catch {
                 schemaTask?.cancel()
+                CatalogChangeService.post(
+                    .statementsRan(connectionId: conn.id, statements: [statement.sql], databaseType: conn.type)
+                )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard parent.tabExecution.settle(claim) else { return }
@@ -281,7 +287,12 @@ extension QueryExecutionCoordinator {
         let totalCount = statements.count
         let tabType = parent.tabManager.tabs[index].tabType
 
-        let transactionKind = OperationKind.worst(of: statements.map(\.sql), databaseType: conn.type)
+        let statementTexts = statements.map(\.sql)
+        let transactionKind = OperationKind.worst(of: statementTexts, databaseType: conn.type)
+        let wrapsInTransaction = BatchTransactionPolicy.wrapsInTransaction(
+            statementTexts,
+            dialect: SqlDialect.from(databaseTypeId: conn.type.rawValue)
+        )
         let prepared = statements.map { statement in
             prepareStatement(
                 statement: statement,
@@ -298,8 +309,23 @@ extension QueryExecutionCoordinator {
             let outcome = await runMultiStatementTransaction(
                 prepared: prepared,
                 scope: scope,
-                mode: transactionKind.declaresWrite ? .readWrite : .serverDefault,
+                mode: transactionKind.transactionAccessMode,
+                wrapsInTransaction: wrapsInTransaction,
                 claim: claim
+            )
+
+            let ranStatements: [String]
+            switch outcome {
+            case .completed:
+                ranStatements = prepared.map(\.sentSQL)
+            case .failed(let results, let failure, _):
+                let ranCount = failure.ranStatementCount(executedCount: results.count, totalCount: prepared.count)
+                ranStatements = prepared.prefix(ranCount).map(\.sentSQL)
+            case .cancelled:
+                ranStatements = prepared.map(\.sentSQL)
+            }
+            CatalogChangeService.post(
+                .statementsRan(connectionId: conn.id, statements: ranStatements, databaseType: conn.type)
             )
 
             switch outcome {
@@ -324,7 +350,7 @@ extension QueryExecutionCoordinator {
                     totalRowsAffected: results.reduce(0) { $0 + $1.rowsAffected },
                     newResultSets: resultSets
                 )
-            case .failed(let results, let failedSQL, let errorDescription):
+            case .failed(let results, let failure, let errorDescription):
                 var resultSets = applyExecutedStatements(
                     prepared: prepared,
                     results: results,
@@ -341,7 +367,7 @@ extension QueryExecutionCoordinator {
                     executedCount: results.count,
                     totalCount: totalCount,
                     timing: PluginQueryTiming.batch(of: results),
-                    failedSQL: failedSQL,
+                    failure: failure,
                     resultSets: &resultSets
                 )
             }
@@ -377,6 +403,7 @@ extension QueryExecutionCoordinator {
         prepared: [PreparedStatement],
         scope: DatabaseScope,
         mode: PluginTransactionAccessMode,
+        wrapsInTransaction: Bool,
         claim: TabExecutionClaim
     ) async -> MultiStatementOutcome {
         do {
@@ -388,6 +415,7 @@ extension QueryExecutionCoordinator {
                 await self.runPreparedStatements(
                     prepared,
                     mode: mode,
+                    wrapsInTransaction: wrapsInTransaction,
                     claim: claim,
                     driver: driver
                 )
@@ -396,29 +424,30 @@ extension QueryExecutionCoordinator {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
                 return .cancelled
             }
-            return .failed(results: [], failedSQL: nil, errorDescription: error.localizedDescription)
+            return .failed(results: [], failure: .connection, errorDescription: error.localizedDescription)
         }
     }
 
     private func runPreparedStatements(
         _ prepared: [PreparedStatement],
         mode: PluginTransactionAccessMode,
+        wrapsInTransaction: Bool,
         claim: TabExecutionClaim,
         driver: DatabaseDriver
     ) async -> MultiStatementOutcome {
-        let useTransaction = driver.supportsTransactions
+        let useTransaction = wrapsInTransaction && driver.supportsTransactions
         if useTransaction {
             do {
                 try await driver.beginTransaction(mode: mode)
             } catch {
-                return .failed(results: [], failedSQL: nil, errorDescription: error.localizedDescription)
+                return .failed(results: [], failure: .transactionStart, errorDescription: error.localizedDescription)
             }
         }
 
         var results: [QueryResult] = []
         for statement in prepared {
             guard !Task.isCancelled, parent.tabExecution.isCurrent(claim) else {
-                await rollback(driver: driver, useTransaction: useTransaction)
+                await rollbackAfterStop(driver: driver, appOpenedTransaction: useTransaction)
                 return .cancelled
             }
             do {
@@ -429,10 +458,10 @@ extension QueryExecutionCoordinator {
                     parameters: statement.parameterValues
                 ))
             } catch {
-                await rollback(driver: driver, useTransaction: useTransaction)
+                await rollbackAfterStop(driver: driver, appOpenedTransaction: useTransaction)
                 return .failed(
                     results: results,
-                    failedSQL: statement.executableSQL,
+                    failure: .statement(sql: statement.executableSQL),
                     errorDescription: error.localizedDescription
                 )
             }
@@ -442,18 +471,22 @@ extension QueryExecutionCoordinator {
             do {
                 try await driver.commitTransaction()
             } catch {
-                await rollback(driver: driver, useTransaction: useTransaction)
-                return .failed(results: results, failedSQL: nil, errorDescription: error.localizedDescription)
+                await rollbackAfterStop(driver: driver, appOpenedTransaction: useTransaction)
+                return .failed(results: results, failure: .commit, errorDescription: error.localizedDescription)
             }
         }
         return .completed(results: results)
     }
 
-    private func rollback(driver: DatabaseDriver, useTransaction: Bool) async {
-        guard useTransaction else { return }
+    private func rollbackAfterStop(driver: DatabaseDriver, appOpenedTransaction: Bool) async {
+        guard driver.supportsTransactions else { return }
         do {
             try await driver.rollbackTransaction()
         } catch {
+            guard appOpenedTransaction else {
+                paramLog.debug("No open script transaction to roll back: \(error.localizedDescription, privacy: .public)")
+                return
+            }
             paramLog.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -564,39 +597,25 @@ extension QueryExecutionCoordinator {
         executedCount: Int,
         totalCount: Int,
         timing: PluginQueryTiming,
-        failedSQL: String?,
+        failure: MultiStatementFailure,
         resultSets: inout [ResultSet]
     ) async {
         let cumulativeTime = timing.total
-        /// A statement failure knows which statement it was: `executedCount` counts the ones that finished, so the
-        /// next one is the one that threw. A commit failure knows no such thing. Every statement ran and the
-        /// transaction failed on the way out, so numbering it `executedCount + 1` invented a statement past the end
-        /// of the script and then blamed the last statement that had actually succeeded, which went to the error
-        /// sheet, to Fix with AI, and into history a second time as a failure it never was.
-        let failedStatement = executedCount < statements.count ? statements[executedCount] : nil
-        let contextMsg: String
-        let errorLabel: String
-        if failedSQL != nil {
-            let position = min(executedCount + 1, totalCount)
-            contextMsg = String(
-                format: String(localized: "Statement %1$d/%2$d failed: %3$@"),
-                position, totalCount, errorDescription
-            )
-            errorLabel = String(format: String(localized: "Error %d"), position)
-        } else {
-            contextMsg = String(
-                format: String(localized: "The transaction could not be committed: %@"),
-                errorDescription
-            )
-            errorLabel = String(localized: "Error")
-        }
+        let report = failure.report(
+            executedCount: executedCount,
+            totalCount: totalCount,
+            errorDescription: errorDescription
+        )
+        let contextMsg = report.message
 
-        let errorRS = ResultSet(label: errorLabel)
+        let errorRS = ResultSet(label: report.resultLabel)
         errorRS.errorMessage = contextMsg
-        errorRS.statementAnchor = failedSQL == nil ? nil : failedStatement.map(StatementAnchor.init)
+        errorRS.statementAnchor = report.failedStatementIndex
+            .flatMap { statements.indices.contains($0) ? statements[$0] : nil }
+            .map(StatementAnchor.init)
         resultSets.append(errorRS)
 
-        let failedStatementSQL = failedSQL ?? failedStatement?.sql
+        let failedStatementSQL = report.failedSQL
         let capturedResultSets = resultSets
         await MainActor.run { [weak self] in
             guard let self else { return }
@@ -611,7 +630,7 @@ extension QueryExecutionCoordinator {
             parent.flushBufferToActiveResult(tabId: tabId, pinnedOnly: true)
             parent.tabManager.mutate(tabId: tabId) { tab in
                 tab.execution.errorMessage = contextMsg
-                tab.execution.errorQuery = failedStatementSQL ?? ""
+                tab.execution.errorQuery = failedStatementSQL
                 tab.execution.executionTime = cumulativeTime
                 tab.execution.lastExecutedAt = Date()
 
@@ -627,8 +646,6 @@ extension QueryExecutionCoordinator {
                 parent.announceQueryError(contextMsg)
             }
 
-            /// Only a statement that actually failed goes to history. A commit failure would otherwise write the
-            /// last statement that succeeded in a second time, marked as a failure.
             guard let rawSQL = failedStatementSQL else { return }
             let recordSQL = rawSQL.hasSuffix(";") ? rawSQL : rawSQL + ";"
             recordHistory(

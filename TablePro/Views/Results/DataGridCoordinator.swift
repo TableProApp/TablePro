@@ -41,6 +41,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Headings this grid must refuse an edit for while the rest of it stays editable. See
     /// `DataGridConfiguration.lockedColumns`.
     var lockedColumns: Set<String> = []
+    var checkboxColumns: Set<Int> = []
+    var supportsColumnCommands = true
     var valueFilteredIDs: [RowID]? { didSet { bumpDisplayRevision() } }
     /// Ticks whenever the displayed row order or the value filter changes.
     ///
@@ -249,6 +251,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.isEditable = isEditable
         editRefusalMessage = configuration.editRefusalMessage
         lockedColumns = configuration.lockedColumns
+        checkboxColumns = configuration.checkboxColumns
+        supportsColumnCommands = configuration.supportsColumnCommands
         tableView?.toolTip = isEditable ? nil : configuration.editRefusalMessage
         dropdownColumns = configuration.dropdownColumns
         typePickerColumns = configuration.typePickerColumns
@@ -617,8 +621,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             .sink { [weak self] _ in
                 if let tableView = self?.tableView {
                     DataGridBodyChrome.applyBackground(to: tableView)
-                    tableView.headerView?.needsDisplay = true
-                    tableView.cornerView?.needsDisplay = true
                 }
                 self?.reloadVisibleRowsAndStates()
                 /// The row-number font is a theme value and it decides the column's width, which
@@ -626,7 +628,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 /// the width was already going stale here.
                 self?.resizeRowNumberColumnForCurrentRange()
                 self?.repaintRowGutter()
-                self?.selectionController.overlay?.needsDisplay = true
             }
     }
 
@@ -799,6 +800,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func applyFullReplace() {
+        overlayEditor?.dismiss(commit: false)
+        overlayViewer?.dismiss()
         dismissPopoversBoundToDisplayPositions()
         pruneStaleValueFilters()
         guard let tableView else { return }
@@ -818,35 +821,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         visualIndex.rebuild(from: changeManager)
         tableView.reloadData()
         startBackgroundPrewarm()
-    }
-
-    /// Selects and reveals the row a navigation asked this grid to land on.
-    ///
-    /// Pushed in when the rows land rather than polled from the update pass, the way
-    /// `applyFindMatch(_:)` is. A miss is silent and final: the row may have been deleted, moved to
-    /// another page, or hidden by a value filter, and none of those is worth telling the reader
-    /// about when the view they asked for is otherwise back.
-    func selectRow(matchingKey key: [String: String]) {
-        guard let tableView else { return }
-        let tableRows = tableRowsProvider()
-
-        let keyColumns = key.compactMap { name, value in
-            tableRows.columns.firstIndex(of: name).map { (column: $0, value: value) }
-        }
-        guard keyColumns.count == key.count else { return }
-
-        guard let match = tableRows.rows.first(where: { row in
-            keyColumns.allSatisfy { row[$0.column].asText == $0.value }
-        }) else { return }
-
-        guard let displayIndex = DisplayRowMapping.displayIndex(
-            forRowID: match.id,
-            displayIDs: displayIDs,
-            in: tableRows
-        ), displayIndex < tableView.numberOfRows else { return }
-
-        selectRowsProgrammatically(IndexSet(integer: displayIndex), in: tableView)
-        tableView.scrollRowToVisible(displayIndex)
     }
 
     /// A selection the app made, not the reader. The flag is what keeps the selection delegate from
@@ -1114,8 +1088,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             dismissPopoversBoundToDisplayPositions()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
-            overlayEditor?.dismiss(commit: false)
-            overlayViewer?.dismiss()
             applyFullReplace()
         }
     }
@@ -1316,11 +1288,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         refreshCellPresentations()
     }
 
-    func scrollToTop() {
-        guard let tableView, tableView.numberOfRows > 0 else { return }
-        tableView.scrollRowToVisible(0)
-    }
-
     @discardableResult
     func rebuildColumnMetadataCache(from tableRows: TableRows) -> Bool {
         let columns = tableRows.columns
@@ -1359,7 +1326,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             isDropdown: dropdownColumns?.contains(columnIndex) == true,
             isTypePicker: typePickerColumns?.contains(columnIndex) == true,
             isEnumOrSet: enumOrSetColumns.contains(columnIndex),
-            isEditable: isEditable
+            isEditable: isEditable,
+            isCheckbox: checkboxColumns.contains(columnIndex)
         )
     }
 
@@ -1440,8 +1408,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 // MARK: - DataGridCellAccessoryDelegate
 
 extension TableViewCoordinator: DataGridCellAccessoryDelegate {
-    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, openInNewTab: Bool) {
-        handleFKArrowAction(row: row, columnIndex: columnIndex, openInNewTab: openInNewTab)
+    func dataGridCellDidClickFKArrow(row: Int, columnIndex: Int, intent: ReferenceOpenIntent) {
+        handleFKArrowAction(row: row, columnIndex: columnIndex, intent: intent)
     }
 
     func dataGridCellDidClickChevron(row: Int, columnIndex: Int) {

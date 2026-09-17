@@ -17,6 +17,9 @@ import UniformTypeIdentifiers
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
+    /// The database type of the connection the structure rows were copied from, so a paste can tell
+    /// a row said in its own engine's SQL from one said in another's.
+    static let structureSourceTypePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure.database-type")
 
     /// Whether the clipboard holds structure rows this view can paste. Structure paste reads its
     /// own pasteboard type and nothing else, so the plain text a structure copy also writes is not
@@ -30,9 +33,9 @@ struct TableStructureView: View {
     let databaseName: String
     let schemaName: String?
 
-    let toolbarState: ConnectionToolbarState
+    @ObservedObject var toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
-    let selectionState: GridSelectionState
+    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) var services
 
@@ -47,7 +50,7 @@ struct TableStructureView: View {
 
     /// Everything the user has staged, plus the baseline it is staged against. Held outside this
     /// view because the view is destroyed whenever the tab is deselected or switched to Data.
-    let session: StructureEditingSession
+    @ObservedObject var session: StructureEditingSession
 
     /// What kind of object the tab is open on, which decides every edit it may offer.
     ///
@@ -139,7 +142,11 @@ struct TableStructureView: View {
         nonmutating set { session.tabData = newValue }
     }
 
-    var structureChangeManager: StructureChangeManager { session.changeManager }
+    /// Observed in its own right, not reached through `session`. The session is observed, but a
+    /// change inside the manager it owns fires the manager's publisher and never the session's, so
+    /// every `onChange` below that reads the manager went deaf: staging a column, an index or a
+    /// foreign key reloaded no grid and left Save disabled, so Command+S did nothing.
+    @ObservedObject var structureChangeManager: StructureChangeManager
 
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
     @State var showCopyConfirmation = false
@@ -172,6 +179,7 @@ struct TableStructureView: View {
         self.coordinator = coordinator
         self.selectionState = selectionState
         self.session = session
+        self.structureChangeManager = session.changeManager
     }
 
     var body: some View {
@@ -182,20 +190,20 @@ struct TableStructureView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
-        .onChange(of: selectedRows) { _, newRows in
+        .onChange(of: selectedRows) { newRows in
             selectionState.indices = newRows
             publishFooterCapability()
         }
-        .onChange(of: selectedTab) { _, newValue in
+        .onChange(of: selectedTab) { newValue in
             onSelectedTabChanged(newValue)
             publishFooterCapability()
         }
-        .onChange(of: columns) { onColumnsChanged() }
-        .onChange(of: indexes) { onIndexesChanged() }
-        .onChange(of: foreignKeys) { onForeignKeysChanged() }
-        .onChange(of: checkConstraints) { onCheckConstraintsChanged() }
-        .onChange(of: searchText) { displayVersion += 1 }
-        .onChange(of: displayVersion) { updateGridDelegate() }
+        .onChange(of: columns) { _ in onColumnsChanged() }
+        .onChange(of: indexes) { _ in onIndexesChanged() }
+        .onChange(of: foreignKeys) { _ in onForeignKeysChanged() }
+        .onChange(of: checkConstraints) { _ in onCheckConstraintsChanged() }
+        .onChange(of: searchText) { _ in displayVersion += 1 }
+        .onChange(of: displayVersion) { _ in updateGridDelegate() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
@@ -256,14 +264,14 @@ struct TableStructureView: View {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: structureChangeManager.hasChanges) { _, newValue in
+        .onChange(of: structureChangeManager.hasChanges) { newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
             updateGridDelegate()
         }
-        .onChange(of: session.appliedVersion) { _, _ in
+        .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
         }
-        .onChange(of: structureChangeManager.reloadVersion) { _, _ in
+        .onChange(of: structureChangeManager.reloadVersion) { _ in
             // Any mutation that does not toggle hasChanges (add row when changes
             // already exist, undo to a still-dirty state) only bumps reloadVersion.
             // Bump displayVersion so SwiftUI re-evaluates structureGrid with a fresh
@@ -311,8 +319,7 @@ struct TableStructureView: View {
     }
 
     private var toolbar: some View {
-        @Bindable var session = session
-        return HStack {
+        HStack {
             Spacer()
 
             Picker("Structure", selection: $session.selectedTab) {
@@ -396,7 +403,8 @@ struct TableStructureView: View {
         case .parts:
             ClickHousePartsView(
                 tableName: tableName,
-                connectionId: connection.id,
+                scope: scope,
+                connection: connection,
                 reloadToken: partsReloadToken
             )
         }
@@ -466,7 +474,6 @@ struct TableStructureView: View {
     }
 
     private var structureGrid: some View {
-        @Bindable var session = session
         let provider = makeCurrentProvider()
         let canEdit = editGate.allowsAnyEdit
         let customOptions = provider.customDropdownOptions
@@ -527,7 +534,7 @@ struct TableStructureView: View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.largeTitle)
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             RevealedTextView(message)
                 .foregroundStyle(.secondary)

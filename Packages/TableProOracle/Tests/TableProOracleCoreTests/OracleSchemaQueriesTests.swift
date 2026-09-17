@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProOracleCore
+import XCTest
 
 final class OracleSchemaQueriesTests: XCTestCase {
     func testSchemaOwnerIsEscapedInEveryQuery() {
@@ -33,6 +33,87 @@ final class OracleSchemaQueriesTests: XCTestCase {
 
         let view = OracleSchemaQueries.parseTableRow([.string("EMP_VIEW"), .string("VIEW")])
         XCTAssertEqual(view, OracleTableRow(name: "EMP_VIEW", isView: true))
+    }
+
+    func testParseTableRowReadsPartitioningSeparatelyFromTheCount() {
+        let counted = OracleSchemaQueries.parseTableRow([
+            .string("ORDERS"), .string("BASE TABLE"), .string("Y"), .string("12")
+        ])
+        XCTAssertEqual(counted, OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, partitionCount: 12))
+
+        let plain = OracleSchemaQueries.parseTableRow([
+            .string("EMPLOYEES"), .string("BASE TABLE"), .string("N"), .null
+        ])
+        XCTAssertEqual(plain, OracleTableRow(name: "EMPLOYEES", isView: false))
+    }
+
+    /// An interval-partitioned table reports a count that means the range the server will extend
+    /// into rather than the partitions it holds, so the query omits it. The table is still
+    /// partitioned, and reading the missing count as "not partitioned" would hide its partitions.
+    func testIntervalPartitionedTableStaysPartitionedWithoutACount() {
+        let interval = OracleSchemaQueries.parseTableRow([
+            .string("EVENTS"), .string("BASE TABLE"), .string("Y"), .null
+        ])
+        XCTAssertEqual(interval?.isPartitioned, true)
+        XCTAssertNil(interval?.partitionCount)
+    }
+
+    func testTableListingReadsPartitioningFromAllPartTables() {
+        let sql = OracleSchemaQueries.tables(schema: "HR")
+        XCTAssertTrue(sql.contains("LEFT JOIN all_part_tables pt"))
+        XCTAssertTrue(sql.contains("CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END"))
+        XCTAssertTrue(sql.contains("CASE WHEN pt.interval IS NULL THEN pt.partition_count END"))
+    }
+
+    /// `HIGH_VALUE` is a LONG column OracleNIO cannot decode, so it must never be selected.
+    func testPartitionQueriesNeverReadHighValue() {
+        let partitions = OracleSchemaQueries.partitions(schema: "HR", table: "ORDERS")
+        let subpartitions = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS")
+        XCTAssertFalse(partitions.lowercased().contains("high_value"))
+        XCTAssertFalse(subpartitions.lowercased().contains("high_value"))
+        XCTAssertTrue(partitions.contains("p.table_owner = 'HR'"))
+        XCTAssertTrue(subpartitions.contains("s.table_name = 'ORDERS'"))
+    }
+
+    /// Every subpartition of the table in one statement, carrying its parent's name so the rows
+    /// group in memory. Asking per partition was one round trip each, and one timeout among
+    /// hundreds discarded the whole answer.
+    func testSubpartitionsAreFetchedForTheWholeTableAtOnce() {
+        let sql = OracleSchemaQueries.subpartitions(schema: "HR", table: "ORDERS")
+        XCTAssertTrue(sql.contains("s.partition_name"))
+        XCTAssertFalse(sql.contains("s.partition_name = '"))
+        XCTAssertTrue(sql.contains("ORDER BY s.partition_name, s.subpartition_position"))
+    }
+
+    func testParseSubpartitionRowCarriesItsParentName() {
+        let parsed = OracleSchemaQueries.parseSubpartitionRow([
+            .string("P1"), .string("P1_SP2"), .string("2"), .string("40")
+        ])
+        XCTAssertEqual(parsed?.parent, "P1")
+        XCTAssertEqual(parsed?.row.name, "P1_SP2")
+        XCTAssertEqual(parsed?.row.position, 2)
+        XCTAssertEqual(parsed?.row.rowCount, 40)
+        XCTAssertEqual(parsed?.row.isSubpartitioned, false)
+    }
+
+    func testParseSubpartitionRowNeedsBothNames() {
+        XCTAssertNil(OracleSchemaQueries.parseSubpartitionRow([.string("P1")]))
+        XCTAssertNil(OracleSchemaQueries.parseSubpartitionRow([.null, .string("P1_SP1")]))
+    }
+
+    func testParsePartitionRowReadsSubpartitionCount() {
+        let composite = OracleSchemaQueries.parsePartitionRow([
+            .string("P1"), .string("2"), .string("500"), .string("4")
+        ])
+        XCTAssertEqual(composite?.isSubpartitioned, true)
+        XCTAssertEqual(composite?.position, 2)
+        XCTAssertEqual(composite?.rowCount, 500)
+
+        let leaf = OracleSchemaQueries.parsePartitionRow([
+            .string("P2"), .string("3"), .null, .string("0")
+        ])
+        XCTAssertEqual(leaf?.isSubpartitioned, false)
+        XCTAssertNil(leaf?.rowCount)
     }
 
     func testParseTableRowReturnsNilWithoutAName() {

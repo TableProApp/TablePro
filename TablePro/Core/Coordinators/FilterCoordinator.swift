@@ -3,12 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import SwiftUI
 
-@MainActor @Observable
-final class FilterCoordinator {
-    @ObservationIgnored unowned let parent: MainContentCoordinator
+@MainActor
+final class FilterCoordinator: ObservableObject {
+    unowned let parent: MainContentCoordinator
 
     init(parent: MainContentCoordinator) {
         self.parent = parent
@@ -26,35 +27,63 @@ final class FilterCoordinator {
         let capturedLogicMode = logicMode
         parent.confirmDiscardChangesIfNeeded(action: .filter) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            guard capturedTabIndex < parent.tabManager.tabs.count else { return }
-
-            if let capturedLogicMode {
-                parent.tabManager.mutate(at: capturedTabIndex) {
-                    $0.filterState.filterLogicMode = capturedLogicMode
-                    $0.filterState.isVisible = true
-                }
-            }
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
-
-            let tab = parent.tabManager.tabs[capturedTabIndex]
-            let queryColumns = parent.queryColumns(for: tab)
-            let newQuery = parent.queryBuilder.buildFilteredQuery(
-                tableName: capturedTableName,
-                schemaName: tab.tableContext.schemaName,
-                filters: capturedFilters,
-                logicMode: tab.filterState.filterLogicMode,
-                sortState: tab.sortState,
-                columns: queryColumns.columns,
-                columnTypes: queryColumns.columnTypes,
-                selectColumns: parent.selectColumns(for: tab),
-                limit: tab.pagination.pageSize,
-                offset: tab.pagination.currentOffset
+            commitFilters(
+                capturedFilters,
+                logicMode: capturedLogicMode,
+                tabIndex: capturedTabIndex,
+                tableName: capturedTableName
             )
-
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
-            saveLastFilters(for: capturedTableName)
-            parent.runQuery()
         }
+    }
+
+    /// Writes the one predicate a reference jump carries and re-queries for it.
+    ///
+    /// The caller has already taken the discard guard, because it also records the view the tab is
+    /// leaving and both have to land on the same side of a refusal.
+    func commitReferenceFilter(_ filter: TableFilter) {
+        guard let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
+              let tableName = tab.tableContext.tableName else { return }
+        setFKFilter(filter)
+        commitFilters([filter], logicMode: nil, tabIndex: tabIndex, tableName: tableName)
+    }
+
+    private func commitFilters(
+        _ filters: [TableFilter],
+        logicMode: FilterLogicMode?,
+        tabIndex: Int,
+        tableName: String
+    ) {
+        guard tabIndex < parent.tabManager.tabs.count else { return }
+
+        if let logicMode {
+            parent.tabManager.mutate(at: tabIndex) {
+                $0.filterState.filterLogicMode = logicMode
+                $0.filterState.isVisible = true
+            }
+        }
+        parent.tabManager.mutate(at: tabIndex) { $0.pagination.reset() }
+
+        let tab = parent.tabManager.tabs[tabIndex]
+        let queryColumns = parent.queryColumns(for: tab)
+        let newQuery = parent.queryBuilder.buildFilteredQuery(
+            tableName: tableName,
+            schemaName: tab.tableContext.schemaName,
+            filters: filters,
+            logicMode: tab.filterState.filterLogicMode,
+            sortState: tab.sortState,
+            columns: queryColumns.columns,
+            columnTypes: queryColumns.columnTypes,
+            selectColumns: parent.selectColumns(for: tab),
+            limit: tab.pagination.pageSize,
+            offset: tab.pagination.currentOffset
+        )
+
+        parent.tabManager.mutate(at: tabIndex) {
+            $0.content.query = newQuery
+            $0.filterState.executedFilters = filters
+        }
+        saveLastFilters(of: parent.tabManager.tabs[tabIndex])
+        parent.runQuery(viewport: .firstRow)
     }
 
     func clearFiltersAndReload() {
@@ -81,9 +110,12 @@ final class FilterCoordinator {
                 offset: tab.pagination.currentOffset
             )
 
-            parent.tabManager.mutate(at: capturedTabIndex) { $0.content.query = newQuery }
+            parent.tabManager.mutate(at: capturedTabIndex) {
+                $0.content.query = newQuery
+                $0.filterState.executedFilters = []
+            }
             clearLastFilters(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 
@@ -118,7 +150,7 @@ final class FilterCoordinator {
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 
@@ -138,7 +170,7 @@ final class FilterCoordinator {
             parent.tabManager.mutate(at: capturedTabIndex) { $0.pagination.reset() }
             rebuildTableQuery(at: capturedTabIndex)
             saveBrowseSearch(for: capturedTableName)
-            parent.runQuery()
+            parent.runQuery(viewport: .firstRow)
         }
     }
 
@@ -216,7 +248,11 @@ final class FilterCoordinator {
             )
         }
 
-        parent.tabManager.mutate(at: tabIndex) { $0.content.query = newQuery }
+        let executed = hasFilters ? tab.filterState.appliedFilters : []
+        parent.tabManager.mutate(at: tabIndex) {
+            $0.content.query = newQuery
+            $0.filterState.executedFilters = executed
+        }
     }
 
     // MARK: - Filter State
@@ -509,23 +545,20 @@ final class FilterCoordinator {
     // MARK: - Persistence
 
     func saveLastFiltersForActiveTable() {
-        guard let tab = parent.tabManager.selectedTab,
-              let tableName = tab.tableContext.tableName else { return }
-        FilterSettingsStorage.shared.saveLastFilters(
-            tab.filterState.filters.filter(\.isValid),
-            logicMode: tab.filterState.filterLogicMode,
-            for: tableName,
-            connectionId: parent.connectionId,
-            databaseName: tab.tableContext.databaseName,
-            schemaName: tab.tableContext.schemaName
-        )
+        guard let tab = parent.tabManager.selectedTab else { return }
+        saveLastFilters(of: tab)
     }
 
-    func saveLastFilters(for tableName: String) {
-        guard let tab = parent.tabManager.selectedTab else { return }
+    /// The one writer of a table's saved filters, so every path saves the same shape.
+    ///
+    /// Takes the tab rather than reading the selection: a tab switch saves the outgoing tab after
+    /// the selection has already moved to the incoming one.
+    func saveLastFilters(of tab: QueryTab) {
+        guard let tableName = tab.tableContext.tableName else { return }
+        let persisted = tab.filterState.persistedState
         FilterSettingsStorage.shared.saveLastFilters(
-            tab.filterState.filters.filter(\.isValid),
-            logicMode: tab.filterState.filterLogicMode,
+            persisted.filters,
+            logicMode: persisted.logicMode,
             for: tableName,
             connectionId: parent.connectionId,
             databaseName: tab.tableContext.databaseName,

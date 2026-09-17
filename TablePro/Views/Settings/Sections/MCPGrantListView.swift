@@ -7,6 +7,7 @@ import SwiftUI
 
 /// The approvals the user has already given, so a remembered answer stays visible and revocable.
 struct MCPGrantListView: View {
+    @ObservedObject private var mcpServerManager = MCPServerManager.shared
     @State private var grants: [MCPConnectionGrant] = []
     @State private var connectionNames: [UUID: String] = [:]
 
@@ -51,7 +52,7 @@ struct MCPGrantListView: View {
     }
 
     private func refresh() async {
-        grants = await MCPServerManager.shared.connectionGrants()
+        grants = await mcpServerManager.connectionGrants()
             .sorted { $0.grantedAt > $1.grantedAt }
         connectionNames = Dictionary(
             ConnectionStorage.shared.loadConnections().map { ($0.id, $0.name) },

@@ -11,12 +11,12 @@ enum SortableHeaderChrome {
     static let columnDividerHeight: CGFloat = 16
 
     static func fillBackground(_ rect: NSRect) {
-        ThemeEngine.shared.palette[.gridHeaderBackground].setFill()
+        NSColor.windowBackgroundColor.setFill()
         rect.fill()
     }
 
     static func drawBottomSeparator(in bounds: NSRect) {
-        ThemeEngine.shared.palette[.gridLine].setFill()
+        NSColor.separatorColor.setFill()
         NSRect(
             x: bounds.minX,
             y: bounds.maxY - separatorThickness,
@@ -27,7 +27,7 @@ enum SortableHeaderChrome {
 
     static func drawColumnDivider(in cellFrame: NSRect) {
         let dividerHeight = min(columnDividerHeight, cellFrame.height)
-        ThemeEngine.shared.palette[.gridLine].setFill()
+        NSColor.separatorColor.setFill()
         NSRect(
             x: cellFrame.maxX - separatorThickness,
             y: cellFrame.midY - dividerHeight / 2,

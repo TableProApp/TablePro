@@ -5,7 +5,7 @@ description: Schema-aware SQL autocomplete for keywords, tables, columns, and fu
 
 An alias and a dot give you that table's columns, and that holds for a subquery or a `WITH` table that exists only in the statement you are writing. Everything the popup offers is decided by where the cursor sits.
 
-It opens itself after FROM, JOIN, ON and the other clauses with a short answer, and stays shut where a full list would be noise, such as after a comma in a SELECT list. `Ctrl+Space` overrides both.
+It opens itself with nothing typed after FROM, JOIN, INTO, ON, SET, USING, RETURNING, a `::` cast, an INSERT or ALTER column list, and the first item after SELECT. Where a full list would be noise, such as in WHERE or inside a function call, type a character or press `Ctrl+Space`.
 
 <Frame caption="Context-aware autocomplete">
   <img
@@ -27,7 +27,7 @@ It opens itself after FROM, JOIN, ON and the other clauses with a short answer, 
 | `Return` / `Tab` | Accept the selected suggestion |
 | `Escape` | Dismiss and keep typing |
 
-There is no setting for autocomplete and nothing to turn off. What the popup offers depends entirely on where the cursor sits.
+Autocomplete is always on and there is nothing to turn off. What the popup offers depends entirely on where the cursor sits; the one setting is the case keywords come back in.
 
 ## SQL keywords
 
@@ -35,6 +35,30 @@ There is no setting for autocomplete and nothing to turn off. What the popup off
 SEL|  -- SELECT
 FROM users WH|  -- WHERE
 ```
+
+## Keyword case
+
+Keywords and built-in functions come back in the case you are typing:
+
+```sql
+sel|  -- select
+SEL|  -- SELECT
+cou|  -- count()
+COU|  -- COUNT()
+```
+
+The first letter decides, so `Sel` completes to `SELECT` and `sElE` to `select`. A phrase moves as one: `group b` completes to `group by`. Table, column, schema and alias names are never re-cased, and neither are saved [favorite keywords](#favorite-keywords) or the values of an enum column.
+
+**Settings > Editor > Keyword case** holds four values:
+
+| Value | Typing `sel` | Nothing typed |
+|-------|--------------|---------------|
+| Match what I type, otherwise UPPERCASE | `select` | `SELECT` |
+| Match what I type, otherwise lowercase | `select` | `select` |
+| UPPERCASE | `SELECT` | `SELECT` |
+| lowercase | `select` | `select` |
+
+The two absolute values also rewrite keywords as you type them and set the case [Format SQL](/features/sql-editor#formatting) produces.
 
 ## Table names
 
@@ -54,7 +78,7 @@ A FROM clause anywhere in the statement, even after the cursor, decides which ta
 SELECT na|  -- Columns matching "na" from all cached tables
 SELECT | FROM users  -- Columns from users
 SELECT u.| FROM users u  -- Columns from users via alias
-SELECT * FROM users WHERE |  -- Columns from users
+SELECT * FROM users WHERE |  -- Ctrl+Space for columns from users
 ```
 
 ## Aliases, subqueries and CTEs
@@ -83,8 +107,8 @@ SELECT t.| FROM totals t  -- region, total
 Functions appear in SELECT, WHERE and expression contexts, the connection's own dialect alongside the common SQL ones: `CONVERT_TIMEZONE` on Snowflake, `SAFE_CAST` on BigQuery.
 
 ```sql
-SELECT COUNT(|  -- Columns and *
-WHERE date_column > |  -- NOW(), CURRENT_DATE, …
+SELECT COUNT(|  -- Ctrl+Space for columns and *
+WHERE date_column > |  -- Ctrl+Space for NOW(), CURRENT_DATE, …
 ```
 
 Operators the dialect declares appear in WHERE, ON, HAVING and AND, each with what it does and the types it takes. On PostgreSQL that covers JSON, array and range containment, regex, full-text search and the network operators:
@@ -105,7 +129,7 @@ Typing `::` offers the dialect's type names in the spelling you write, not the i
 ```sql
 SELECT id::|             -- integer, bigint, text, timestamptz, jsonb, uuid, …
 SELECT payload::js|      -- json, jsonb, jsonpath
-WHERE status = |         -- 'pending', 'active', 'archived'
+WHERE status = |         -- Ctrl+Space for 'pending', 'active', 'archived'
 WHERE mood <> 'ha|       -- 'happy'
 ```
 
@@ -157,7 +181,7 @@ Comments suppress completion, and a brace or bracket inside a string literal doe
 
 ## My new table does not complete
 
-Table and column names are cached at connect, so a migration or a `CREATE TABLE` run from a terminal stays invisible until the cache reloads. Press `Cmd+R` (**Database > Refresh**), or right-click the sidebar's Tables header and choose **Refresh**. Switching databases reloads it too.
+Table and column names are cached at connect. A change made from TablePro reloads the cache on its own: a statement run in the SQL editor, a save from the sidebar, an import, a restore, Copy Objects, Compare & Sync, and statements run through MCP or the AI assistant. A migration or a `CREATE TABLE` run from another client stays invisible until the cache reloads. Press `Cmd+R` (**Database > Refresh**), or right-click the sidebar's Tables header and choose **Refresh**. Switching databases reloads it too.
 
 ## Large files
 

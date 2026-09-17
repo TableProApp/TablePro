@@ -54,20 +54,43 @@ Every database on the server is listed, `postgres` included; `template0` and `te
 
 Right-click a schema to drop it. The statement is `DROP SCHEMA … CASCADE`, so views and functions in *other* schemas that depend on it go too; the confirmation says so before it runs.
 
-A partitioned table is listed once, under its own icon. Expand it for its partitions, and expand a partition again if it is subpartitioned; opening one works like opening any other table. Tables using the older `INHERITS` inheritance are listed normally, each child in its own right.
+### Creating and editing a schema
+
+**New Schema…** and **Edit Schema…** on a schema row build `CREATE SCHEMA … AUTHORIZATION`, `ALTER SCHEMA … OWNER TO`, `COMMENT ON SCHEMA`, and the `GRANT` and `REVOKE` for `USAGE` and `CREATE`. The sheet shows them before it runs them. See [Creating and editing a schema](/features/table-operations#creating-and-editing-a-schema).
+
+**Owner** lists the roles on the server; leave it at **Database default** to let the connecting role own it. Changing it needs you to be a member of the new owning role, and the server's own refusal appears under the form.
+
+A grant to `PUBLIC` is a grant to every user on the server. A role literally named `public` is a different grantee and the grid keeps the two apart.
+
+Rename from the same sheet, or in place: select the row and press Return.
+
+`pg_catalog`, `information_schema` and `pg_toast` are refused for rename, edit and drop.
+
+A partitioned table is listed once, with how many partitions it holds beside its name. Expand it for the partitions, each labelled with its bound: `FROM ('2024-01-01') TO ('2024-02-01')`, `IN ('de', 'fr')`, `WITH (modulus 4, remainder 0)`, or `DEFAULT`. Expand a partition again if it is subpartitioned.
+
+A partition is a relation, so opening, truncating, renaming and dropping one work as they do on any table. A partition declared in another schema, `CREATE TABLE archive.orders_2023 PARTITION OF public.orders`, is reached under its parent and carries `archive` into every statement built from it.
+
+Tables using the older `INHERITS` inheritance are listed normally, each child on its own. Turn partitions off with **Partitions** under **View Options**.
 
 ## Column types
 
 `jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 
-An array column opens one of two editors, decided by its element type:
+An array column opens one of three editors, decided by its element type:
 
 | Element type | Editor |
 |---|---|
 | `text[]`, `integer[]`, `numeric[]`, `uuid[]`, `boolean[]`, `timestamptz[]`, enum arrays such as `mood[]` | A list, one row per element |
-| `jsonb[]`, `bytea[]`, composite arrays, and any multi-dimensional array | The plain text editor over the `{…}` literal |
+| `jsonb[]` and `json[]` | The same list, with the selected element in the [JSON viewer](/features/json-viewer) |
+| `bytea[]`, composite arrays, and any multi-dimensional array | The plain text editor over the `{…}` literal |
 
 In the list editor, reorder rows with the arrows, add and remove elements, and set a single element to NULL; an empty array and a NULL column stay distinct. Enum elements pick from the labels the type declares, and a label the type no longer lists stays selectable and is flagged. **Edit as Text** switches to the raw literal at any time.
+
+A `jsonb[]` element gets the Text and Tree modes a `jsonb` cell gets, so the column reads the same browsing a table as it does through `to_jsonb(col)` in a query. Two things that query cannot show you: a SQL NULL element stays apart from a JSON `null` element, and reading an element does not rewrite it, so a `json[]` cell you open and save keeps the exact text it stored.
+
+A value the list cannot represent opens the text editor instead: a multi-dimensional value such as `{{1,2},{3,4}}`, or a literal carrying explicit bounds such as `[0:2]={a,b,c}`. Edit the `{…}` literal directly.
+
+`box[]` is the one column whose elements are not separated by a comma. PostgreSQL uses a semicolon there, because a box's own text contains commas, and the list reads it that way.
 
 ## User-defined types
 

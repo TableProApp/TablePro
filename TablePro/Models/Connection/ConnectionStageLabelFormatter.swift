@@ -96,7 +96,7 @@ internal enum ConnectionStageLabelFormatter {
             return String(localized: "the SOCKS proxy")
         case .tunnelCommand:
             return String(localized: "the tunnel command")
-        case .remoteFile:
+        case .remoteFile, .remoteDatabaseSession:
             let host = connection.resolvedSSHConfig.host.trimmingCharacters(in: .whitespaces)
             return host.isEmpty ? nil : host
         case .none:

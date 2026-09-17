@@ -211,19 +211,24 @@ extension AIChatViewModel {
                             authPolicy: ChatToolBootstrap.authPolicy
                         )
                     }
-                    let toolUseBlocks = await self.resolveAndAwaitApprovals(
+                    let approvals = await self.resolveAndAwaitApprovals(
                         assembledBlocks: assembled,
                         assistantID: currentAssistantID,
                         registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
+                    let toolUseBlocks = approvals.blocks
                     let approvedBlocks = toolUseBlocks.filter {
                         if case .approved = $0.approvalState { return true }
                         return false
                     }
                     let executedResults = await Self.executeToolUses(
-                        approvedBlocks, mode: chatMode, context: context, registry: registry
+                        approvedBlocks,
+                        mode: chatMode,
+                        context: context,
+                        explicitlyApproved: approvals.explicitlyApproved,
+                        registry: registry
                     )
                     guard !Task.isCancelled else { return }
 
@@ -497,8 +502,7 @@ extension AIChatViewModel {
                 databaseType: $0.databaseType,
                 databaseName: $0.databaseName,
                 tables: $0.tables,
-                columnsByTable: $0.columnsByTable,
-                foreignKeys: $0.foreignKeys,
+                defaultSchema: $0.defaultSchema,
                 currentQuery: $0.currentQuery,
                 queryResults: $0.queryResults,
                 settings: $0.settings,
@@ -532,9 +536,9 @@ extension AIChatViewModel {
             self.streamingState = .pausedAtToolLimit(count: count)
             self.streamingTask = nil
             self.persistCurrentConversation()
-            AccessibilityNotification.Announcement(
+            AccessibilityAnnouncement.post(
                 String(format: String(localized: "Paused after %d tool calls."), count)
-            ).post()
+            )
         }
     }
 
@@ -630,12 +634,16 @@ extension AIChatViewModel {
         _ blocks: [ToolUseBlock],
         mode: AIChatMode,
         context: ChatToolContext,
+        explicitlyApproved: Set<String> = [],
         registry: ChatToolRegistry? = nil
     ) async -> [ToolResultBlock] {
         await withTaskGroup(of: (Int, ToolResultBlock).self) { group in
             for (index, block) in blocks.enumerated() {
+                let blockContext = context.carrying(
+                    approvalWasExplicit: explicitlyApproved.contains(block.id)
+                )
                 group.addTask {
-                    (index, await runToolUse(block, mode: mode, context: context, registry: registry))
+                    (index, await runToolUse(block, mode: mode, context: blockContext, registry: registry))
                 }
             }
             var indexed: [(Int, ToolResultBlock)] = []

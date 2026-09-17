@@ -13,6 +13,20 @@ enum ScopedDriverRoute: Equatable {
     /// A pooled connection already sitting on the scope's database.
     case pooled
     case unavailable(String)
+
+    /// Whether the operation gets a connection of its own. Only a pooled lease does, which is what
+    /// decides whether app-owned DDL may open a transaction: a `BEGIN` on the shared session driver
+    /// joins whatever a query tab left open.
+    var isPooled: Bool {
+        self == .pooled
+    }
+}
+
+/// What a table read's turn on the session driver came to.
+private enum TableReadTurn<T: Sendable>: Sendable {
+    case ran(T)
+    /// The route decided once the turn came, which is never the session driver.
+    case moved(ScopedDriverRoute)
 }
 
 extension DatabaseManager {
@@ -76,29 +90,7 @@ extension DatabaseManager {
         cancellation: DriverCancellationPolicy,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
-        let leased: @Sendable (DatabaseDriver) async throws -> T
-        if cancellation.isTracked {
-            let connectionId = scope.connectionId
-            let token = UUID()
-            let entry = RunningDriver(driver: nil, policy: cancellation)
-            leased = { driver in
-                await MainActor.run {
-                    DatabaseManager.shared.runningDrivers[connectionId, default: [:]][token] =
-                        entry.adopting(driver)
-                }
-                do {
-                    let value = try await body(driver)
-                    await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
-                    return value
-                } catch {
-                    await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
-                    throw error
-                }
-            }
-        } else {
-            leased = body
-        }
-
+        let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
         switch route {
         case .unavailable(let message):
             throw DatabaseError.queryFailed(message)
@@ -108,6 +100,67 @@ extension DatabaseManager {
             )
         case .sessionDriver:
             return try await withPinnedSessionDriver(scope: scope, leased)
+        }
+    }
+
+    /// A table tab's read is a SELECT the app built from the tab's own table, so it depends on
+    /// nothing the session holds: no transaction, no temp table, no variable. That makes it the one
+    /// kind of work that can follow a route change it waited through. A database switch on an engine
+    /// that reconnects to perform one moves the browsed database while holding the gate, so a read
+    /// queued behind it for the database being left is re-routed once its turn comes, instead of
+    /// being refused by `pin`. User SQL never comes here: the session it was written against is gone,
+    /// and a refusal is the right answer for it.
+    ///
+    /// The gate is left before the read is dispatched again, so a pooled read never holds it. The
+    /// loop ends: a turn only ever moves the read off the session driver, and neither the pool nor an
+    /// unavailable route queues on the gate again.
+    func withTableReadDriver<T: Sendable>(
+        scope: DatabaseScope,
+        cancellation: DriverCancellationPolicy,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        let leased = trackedLease(for: scope.connectionId, cancellation: cancellation, body)
+        var route = executionRoute(for: scope)
+        while true {
+            switch route {
+            case .unavailable(let message):
+                throw DatabaseError.queryFailed(message)
+            case .pooled:
+                return try await MetadataConnectionPool.shared.withDriver(scope: scope, leased)
+            case .sessionDriver:
+                switch try await withTableReadSessionDriver(scope: scope, leased) {
+                case .ran(let value):
+                    return value
+                case .moved(let decided):
+                    route = decided
+                }
+            }
+        }
+    }
+
+    /// Registers the driver a tracked lease runs on for the length of its body, whichever route it
+    /// took, so Stop reaches the handle the work is actually on.
+    private func trackedLease<T: Sendable>(
+        for connectionId: UUID,
+        cancellation: DriverCancellationPolicy,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) -> @Sendable (DatabaseDriver) async throws -> T {
+        guard cancellation.isTracked else { return body }
+        let token = UUID()
+        let entry = RunningDriver(driver: nil, policy: cancellation)
+        return { driver in
+            await MainActor.run {
+                DatabaseManager.shared.runningDrivers[connectionId, default: [:]][token] =
+                    entry.adopting(driver)
+            }
+            do {
+                let value = try await body(driver)
+                await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
+                return value
+            } catch {
+                await MainActor.run { DatabaseManager.shared.releaseRunningDriver(token, for: connectionId) }
+                throw error
+            }
         }
     }
 
@@ -183,24 +236,50 @@ extension DatabaseManager {
         scope: DatabaseScope,
         _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
     ) async throws -> T {
+        try await withSessionDriverTurn(connectionId: scope.connectionId) { driver in
+            try await pin(driver, to: scope)
+            return try await body(driver)
+        }
+    }
+
+    /// The route is asked again through `executionRoute` itself, so it reads the same inputs the
+    /// caller's first answer did, the browsed database among them. The driver's own connection is no
+    /// substitute: it carries the database name the connection resolved to, not the one browsed.
+    private func withTableReadSessionDriver<T: Sendable>(
+        scope: DatabaseScope,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> TableReadTurn<T> {
+        try await withSessionDriverTurn(connectionId: scope.connectionId) { driver in
+            let route = executionRoute(for: scope)
+            guard route == .sessionDriver else { return .moved(route) }
+            try await pin(driver, to: scope)
+            return .ran(try await body(driver))
+        }
+    }
+
+    private func withSessionDriverTurn<R>(
+        connectionId: UUID,
+        _ turn: (DatabaseDriver) async throws -> R
+    ) async throws -> R {
         /// Outside the gate on purpose. A verification that has to reconnect runs the whole
         /// reconnect, which restores the schema and the database on the new driver, and doing that
         /// while holding the gate would deadlock the very thing waiting to be pinned.
-        await verifyBeforeUse(scope.connectionId)
+        await verifyBeforeUse(connectionId)
         /// A check that failed and could not recover left the driver installed and disconnected,
         /// so the presence of a driver below is not enough. Refusing here is the point of checking
         /// at all: without it the user's own work runs on a handle the app already knows is dead.
-        guard isUsable(scope.connectionId) else {
+        guard isUsable(connectionId) else {
             throw DatabaseError.notConnected
         }
-        return try await sessionDriverGate.withExclusiveAccess(scope.connectionId) {
-            try await trackOperation(sessionId: scope.connectionId) {
+        return try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            try await trackOperation(sessionId: connectionId) {
                 try Task.checkCancellation()
-                guard let driver = driver(for: scope.connectionId) else {
+                /// Asked again once the lease has its turn, because a database switch that held the
+                /// gate can have left the driver the same way while this lease waited.
+                guard isUsable(connectionId), let driver = driver(for: connectionId) else {
                     throw DatabaseError.notConnected
                 }
-                try await pin(driver, to: scope)
-                return try await body(driver)
+                return try await turn(driver)
             }
         }
     }

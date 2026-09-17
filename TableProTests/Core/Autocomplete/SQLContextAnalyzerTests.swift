@@ -221,6 +221,58 @@ struct SQLContextAnalyzerTests {
         #expect(context.dotPrefix == "u")
     }
 
+    /// The quote is part of the segment an accepted completion replaces, but no candidate's filter
+    /// text carries one, so leaving it in the prefix dropped every candidate and closed the popup.
+    @Test(
+        "A quoted identifier matches on the name without its quote",
+        arguments: [
+            ("SELECT * FROM `cat", "cat"),
+            ("SELECT `na", "na"),
+            ("SELECT * FROM `cat`", "cat")
+        ]
+    )
+    func quotedPrefixMatchesOnTheBareName(query: String, expected: String) {
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(context.prefix == expected)
+    }
+
+    /// An unterminated double quote reads as an open string literal, which is what it is on MySQL
+    /// and MariaDB. Every other engine quotes identifiers with it, and reaching that needs the
+    /// dialect the analyzer is not given, so a double-quoted identifier still completes nothing.
+    @Test("An unterminated double quote is still read as an open string")
+    func unterminatedDoubleQuoteReadsAsAString() {
+        let query = "SELECT * FROM \"cat"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(context.isInsideString)
+        #expect(context.prefix == "")
+    }
+
+    /// The replacement still covers the quote, so accepting a suggestion overwrites it instead of
+    /// leaving the opening quote stranded before the inserted name.
+    @Test("A quoted identifier's replacement range still starts at the quote")
+    func quotedPrefixRangeCoversTheQuote() {
+        let query = "SELECT * FROM `cat"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(context.prefixRange.lowerBound == 14)
+        #expect(context.prefixRange.upperBound == 18)
+    }
+
+    @Test("A lone quote is an empty prefix rather than an unmatchable one")
+    func loneQuoteIsAnEmptyPrefix() {
+        let query = "SELECT * FROM `"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(context.prefix == "")
+        #expect(context.clauseType == .from)
+    }
+
+    @Test("A quoted qualifier and a quoted column resolve together")
+    func quotedQualifierAndColumn() {
+        let query = "SELECT `users`.`na"
+        let context = analyzer.analyze(query: query, cursorPosition: (query as NSString).length)
+        #expect(context.prefix == "na")
+        #expect(context.dotPrefix == "users")
+    }
+
     @Test("Extracts prefix in WHERE clause")
     func testPrefixInWhere() {
         let context = analyzer.analyze(query: "WHERE id", cursorPosition: 8)

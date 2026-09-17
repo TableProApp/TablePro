@@ -21,7 +21,7 @@ internal struct ConnectionTypeIcon: View {
         if isSystemSymbol {
             Image(systemName: iconName)
                 .symbolRenderingMode(.hierarchical)
-                .symbolEffect(.pulse, options: .repeating, isActive: pulses)
+                .pulsingSymbol(isActive: pulses)
         } else {
             Image(iconName)
                 .resizable()

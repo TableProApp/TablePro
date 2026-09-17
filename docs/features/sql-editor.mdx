@@ -33,13 +33,14 @@ Instead of hardcoding a value, write `:name` and fill it in when the query runs.
 
 ## Running several statements
 
-To run the whole tab, press `Cmd+Shift+Enter`, choose **Execute All Statements** from the Execute button's menu, or use **Query > Execute All Statements**. Nothing needs to be selected first. Select text and `Cmd+Enter` runs the selection instead.
+To run the whole tab, press `Cmd+Shift+Enter`, choose **Run All Statements** from the **Run** button's menu, or use **Query > Execute All Statements**. Nothing needs to be selected first. Select text and `Cmd+Enter` runs the selection instead.
 
-A batch runs top to bottom:
+A batch runs top to bottom and stops at the first statement that fails. The error names its place in the run: "Statement 3/5 failed: …". Each statement gets its own result, and each is recorded separately in [query history](/features/query-history).
 
-- On engines with transactions, the batch runs inside one. A failure stops it and rolls back everything before it. Engines without transactions run each statement as-is, with nothing to roll back.
-- The error names its place in the run: "Statement 3/5 failed: …".
-- Each statement gets its own result tab, and each is recorded separately in [query history](/features/query-history).
+On engines with transactions, the batch runs inside one, and a failure rolls back the statements before it. Engines without transactions run each statement as-is, with nothing to roll back. Two cases leave earlier statements in place:
+
+- MySQL and MariaDB commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it. A later failure cannot undo any of that.
+- A script containing `BEGIN`, `START TRANSACTION`, `XA START` or `SET autocommit` runs exactly as written, with no transaction around it. On MySQL, MariaDB, TiDB and OceanBase, so does one containing `SET TRANSACTION`. What it commits stays committed. When it fails or you stop it, the transaction it still has open is rolled back.
 
 ## Statement markers
 
@@ -120,7 +121,7 @@ On MongoDB connections the query parser runs as well, so an unknown collection m
 
 ## Per-tab database picker
 
-The editor toolbar carries a database picker, or a schema picker depending on the engine. Each tab binds to its own database, and switching the active database elsewhere leaves existing tabs on theirs. The picker lists what the sidebar lists, so it follows the sidebar's database filter.
+The editor toolbar carries a database picker, or a schema picker depending on the engine. Each tab binds to its own database, and switching the active database elsewhere leaves existing tabs on theirs. The picker lists the databases the sidebar's database filter keeps, then the system databases after a divider.
 
 PostgreSQL, Redshift and CockroachDB reconnect the session to change database, so their picker shows a lock instead of a menu. The tab keeps the database it opened with, and a tab bound to anything other than the connection's active database runs on a separate connection. See [Cross-Database Tabs](/databases/postgresql#cross-database-tabs).
 
@@ -134,7 +135,7 @@ The editor also carries multiple cursors, for editing several places at once.
 
 Press `Cmd+Shift+L` to format the statement at the cursor. The toolbar's format button and **Query > Format Query** do the same, and the shortcut is rebindable in **Settings > Keyboard**.
 
-The token-based formatter breaks a line per clause, indents two spaces, uppercases keywords, and keeps your comments, string literals, cursor position and dialect identifier quoting (MySQL backticks, PostgreSQL double quotes). JOINs, subqueries, CASE expressions, recursive CTEs, window functions and set operations are all handled. Procedural blocks pass through with minimal changes: PL/pgSQL `DO`, stored procedures, T-SQL `BEGIN`/`END`.
+The token-based formatter breaks a line per clause, indents two spaces, cases keywords per **Settings > Editor > Keyword case**, and keeps your comments, string literals, cursor position and dialect identifier quoting (MySQL backticks, PostgreSQL double quotes). JOINs, subqueries, CASE expressions, recursive CTEs, window functions and set operations are all handled. Procedural blocks pass through with minimal changes: PL/pgSQL `DO`, stored procedures, T-SQL `BEGIN`/`END`.
 
 **Before**:
 ```sql
@@ -191,6 +192,6 @@ For the execution plan rather than an opinion, press `Cmd+Option+E` and see [Exp
 
 ## Editor settings
 
-**Settings > Editor** holds line numbers, current-line and current-statement highlighting, word wrap, [code folding](/features/code-folding), the per-statement run button, [invisible characters](#invisible-characters), tab width, auto-uppercase keywords, [query parameters](/features/query-parameters), and [vim mode](/features/vim-mode). Editor font family and size are on that same tab.
+**Settings > Editor** holds line numbers, current-line and current-statement highlighting, word wrap, [code folding](/features/code-folding), the per-statement run button, [invisible characters](#invisible-characters), tab width, [keyword case](/features/autocomplete#keyword-case), [query parameters](/features/query-parameters), and [vim mode](/features/vim-mode). Editor font family and size are per theme, in **Settings > Appearance**.
 
-The font size set by `Cmd+=` and `Cmd+-` is the Editor Font setting, so it is kept between launches. See [Query Tabs](/features/tabs#switching-tabs).
+Editor windows remember their size, position and font zoom between launches. See [Query Tabs](/features/tabs#switching-tabs).

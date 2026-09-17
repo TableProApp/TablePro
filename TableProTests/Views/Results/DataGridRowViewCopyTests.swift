@@ -247,7 +247,10 @@ struct DataGridRowViewCopyTests {
         )
         coordinator.updateDisplayFormats([.uuid, .uuid])
         let tableView = makeTableView(for: coordinator)
-        coordinator.selectionController.selectAll(totalRows: 1, totalColumns: 2)
+        let sweptOrigin = GridCoord(row: 0, displayColumn: 0)
+        coordinator.selectionController.update(
+            .single(GridRect(rows: 0...0, columns: 0...1), anchor: sweptOrigin, active: sweptOrigin)
+        )
 
         tableView.copy(nil)
 
@@ -346,7 +349,10 @@ struct DataGridRowViewCopyTests {
             rows: [[.text("1"), .text("Alice")], [.text("2"), .text("Bob")]],
             columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")]
         )
-        coordinator.selectionController.selectAll(totalRows: 2, totalColumns: 2)
+        let sweptOrigin = GridCoord(row: 0, displayColumn: 0)
+        coordinator.selectionController.update(
+            .single(GridRect(rows: 0...1, columns: 0...1), anchor: sweptOrigin, active: sweptOrigin)
+        )
 
         let rowView = DataGridRowView()
         rowView.coordinator = coordinator

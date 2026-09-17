@@ -3,10 +3,10 @@
 //  TableProTests
 //
 
-import CodeEditTextView
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTextEngine
 import Testing
 
 @Suite("Remove invisible characters")

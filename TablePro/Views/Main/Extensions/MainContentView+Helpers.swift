@@ -48,7 +48,7 @@ extension MainContentView {
         if tabManager.selectedTab?.tabType == .table {
             coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
         } else {
-            coordinator.runQuery(trigger: trigger)
+            coordinator.runQuery(viewport: .firstRow, trigger: trigger)
         }
     }
 
@@ -60,6 +60,16 @@ extension MainContentView {
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
             updateSidebarEditState()
+            updateInspectorContext()
+        }
+    }
+
+    func scheduleInspectorContextRefresh() {
+        guard trailingPaneState.inspector.viewMode == .json else { return }
+        inspectorContextRefreshTask?.cancel()
+        inspectorContextRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
             updateInspectorContext()
         }
     }

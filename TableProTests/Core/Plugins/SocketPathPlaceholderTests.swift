@@ -21,6 +21,7 @@ struct SocketPathPlaceholderTests {
     func mysqlProtocolVariantsHaveNoSocket() {
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .tidb) == nil)
         #expect(PluginManager.shared.defaultUnixSocketPath(for: .databend) == nil)
+        #expect(PluginManager.shared.defaultUnixSocketPath(for: .oceanbase) == nil)
     }
 
     @Test("PostgreSQL uses the PGSQL socket")

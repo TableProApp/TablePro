@@ -2,11 +2,99 @@
 //  PluginObjectMapping.swift
 //  TablePro
 //
-//  The single crossing between PluginKit's routine, trigger and type transfer types and the app's.
+//  The single crossing between PluginKit's column, index, foreign key, check constraint, table
+//  metadata, routine, trigger and type transfer types and the app's.
 //
 
 import Foundation
 import TableProPluginKit
+
+extension ColumnInfo {
+    init(_ column: PluginColumnInfo) {
+        self.init(
+            name: column.name,
+            dataType: column.dataType,
+            isNullable: column.isNullable,
+            isPrimaryKey: column.isPrimaryKey,
+            defaultValue: column.defaultValue,
+            extra: column.extra,
+            charset: column.charset,
+            collation: column.collation,
+            comment: column.comment,
+            identityKind: column.identityKind,
+            isGenerated: column.isGenerated,
+            allowedValues: column.allowedValues,
+            generationExpression: column.generationExpression,
+            generationKind: column.generationKind,
+            ddlSpelling: column.ddlSpelling,
+            ddlDefault: column.ddlDefault,
+            ddlGenerationExpression: column.ddlGenerationExpression,
+            ddlCollation: column.ddlCollation
+        )
+    }
+}
+
+extension IndexInfo {
+    init(_ index: PluginIndexInfo) {
+        self.init(
+            name: index.name,
+            columns: index.columns,
+            isUnique: index.isUnique,
+            isPrimary: index.isPrimary,
+            type: index.type,
+            columnPrefixes: index.columnPrefixes,
+            whereClause: index.whereClause,
+            expressions: index.expressions,
+            includedColumns: index.includedColumns,
+            ddlMethodAndKeys: index.ddlMethodAndKeys,
+            ddlWhereClause: index.ddlWhereClause
+        )
+    }
+}
+
+extension ForeignKeyInfo {
+    init(_ foreignKey: PluginForeignKeyInfo) {
+        self.init(
+            name: foreignKey.name,
+            column: foreignKey.column,
+            referencedTable: foreignKey.referencedTable,
+            referencedColumn: foreignKey.referencedColumn,
+            referencedDatabase: foreignKey.referencedDatabase,
+            referencedSchema: foreignKey.referencedSchema,
+            onDelete: foreignKey.onDelete,
+            onUpdate: foreignKey.onUpdate
+        )
+    }
+}
+
+extension CheckConstraintInfo {
+    init(_ constraint: PluginCheckConstraintInfo) {
+        self.init(
+            name: constraint.name,
+            expression: constraint.expression,
+            columns: constraint.columns,
+            isValidated: constraint.isValidated
+        )
+    }
+}
+
+extension TableMetadata {
+    init(_ metadata: PluginTableMetadata) {
+        self.init(
+            tableName: metadata.tableName,
+            dataSize: metadata.dataSize,
+            indexSize: metadata.indexSize,
+            totalSize: metadata.totalSize,
+            avgRowLength: metadata.avgRowLength,
+            rowCount: metadata.rowCount,
+            comment: metadata.comment,
+            engine: metadata.engine,
+            collation: metadata.collation,
+            createTime: metadata.createTime,
+            updateTime: metadata.updateTime
+        )
+    }
+}
 
 extension ObjectAttribute {
     init(_ attribute: PluginObjectAttribute) {
@@ -111,6 +199,9 @@ extension UserDefinedTypeInfo.Kind {
         case .composite:   self = .composite
         case .domain:      self = .domain
         case .range:       self = .range
+        case .aliasType:   self = .aliasType
+        case .tableType:   self = .tableType
+        case .clrType:     self = .clrType
         @unknown default:  self = .other
         }
     }
@@ -121,6 +212,9 @@ extension UserDefinedTypeInfo.Kind {
         case .composite:   return .composite
         case .domain:      return .domain
         case .range:       return .range
+        case .aliasType:   return .aliasType
+        case .tableType:   return .tableType
+        case .clrType:     return .clrType
         case .other:       return nil
         }
     }

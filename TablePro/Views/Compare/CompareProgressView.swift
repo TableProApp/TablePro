@@ -15,7 +15,7 @@
 import SwiftUI
 
 internal struct CompareProgressView: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -88,7 +88,7 @@ internal struct CompareProgressView: View {
 /// situation the user must resolve before continuing and allows one at a time, and a restored
 /// window can raise several at once.
 internal struct CompareMessageBanner: View {
-    @Bindable internal var session: CompareSyncSession
+    @ObservedObject internal var session: CompareSyncSession
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 

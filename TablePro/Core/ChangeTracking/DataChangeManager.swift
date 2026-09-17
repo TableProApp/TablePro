@@ -7,8 +7,8 @@
 //  Uses Apple's UndoManager (NSUndoManager) for undo/redo stack management.
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
@@ -37,37 +37,64 @@ struct UndoResult {
 /// Manager for tracking and applying data changes
 /// @MainActor ensures thread-safe access - critical for avoiding EXC_BAD_ACCESS
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
-@MainActor @Observable
-final class DataChangeManager: ChangeManaging {
+@MainActor
+final class DataChangeManager: ObservableObject, ChangeManaging {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
 
-    private(set) var pending = PendingChanges()
-    var hasChanges: Bool = false
-    var reloadVersion: Int = 0
+    @Published private(set) var pending = PendingChanges()
+    @Published var hasChanges: Bool = false
+    @Published var reloadVersion: Int = 0
 
     var changes: [RowChange] { pending.changes }
     var rowChanges: [RowChange] { pending.changes }
     var insertedRowIDs: Set<RowID> { pending.insertedRowIDs }
     var deletedRowIDs: Set<RowID> { pending.deletedRowIDs }
 
-    var tableName: String = ""
-    var schemaName: String?
-    var primaryKeyColumns: [String] = []
+    @Published var tableName: String = ""
+    @Published var schemaName: String?
+    @Published var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     /// Columns the server computes. They reject any written value, so they are
     /// never editable and never appear in a generated INSERT or UPDATE.
-    var generatedColumns: Set<String> = []
-    private(set) var rowMatchExcludedColumns: Set<String> = []
-    var databaseType: DatabaseType?
-    var pluginDriver: (any PluginDatabaseDriver)?
+    @Published var generatedColumns: Set<String> = []
+    @Published private(set) var rowMatchPolicy: RowMatchPolicy = .none
+    @Published var databaseType: DatabaseType?
+    @Published var pluginDriver: (any PluginDatabaseDriver)?
 
-    var columns: [String] = []
+    @Published var columns: [String] = []
 
-    var undoManagerProvider: (() -> UndoManager?)?
-    var onUndoApplied: ((UndoResult) -> Void)?
+    @Published var undoManagerProvider: (() -> UndoManager?)?
+    @Published var onUndoApplied: ((UndoResult) -> Void)?
 
-    private var lastUndoResult: UndoResult?
+    @Published private var lastUndoResult: UndoResult?
+
+    /// The cells an open editor is still typing into, held back from the undo stack until the run
+    /// ends so a typed word is one step rather than one per character.
+    ///
+    /// Each entry keeps the value the cell held when the run started and takes the newest value on
+    /// every keystroke, so the step that is finally registered restores the whole word and its redo
+    /// carries the final value rather than the first character's.
+    private struct CoalescedCellEdit {
+        let rowID: RowID
+        let columnIndex: Int
+        let columnName: String
+        let previousValue: PluginCellValue
+        var newValue: PluginCellValue
+        let originalRow: [PluginCellValue]?
+    }
+
+    private struct CoalescedCellKey: Hashable {
+        let rowID: RowID
+        let columnIndex: Int
+    }
+
+    private var coalescedEdits: [CoalescedCellKey: CoalescedCellEdit] = [:]
+    private var coalescedOrder: [CoalescedCellKey] = []
+
+    /// Whether a typed edit is waiting to become an undo step. The Edit menu reads it, because the
+    /// undo manager has nothing registered yet while the run is open.
+    var hasCoalescedUndoRun: Bool { !coalescedOrder.isEmpty }
 
     // MARK: - Undo/Redo Properties
 
@@ -76,6 +103,12 @@ final class DataChangeManager: ChangeManaging {
 
     private func registerUndo(actionName: String, _ handler: @escaping (DataChangeManager) -> Void) {
         guard let undoManager = undoManagerProvider?() else { return }
+        /// Any other action ends the run, so its own step lands after the typing it interrupted
+        /// rather than inside it. Undo and redo replay register too, and flushing there would fold
+        /// the run into the step being replayed.
+        if !undoManager.isUndoing, !undoManager.isRedoing {
+            endCoalescedUndoRun()
+        }
         let opensOwnGroup = !undoManager.groupsByEvent && undoManager.groupingLevel == 0
         if opensOwnGroup { undoManager.beginUndoGrouping() }
         undoManager.registerUndo(withTarget: self, handler: handler)
@@ -86,6 +119,7 @@ final class DataChangeManager: ChangeManaging {
     // MARK: - Configuration
 
     func clearChanges() {
+        discardCoalescedUndoRun()
         pending.clear()
         hasChanges = false
         reloadVersion += 1
@@ -103,7 +137,7 @@ final class DataChangeManager: ChangeManaging {
         primaryKeyColumns: [String],
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
-        rowMatchExcludedColumns: Set<String> = [],
+        rowMatchPolicy: RowMatchPolicy = .none,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
@@ -112,8 +146,9 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
 
+        discardCoalescedUndoRun()
         pending.clear()
         undoManagerProvider?()?.removeAllActions(withTarget: self)
 
@@ -131,8 +166,8 @@ final class DataChangeManager: ChangeManaging {
         self.generatedColumns = generatedColumns
     }
 
-    func setRowMatchExcludedColumns(_ rowMatchExcludedColumns: Set<String>) {
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+    func setRowMatchPolicy(_ rowMatchPolicy: RowMatchPolicy) {
+        self.rowMatchPolicy = rowMatchPolicy
     }
 
     /// Whether the app may send a value for this column at all: the server computes or allocates it,
@@ -154,6 +189,39 @@ final class DataChangeManager: ChangeManaging {
         oldValue: PluginCellValue,
         newValue: PluginCellValue,
         originalRow: [PluginCellValue]? = nil
+    ) {
+        record(
+            rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+            oldValue: oldValue, newValue: newValue, originalRow: originalRow,
+            coalescesWithPrevious: false
+        )
+    }
+
+    /// One keystroke from an editor that is still open. The step it belongs to is registered when
+    /// the run ends, so a typed word is one undo rather than one per character.
+    func recordTypedCellChange(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]? = nil
+    ) {
+        record(
+            rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+            oldValue: oldValue, newValue: newValue, originalRow: originalRow,
+            coalescesWithPrevious: true
+        )
+    }
+
+    private func record(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?,
+        coalescesWithPrevious: Bool
     ) {
         /// The last gate before a change becomes pending, and the only one every path crosses. The
         /// grid's own check covers the inline editor and the Set Value menu; paste, Fill Column and
@@ -178,13 +246,70 @@ final class DataChangeManager: ChangeManaging {
             hasChanges = !pending.isEmpty
             return
         }
-        registerUndo(actionName: String(localized: "Edit Cell")) { target in
-            target.applyDataUndo(.cellEdit(
+        if coalescesWithPrevious {
+            bufferCoalescedEdit(
                 rowID: rowID, columnIndex: columnIndex, columnName: columnName,
-                previousValue: oldValue, newValue: newValue, originalRow: originalRow
-            ))
+                oldValue: oldValue, newValue: newValue, originalRow: originalRow
+            )
+        } else {
+            registerUndo(actionName: String(localized: "Edit Cell")) { target in
+                target.applyDataUndo(.cellEdit(
+                    rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+                    previousValue: oldValue, newValue: newValue, originalRow: originalRow
+                ))
+            }
         }
         hasChanges = !pending.isEmpty
+    }
+
+    private func bufferCoalescedEdit(
+        rowID: RowID,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: PluginCellValue,
+        newValue: PluginCellValue,
+        originalRow: [PluginCellValue]?
+    ) {
+        let key = CoalescedCellKey(rowID: rowID, columnIndex: columnIndex)
+        if var existing = coalescedEdits[key] {
+            existing.newValue = newValue
+            coalescedEdits[key] = existing
+            return
+        }
+        coalescedEdits[key] = CoalescedCellEdit(
+            rowID: rowID, columnIndex: columnIndex, columnName: columnName,
+            previousValue: oldValue, newValue: newValue, originalRow: originalRow
+        )
+        coalescedOrder.append(key)
+    }
+
+    /// Registers the run's cells as one undo step, in the order they were first written.
+    ///
+    /// A cell typed back to where it started contributes nothing: registering it would leave a step
+    /// that restores a value the cell already holds, and undoing it would record a pending change
+    /// over a value that already matches the server.
+    func endCoalescedUndoRun() {
+        guard !coalescedOrder.isEmpty else { return }
+        let edits = coalescedOrder.compactMap { coalescedEdits[$0] }.filter { $0.previousValue != $0.newValue }
+        discardCoalescedUndoRun()
+        guard !edits.isEmpty, let undoManager = undoManagerProvider?() else { return }
+
+        undoManager.beginUndoGrouping()
+        for edit in edits {
+            undoManager.registerUndo(withTarget: self) { target in
+                target.applyDataUndo(.cellEdit(
+                    rowID: edit.rowID, columnIndex: edit.columnIndex, columnName: edit.columnName,
+                    previousValue: edit.previousValue, newValue: edit.newValue, originalRow: edit.originalRow
+                ))
+            }
+        }
+        undoManager.setActionName(String(localized: "Edit Cell"))
+        undoManager.endUndoGrouping()
+    }
+
+    private func discardCoalescedUndoRun() {
+        coalescedEdits.removeAll()
+        coalescedOrder.removeAll()
     }
 
     func recordRowDeletion(rowID: RowID, originalRow: [PluginCellValue]) {
@@ -452,7 +577,8 @@ final class DataChangeManager: ChangeManaging {
                     kind: .rowWrite,
                     statement: $0.statement,
                     expectedRowCount: $0.rowCount,
-                    tableName: tableName
+                    tableName: tableName,
+                    matchesRowsWithoutKey: primaryKeyColumns.isEmpty && $0.kind != .insert
                 )
             }
             return RowWriteBuild(steps: steps, operations: operations)
@@ -479,7 +605,7 @@ final class DataChangeManager: ChangeManaging {
             columns: columns,
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
-            rowMatchExcludedColumns: rowMatchExcludedColumns,
+            rowMatchPolicy: rowMatchPolicy,
             databaseType: databaseType,
             pluginDriver: pluginDriver
         )
@@ -519,7 +645,7 @@ final class DataChangeManager: ChangeManaging {
         schemaName: String? = nil,
         databaseType: DatabaseType,
         generatedColumns: Set<String>,
-        rowMatchExcludedColumns: Set<String> = []
+        rowMatchPolicy: RowMatchPolicy = .none
     ) {
         self.tableName = tableName
         self.schemaName = schemaName
@@ -527,7 +653,8 @@ final class DataChangeManager: ChangeManaging {
         self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
         self.generatedColumns = generatedColumns
-        self.rowMatchExcludedColumns = rowMatchExcludedColumns
+        self.rowMatchPolicy = rowMatchPolicy
+        discardCoalescedUndoRun()
         pending.restore(from: state)
         self.hasChanges = !pending.isEmpty
     }

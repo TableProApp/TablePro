@@ -13,7 +13,7 @@ import TableProPluginKit
 /// in a state `DatabaseConnection.activeTunnelKind` reports as no transport at all. One picker
 /// makes that state unrepresentable.
 struct NetworkPaneView: View {
-    @Bindable var coordinator: ConnectionFormCoordinator
+    @ObservedObject var coordinator: ConnectionFormCoordinator
 
     var body: some View {
         Form {
@@ -63,7 +63,7 @@ struct NetworkPaneView: View {
             EmptyView()
         case .ssh:
             SSHTransportSections(coordinator: coordinator)
-        case .remoteFile:
+        case .remoteFile, .remoteDatabaseSession:
             RemoteFileTransportSections(coordinator: coordinator)
         case .cloudflare:
             CloudflareTransportSections(coordinator: coordinator)

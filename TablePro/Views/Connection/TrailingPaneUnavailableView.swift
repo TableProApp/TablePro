@@ -19,7 +19,7 @@ internal struct TrailingPaneUnavailableView: View {
     internal let surface: TrailingPaneSurface
 
     internal var body: some View {
-        ContentUnavailableView(
+        UnavailableStateView(
             String(localized: "Not Connected"),
             systemImage: "sidebar.right",
             description: Text(description)

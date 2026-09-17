@@ -2,16 +2,18 @@
 //  JSONCodeEditor.swift
 //  TablePro
 //
-//  JSON text view backed by CodeEditSourceEditor (tree-sitter), sharing the
+//  JSON text view backed by TableProEditorKit (tree-sitter), sharing the
 //  app's editor theme and font with the SQL editor.
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
+import TableProEditorKit
+import TableProGrammars
 
 internal struct JSONCodeEditor: View {
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     @Binding var text: String
     let isEditable: Bool
 
@@ -33,10 +35,10 @@ internal struct JSONCodeEditor: View {
             state: $editorState
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: colorScheme) {
+        .onChange(of: colorScheme) { _ in
             rebuildConfiguration()
         }
-        .onChange(of: AppSettingsManager.shared.editor) {
+        .onChange(of: settingsManager.editor) { _ in
             rebuildConfiguration()
         }
         .onReceive(AppEvents.shared.accessibilityTextSizeChanged) { _ in

@@ -41,10 +41,14 @@ extension MainContentCoordinator {
         )
     }
 
+    /// `database` names the target when the caller knows it, which a foreign key does and the
+    /// sidebar does not: a reference can point into another database, and taking the browse cursor
+    /// there opens a tab on whichever one the sidebar happens to be showing.
     @discardableResult
     func openTableTab(
         _ tableName: String,
         schema: String? = nil,
+        database: String? = nil,
         showStructure: Bool = false,
         isView: Bool = false,
         objectType: TableInfo.TableType? = nil,
@@ -63,10 +67,12 @@ extension MainContentCoordinator {
             }
             currentDatabase = String(tableName.dropFirst(2))
         } else {
-            currentDatabase = browseDatabaseName
+            currentDatabase = database?.nilIfEmpty ?? browseDatabaseName
         }
 
-        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(schema, for: connectionId)
+        let resolvedSchema = DatabaseManager.shared.resolvedSchemaName(
+            schema, inDatabase: currentDatabase, for: connectionId
+        )
         let createAsPreview = !forceNonPreview && !forceNewTab
             && AppSettingsManager.shared.tabs.enablePreviewTabs
 
@@ -112,8 +118,8 @@ extension MainContentCoordinator {
         /// database (`selectRedisDatabaseAndQuery`), which a restore does not do, so a Back would
         /// put the table back while leaving the connection on another database index.
         if navigationModel == .inPlace {
-            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
-                saveLastFilters(for: oldTableName)
+            if let oldTab = tabManager.selectedTab {
+                saveLastFilters(of: oldTab)
             }
             if let tabId = tabManager.selectedTabId {
                 let token = TableLoadTracer.shared.begin(
@@ -296,8 +302,8 @@ extension MainContentCoordinator {
         let previousTableName = tabManager.selectedTab?.tableContext.tableName
         let replacesPreviewTab = tabManager.selectedTab?.isPreview == true
         let departing = captureNavigationEntry()
-        if let previousTableName {
-            saveLastFilters(for: previousTableName)
+        if let departingTab = tabManager.selectedTab {
+            saveLastFilters(of: departingTab)
         }
 
         var token: TableLoadTraceToken?
@@ -347,7 +353,9 @@ extension MainContentCoordinator {
         }
         lazyLoadCurrentTabIfNeeded()
         if replacesPreviewTab, createAsPreview {
-            FeatureTipSignals.previewTabReplaced()
+            if #available(macOS 14.0, *) {
+                FeatureTipSignals.previewTabReplaced()
+            }
         }
         return true
     }
@@ -391,6 +399,10 @@ extension MainContentCoordinator {
         return false
     }
 
+    /// Whether browsing the object list may take the selected tab over.
+    ///
+    /// Only browsing asks. Following a foreign key never takes a tab over, because a reference can
+    /// only be followed from a grid and the row the reader clicked is in that grid.
     var isActiveTabReusable: Bool {
         guard let tab = tabManager.selectedTab else { return false }
         if selectedTabHoldsProtectedContent { return false }
@@ -429,21 +441,36 @@ extension MainContentCoordinator {
                 initialQuery: "db.runCommand({\"listCollections\": 1, \"nameOnly\": false})",
                 databaseName: browseDatabaseName
             )
-            runQuery()
+            runQuery(viewport: .firstRow)
             return nil
         } else if editorLang == .bash {
             tabManager.addTab(
                 initialQuery: "SCAN 0 MATCH * COUNT 100",
                 databaseName: browseDatabaseName
             )
-            runQuery()
+            runQuery(viewport: .firstRow)
             return nil
         }
 
         // SQL databases: delegate to plugin driver
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return nil }
-        let schema = (driver as? SchemaSwitchable)?.escapedSchema
-        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: schema)
+        return (driver as? PluginDriverAdapter)?.allTablesMetadataSQL(schema: allTablesContainer(driver))
+    }
+
+    /// The container this listing is about, named rather than left to the driver.
+    ///
+    /// A schema-less engine answers an unnamed container with whatever database the shared driver
+    /// was last pinned to, which a cross-database tab moves and nothing restores, so the listing
+    /// described a database the user was not browsing.
+    private func allTablesContainer(_ driver: DatabaseDriver) -> String? {
+        switch EngineNamespaceSlot(databaseType: connection.type) {
+        case .schema:
+            return (driver as? SchemaSwitchable)?.escapedSchema
+        case .database:
+            return browseDatabaseName.nilIfEmpty
+        case .unqualified:
+            return nil
+        }
     }
 
     // MARK: - Database Switching
@@ -599,6 +626,14 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
             syncSidebarObjectSelection()
         } catch {
+            /// A switch that waited for the driver is dropped when the connection was closed and
+            /// opened again before its turn. The toolbar now belongs to that new session, so it is
+            /// read back from it rather than restored to what the old one showed, and nothing failed
+            /// that the user needs telling about.
+            guard !DatabaseCancellationDiagnosis.isCancellation(error) else {
+                toolbarState.currentSchema = DatabaseManager.shared.session(for: connectionId)?.browseSchema
+                return
+            }
             toolbarState.currentSchema = previousSchema
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
@@ -622,6 +657,7 @@ extension MainContentCoordinator {
                 ? PluginManager.shared.schemaEntityNamePlural(for: connection.type)
                 : PluginManager.shared.containerEntityNamePlural(for: connection.type),
             dropsDependentObjects: isSchema
+                && PluginManager.shared.supportsCascadeDrop(for: connection.type)
         )
     }
 
@@ -633,23 +669,13 @@ extension MainContentCoordinator {
         for target in request.targets {
             do {
                 try await dropContainer(target)
+                services.catalogChangeService.record(.containerDropped(target, connectionId: connectionId))
             } catch {
                 navigationLogger.error(
                     "Failed to drop \(target.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
                 )
                 failures.append((target.name, error.localizedDescription))
             }
-        }
-
-        await DatabaseTreeMetadataService.shared.refreshDatabases(
-            connectionId: connectionId,
-            databaseType: connection.type
-        )
-        for database in Set(request.targets.filter { $0.kind == .schema }.compactMap(\.database)) {
-            await DatabaseTreeMetadataService.shared.refreshSchemas(
-                connectionId: connectionId,
-                database: database
-            )
         }
 
         guard !failures.isEmpty else { return }
@@ -660,22 +686,35 @@ extension MainContentCoordinator {
         )
     }
 
+    /// Through the container DDL path, like every other write: a drop used to call the driver
+    /// directly, so Safe Mode's confirmation and Touch ID tiers never fired and no audit record
+    /// was written for the operation that destroys the most. The driver runs the drop itself, so
+    /// there is no statement to show and the description is what the gate presents.
     private func dropContainer(_ target: DatabaseContainerRef) async throws {
-        switch target.kind {
-        case .database:
-            guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-                throw DatabaseError.notConnected
-            }
-            try await driver.dropDatabase(name: target.name)
-        case .schema:
-            guard let scope = DatabaseManager.shared.resolvedScope(
-                database: target.database, schema: nil, for: connectionId
-            ) else {
-                throw DatabaseError.notConnected
-            }
-            let name = target.name
-            try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
-                try await driver.dropSchema(name: name)
+        guard let scope = DatabaseManager.shared.resolvedScope(
+            database: target.kind == .database ? nil : target.database, schema: nil, for: connectionId
+        ) else {
+            throw DatabaseError.notConnected
+        }
+        let entity = target.kind == .schema
+            ? PluginManager.shared.schemaEntityName(for: connection.type)
+            : PluginManager.shared.containerEntityName(for: connection.type)
+        let name = target.name
+        let kind = target.kind
+        try await DatabaseManager.shared.runContainerOperation(
+            description: String(format: String(localized: "Drop %1$@ \"%2$@\""), entity, name),
+            kind: .destructiveQuery,
+            scope: scope,
+            databaseType: connection.type,
+            event: nil,
+            /// The sidebar already presented the destructive confirmation, once for the whole
+            /// batch. Without this the gate presents its own on top, asking twice for one drop and
+            /// once per target for a multi-row selection. Touch ID and the audit record still apply.
+            isConfirmationPreCleared: true
+        ) { driver in
+            switch kind {
+            case .database: try await driver.dropDatabase(name: name)
+            case .schema: try await driver.dropSchema(name: name)
             }
         }
     }
@@ -701,24 +740,18 @@ extension MainContentCoordinator {
         redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
-                if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {
-                    try await adapter.switchDatabase(to: String(dbIndex))
-                }
+                try await DatabaseManager.shared.switchDatabase(to: database, for: connId, persist: false)
             } catch {
-                if !Task.isCancelled {
-                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
-                }
+                guard !Task.isCancelled else { return }
+                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
                 if let tabId = tabManager.selectedTab?.id {
                     declineTableLoad(for: tabId)
                 }
                 return
             }
             guard !Task.isCancelled else { return }
-            DatabaseManager.shared.updateSession(connId) { session in
-                session.browseDatabase = database
-            }
             toolbarState.currentDatabase = database
-            executeTableTabQueryDirectly()
+            executeTableTabQueryDirectly(viewport: .firstRow)
 
             let separator = connection.additionalFields["redisSeparator"] ?? ":"
             if sidebarViewModel?.redisKeyTreeViewModel == nil {
@@ -778,6 +811,6 @@ extension MainContentCoordinator {
             query = "GET \"\(escapedKey)\""
         }
         tabManager.addTab(initialQuery: query, title: keyName)
-        runQuery()
+        runQuery(viewport: .firstRow)
     }
 }

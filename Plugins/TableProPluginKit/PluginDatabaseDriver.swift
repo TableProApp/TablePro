@@ -94,6 +94,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo]
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo]
+
+    /// The same partitions as `fetchPartitions`, with the bound, the ordinal position and the row
+    /// estimate that a `PluginTableInfo` has nowhere to put, and with each partition's own schema
+    /// rather than its parent's.
+    ///
+    /// Implement this instead of `fetchPartitions` on a new driver. The default bridges the old
+    /// requirement so a plugin built before this existed keeps answering.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo]
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo]
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo]
 
@@ -355,6 +363,31 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// namespaces out and say so rather than emitting DDL the server will reject.
     func createSchemaStatement(name: String) -> String?
 
+    /// The statements that bring a schema into existence in the state the user asked for: the
+    /// `CREATE`, then whatever the engine needs for the owner, the comment and the grants.
+    ///
+    /// Statement generation rather than execution, so the sheet can show the user exactly what will
+    /// run and so one gate authorizes the same text that reaches the server. Return nil where the
+    /// engine cannot make a schema from a statement: on Oracle a schema is a user, and on the
+    /// engines whose namespace is the database the caller creates a database instead.
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]?
+
+    /// The statements that rename a schema, for the edit sheet's name field.
+    ///
+    /// Separate from `renameSchema(name:to:)`, which runs the rename itself and stays for the
+    /// inline rename in the sidebar. An engine that can only rename through a call and not a
+    /// statement returns nil here and keeps the inline path.
+    func renameSchemaStatements(name: String, to newName: String) -> [String]?
+
+    /// The statements that move a schema from `current` to `target`, emitting nothing for a facet
+    /// that did not change. The caller passes a `current` it read from the server a moment ago, so
+    /// the diff never revokes a grant the user did not see.
+    func alterSchemaStatements(from current: PluginSchemaDetails, to target: PluginSchemaDefinition) -> [String]?
+
+    /// The schema's owner, comment and grants. Nil where the engine exposes none of them, which
+    /// keeps the edit sheet off the menu rather than showing it with every field empty.
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails?
+
     /// Sets or clears the comment on a table-like object. `objectType` is the object's type as the
     /// table listing reported it, because engines that key the statement on the kind refuse the
     /// wrong keyword: PostgreSQL answers `COMMENT ON TABLE` on a view with "is not a table". A nil
@@ -522,6 +555,25 @@ public extension PluginDatabaseDriver {
     /// Engines whose partitions are metadata on one table object, rather than
     /// separate relations, have nothing to nest and keep the empty default.
     func fetchPartitions(table: String, schema: String?) async throws -> [PluginTableInfo] { [] }
+
+    /// Bridges a driver that only answers `fetchPartitions`. It carries no bound, because that
+    /// struct has no room for one.
+    ///
+    /// Whether the row is a relation is read from the type it declares rather than assumed: the
+    /// Kafka driver answers this requirement with broker partitions typed `partition`, and calling
+    /// one of those a relation would offer to open and drop a name no server will accept.
+    func fetchPartitionDetails(table: String, schema: String?) async throws -> [PluginPartitionInfo] {
+        try await fetchPartitions(table: table, schema: schema).map { partition in
+            let relationType = PluginPartitionInfo.relationType(forDeclaredType: partition.type)
+            return PluginPartitionInfo(
+                name: partition.name,
+                schema: partition.schema,
+                rowCount: partition.rowCount,
+                relationType: relationType,
+                isSubpartitioned: relationType == "PARTITIONED TABLE"
+            )
+        }
+    }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? { nil }
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? { nil }
@@ -766,8 +818,28 @@ public extension PluginDatabaseDriver {
     func buildFilteredQuery(table: String, schema: String?, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
         buildFilteredQuery(table: table, schema: schema, filters: filters, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset)
     }
-    func buildFilteredQuery(table: String, schema: String?, queryFilters: [PluginQueryFilter], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int, columnKinds: [String: PluginColumnKind]) -> String? {
-        buildFilteredQuery(table: table, schema: schema, filters: queryFilters.asTuples, logicMode: logicMode, sortColumns: sortColumns, columns: columns, limit: limit, offset: offset, columnKinds: columnKinds)
+    func buildFilteredQuery(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int,
+        columnKinds: [String: PluginColumnKind]
+    ) -> String? {
+        buildFilteredQuery(
+            table: table,
+            schema: schema,
+            filters: queryFilters.asTuples,
+            logicMode: logicMode,
+            sortColumns: sortColumns,
+            columns: columns,
+            limit: limit,
+            offset: offset,
+            columnKinds: columnKinds
+        )
     }
     func fetchFilteredRowCount(table: String, filters: [(column: String, op: String, value: String)], logicMode: String) async throws -> Int? { nil }
     func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
@@ -831,6 +903,16 @@ public extension PluginDatabaseDriver {
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
     func createSchemaStatement(name: String) -> String? { nil }
+
+    func createSchemaStatements(_ definition: PluginSchemaDefinition) -> [String]? { nil }
+    func renameSchemaStatements(name: String, to newName: String) -> [String]? { nil }
+
+    func alterSchemaStatements(
+        from current: PluginSchemaDetails,
+        to target: PluginSchemaDefinition
+    ) -> [String]? { nil }
+
+    func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? { nil }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
         nil

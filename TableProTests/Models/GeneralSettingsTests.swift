@@ -106,3 +106,74 @@ struct GeneralSettingsWorkspaceRailTests {
         #expect(!decoded.showWorkspaceRail)
     }
 }
+
+@Suite("GeneralSettings.showSystemContainers")
+struct GeneralSettingsSystemContainersTests {
+    @Test("Defaults to off")
+    func defaultsOff() {
+        #expect(GeneralSettings.default.showSystemContainers == false)
+        #expect(GeneralSettings().showSystemContainers == false)
+    }
+
+    @Test("Settings saved before the key existed keep system databases hidden in the sidebar")
+    func decodesMissingKeyAsOff() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+        #expect(decoded.showSystemContainers == false)
+    }
+
+    @Test("Round-trips when turned on")
+    func roundTripsEnabled() throws {
+        var settings = GeneralSettings()
+        settings.showSystemContainers = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(decoded.showSystemContainers)
+    }
+}
+
+@Suite("GeneralSettings update-preference removal")
+struct GeneralSettingsUpdatePreferenceTests {
+    @Test("A settings blob still carrying automaticallyCheckForUpdates decodes without it")
+    func decodesBlobCarryingTheRemovedKey() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome","automaticallyCheckForUpdates":false,"showRecentTables":true,"queryTimeoutSeconds":90}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+
+        #expect(decoded.showRecentTables == true)
+        #expect(decoded.queryTimeoutSeconds == 90)
+    }
+
+    @Test("The encoded blob no longer carries the key Sparkle owns")
+    func doesNotEncodeTheUpdatePreference() throws {
+        let data = try JSONEncoder().encode(GeneralSettings.default)
+        let deserialized = try JSONSerialization.jsonObject(with: data)
+        let object = try #require(deserialized as? [String: Any])
+
+        #expect(object["automaticallyCheckForUpdates"] == nil)
+    }
+}
+
+@Suite("GeneralSettings.showPartitions")
+struct GeneralSettingsPartitionsTests {
+    @Test("Defaults to on")
+    func defaultsOn() {
+        #expect(GeneralSettings.default.showPartitions == true)
+        #expect(GeneralSettings().showPartitions == true)
+    }
+
+    @Test("Settings saved before the key existed keep partitions listed")
+    func decodesMissingKeyAsOn() throws {
+        let json = Data(#"{"startupBehavior":"showWelcome"}"#.utf8)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: json)
+        #expect(decoded.showPartitions == true)
+    }
+
+    @Test("Round-trips when turned off")
+    func roundTripsDisabled() throws {
+        var settings = GeneralSettings()
+        settings.showPartitions = false
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(GeneralSettings.self, from: data)
+        #expect(decoded.showPartitions == false)
+    }
+}

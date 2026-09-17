@@ -143,8 +143,12 @@ final class CrossEngineValueCoercerTests: XCTestCase {
 
     // MARK: - Arrays into JSON
 
+    private var arrayOfText: CanonicalTypeKind {
+        .array(element: .text(length: nil, isFixed: false))
+    }
+
     func testAPostgresArrayBecomesJson() {
-        let subject = coercer([.json], from: .postgres)
+        let subject = coercer([.json], sources: [arrayOfText], from: .postgres)
         XCTAssertEqual(subject.coerce([.text("{1,2,3}")]), [.text("[1,2,3]")])
         XCTAssertEqual(subject.coerce([.text("{a,b}")]), [.text("[\"a\",\"b\"]")])
         XCTAssertEqual(subject.coerce([.text("{}")]), [.text("[]")])
@@ -152,8 +156,24 @@ final class CrossEngineValueCoercerTests: XCTestCase {
 
     /// A JSON object arrives with the same brackets an array literal uses, and it is already JSON.
     func testAJsonObjectIsNotMistakenForAnArray() {
-        let subject = coercer([.json], from: .postgres)
+        let subject = coercer([.json], sources: [arrayOfText], from: .postgres)
         XCTAssertEqual(subject.coerce([.text("{\"a\": 1}")]), [.text("{\"a\": 1}")])
+    }
+
+    /// The brackets alone cannot tell an array from an object, so the source column decides. A
+    /// `jsonb` `{}` went across as `[]`, which is valid JSON and a different type: `jsonb_typeof`
+    /// came back `array`, the copy reported success, and nothing in the UI showed the difference.
+    func testAJsonSourceIsNeverRewrittenAsAnArray() {
+        let subject = coercer([.json], sources: [.json], from: .postgres)
+        XCTAssertEqual(subject.coerce([.text("{}")]), [.text("{}")])
+        XCTAssertEqual(subject.coerce([.text("{\"a\": 1}")]), [.text("{\"a\": 1}")])
+        XCTAssertEqual(subject.coerce([.text("{ }")]), [.text("{ }")])
+    }
+
+    /// A text column holding something array-shaped is text, not an array.
+    func testATextSourceIsNeverRewrittenAsAnArray() {
+        let subject = coercer([.json], sources: [.text(length: nil, isFixed: false)], from: .postgres)
+        XCTAssertEqual(subject.coerce([.text("{a,b}")]), [.text("{a,b}")])
     }
 
     // MARK: - Shape

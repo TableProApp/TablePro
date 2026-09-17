@@ -21,7 +21,7 @@ internal struct ConnectingStateView: View {
     internal let connection: DatabaseConnection
     internal let onCancel: () -> Void
 
-    @State private var observer: ConnectionStageObserver
+    @StateObject private var observer: ConnectionStageObserver
     @State private var showsCard = false
 
     /// The description line keeps its height whether or not it has anything to say, so the bar
@@ -31,7 +31,7 @@ internal struct ConnectingStateView: View {
     internal init(connection: DatabaseConnection, onCancel: @escaping () -> Void) {
         self.connection = connection
         self.onCancel = onCancel
-        _observer = State(wrappedValue: ConnectionStageObserver(connectionId: connection.id))
+        _observer = StateObject(wrappedValue: ConnectionStageObserver(connectionId: connection.id))
     }
 
     internal var body: some View {
@@ -52,7 +52,7 @@ internal struct ConnectingStateView: View {
         /// Attached out here rather than to the card, so a step that lands before the card does is
         /// still spoken. VoiceOver is told what is happening from the first stage; the card is held
         /// back only because a picture nobody has time to read is worth less than a still window.
-        .onChange(of: observer.stage) { _, newStage in
+        .onChange(of: observer.stage) { newStage in
             guard let newStage else { return }
             announce(newStage)
         }
@@ -135,8 +135,8 @@ internal struct ConnectingStateView: View {
     /// Posted per step rather than continuously. `updatesFrequently` is documented as a hint to
     /// poll, which is the wrong shape for a handful of discrete transitions.
     private func announce(_ stage: ConnectionStage) {
-        AccessibilityNotification.Announcement(
+        AccessibilityAnnouncement.post(
             ConnectionStageLabelFormatter.announcement(for: stage, connection: connection)
-        ).post()
+        )
     }
 }

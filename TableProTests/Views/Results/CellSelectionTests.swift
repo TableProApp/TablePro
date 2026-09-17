@@ -142,6 +142,48 @@ struct GridSelectionTests {
     }
 }
 
+@MainActor
+private final class OneRowTableSource: NSObject, NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+}
+
+@Suite("GridSelection column markers")
+struct GridSelectionColumnMarkerTests {
+    /// A marker whose block no longer reaches the last row is not a whole column any more. Keeping
+    /// it told the heading and the column commands otherwise, while the fill, the copy and the
+    /// affected rows stopped short, and nothing could take the stale block back off.
+    @Test("a marker is dropped when the result gained rows")
+    func markerDroppedWhenResultGrew() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        let restored = picked.clamped(rowLimit: 10, columnLimit: 6)
+
+        #expect(restored.columns.isEmpty)
+        #expect(restored.rectangles == [GridRect(rows: 0...3, columns: 1...1)])
+    }
+
+    @Test("a marker survives a result of the same height")
+    func markerSurvivesSameHeight() {
+        let picked = GridSelection.column(1, totalRows: 4)
+
+        #expect(picked.clamped(rowLimit: 4, columnLimit: 6).columns == IndexSet(integer: 1))
+    }
+
+    @Test("a marker is dropped when its column no longer exists")
+    func markerDroppedWhenColumnGone() {
+        let picked = GridSelection.column(5, totalRows: 4)
+
+        #expect(picked.clamped(rowLimit: 4, columnLimit: 3).columns.isEmpty)
+    }
+
+    @Test("union merges the markers of both sides")
+    func unionMergesMarkers() {
+        let merged = GridSelection.column(0, totalRows: 4).union(.column(2, totalRows: 4))
+
+        #expect(merged.columns == IndexSet([0, 2]))
+    }
+}
+
 @Suite("GridSelectionController gestures")
 @MainActor
 struct GridSelectionControllerTests {
@@ -239,12 +281,94 @@ struct GridSelectionControllerTests {
         #expect(controller.selection.activeCell == cmdTarget)
     }
 
-    @Test("selectAll covers every cell")
-    func selectAllSpansGrid() {
+    /// A block that happens to reach both ends of the page is not a column selection. Reading the
+    /// intent back out of the geometry tinted the heading of any column a drag swept end to end,
+    /// and in a one-row result of every column a single cell was clicked in.
+    @Test("only a heading click marks a column as picked")
+    func onlyHeadingClicksPickColumns() {
         let controller = GridSelectionController()
-        controller.selectAll(totalRows: 4, totalColumns: 3)
-        #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...2)])
-        #expect(controller.selection.activeCell == GridCoord(row: 0, displayColumn: 0))
+        let whole = GridCoord(row: 0, displayColumn: 1)
+
+        controller.update(.single(GridRect(rows: 0...3, columns: 1...1), anchor: whole, active: whole))
+        #expect(controller.selectedFullColumns().isEmpty)
+
+        controller.selectEntireColumn(1, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+    }
+
+    /// A one-row result is the sharpest case: every rectangle in it spans every row, so the old
+    /// predicate read one clicked cell as a picked column. The table view is real here because that
+    /// predicate consulted `numberOfRows`, and without one the check passes for the wrong reason.
+    @Test("a single cell in a one-row result picks no column")
+    func singleCellInOneRowResultPicksNoColumn() {
+        let controller = GridSelectionController()
+        let source = OneRowTableSource()
+        let tableView = NSTableView()
+        tableView.addTableColumn(NSTableColumn(identifier: .init("c")))
+        tableView.dataSource = source
+        tableView.reloadData()
+        controller.tableView = tableView
+        #expect(tableView.numberOfRows == 1)
+        let cell = GridCoord(row: 0, displayColumn: 0)
+
+        controller.update(.single(GridRect(cell: cell), anchor: cell, active: cell))
+
+        #expect(controller.selectedFullColumns().isEmpty)
+    }
+
+    @Test("Cmd+clicking a picked heading gives the column back")
+    func headingCmdClickToggles() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(0, totalRows: 4)
+
+        controller.addEntireColumn(2, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet([0, 2]))
+
+        controller.addEntireColumn(2, totalRows: 4)
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 0))
+        #expect(controller.selection.rectangles == [GridRect(rows: 0...3, columns: 0...0)])
+    }
+
+    /// An additive body gesture rebuilds the selection from the drag's base rectangles, and used to
+    /// rebuild it without the picked columns, so a Cmd+click in the body unpainted a heading the
+    /// user had picked and took its column out of the column commands.
+    @Test("a Cmd+click in the body keeps a picked heading")
+    func additiveCellGestureKeepsPickedColumns() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        let elsewhere = GridCoord(row: 2, displayColumn: 3)
+        _ = controller.beginDrag(at: elsewhere, modifiers: [.command])
+        controller.endDrag(dragged: false, originalCoord: elsewhere)
+
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+        #expect(controller.selection.contains(elsewhere))
+    }
+
+    @Test("a Cmd+drag in the body keeps a picked heading")
+    func additiveCellDragKeepsPickedColumns() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        let start = GridCoord(row: 1, displayColumn: 3)
+        _ = controller.beginDrag(at: start, modifiers: [.command])
+        controller.continueDrag(to: GridCoord(row: 3, displayColumn: 4))
+        controller.endDrag(dragged: true, originalCoord: start)
+
+        #expect(controller.selectedFullColumns() == IndexSet(integer: 1))
+    }
+
+    /// `union` concatenates, so re-adding one heading used to leave a second identical rectangle
+    /// behind, and the overlay and the row fill walk every rectangle for every visible row.
+    @Test("re-picking a heading never duplicates its rectangle")
+    func headingPickNeverDuplicates() {
+        let controller = GridSelectionController()
+        controller.selectEntireColumn(1, totalRows: 4)
+
+        controller.addEntireColumn(1, totalRows: 4)
+        controller.addEntireColumn(1, totalRows: 4)
+
+        #expect(controller.selection.rectangles.count <= 1)
     }
 
     @Test("selectEntireColumn covers all rows in that column")

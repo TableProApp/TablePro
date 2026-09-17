@@ -12,7 +12,10 @@ import TableProSyncTransport
 /// which is a different identity from the email on a license, and being gated by a license is not
 /// on its own a reason to live beside one.
 struct SyncSettingsView: View {
-    @Bindable private var syncCoordinator = SyncCoordinator.shared
+    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
+    /// Observed for `isValidating`, which disables Check Again while a check runs. Read off the
+    /// singleton directly, the button never learned that a check had started or finished.
+    @ObservedObject private var licenseManager = LicenseManager.shared
 
     var body: some View {
         Form {
@@ -36,9 +39,9 @@ struct SyncSettingsView: View {
                     )
                 ) {
                     Button(String(localized: "Check Again")) {
-                        Task { await LicenseManager.shared.revalidate() }
+                        Task { await licenseManager.revalidate() }
                     }
-                    .disabled(LicenseManager.shared.isValidating)
+                    .disabled(licenseManager.isValidating)
                 }
             default:
                 EmptyView()

@@ -5,13 +5,13 @@
 //  Read-only master-detail view of a table's triggers.
 //
 
+import Combine
 import SwiftUI
 
-@Observable
-final class TriggerInspectorState {
-    var searchText = ""
-    var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
-    var selectedID: TriggerInfo.ID?
+final class TriggerInspectorState: ObservableObject {
+    @Published var searchText = ""
+    @Published var sortOrder: [KeyPathComparator<TriggerInfo>] = [KeyPathComparator(\.name)]
+    @Published var selectedID: TriggerInfo.ID?
 
     func displayed(_ triggers: [TriggerInfo]) -> [TriggerInfo] {
         let filtered = searchText.isEmpty
@@ -49,7 +49,7 @@ struct TriggerDetailView: View {
     let isLoading: Bool
     let onOpenInEditor: (TriggerInfo) -> Void
 
-    @State private var state = TriggerInspectorState()
+    @StateObject private var state = TriggerInspectorState()
     @State private var editorSheet: TriggerEditorSheetItem?
     @State private var pendingDelete: TriggerInfo?
     @State private var actionError: String?
@@ -98,7 +98,7 @@ struct TriggerDetailView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { state.ensureSelection(triggers) }
-        .onChange(of: triggers) { _, newTriggers in state.ensureSelection(newTriggers) }
+        .onChange(of: triggers) { newTriggers in state.ensureSelection(newTriggers) }
         .sheet(item: $editorSheet, content: makeEditorSheet(for:))
         .confirmationDialog(
             String(format: String(localized: "Drop trigger “%@”?"), pendingDelete?.name ?? ""),
@@ -132,11 +132,20 @@ struct TriggerDetailView: View {
         )
     }
 
+    /// Read through the tab's own scope rather than the session driver, which follows the sidebar:
+    /// an engine that qualifies its template with the connection's current database pre-fills a
+    /// statement that creates the trigger on a same-named table in whatever database that is.
     private func newTrigger() {
-        let driver = DatabaseManager.shared.driver(for: connection.id)
-        let template = driver?.createTriggerTemplate(table: tableName)
-            ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
-        editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        let scope = scope
+        let tableName = tableName
+        Task {
+            let generated = try? await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                driver.createTriggerTemplate(table: tableName)
+            }
+            let template = (generated ?? nil)
+                ?? "CREATE TRIGGER trigger_name\nAFTER INSERT ON \(tableName)\nBEGIN\nEND;"
+            editorSheet = TriggerEditorSheetItem(mode: .create, sql: template)
+        }
     }
 
     private func editTrigger(_ trigger: TriggerInfo) {
@@ -173,7 +182,7 @@ struct TriggerDetailView: View {
 
 private struct TriggerActionBar: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let canEdit: Bool
     let onNew: () -> Void
     let onEdit: (TriggerInfo) -> Void
@@ -207,7 +216,7 @@ private struct TriggerActionBar: View {
 
 private struct TriggerListPane: View {
     let triggers: [TriggerInfo]
-    @Bindable var state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
 
     private var showEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
@@ -252,7 +261,7 @@ private struct TriggerListPane: View {
     private func enabledIndicator(_ trigger: TriggerInfo) -> some View {
         if let enabled = trigger.enabled {
             Image(systemName: enabled ? "checkmark.circle.fill" : "xmark.circle")
-                .foregroundStyle(enabled ? ThemeEngine.shared.palette.color(.statusSuccess) : Color.secondary)
+                .foregroundStyle(enabled ? Color.green : Color.secondary)
                 .accessibilityLabel(enabled ? String(localized: "Enabled") : String(localized: "Disabled"))
         }
     }
@@ -260,7 +269,7 @@ private struct TriggerListPane: View {
 
 private struct TriggerDetailPane: View {
     let triggers: [TriggerInfo]
-    let state: TriggerInspectorState
+    @ObservedObject var state: TriggerInspectorState
     let databaseType: DatabaseType
     let onOpenInEditor: (TriggerInfo) -> Void
 
@@ -274,7 +283,7 @@ private struct TriggerDetailPane: View {
                 onOpenInEditor: { onOpenInEditor(trigger) }
             )
         } else {
-            ThemeEngine.shared.palette.color(.editorBackground)
+            Color(nsColor: .textBackgroundColor)
         }
     }
 

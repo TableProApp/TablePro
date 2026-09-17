@@ -6,6 +6,7 @@
 import SwiftUI
 
 internal struct BlobHexEditorView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
 
     @FocusState private var isFocused: Bool
@@ -43,7 +44,7 @@ internal struct BlobHexEditorView: View {
     private var readOnlyHexView: some View {
         ScrollView([.horizontal, .vertical]) {
             Text(BlobFormattingService.shared.format(context.value.wrappedValue, for: .detail) ?? "")
-                .font(ThemeEngine.shared.valueFontSwiftUI)
+                .font(themeEngine.valueFontSwiftUI)
                 .textSelection(.enabled)
                 .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -61,12 +62,12 @@ internal struct BlobHexEditorView: View {
                 readOnlyHexView
             } else {
                 TextField("Hex bytes", text: $hexEditText, axis: .vertical)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(3...8)
                     .autocorrectionDisabled(true)
                     .focused($isFocused)
-                    .onChange(of: isFocused) {
+                    .onChange(of: isFocused) { _ in
                         if !isFocused {
                             commitHexEdit()
                         }
@@ -76,7 +77,7 @@ internal struct BlobHexEditorView: View {
             statusLine
         }
         .onAppear { loadDraft() }
-        .onChange(of: context.value.wrappedValue) {
+        .onChange(of: context.value.wrappedValue) { _ in
             if !isFocused {
                 loadDraft()
             }
@@ -94,11 +95,11 @@ internal struct BlobHexEditorView: View {
             if isTruncated {
                 Text("Truncated, read only")
                     .font(.caption2)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusWarning))
+                    .foregroundStyle(.orange)
             } else if BlobFormattingService.shared.parseHex(hexEditText) == nil, !hexEditText.isEmpty {
                 Text("Invalid hex")
                     .font(.caption2)
-                    .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                    .foregroundStyle(.red)
             }
         }
     }

@@ -35,6 +35,7 @@ internal final class SettingsWindowController: NSWindowController {
         /// `window.title` directly.
         let window = NSWindow(contentViewController: panes)
         window.identifier = NSUserInterfaceItemIdentifier(WindowIdentifier.settings)
+        window.keepsKeyViewLoopCurrent()
         window.styleMask = [.titled, .closable, .resizable]
         window.toolbarStyle = .preference
         window.isRestorable = false
@@ -54,7 +55,9 @@ internal final class SettingsWindowController: NSWindowController {
 }
 
 internal final class SettingsPaneTabViewController: NSTabViewController {
-    internal static let paneSize = NSSize(width: 720, height: 500)
+    /// Wide enough for twelve items in a `.preference` toolbar. At 720 the last of them
+    /// falls into an overflow chevron, which is where a pane nobody can find comes from.
+    internal static let paneSize = NSSize(width: 800, height: 500)
     internal static let paneOrder: [SettingsPane] = SettingsPane.allCases
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SettingsWindow")
@@ -66,7 +69,13 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
     }
 
     internal func select(_ pane: SettingsPane?) {
-        loadViewIfNeeded()
+        /// `loadViewIfNeeded()` is macOS 14. Reading `view` is what it does: the getter loads
+        /// the view when it has not been loaded yet.
+        if #available(macOS 14.0, *) {
+            loadViewIfNeeded()
+        } else {
+            _ = view
+        }
         let wanted = pane ?? persistedPane
         guard let index = Self.paneOrder.firstIndex(of: wanted) else {
             Self.logger.error("Settings pane \(wanted.rawValue, privacy: .public) has no tab and cannot be shown")
@@ -102,7 +111,6 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
                 minHeight: Self.paneSize.height,
                 maxHeight: .infinity
             )
-            .environment(UpdaterBridge.shared)
             .environment(\.appServices, .live)
         let hosting = NSHostingController(rootView: content)
         /// A tab child publishes no size to the window, which owns its minimum through
@@ -120,7 +128,7 @@ internal final class SettingsPaneTabViewController: NSTabViewController {
 }
 
 private struct SettingsPaneContent: View {
-    @Bindable private var settingsManager = AppSettingsManager.shared
+    @ObservedObject private var settingsManager = AppSettingsManager.shared
 
     private let pane: SettingsPane
 
@@ -134,25 +142,23 @@ private struct SettingsPaneContent: View {
             GeneralSettingsView(
                 settings: $settingsManager.general,
                 tabSettings: $settingsManager.tabs,
-                updaterBridge: UpdaterBridge.shared,
+                updater: SoftwareUpdater.shared,
                 onResetAll: { settingsManager.resetToDefaults() }
             )
         case .appearance:
             AppearanceSettingsView(settings: $settingsManager.appearance)
         case .editor:
-            EditorSettingsView(
-                settings: $settingsManager.editor,
-                typography: $settingsManager.typography
-            )
+            EditorSettingsView(settings: $settingsManager.editor)
         case .data:
             DataResultsSettingsView(
                 dataGrid: $settingsManager.dataGrid,
                 history: $settingsManager.history,
-                editor: $settingsManager.editor,
-                typography: $settingsManager.typography
+                editor: $settingsManager.editor
             )
         case .keyboard:
             KeyboardSettingsView(settings: $settingsManager.keyboard)
+        case .profiles:
+            ProfilesSettingsView()
         case .notifications:
             NotificationsSettingsView(settings: $settingsManager.notifications)
         case .ai:

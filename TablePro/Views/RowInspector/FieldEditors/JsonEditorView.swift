@@ -29,11 +29,11 @@ internal struct JsonEditorView: View {
         ) {
             JSONCodeEditor(text: $displayText, isEditable: !context.isReadOnly)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
                 .overlay(alignment: .bottomTrailing) { actionButtons }
         }
-        .onChange(of: displayText) { propagateEdit() }
-        .onChange(of: context.value.wrappedValue) { syncFromBinding() }
+        .onChange(of: displayText) { _ in propagateEdit() }
+        .onChange(of: context.value.wrappedValue) { _ in syncFromBinding() }
     }
 
     private var actionButtons: some View {

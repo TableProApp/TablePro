@@ -30,7 +30,7 @@ struct QueryInsightsSummaryBar: View {
                     totals.totalCount.formatted()
                 ),
                 systemImage: "exclamationmark.triangle",
-                tint: totals.failedCount > 0 ? ThemeEngine.shared.palette.color(.statusWarning) : .secondary
+                tint: totals.failedCount > 0 ? .orange : .secondary
             )
             metric(
                 label: String(localized: "Average"),

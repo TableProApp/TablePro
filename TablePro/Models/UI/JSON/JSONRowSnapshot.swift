@@ -25,6 +25,9 @@ struct JSONRowSnapshot: Equatable, Sendable {
     let foreignKeys: [String: JSONForeignKeyRef]
     /// Carried on the snapshot so the panel can hand it to the view model without the view, which
     /// is what keeps the model in step with the row a render is about to draw.
-    let connectionId: UUID
+    ///
+    /// The whole scope rather than the connection alone: a foreign key expansion reads another
+    /// table, and which database that lands in is the tab's answer, not the sidebar's.
+    let scope: DatabaseScope
     let databaseType: DatabaseType
 }

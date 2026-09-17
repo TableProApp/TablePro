@@ -11,8 +11,8 @@ import Security
 import SwiftUI
 import TableProPluginKit
 
-@MainActor @Observable
-final class PluginManager {
+@MainActor
+final class PluginManager: ObservableObject {
     static let shared = PluginManager(userDefaults: AppStorageEnvironment.shared.defaults)
     /// Raised to 29 for `maintenanceOperations` on `PluginDatabaseDriver`, plus the
     /// `PluginMaintenanceOperation`, `PluginMaintenanceOption`, `PluginMaintenanceScope` and
@@ -38,6 +38,12 @@ final class PluginManager {
     /// the first to answer them: it takes a whole-file write lock for the life of its handle, so an
     /// idle connection stops every other process from opening the same database.
     ///
+    /// Raised to 30 for `ExportFormatResult.notes` and its `init(warnings:notes:)`, which is what lets
+    /// an export report a fact about what it wrote without the summary alert reading it as a problem.
+    /// The old `init(warnings:)` is kept verbatim as `@_disfavoredOverload`, so every already-built
+    /// export plugin keeps loading and only a plugin rebuilt against the new initializer needs a host
+    /// that has it.
+    ///
     /// Raised to 22 before that for `fetchIndexDDL` on `PluginDatabaseDriver` and `PluginExportDataSource`,
     /// which is what lets a dump write a table's indexes after its rows instead of leaving whether
     /// they appear at all to each driver's `fetchTableDDL`.
@@ -55,7 +61,12 @@ final class PluginManager {
     /// rebuilt CassandraDriver for the v20 requirements it implements none of. Left at 20, such a
     /// plugin passes `validateBundleVersions` in a shipped v20 app and then fails
     /// `Bundle.loadAndReturnError`; at 21 that app refuses it and says to update.
-    nonisolated static let currentPluginKitVersion = 29
+    ///
+    /// 31 adds `aliasType`, `tableType` and `clrType` to `PluginUserDefinedTypeKind` and
+    /// `adoptingSchema` to `PluginUserDefinedTypeInfo`. The enum is not `@frozen` and every app-side
+    /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
+    /// the minimum stays where it is and no bulk re-release is needed.
+    nonisolated static let currentPluginKitVersion = 32
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19
@@ -63,15 +74,19 @@ final class PluginManager {
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
-    @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private let builtInPluginsURL: URL?
-    @ObservationIgnored internal let userPluginsDir: URL
+    private let defaults: UserDefaults
+    private let builtInPluginsURL: URL?
+    internal let userPluginsDir: URL
 
-    internal(set) var plugins: [PluginEntry] = []
+    /// Every plugin collection here is published. The class was `@Observable` until #2874, which
+    /// tracked these without a word, and Settings > Plugins and the rejected-plugin banner are
+    /// written against that: without it an install, an update or a rejection changed nothing on
+    /// screen until the pane was reopened.
+    @Published internal(set) var plugins: [PluginEntry] = []
 
-    internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
+    @Published internal(set) var stagedUpdates: [String: StagedPluginUpdate] = [:]
 
-    internal(set) var pluginsWithRegistryUpdate: Set<String> = []
+    @Published internal(set) var pluginsWithRegistryUpdate: Set<String> = []
 
     var isInstalling: Bool {
         PluginInstallTracker.shared.activeInstalls.values.contains { progress in
@@ -94,7 +109,7 @@ final class PluginManager {
         }
     }
 
-    @ObservationIgnored private var initialLoadWaiters: [LoadWaiter] = []
+    private var initialLoadWaiters: [LoadWaiter] = []
 
     private struct LoadWaiter {
         let id: UUID
@@ -124,19 +139,19 @@ final class PluginManager {
         waiter.continuation.resume()
     }
 
-    internal(set) var rejectedPlugins: [RejectedPlugin] = []
+    @Published internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
-    var needsRestart: Bool = false
+    @Published var needsRestart: Bool = false
 
-    internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
+    @Published internal(set) var driverPlugins: [String: any DriverPlugin] = [:]
 
-    internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
+    @Published internal(set) var exportPlugins: [String: any ExportFormatPlugin] = [:]
 
-    internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
+    @Published internal(set) var importPlugins: [String: any ImportFormatPlugin] = [:]
 
-    internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
+    @Published internal(set) var inspectorPlugins: [String: any DocumentInspectorPlugin] = [:]
 
-    internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
+    @Published internal(set) var pluginInstances: [String: any TableProPlugin] = [:]
 
     var disabledPluginIds: Set<String> {
         get { Set(defaults.stringArray(forKey: Self.disabledPluginsKey) ?? []) }
@@ -145,30 +160,30 @@ final class PluginManager {
 
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "PluginManager")
 
-    private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
+    @Published private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
-    @ObservationIgnored private(set) var lazyDriverURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyExportURLs: [String: URL] = [:]
-    @ObservationIgnored private var lazyImportURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorURLs: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorFileExtensions: [String: URL] = [:]
-    @ObservationIgnored internal var lazyInspectorUTIs: [String: URL] = [:]
-    @ObservationIgnored private var activatedBundleIds: Set<String> = []
+    private(set) var lazyDriverURLs: [String: URL] = [:]
+    private var lazyExportURLs: [String: URL] = [:]
+    private var lazyImportURLs: [String: URL] = [:]
+    internal var lazyInspectorURLs: [String: URL] = [:]
+    internal var lazyInspectorFileExtensions: [String: URL] = [:]
+    internal var lazyInspectorUTIs: [String: URL] = [:]
+    private var activatedBundleIds: Set<String> = []
 
-    @ObservationIgnored internal var reconciliationTask: Task<Void, Never>?
-    @ObservationIgnored internal var reconciliationActive = false
-    @ObservationIgnored internal var reconciliationAttempts: [String: Int] = [:]
-    @ObservationIgnored internal var reconciliationManifestAttempts = 0
-    @ObservationIgnored private var connectionStatusSubscription: AnyCancellable?
-    @ObservationIgnored internal var pluginNetworkMonitor: NWPathMonitor?
-    @ObservationIgnored internal var lastNetworkSatisfied = false
-    @ObservationIgnored internal var installsInFlight: Set<String> = []
+    internal var reconciliationTask: Task<Void, Never>?
+    internal var reconciliationActive = false
+    internal var reconciliationAttempts: [String: Int] = [:]
+    internal var reconciliationManifestAttempts = 0
+    private var connectionStatusSubscription: AnyCancellable?
+    internal var pluginNetworkMonitor: NWPathMonitor?
+    internal var lastNetworkSatisfied = false
+    internal var installsInFlight: Set<String> = []
 
     /// User-installed bundles discovered but not yet signature-checked. `sweepPluginSignatures()`
     /// drains it after the first frame.
-    @ObservationIgnored internal var pendingSignatureChecks: [URL] = []
+    internal var pendingSignatureChecks: [URL] = []
 
-    var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
+    @Published var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
 
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,

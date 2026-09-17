@@ -18,7 +18,7 @@ extension MainContentCoordinator {
         guard !statements.isEmpty else { return }
         try await executeSidebarChanges(statements: statements)
 
-        runQuery()
+        runQuery(viewport: .keepPlace)
     }
 
     func sidebarEditStatements(

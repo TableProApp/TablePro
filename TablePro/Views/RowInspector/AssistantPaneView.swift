@@ -12,7 +12,7 @@ import SwiftUI
 /// controls and its own command, because a chat is not one of the views of a selected row.
 internal struct AssistantPaneView: View {
     internal let connection: DatabaseConnection
-    @Bindable internal var state: AssistantState
+    @ObservedObject internal var state: AssistantState
 
     @State private var showsClearConfirmation = false
 
@@ -98,13 +98,14 @@ internal struct AssistantPaneView: View {
             }
         } label: {
             icon("clock")
+                .accessibilityLabel(String(localized: "Conversation history"))
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .frame(width: 24, height: 22)
         .contentShape(Rectangle())
         .help(String(localized: "Conversation history"))
-        .accessibilityLabel(String(localized: "Conversation history"))
     }
 
     private func icon(_ systemName: String) -> some View {

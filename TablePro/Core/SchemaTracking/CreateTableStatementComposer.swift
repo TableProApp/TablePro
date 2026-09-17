@@ -61,7 +61,7 @@ enum CreateTableStatementComposer {
             guard let sql = driver.generateAddIndexSQL(table: definition.tableName, index: index) else {
                 issues.append(SchemaDraftIssue(
                     tab: .indexes, row: row,
-                    message: String(localized: "This database does not create indexes with a statement.")
+                    message: String(localized: "Create Table cannot add an index on this database.")
                 ))
                 continue
             }

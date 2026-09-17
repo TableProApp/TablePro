@@ -14,9 +14,9 @@ struct AISettingsView: View {
     @State private var editingProviderID: UUID?
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
-    @State private var chatGPTCodexService = ChatGPTCodexService.shared
-    @State private var cursorAgentService = CursorAgentService.shared
-    @State private var xaiService = XAIService.shared
+    @ObservedObject private var chatGPTCodexService = ChatGPTCodexService.shared
+    @ObservedObject private var cursorAgentService = CursorAgentService.shared
+    @ObservedObject private var xaiService = XAIService.shared
     @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
@@ -38,7 +38,7 @@ struct AISettingsView: View {
         .task { await chatGPTCodexService.refreshAuthState() }
         .task { await cursorAgentService.refreshStatus() }
         .task { await xaiService.refreshAuthState() }
-        .onChange(of: settings.providers.map(\.id)) {
+        .onChange(of: settings.providers.map(\.id)) { _ in
             refreshKeyAvailability()
         }
         .sheet(item: editingProviderBinding) { provider in
@@ -215,7 +215,8 @@ struct AISettingsView: View {
         } label: {
             Label(String(localized: "Add Provider…"), systemImage: "plus")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
     }
 

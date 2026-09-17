@@ -15,6 +15,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct RowImportSheet: View {
+    @ObservedObject private var pluginManager = PluginManager.shared
     private static let logger = Logger(subsystem: "com.TablePro", category: "RowImportSheet")
 
     @Binding var isPresented: Bool
@@ -165,18 +166,18 @@ struct RowImportSheet: View {
             await loadTables()
             await loadNewColumns()
         }
-        .onChange(of: destination) { _, newValue in
+        .onChange(of: destination) { newValue in
             guard newValue == .newTable else { return }
             suggestNewTableName()
             newTableNameFocused = true
         }
-        .onChange(of: selectedTargetTable) { _, newValue in
+        .onChange(of: selectedTargetTable) { newValue in
             mappings = []
             targetColumns = []
             guard destination == .existingTable, let table = newValue else { return }
             Task { await loadExistingContext(table: table) }
         }
-        .onChange(of: currentPlugin?.fieldDetectionSignature) { _, _ in
+        .onChange(of: currentPlugin?.fieldDetectionSignature) { _ in
             Task { await redetectFields() }
         }
         .onDisappear {
@@ -190,7 +191,7 @@ struct RowImportSheet: View {
                     .interactiveDismissDisabled()
             }
         }
-        .onChange(of: showSuccessDialog) { _, isShowing in
+        .onChange(of: showSuccessDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportSuccess(
                 result: importResult,
@@ -203,7 +204,7 @@ struct RowImportSheet: View {
                 AppCommands.shared.refreshData.send(DataRefreshRequest(connectionId: connection.id))
             }
         }
-        .onChange(of: showErrorDialog) { _, isShowing in
+        .onChange(of: showErrorDialog) { isShowing in
             guard isShowing else { return }
             TransferResultAlert.presentImportFailure(error: importError, window: hostWindow) {
                 showErrorDialog = false
@@ -358,7 +359,7 @@ struct RowImportSheet: View {
     /// A file the plugin could not read is a failure, not an empty result. Showing the parser's
     /// message as grey placeholder text left the sheet with nothing to press but Cancel.
     private func unreadableFile(reason: String) -> some View {
-        ContentUnavailableView {
+        UnavailableStateView {
             Label(String(localized: "Cannot read this file"), systemImage: "exclamationmark.triangle")
         } description: {
             Text(reason)
@@ -641,7 +642,7 @@ struct RowImportSheet: View {
     // MARK: - Plugin
 
     private var currentPlugin: (any ImportFormatPlugin)? {
-        PluginManager.shared.importPlugin(forFormat: formatId)
+        pluginManager.importPlugin(forFormat: formatId)
     }
 
     private var canImport: Bool {
@@ -660,18 +661,26 @@ struct RowImportSheet: View {
     /// Both failures used to leave an empty list and say nothing, so the destination picker offered
     /// "Select a table…" and nothing else with no way to tell an empty database from an unreachable
     /// one, and no way to ask again.
+    ///
+    /// Read through the browse scope, which is what the import itself writes to. The shared session
+    /// driver is wherever a tab's execution last pinned it and nothing puts it back, so reading from
+    /// it listed one database's tables and mapped their columns while the rows went to another's.
     @MainActor
     private func loadTables() async {
         guard !isLoadingTables else { return }
         isLoadingTables = true
         defer { isLoadingTables = false }
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+        guard DatabaseManager.shared.browseScope(for: connection.id) != nil else {
             catalogNameKeys = nil
             tableListError = String(localized: "This connection is not open.")
             return
         }
         do {
-            databaseObjects = try await driver.fetchTables()
+            databaseObjects = try await DatabaseManager.shared.withBrowseMetadataDriver(
+                connectionId: connection.id
+            ) { driver in
+                try await driver.fetchTables()
+            }
             catalogNameKeys = NewTableNaming.comparisonKeys(for: databaseObjects.map(\.name))
             tableListError = nil
             suggestNewTableName()
@@ -749,13 +758,17 @@ struct RowImportSheet: View {
 
     @MainActor
     private func loadExistingContext(table: String) async {
-        guard let driver = DatabaseManager.shared.driver(for: connection.id),
-              let plugin = currentPlugin else { return }
+        guard let plugin = currentPlugin,
+              DatabaseManager.shared.browseScope(for: connection.id) != nil else { return }
         isLoadingContext = true
         loadError = nil
         defer { isLoadingContext = false }
         do {
-            let columns = try await driver.fetchColumns(table: table).map(\.name)
+            let columns = try await DatabaseManager.shared.withBrowseMetadataDriver(
+                connectionId: connection.id
+            ) { driver in
+                try await driver.fetchColumns(table: table)
+            }.map(\.name)
             let fields = try await Self.detectFields(plugin: plugin, at: fileURL, targetTable: table)
             targetColumns = columns
             mappings = fields.map { field in
@@ -932,6 +945,7 @@ struct RowImportSheet: View {
             sql: sql, kind: .schemaMutation, description: String(localized: "Create Table")
         )
         try await runOnLeasedDriver(sql)
+        CatalogChangeService.post(.changed(CatalogChange(connectionId: connection.id, kinds: .tables)))
     }
 
     /// The sheet's own statements take the same lease the import does, one at a time and always

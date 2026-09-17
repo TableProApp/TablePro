@@ -77,6 +77,13 @@ extension ConnectionFormCoordinator {
         services.pluginManager.supportsRemoteDatabaseFile(for: network.type)
     }
 
+    /// Whether the current type can run its statements on the server, which is what decides if the
+    /// Open pop-up appears beside the remote path. A type that only fetches a copy never shows it,
+    /// and its access stays the copy.
+    var supportsRemoteDatabaseSession: Bool {
+        services.pluginManager.supportsRemoteDatabaseSession(for: network.type)
+    }
+
     var supportsSSL: Bool {
         services.pluginManager.supportsSSL(for: network.type)
     }

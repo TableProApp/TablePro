@@ -53,6 +53,9 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsRenameSchema: Bool = false
         // `var` with defaults so existing call sites compile without passing these fields
         var supportsDropSchema: Bool = false
+        var supportsCreateSchema: Bool = false
+        var supportsSchemaOwner: Bool = false
+        var supportsSchemaPrivileges: Bool = false
         var supportsAddColumn: Bool = true
         var supportsModifyColumn: Bool = true
         var supportsDropColumn: Bool = true
@@ -73,7 +76,17 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsCloudflareTunnel: Bool = true
         var supportsClientKeyPassphrase: Bool = false
         var supportsConnectionPooling: Bool = true
+        /// Whether two pooled drivers for the same connection sit on one physical session. Snowflake
+        /// keys its session on the account and role and deliberately not on the database, so every
+        /// pooled scope shares one mutable `currentDatabase`: a statement that selects a database on
+        /// behalf of one entry selects it for all of them.
+        var pooledDriversShareOneSession: Bool = false
         var authenticationIsDatabaseScoped: Bool = false
+        /// Whether a connection that names no database has nothing to browse until one is chosen. A
+        /// MySQL session opened without one has no current database: `SHOW TABLES` there is
+        /// `ERROR 1046 No database selected`. An engine whose session falls back to a default
+        /// database, such as ClickHouse's `default`, leaves this false.
+        var browsingRequiresSelectedDatabase: Bool = false
         var pagination: PaginationCapability = .offset
         var isEngineReadOnly: Bool = false
 
@@ -95,6 +108,11 @@ struct PluginMetadataSnapshot: Sendable {
         /// still be excluded: a ledger is a graph of files reached through `include`, so one file
         /// out of it either fails to load or presents incomplete accounts, which is worse.
         var supportsRemoteDatabaseFile: Bool = false
+
+        /// Whether this type can run its statements on an SSH server against a live database file,
+        /// rather than only fetching a read-only copy. True for SQLite alone today, because the
+        /// remote agent opens the file with the server's `libsqlite3`.
+        var supportsRemoteDatabaseSession: Bool = false
 
         var supportsPrincipalConnectionLimit: Bool = true
 
@@ -141,6 +159,15 @@ struct PluginMetadataSnapshot: Sendable {
         let structureColumnFields: [StructureColumnField]
         let implicitSchemaName: String?
         let rowMatchExcludedTypePrefixes: [String]
+        /// Column types whose keyless row match has to compare the server's own text rendering
+        /// rather than the value itself. A grid reads every cell back as text, and on these types
+        /// that text does not compare equal to what it was read from: measured on MySQL 8.4.11 and
+        /// OceanBase 4.4.2.1, a `FLOAT` holding 1.1 reads back `1.1` and `WHERE f = '1.1'` matches
+        /// no row, because the server widens the stored single to a different double than it parses
+        /// the literal into. `JSON` never compares equal to a string at all. Listing a type here
+        /// wraps only the keyless comparison, and only for the types measured to need it: `CONCAT`
+        /// over a `BIT` column returns its raw bytes and breaks a match that works today.
+        let rowMatchTextTypePrefixes: [String]
 
         init(
             defaultSchemaName: String,
@@ -157,7 +184,8 @@ struct PluginMetadataSnapshot: Sendable {
             databaseGroupingStrategy: GroupingStrategy,
             structureColumnFields: [StructureColumnField],
             implicitSchemaName: String? = nil,
-            rowMatchExcludedTypePrefixes: [String] = []
+            rowMatchExcludedTypePrefixes: [String] = [],
+            rowMatchTextTypePrefixes: [String] = []
         ) {
             self.defaultSchemaName = defaultSchemaName
             self.defaultGroupName = defaultGroupName
@@ -174,6 +202,7 @@ struct PluginMetadataSnapshot: Sendable {
             self.structureColumnFields = structureColumnFields
             self.implicitSchemaName = implicitSchemaName
             self.rowMatchExcludedTypePrefixes = rowMatchExcludedTypePrefixes
+            self.rowMatchTextTypePrefixes = rowMatchTextTypePrefixes
         }
 
         static let defaults = SchemaInfo(
@@ -279,6 +308,43 @@ struct PluginMetadataSnapshot: Sendable {
         )
     }
 
+    func withSystemNames(databases: [String], schemas: [String]) -> PluginMetadataSnapshot {
+        PluginMetadataSnapshot(
+            displayName: displayName, iconName: iconName, defaultPort: defaultPort,
+            requiresAuthentication: requiresAuthentication, supportsForeignKeys: supportsForeignKeys,
+            supportsSchemaEditing: supportsSchemaEditing, isDownloadable: isDownloadable,
+            primaryUrlScheme: primaryUrlScheme, parameterStyle: parameterStyle,
+            navigationModel: navigationModel, explainVariants: explainVariants,
+            pathFieldRole: pathFieldRole, supportsHealthMonitor: supportsHealthMonitor,
+            urlSchemes: urlSchemes, postConnectActions: postConnectActions,
+            brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
+            editorLanguage: editorLanguage, connectionMode: connectionMode,
+            supportsDatabaseSwitching: supportsDatabaseSwitching,
+            structureEditing: structureEditing,
+            capabilities: capabilities,
+            schema: SchemaInfo(
+                defaultSchemaName: schema.defaultSchemaName,
+                defaultGroupName: schema.defaultGroupName,
+                tableEntityName: schema.tableEntityName,
+                containerEntityName: schema.containerEntityName,
+                schemaEntityName: schema.schemaEntityName,
+                defaultPrimaryKeyColumn: schema.defaultPrimaryKeyColumn,
+                immutableColumns: schema.immutableColumns,
+                systemDatabaseNames: databases,
+                systemSchemaNames: schemas,
+                fileExtensions: schema.fileExtensions,
+                fileSignatures: schema.fileSignatures,
+                databaseGroupingStrategy: schema.databaseGroupingStrategy,
+                structureColumnFields: schema.structureColumnFields,
+                implicitSchemaName: schema.implicitSchemaName,
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
+            ),
+            editor: editor,
+            connection: connection
+        )
+    }
+
     func withBranding(from source: PluginMetadataSnapshot) -> PluginMetadataSnapshot {
         PluginMetadataSnapshot(
             displayName: source.displayName, iconName: source.iconName, defaultPort: defaultPort,
@@ -342,7 +408,8 @@ struct PluginMetadataSnapshot: Sendable {
                 databaseGroupingStrategy: source.schema.databaseGroupingStrategy,
                 structureColumnFields: schema.structureColumnFields,
                 implicitSchemaName: source.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes
+                rowMatchExcludedTypePrefixes: schema.rowMatchExcludedTypePrefixes,
+                rowMatchTextTypePrefixes: schema.rowMatchTextTypePrefixes
             ),
             editor: editor, connection: connection
         )
@@ -383,6 +450,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["TiDB"] = "MySQL"
         reverseTypeIndex["Databend"] = "MySQL"
+        reverseTypeIndex["OceanBase"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["CockroachDB"] = "PostgreSQL"
         reverseTypeIndex["PGlite"] = "PostgreSQL"
@@ -432,6 +500,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         if let registryDefault = defaultSnapshots[typeId] {
             resolved = resolved.withIsDownloadable(registryDefault.isDownloadable)
             Self.adoptCuratedCaseSensitivity(&resolved, registryDefault: registryDefault)
+            Self.adoptCuratedSystemNames(&resolved, registryDefault: registryDefault)
             if Self.declaresLegacySchemaOnlyRouting(resolved, registryDefault: registryDefault) {
                 Logger(subsystem: "com.TablePro", category: "PluginMetadataRegistry").notice(
                     "Plugin '\(typeId, privacy: .public)' declares legacy two-tier switching for a schema-only engine; applying the app's switch routing"
@@ -608,6 +677,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsRenameDatabase: driverType.supportsRenameDatabase,
                 supportsRenameSchema: driverType.supportsRenameSchema,
                 supportsDropSchema: driverType.supportsDropSchema,
+                supportsCreateSchema: driverType.supportsCreateSchema,
+                supportsSchemaOwner: driverType.supportsSchemaOwner,
+                supportsSchemaPrivileges: driverType.supportsSchemaPrivileges,
                 supportsAddColumn: driverType.supportsAddColumn,
                 supportsModifyColumn: driverType.supportsModifyColumn,
                 supportsDropColumn: driverType.supportsDropColumn,
@@ -628,13 +700,19 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsCloudflareTunnel: driverType.supportsSSH,
                 supportsClientKeyPassphrase: existingSnapshot?.capabilities.supportsClientKeyPassphrase ?? false,
                 supportsConnectionPooling: existingSnapshot?.capabilities.supportsConnectionPooling ?? true,
+                pooledDriversShareOneSession: existingSnapshot?.capabilities
+                    .pooledDriversShareOneSession ?? false,
                 authenticationIsDatabaseScoped: existingSnapshot?.capabilities
                     .authenticationIsDatabaseScoped ?? false,
+                browsingRequiresSelectedDatabase: existingSnapshot?.capabilities
+                    .browsingRequiresSelectedDatabase ?? false,
                 pagination: existingSnapshot?.capabilities.pagination ?? .offset,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,
+                supportsRemoteDatabaseSession: existingSnapshot?.capabilities
+                    .supportsRemoteDatabaseSession ?? false,
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true
             ),
@@ -653,7 +731,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 databaseGroupingStrategy: driverType.databaseGroupingStrategy,
                 structureColumnFields: driverType.structureColumnFields,
                 implicitSchemaName: existingSnapshot?.schema.implicitSchemaName,
-                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? []
+                rowMatchExcludedTypePrefixes: existingSnapshot?.schema.rowMatchExcludedTypePrefixes ?? [],
+                rowMatchTextTypePrefixes: existingSnapshot?.schema.rowMatchTextTypePrefixes ?? []
             ),
             editor: PluginMetadataSnapshot.EditorConfig(
                 sqlDialect: driverType.sqlDialect,

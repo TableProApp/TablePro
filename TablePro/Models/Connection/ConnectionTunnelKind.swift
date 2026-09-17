@@ -19,6 +19,11 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     /// that rebuilds it. What travels is a file rather than a socket.
     case remoteFile
 
+    /// A live database on an SSH server, reached by running statements on the server through the
+    /// SQLite agent over an exec channel exposed on a loopback port. Same SSH configuration as
+    /// `.remoteFile`, but the file is read and written in place rather than copied down.
+    case remoteDatabaseSession
+
     /// The transports the connection form offers as switches the user can turn on independently.
     ///
     /// `.remoteFile` is deliberately absent. It is not a switch of its own: it is what an SSH
@@ -36,6 +41,7 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
         case .socksProxy: return String(localized: "SOCKS Proxy")
         case .tunnelCommand: return String(localized: "Tunnel Command")
         case .remoteFile: return String(localized: "Remote Database File")
+        case .remoteDatabaseSession: return String(localized: "Remote Database File")
         }
     }
 
@@ -58,6 +64,8 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
             return String(localized: "Holds a command that forwards a local port, such as kubectl port-forward.")
         case .remoteFile:
             return String(localized: "Copies a database file from an SSH server and opens the copy read-only.")
+        case .remoteDatabaseSession:
+            return String(localized: "Runs statements on the SSH server so a database file there can be read and written in place.")
         }
     }
 
@@ -72,7 +80,7 @@ enum ConnectionTunnelKind: String, CaseIterable, Sendable {
     /// to the driver's own C library, inside the plugin.
     var carriesMeasuredBytes: Bool {
         switch self {
-        case .ssh, .socksProxy: return true
+        case .ssh, .socksProxy, .remoteDatabaseSession: return true
         case .cloudflare, .cloudSQLProxy, .tunnelCommand, .remoteFile: return false
         }
     }
@@ -103,16 +111,38 @@ extension DatabaseConnection {
     /// main-actor isolated. `enabledTunnelKinds` is asked from wherever a connection is being
     /// resolved, so it cannot hop actors; the registry guards its own state with a lock for exactly
     /// this reason.
+    /// Whether this connection opens a read-only copy of a file on an SSH server.
+    ///
+    /// The copy is the fallback for any remote file that is not a live session: the read-only
+    /// choice, and also a `.onServer` choice on a type that has no agent to serve it. That keeps a
+    /// file-backed connection with a path from ever resolving to a plain SSH tunnel, which forwards
+    /// a port a file driver cannot use.
     var opensRemoteDatabaseFile: Bool {
-        guard resolvedSSHConfig.forwardsRemoteFile else { return false }
+        guard resolvedSSHConfig.forwardsRemoteFile, !opensRemoteDatabaseSession else { return false }
         guard let capabilities = PluginMetadataRegistry.shared.snapshot(for: type)?.capabilities
         else { return false }
         return capabilities.supportsRemoteDatabaseFile && capabilities.localFilePathField != nil
     }
 
+    /// Whether this connection runs its statements on the SSH server against a live database file.
+    ///
+    /// The same SSH configuration as the read-only copy, told apart by `remoteFileAccess`. A driver
+    /// whose type has no agent (everything but SQLite today) can never enter this mode, so a stored
+    /// `.onServer` on another type falls back to no transport rather than a session nothing serves.
+    var opensRemoteDatabaseSession: Bool {
+        guard resolvedSSHConfig.forwardsRemoteFile, resolvedSSHConfig.remoteFileAccess == .onServer else {
+            return false
+        }
+        guard let capabilities = PluginMetadataRegistry.shared.snapshot(for: type)?.capabilities
+        else { return false }
+        return capabilities.supportsRemoteDatabaseSession && capabilities.localFilePathField != nil
+    }
+
     var enabledTunnelKinds: [ConnectionTunnelKind] {
         var kinds: [ConnectionTunnelKind] = []
-        if opensRemoteDatabaseFile {
+        if opensRemoteDatabaseSession {
+            kinds.append(.remoteDatabaseSession)
+        } else if opensRemoteDatabaseFile {
             kinds.append(.remoteFile)
         } else if resolvedSSHConfig.enabled {
             kinds.append(.ssh)

@@ -15,7 +15,7 @@ options:
   transitivelyLinkDependencies: false
   localPackagesGroup: Packages
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "13.0"
 
 configs:
   Debug: debug
@@ -37,21 +37,17 @@ fileGroups:
   - project.yml
 
 packages:
-  CodeEditSourceEditor:
-    path: LocalPackages/CodeEditSourceEditor
-  CodeEditLanguages:
-    path: LocalPackages/CodeEditLanguages
-  # Reached transitively by CodeEditSourceEditor, but the app links its product
-  # directly, so it has to be declared here too.
-  CodeEditTextView:
-    path: LocalPackages/CodeEditTextView
+  TableProEditor:
+    path: Packages/TableProEditor
+  TableProGrammars:
+    path: Packages/TableProGrammars
   TableProCore:
     path: Packages/TableProCore
   TableProOracle:
     path: Packages/TableProOracle
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    majorVersion: 2.9.5
+    majorVersion: 2.10.0
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
@@ -227,13 +223,13 @@ targets:
       - target: CSVInspectorPlugin
         embed: true
         copy: { destination: plugins }
-      - package: CodeEditSourceEditor
-      - package: CodeEditLanguages
-      - package: CodeEditTextView
+      - package: TableProEditor
+        products: [TableProEditorKit, TableProTextEngine]
+      - package: TableProGrammars
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
+        products: [TableProAnalytics, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProNumberFormatting, TableProSyncTransport]
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -415,7 +411,9 @@ targets:
       - Plugins/DamengDriverPlugin/DamengParameterBinder.swift
       - Plugins/DamengDriverPlugin/DamengIndexStatements.swift
       - Plugins/OracleDriverPlugin/OracleIndexStatements.swift
+      - Plugins/OracleDriverPlugin/OraclePartitionMapping.swift
       - Plugins/DamengDriverPlugin/DamengStatementClassifier.swift
+      - Plugins/DamengDriverPlugin/DamengSystemSchemas.swift
       - Plugins/DuckDBDriverPlugin/DuckDBAccessMode.swift
       - Plugins/DuckDBDriverPlugin/DuckDBFileKinds.swift
       - Plugins/DuckDBDriverPlugin/DuckDBIdleRelease.swift
@@ -425,10 +423,12 @@ targets:
       - Plugins/DuckDBDriverPlugin/DuckDBTypeRendering.swift
       - Plugins/DuckDBDriverPlugin/DuckDBViewDefinition.swift
       - Plugins/DuckDBDriverPlugin/QuackConnectBuilder.swift
+      - Plugins/DynamoDBDriverPlugin/DynamoDBOperations.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBQueryBuilder.swift
       - Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchConsoleParser.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchMappingFlattener.swift
+      - Plugins/ElasticsearchDriverPlugin/ElasticsearchOperations.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchQueryBuilder.swift
       - Plugins/ElasticsearchDriverPlugin/ElasticsearchStatementGenerator.swift
       - Plugins/EtcdDriverPlugin/EtcdCommandParser.swift
@@ -451,6 +451,8 @@ targets:
       - Plugins/JSONImportPlugin/JSONImportParsing.swift
       - Plugins/JSONImportPlugin/JSONImportPlugin.swift
       - Plugins/MSSQLDriverPlugin/MSSQLObjectQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeQueries.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTypeDefinition.swift
       - Plugins/MSSQLDriverPlugin/MSSQLLoginParameters.swift
       - Plugins/MSSQLDriverPlugin/MSSQLSSLMapping.swift
       - Plugins/MQLExportPlugin/MQLExportHelpers.swift
@@ -493,8 +495,11 @@ targets:
       - Plugins/MySQLDriverPlugin/MySQLKillTarget.swift
       - Plugins/MySQLDriverPlugin/MySQLMaintenance.swift
       - Plugins/MySQLDriverPlugin/MySQLObjectQueries.swift
+      - Plugins/MySQLDriverPlugin/MySQLPartitionBound.swift
+      - Plugins/MySQLDriverPlugin/MySQLTableListing.swift
       - Plugins/MySQLDriverPlugin/MySQLSelectLimitStatement.swift
       - Plugins/MySQLDriverPlugin/MySQLServerFlavor.swift
+      - Plugins/MySQLDriverPlugin/MySQLSystemDatabases.swift
       - Plugins/MySQLDriverPlugin/MySQLServerVersion.swift
       - Plugins/MySQLDriverPlugin/MySQLSocketTimeout.swift
       - Plugins/MySQLDriverPlugin/MySQLStatementClassification.swift
@@ -502,15 +507,20 @@ targets:
       - Plugins/MySQLDriverPlugin/DatabendLiteral.swift
       - Plugins/MySQLDriverPlugin/DatabendResultShape.swift
       - Plugins/MySQLDriverPlugin/TiDBCheckConstraints.swift
+      - Plugins/MySQLDriverPlugin/MySQLCreateTableScanner.swift
+      - Plugins/MySQLDriverPlugin/MySQLIndexGrouping.swift
+      - Plugins/MySQLDriverPlugin/OceanBaseColumnDefaults.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCheckConstraintParser.swift
       - Plugins/SQLiteDriverPlugin/SQLiteCreateTableDDL.swift
       - Plugins/SQLiteDriverPlugin/SQLiteDefaultValue.swift
       - Plugins/SQLiteDriverPlugin/SQLiteMaintenance.swift
+      - Plugins/SQLiteDriverPlugin/SQLiteAgentProtocol.swift
       - Plugins/LibSQLDriverPlugin/LibSQLDefaultValue.swift
       - Plugins/LibSQLDriverPlugin/HranaHttpClient.swift
       - Plugins/CloudflareD1DriverPlugin/CloudflareD1DefaultValue.swift
       - Plugins/CloudflareD1DriverPlugin/D1HttpClient.swift
       - Plugins/MSSQLDriverPlugin/MSSQLCheckConstraintDefinition.swift
+      - Plugins/MSSQLDriverPlugin/MSSQLTableDefinitionSQL.swift
       - Plugins/PostgreSQLDriverPlugin/CockroachRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/ColumnQueryShape.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQByteaDecoder.swift
@@ -522,6 +532,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQPluginError.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQTypeNameRegistry.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift
@@ -529,16 +540,22 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogPresence.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogTypeNames.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCheckConstraintDefinition.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLColumnClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCommentStatements.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLForeignKeyQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexClauses.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLIndexQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLMaintenance.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLObjectQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLPartitionBound.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLPrincipalQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLRelationSQL.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLViewDefinition.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaManagementQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaStatementPlanner.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSchemaQueries.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceQueries.swift
+      - Plugins/PostgreSQLDriverPlugin/PostgreSQLSequenceReference.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLSystemDatabases.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTableListingLadder.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLTextArray.swift
@@ -551,6 +568,7 @@ targets:
       - Plugins/KafkaDriverPlugin/KafkaBrowseEngine.swift
       - Plugins/KafkaDriverPlugin/KafkaCluster.swift
       - Plugins/KafkaDriverPlugin/KafkaConnection.swift
+      - Plugins/KafkaDriverPlugin/KafkaDeleteTopicsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaFetchRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaGroupsRequest.swift
       - Plugins/KafkaDriverPlugin/KafkaMetadataRequest.swift
@@ -594,6 +612,8 @@ targets:
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift
       - Plugins/RedisDriverPlugin/RedisStatementGenerator.swift
       - Plugins/RedisDriverPlugin/RedisTopologyDiagnostics.swift
+      - Plugins/SQLExportPlugin/SQLExportBinaryLiteral.swift
+      - Plugins/SQLExportPlugin/SQLExportCompressor.swift
       - Plugins/SQLExportPlugin/SQLExportDDLRewriter.swift
       - Plugins/SQLExportPlugin/SQLExportEncodingDeclaration.swift
       - Plugins/SQLExportPlugin/SQLExportFileWriter.swift
@@ -601,7 +621,10 @@ targets:
       - Plugins/SQLExportPlugin/SQLExportModels.swift
       - Plugins/SQLExportPlugin/SQLExportOptionsView.swift
       - Plugins/SQLExportPlugin/SQLExportPlugin.swift
+      - Plugins/SQLExportPlugin/SQLExportRowValueEncoder.swift
+      - Plugins/SQLExportPlugin/SQLExportSessionScope.swift
       - Plugins/SQLExportPlugin/SQLExportSnapshot.swift
+      - Plugins/SQLExportPlugin/SQLExportStatementBudget.swift
       - Plugins/SQLImportPlugin/SQLImportFailure.swift
       - Plugins/SQLImportPlugin/SQLImportOptions.swift
       - Plugins/SQLImportPlugin/SQLImportOptionsView.swift
@@ -642,7 +665,7 @@ targets:
     dependencies:
       - target: TablePro
       - package: TableProCore
-        products: [TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
+        products: [TableProConnectionLibrary, TableProDocumentPath, TableProGeometry, TableProMSSQLCore, TableProNumberFormatting, TableProWeaviateCore]
       # The Kafka integration suite drives the real driver, so the test target links what
       # the plugin target links: zstd for decompression and NIO for the transport.
       - package: zstd
@@ -695,6 +718,9 @@ targets:
     templateAttributes:
       folder: MySQLDriverPlugin
       principalClass: MySQLPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProGeometry
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1113,6 +1139,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProDocumentPath
 
   EtcdDriverPlugin:
     templates: [DriverPlugin]
@@ -1264,6 +1292,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+      - package: TableProCore
+        product: TableProDocumentPath
 
   WeaviateDriverPlugin:
     templates: [DriverPlugin]

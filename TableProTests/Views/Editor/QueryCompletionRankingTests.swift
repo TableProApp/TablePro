@@ -118,6 +118,44 @@ struct QueryCompletionRankingTests {
         #expect((session?.candidates.count ?? 0) <= 400)
     }
 
+    /// The incremental path reads its prefix off the live token, quote included, so it needed the
+    /// same trim the analyzer does. Without it, typing a quote closed the open popup on that
+    /// keystroke because every candidate was filtered out.
+    @MainActor
+    @Test(
+        "A quoted prefix still ranks the identifier it names",
+        arguments: ["`cat", "`cat`", "\"cat"]
+    )
+    func quotedPrefixRanksTheIdentifier(prefix: String) {
+        let service = SQLCompletionService(schemaProvider: nil, databaseType: .mysql)
+        let items = [
+            SQLCompletionItem.table("category", isView: false),
+            SQLCompletionItem.table("inflation_rates", isView: false)
+        ]
+
+        let ranked = service.rank(items, prefix: prefix)
+
+        #expect(ranked.first?.label == "category")
+    }
+
+    /// `"` opens a string literal on MySQL, and a re-rank cannot tell that from an identifier
+    /// quote. Widening a quotes-only token to every candidate would hold the popup open inside
+    /// the string, so it declines and lets the popup close instead.
+    @MainActor
+    @Test(
+        "A token that is nothing but quotes ranks nothing",
+        arguments: ["`", "\"", "``", "\"\""]
+    )
+    func quotesOnlyPrefixRanksNothing(prefix: String) {
+        let service = SQLCompletionService(schemaProvider: nil, databaseType: .mysql)
+        let items = [
+            SQLCompletionItem.table("category", isView: false),
+            SQLCompletionItem.table("inflation_rates", isView: false)
+        ]
+
+        #expect(service.rank(items, prefix: prefix).isEmpty)
+    }
+
     @MainActor
     @Test("MongoDB collection methods still rank the exact method first")
     func mongoCollectionMethodsRank() {

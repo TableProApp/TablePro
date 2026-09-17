@@ -20,9 +20,33 @@ extension MainContentCoordinator {
     /// talking over whatever the front one is doing.
     func announceQueryError(_ message: String) {
         guard contentWindow?.isKeyWindow == true else { return }
-        AccessibilityNotification.Announcement(
+        AccessibilityAnnouncement.post(
             String(format: String(localized: "Query failed. %@"), message)
-        ).post()
+        )
+    }
+
+    /// A table tab's SELECT is the app's own, so it may follow a database switch it waited through
+    /// onto a pooled connection. The choice belongs to the tab and never to the statement: an editor
+    /// SELECT can read a temp table or sit inside the user's open transaction, and moving it to
+    /// another connection would lose both.
+    func withExecutionDriver<T: Sendable>(
+        scope: DatabaseScope,
+        isTableTab: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard isTableTab else {
+            return try await services.databaseManager.withScopedDriver(
+                scope: scope,
+                route: services.databaseManager.executionRoute(for: scope),
+                cancellation: .cancellableRead,
+                body
+            )
+        }
+        return try await services.databaseManager.withTableReadDriver(
+            scope: scope,
+            cancellation: .cancellableRead,
+            body
+        )
     }
 
     func finishFailedQuery(
@@ -106,7 +130,8 @@ extension MainContentCoordinator {
         isTruncated: Bool = false,
         queryParameterValues: [QueryParameter]? = nil,
         anchor: StatementAnchor? = nil,
-        timing: PluginQueryTiming? = nil
+        timing: PluginQueryTiming? = nil,
+        viewport: GridReloadIntent = .firstRow
     ) {
         queryExecutionCoordinator.applyPhase1Result(
             tabId: tabId,
@@ -125,7 +150,8 @@ extension MainContentCoordinator {
             isTruncated: isTruncated,
             queryParameterValues: queryParameterValues,
             anchor: anchor,
-            timing: timing
+            timing: timing,
+            viewport: viewport
         )
     }
 

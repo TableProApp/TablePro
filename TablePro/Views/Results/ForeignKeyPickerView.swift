@@ -10,6 +10,7 @@ import SwiftUI
 import TableProPluginKit
 
 struct ForeignKeyPickerView: View {
+    @ObservedObject private var themeEngine = ThemeEngine.shared
     let scope: DatabaseScope
     let databaseType: DatabaseType
     let fkInfo: ForeignKeyInfo
@@ -52,9 +53,27 @@ struct ForeignKeyPickerView: View {
 
     // MARK: - Header
 
+    /// An engine with schemas qualifies by schema as it always has. One without has no schema to
+    /// show, and naming the referenced database only says something when it is not the database the
+    /// reader is already looking at: every MySQL reference carries one, so spelling it out
+    /// unconditionally put `shop.users` in front of someone browsing `shop`.
     private var referencedTableDisplay: String {
-        guard let schema = fkInfo.referencedSchema, !schema.isEmpty else { return fkInfo.referencedTable }
-        return "\(schema).\(fkInfo.referencedTable)"
+        let target = targetScope
+        if let schema = target.schema {
+            return "\(schema).\(fkInfo.referencedTable)"
+        }
+        guard target.database != scope.database, !target.database.isEmpty else {
+            return fkInfo.referencedTable
+        }
+        return "\(target.database).\(fkInfo.referencedTable)"
+    }
+
+    private var targetScope: DatabaseScope {
+        ForeignKeyLookupService.targetScope(from: scope, databaseType: databaseType, reference: fkInfo)
+    }
+
+    private var referencedTableScope: TableScope {
+        ForeignKeyLookupService.tableScope(from: scope, databaseType: databaseType, reference: fkInfo)
     }
 
     private var header: some View {
@@ -96,7 +115,7 @@ struct ForeignKeyPickerView: View {
     private var content: some View {
         if let errorMessage {
             RevealedTextView(errorMessage)
-                .foregroundStyle(ThemeEngine.shared.palette.color(.statusError))
+                .foregroundStyle(.red)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
@@ -133,7 +152,7 @@ struct ForeignKeyPickerView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .frame(height: 220)
-            .onChange(of: selection) { _, newValue in
+            .onChange(of: selection) { newValue in
                 guard let newValue else { return }
                 proxy.scrollTo(newValue)
             }
@@ -157,11 +176,11 @@ struct ForeignKeyPickerView: View {
                     .foregroundStyle(.secondary)
                     .opacity(row.key == currentValue ? 1 : 0)
                 Text(row.key)
-                    .font(ThemeEngine.shared.valueFontSwiftUI)
+                    .font(themeEngine.valueFontSwiftUI)
                     .lineLimit(1)
                 if let label = row.label, !label.isEmpty {
                     Text(label)
-                        .font(ThemeEngine.shared.valueFontSwiftUI)
+                        .font(themeEngine.valueFontSwiftUI)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -186,6 +205,7 @@ struct ForeignKeyPickerView: View {
             .pickerStyle(.menu)
             .controlSize(.small)
             .disabled(columns.isEmpty)
+            .accessibilityIdentifier("fk-picker-label")
 
             Spacer(minLength: 4)
 
@@ -218,9 +238,11 @@ struct ForeignKeyPickerView: View {
             get: { labelColumnName },
             set: { newValue in
                 labelColumnName = newValue
-                ForeignKeyLabelColumnStore.shared.setLabelColumn(
-                    newValue,
-                    for: ForeignKeyLookupService.tableScope(from: scope, reference: fkInfo)
+                /// A cleared menu is the reader choosing to see keys on their own, not the reader
+                /// saying nothing: storing it as absence let the heuristic pick a label again on the
+                /// next open.
+                ForeignKeyLabelColumnStore.shared.setLabelChoice(
+                    newValue.map(ForeignKeyLabelChoice.column) ?? .noLabel, for: referencedTableScope
                 )
             }
         )
@@ -276,15 +298,15 @@ struct ForeignKeyPickerView: View {
 
     private func loadColumns() async {
         do {
-            let fetched = try await ForeignKeyLookupService.referencedColumns(in: scope, reference: fkInfo)
-            guard !Task.isCancelled else { return }
-            let stored = ForeignKeyLabelColumnStore.shared.labelColumn(
-                for: ForeignKeyLookupService.tableScope(from: scope, reference: fkInfo)
+            let fetched = try await ForeignKeyLookupService.referencedColumns(
+                in: scope, databaseType: databaseType, reference: fkInfo
             )
+            guard !Task.isCancelled else { return }
+            let choice = ForeignKeyLabelColumnStore.shared.labelChoice(for: referencedTableScope)
             labelColumnName = ForeignKeyLabelColumn.resolve(
                 columns: fetched,
                 keyColumn: fkInfo.referencedColumn,
-                preferred: stored
+                choice: choice
             )?.name
             columns = fetched
             hasLoadedColumns = true

@@ -6,6 +6,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import TableProConnectionLibrary
 import TableProPluginKit
 
 enum ConnectionSwitcherFilter {
@@ -37,14 +38,18 @@ struct ConnectionSwitcherEntry: Identifiable {
 }
 
 struct ConnectionSwitcherPopover: View {
+    @ObservedObject private var databaseManager = DatabaseManager.shared
     /// An explicit closure rather than `@Environment(\.dismiss)`, because the presenter owns the
     /// surface: `dismiss` reaches a SwiftUI presentation, and this content is hosted in an AppKit
     /// popover or panel that SwiftUI knows nothing about. `PopoverPresenter` hands every caller the
     /// same shape.
     let dismiss: () -> Void
 
+    let currentConnectionId: UUID?
+
     @State private var savedConnections: [DatabaseConnection] = []
     @State private var groups: [ConnectionGroup] = []
+    @State private var tags: [ConnectionTag] = []
     @State private var hostedWithoutSession: [DatabaseConnection] = []
     @State private var selectedConnectionId: UUID?
     @State private var searchText = ""
@@ -54,18 +59,11 @@ struct ConnectionSwitcherPopover: View {
     static let contentSize = NSSize(width: 400, height: 460)
 
     private var activeSessions: [UUID: ConnectionSession] {
-        DatabaseManager.shared.activeSessions
+        databaseManager.activeSessions
     }
 
-    private var currentSessionId: UUID? {
-        DatabaseManager.shared.lastActiveSessionId
-    }
-
-    /// The connection the window that opened this popover is on, which is the one the activity
-    /// footer describes. Absent while the window is between connections, where the footer draws
-    /// nothing rather than a row about no transport.
     private var currentConnection: DatabaseConnection? {
-        currentSessionId.flatMap { activeSessions[$0]?.connection }
+        currentConnectionId.flatMap { activeSessions[$0]?.connection }
     }
 
     private var sortedSessions: [ConnectionSession] {
@@ -74,23 +72,18 @@ struct ConnectionSwitcherPopover: View {
 
     /// Open means a window hosts it, which is not the same as a session existing for it. A
     /// workspace outlives its session, so a connect that failed, one the user cancelled and an
-    /// explicit disconnect all leave a connection open with nothing in `activeSessions`. Listing
-    /// those under a group would put a connection the window is already showing in the library
-    /// half, where Command-click promises a window it will not get.
-    ///
-    /// Held in state rather than read during `body`, because `WindowManager` is not observable and
-    /// nothing would re-evaluate this when a window opens or closes.
+    /// explicit disconnect all leave a connection open with nothing in `activeSessions`.
     private var openEntries: [ConnectionSwitcherEntry] {
         var entries = sortedSessions.map {
             ConnectionSwitcherEntry(
                 id: $0.id,
                 connection: $0.connection,
-                isActive: $0.id == currentSessionId,
-                isConnected: $0.status.isConnected
+                isActive: $0.id == currentConnectionId,
+                isConnected: $0.reportedStatus.isConnected
             )
         }
         entries += hostedWithoutSession.map {
-            ConnectionSwitcherEntry(id: $0.id, connection: $0, isActive: false, isConnected: false)
+            ConnectionSwitcherEntry(id: $0.id, connection: $0, isActive: $0.id == currentConnectionId, isConnected: false)
         }
         return entries
     }
@@ -112,8 +105,6 @@ struct ConnectionSwitcherPopover: View {
         inactiveSaved.filter { ConnectionSwitcherFilter.matches($0, query: searchText) }
     }
 
-    /// Read off the sections rather than assembled a second time, so the order the arrow keys walk
-    /// is the order the list draws by construction.
     private var orderedIds: [UUID] {
         sections.flatMap { $0.items.map(\.id) }
     }
@@ -142,7 +133,8 @@ struct ConnectionSwitcherPopover: View {
         .onAppear {
             reload()
             if selectedConnectionId == nil {
-                selectedConnectionId = currentSessionId ?? orderedIds.first
+                selectedConnectionId = currentConnectionId.flatMap { id in orderedIds.contains(id) ? id : nil }
+                    ?? orderedIds.first
             }
         }
         /// The subject itself, not a `receive(on:)` wrapper: that builds a new publisher on every
@@ -155,7 +147,15 @@ struct ConnectionSwitcherPopover: View {
             reload()
             settleSelection()
         }
-        .onChange(of: searchText) { _, _ in
+        .onReceive(AppEvents.shared.connectionStatusChanged) { _ in
+            reload()
+            settleSelection()
+        }
+        .onReceive(AppEvents.shared.connectionListStateChanged) { _ in
+            reload()
+            settleSelection()
+        }
+        .onChange(of: searchText) { _ in
             settleSelection()
         }
     }
@@ -183,11 +183,27 @@ struct ConnectionSwitcherPopover: View {
     }
 
     private var sections: [FieldDrivenListSection<ConnectionSwitcherEntry>] {
-        ConnectionSwitcherSections.build(
+        let recents = RecentConnectionsStore.shared.lastConnected
+        let sortMode = ConnectionListPreferences.shared.sortMode
+        let saved = LibrarySorting.sorted(filteredSaved, mode: sortMode, lastConnected: recents)
+        let favoriteIds = Set(saved.filter(\.isFavorite).map(\.id))
+        let favoritesOrder = ConnectionListPreferences.shared.favoritesOrder
+        let favorites = saved.filter(\.isFavorite).sorted { lhs, rhs in
+            let left = favoritesOrder.firstIndex(of: lhs.id) ?? Int.max
+            let right = favoritesOrder.firstIndex(of: rhs.id) ?? Int.max
+            return left < right
+        }
+        let recent = saved
+            .filter { !favoriteIds.contains($0.id) && recents[$0.id] != nil }
+            .sorted { (recents[$0.id] ?? .distantPast) > (recents[$1.id] ?? .distantPast) }
+            .prefix(LibraryOutlineBuilder.defaultRecentLimit)
+        return ConnectionSwitcherSections.build(
             active: filteredOpen,
-            saved: filteredSaved,
+            saved: saved,
             groups: groups,
-            isFiltering: isFiltering
+            isFiltering: isFiltering,
+            favorites: sortMode == .manual ? favorites : saved.filter(\.isFavorite),
+            recent: Array(recent)
         )
     }
 
@@ -205,11 +221,7 @@ struct ConnectionSwitcherPopover: View {
             onSingleClickAction: { activate(connectionId: $0) },
             onPrimaryAction: { activate(connectionId: $0) },
             row: { entry in
-                connectionRow(
-                    connection: entry.connection,
-                    isActive: entry.isActive,
-                    isConnected: entry.isConnected
-                )
+                connectionRow(entry)
             }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -253,59 +265,52 @@ struct ConnectionSwitcherPopover: View {
         .buttonStyle(.plain)
     }
 
-    private func connectionRow(
-        connection: DatabaseConnection,
-        isActive: Bool,
-        isConnected: Bool
-    ) -> some View {
-        let metadata = ConnectionMetadata.resolve(
-            connection: connection,
-            tags: TagStorage.shared.loadTags(),
-            groups: GroupStorage.shared.loadGroups()
-        )
+    private func connectionRow(_ entry: ConnectionSwitcherEntry) -> some View {
+        let connection = entry.connection
+        let group = connection.groupId.flatMap { id in groups.first { $0.id == id } }
+        let connectionTags = connection.tagIds.compactMap { id in tags.first { $0.id == id } }
         return HStack(spacing: 8) {
-            Circle()
-                .selectionAwareTint(connection.identityColor?.indicatorColor ?? .secondary)
-                .frame(width: 8, height: 8)
+            ConnectionTile(type: connection.type, identityColor: connection.identityColor, size: 22)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(connection.name)
-                    .font(.body.weight(isActive ? .semibold : .regular))
+                    .font(.body.weight(entry.isActive ? .semibold : .regular))
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    Text(connectionSubtitle(connection))
+                    Text(connection.connectionSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .truncationMode(.middle)
 
-                    if let group = metadata.group {
-                        ConnectionGroupBadge(group: group)
-                            .layoutPriority(1)
+                    if let group {
+                        ConnectionSymbolLabel(
+                            systemName: "folder.fill",
+                            label: WelcomeTagLabel(name: group.name, color: group.color)
+                        )
+                    }
+                    if let tag = connectionTags.first {
+                        ConnectionSymbolLabel(
+                            systemName: "tag.fill",
+                            label: WelcomeTagLabel(name: tag.name, color: tag.color)
+                        )
                     }
                 }
             }
 
             Spacer()
 
-            ConnectionTagsBadge(tags: metadata.tags)
-
-            if isActive {
-                Image(systemName: "checkmark.circle.fill")
-                    .selectionAwareTint(.green)
-                    .font(.body)
-            } else if isConnected {
-                Circle()
-                    .selectionAwareTint(.green)
-                    .frame(width: 6, height: 6)
+            if entry.isActive {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .selectionAwareTint(.accentColor)
+                    .accessibilityLabel(Text("Current connection"))
+            } else if entry.isConnected {
+                Text("Connected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-
-            Text(connection.type.rawValue.uppercased())
-                .font(.system(.caption2, design: .monospaced).weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(Color(nsColor: .separatorColor), in: RoundedRectangle(cornerRadius: 3))
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -318,10 +323,11 @@ struct ConnectionSwitcherPopover: View {
         let saved = ConnectionStorage.shared.loadConnections()
         savedConnections = saved
         groups = GroupStorage.shared.loadGroups()
+        tags = TagStorage.shared.loadTags()
 
         hostedWithoutSession = ConnectionSwitcherSections.hostedWithoutSession(
             workspaces: WindowManager.shared.hostedWorkspaces().map { ($0.connectionId, $0.connection) },
-            sessionIds: Set(DatabaseManager.shared.activeSessions.keys),
+            sessionIds: Set(databaseManager.activeSessions.keys),
             saved: saved
         )
     }
@@ -346,9 +352,6 @@ struct ConnectionSwitcherPopover: View {
     /// Command-click opens a saved connection in a window of its own, the modifier Finder and
     /// Safari use for the same intent. A connection already open is switched to either way: moving
     /// one between windows belongs to the connections strip, which owns that arrangement.
-    ///
-    /// Whether a window already hosts it is settled by the router, next to the window it builds,
-    /// rather than here where the answer would be a main-actor job old by the time it is used.
     private func activate(connectionId: UUID) {
         let opensNewWindow = NSApp.currentEvent?.modifierFlags.contains(.command) == true
         dismiss()
@@ -370,30 +373,26 @@ struct ConnectionSwitcherPopover: View {
             }
         }
     }
-
-    private func connectionSubtitle(_ connection: DatabaseConnection) -> String {
-        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
-            return connection.database
-        }
-        let port = connection.port != connection.type.defaultPort ? ":\(connection.port)" : ""
-        return "\(connection.host)\(port)/\(connection.database)"
-    }
 }
 
 // MARK: - Sections
 
 internal enum ConnectionSwitcherSections {
-    /// Open connections keep their own section at the top: they are the working set, and burying
-    /// one inside its group would put the two connections a user switches between furthest apart.
-    /// Everything below is the library, and that is where the group hierarchy belongs.
+    /// Open connections keep their own section at the top: they are the working set. Favorites and
+    /// recent connections come next, then the library by group. Each connection is listed once, so
+    /// a favorite is not repeated under its group here: the arrow keys walk every row, and a quick
+    /// chooser with one connection in two places would stop twice on it.
     ///
-    /// A filter collapses the groups back into one list. A search is a lookup rather than a browse,
-    /// and a connection matching in each of eight groups would otherwise be eight one-row sections.
+    /// A filter collapses everything below the open connections back into one list. A search is a
+    /// lookup rather than a browse, and a connection matching in each of eight groups would
+    /// otherwise be eight one-row sections.
     internal static func build(
         active: [ConnectionSwitcherEntry],
         saved: [DatabaseConnection],
         groups: [ConnectionGroup],
-        isFiltering: Bool
+        isFiltering: Bool,
+        favorites: [DatabaseConnection] = [],
+        recent: [DatabaseConnection] = []
     ) -> [FieldDrivenListSection<ConnectionSwitcherEntry>] {
         var sections = [
             FieldDrivenListSection(
@@ -414,14 +413,46 @@ internal enum ConnectionSwitcherSections {
             return sections
         }
 
+        if !favorites.isEmpty {
+            sections.append(FieldDrivenListSection(
+                id: "favorites",
+                title: String(localized: "FAVORITES"),
+                items: favorites.map(entry)
+            ))
+        }
+        if !recent.isEmpty {
+            sections.append(FieldDrivenListSection(
+                id: "recent",
+                title: String(localized: "RECENT"),
+                items: recent.map(entry)
+            ))
+        }
+
+        let listedIds = Set(favorites.map(\.id)).union(recent.map(\.id))
+        let library = saved.filter { !listedIds.contains($0.id) }
+        let graph = LibraryGroupGraph(groups: groups)
+        var byGroup: [UUID: [DatabaseConnection]] = [:]
         var ungrouped: [DatabaseConnection] = []
+        for connection in library {
+            if let groupId = connection.groupId, graph.contains(groupId) {
+                byGroup[groupId, default: []].append(connection)
+            } else {
+                ungrouped.append(connection)
+            }
+        }
+
         let sectionsBeforeGroups = sections.count
-        append(
-            buildGroupTreeIndexed(groups: groups, connections: saved),
-            path: [],
-            into: &sections,
-            ungrouped: &ungrouped
-        )
+        for flat in graph.flattened() {
+            guard let connections = byGroup[flat.id], !connections.isEmpty else { continue }
+            let names = graph.pathNames(to: flat.id)
+            sections.append(
+                FieldDrivenListSection(
+                    id: "group-\(flat.id)",
+                    title: names.joined(separator: " / ").localizedUppercase,
+                    items: connections.map(entry)
+                )
+            )
+        }
 
         guard !ungrouped.isEmpty else { return sections }
 
@@ -459,50 +490,5 @@ internal enum ConnectionSwitcherSections {
 
     private static func entry(for connection: DatabaseConnection) -> ConnectionSwitcherEntry {
         ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false, isConnected: false)
-    }
-
-    /// One section per group, in the order the connection list shows them, with a nested group
-    /// naming its whole path. The header carries the group's own colour, and the connections that
-    /// belong to no group come last, which is where the tree puts them too.
-    private static func append(
-        _ nodes: [ConnectionGroupTreeNode],
-        path: [String],
-        into sections: inout [FieldDrivenListSection<ConnectionSwitcherEntry>],
-        ungrouped: inout [DatabaseConnection]
-    ) {
-        for node in nodes {
-            switch node {
-            case .connection(let connection):
-                ungrouped.append(connection)
-            case .group(let group, let children):
-                var connections: [DatabaseConnection] = []
-                var subgroups: [ConnectionGroupTreeNode] = []
-                for child in children {
-                    if case .connection(let connection) = child {
-                        connections.append(connection)
-                    } else {
-                        subgroups.append(child)
-                    }
-                }
-
-                /// A group with nothing under it draws no header, so it contributes no section
-                /// either. Leaving an empty one in made the list claim a hierarchy it was not
-                /// showing, and the loose connections then read as "ungrouped" against nothing.
-                /// A parent whose own connections are elsewhere still names itself through its
-                /// children's path.
-                let names = path + [group.name]
-                if !connections.isEmpty {
-                    sections.append(
-                        FieldDrivenListSection(
-                            id: "group-\(group.id)",
-                            title: names.joined(separator: " / ").localizedUppercase,
-                            accentColor: group.color.indicatorColor.map(NSColor.init),
-                            items: connections.map(entry)
-                        )
-                    )
-                }
-                append(subgroups, path: names, into: &sections, ungrouped: &ungrouped)
-            }
-        }
     }
 }

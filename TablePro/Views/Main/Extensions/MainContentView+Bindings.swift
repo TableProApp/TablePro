@@ -105,7 +105,8 @@ extension MainContentView {
     var jsonRowSnapshotForSidebar: JSONRowSnapshot? {
         guard gridSelectionOwner == .dataGrid,
               let tab = coordinator.tabManager.selectedTab,
-              let firstDisplayIndex = coordinator.selectionState.indices.min() else { return nil }
+              let firstDisplayIndex = coordinator.selectionState.indices.min(),
+              let scope = coordinator.scope(for: tab) else { return nil }
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
         guard !tableRows.columns.isEmpty,
               let row = DisplayRowMapping.row(
@@ -120,7 +121,7 @@ extension MainContentView {
             columnTypes: tableRows.columnTypes,
             values: Array(row.values),
             foreignKeys: tableRows.columnForeignKeys.mapValues(JSONForeignKeyRef.init),
-            connectionId: coordinator.connection.id,
+            scope: scope,
             databaseType: coordinator.connection.type
         )
     }

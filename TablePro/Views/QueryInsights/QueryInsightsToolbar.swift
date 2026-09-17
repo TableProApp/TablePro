@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QueryInsightsToolbar: View {
-    @Bindable var viewModel: QueryInsightsViewModel
+    @ObservedObject var viewModel: QueryInsightsViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -72,7 +72,8 @@ struct QueryInsightsToolbar: View {
         } label: {
             Label(sourceSummary, systemImage: "line.3.horizontal.decrease.circle")
         }
-        .menuStyle(.borderlessButton)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
         .fixedSize()
         .accessibilityIdentifier("query-insights-source-filter")
     }

@@ -92,8 +92,8 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         coordinator?.canClearActiveQueryResults ?? false
     }
 
-    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, openInNewTab: Bool) {
-        coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo, openInNewTab: openInNewTab)
+    func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo, intent: ReferenceOpenIntent) {
+        coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo, intent: intent)
     }
 
     /// The panel reads the selection, not a row this is told about.

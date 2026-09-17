@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTrinoCore
+import XCTest
 
 final class TrinoJSONValueTests: XCTestCase {
     private func decode(_ json: String) throws -> TrinoJSONValue {

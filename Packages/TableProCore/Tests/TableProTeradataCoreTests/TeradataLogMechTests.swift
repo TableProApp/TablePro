@@ -1,5 +1,5 @@
-import XCTest
 @testable import TableProTeradataCore
+import XCTest
 
 final class TeradataLogMechTests: XCTestCase {
     private func config(_ mech: TeradataLogMech) -> TeradataConnectionConfig {

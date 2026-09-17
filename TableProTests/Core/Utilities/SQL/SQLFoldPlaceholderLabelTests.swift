@@ -3,10 +3,10 @@
 //  TableProTests
 //
 
-import CodeEditSourceEditor
 import Foundation
-import Testing
 @testable import TablePro
+import TableProEditorKit
+import Testing
 
 @Suite("Fold placeholder summary")
 struct FoldPlaceholderSummaryTests {

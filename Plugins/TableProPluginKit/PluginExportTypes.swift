@@ -169,7 +169,27 @@ public struct PluginEnumTypeInfo: Sendable {
 
 public struct ExportFormatResult: Sendable {
     public let warnings: [String]
+
+    /// Facts about what the export wrote, as opposed to problems with it.
+    ///
+    /// A separate list because the two read differently and the summary alert keys off the difference:
+    /// a non-empty `warnings` retitles the alert "Export completed with warnings", gives it the caution
+    /// icon, and takes away its "Do not show this again" checkbox. An always-present fact put in there
+    /// would brand every export a warning and leave the user unable to silence the alert again. Both
+    /// appear in the alert's body, notes first, which is where the import and transfer summaries
+    /// already put theirs.
+    public let notes: [String]
+
+    public init(warnings: [String] = [], notes: [String] = []) {
+        self.warnings = warnings
+        self.notes = notes
+    }
+
+    /// Kept at its exact published signature. Adding a parameter to it, even a defaulted one,
+    /// replaces its mangled symbol and every already-built plugin fails to load.
+    @_disfavoredOverload
     public init(warnings: [String] = []) {
         self.warnings = warnings
+        notes = []
     }
 }

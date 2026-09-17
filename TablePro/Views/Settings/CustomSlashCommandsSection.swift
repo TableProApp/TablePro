@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct CustomSlashCommandsSection: View {
-    @Bindable var storage: CustomSlashCommandStorage
+    @ObservedObject var storage: CustomSlashCommandStorage
     @State private var editing: CustomSlashCommand?
     @State private var isCreating = false
     @State private var saveError: String?

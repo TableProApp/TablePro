@@ -14,7 +14,6 @@ struct ExecuteQueryChatTool: ChatTool {
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
-            "connection_id": ChatToolSchemaBuilder.connectionId,
             "query": ChatToolSchemaBuilder.string(description: "SQL or NoSQL query text"),
             "max_rows": ChatToolSchemaBuilder.integer(
                 description: "Maximum rows to return, capped at the server's configured maximum row limit. Pass null to use the configured default row limit.",
@@ -37,7 +36,6 @@ struct ExecuteQueryChatTool: ChatTool {
     let mode: ChatToolMode = .write
 
     func execute(input: JsonValue, context: ChatToolContext) async throws -> ChatToolResult {
-        let connectionId = try context.resolveConnectionId(input)
         let query = try ChatToolArgumentDecoder.requireString(input, key: "query")
         let database = ChatToolArgumentDecoder.optionalString(input, key: "database")
         let schema = ChatToolArgumentDecoder.optionalString(input, key: "schema")
@@ -45,6 +43,13 @@ struct ExecuteQueryChatTool: ChatTool {
         guard (query as NSString).length <= 102_400 else {
             return ChatToolResult(content: "Query exceeds 100KB limit", isError: true)
         }
+
+        let connectionId = try await ChatToolTarget.authorized(
+            context: context,
+            input: input,
+            tool: name,
+            sql: query
+        )
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
@@ -65,8 +70,22 @@ struct ExecuteQueryChatTool: ChatTool {
             settings: mcpSettings
         )
 
-        let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
-        if tier == .destructive {
+        let classification = QueryClassifier.classify(query, databaseType: meta.databaseType)
+
+        /// The same refusal MCP makes through `ExternalStatementGate`: a statement that reads or
+        /// writes files, or runs server-side code, is a strictly larger capability than reading and
+        /// writing data, and larger still on a connection whose transport executes on an SSH server.
+        /// The MCP tool routes through the gate; this path did not, so it added the reach that a
+        /// remote-execution connection turns into running code on the server.
+        if classification.reachesFilesystemOrExecutesCode {
+            return ChatToolResult(
+                content: "Statements that read or write files, or run server-side code (ATTACH, LOAD, COPY, VACUUM INTO), "
+                    + "can't be sent from the assistant. Run this one in TablePro instead.",
+                isError: true
+            )
+        }
+
+        if classification.tier == .destructive {
             return ChatToolResult(
                 content: "Destructive queries (DROP, TRUNCATE, ALTER...DROP) are blocked here. Use confirm_destructive_operation with the explicit confirmation phrase.",
                 isError: true
@@ -83,7 +102,7 @@ struct ExecuteQueryChatTool: ChatTool {
             sql: query,
             connectionId: connectionId,
             databaseType: meta.databaseType,
-            capabilities: [.mayWrite, .mayRunDestructive, .confirmationPreCleared]
+            capabilities: context.writeCapabilities
         )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)

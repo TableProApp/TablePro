@@ -68,12 +68,13 @@ struct ResultStatusModel: Equatable {
         statusMessage = controls.showsReadout ? snapshot.statusMessage : nil
     }
 
-    /// A mode with no grid has no selection to report.
+    /// A mode that cannot show the selection has none to report.
     ///
     /// Nothing clears the grid's selection when the mode changes, so a carried-over count would
-    /// replace the row range with a selection the user cannot see.
+    /// replace the row range with a selection the user cannot see. Map is included because it both
+    /// shows the selection and sets it.
     private static func reportedSelection(count: Int, viewMode: ResultsViewMode) -> Int {
-        viewMode.showsColumnControls ? count : 0
+        viewMode.reportsRowSelection ? count : 0
     }
 
     private static func resolveControls(
@@ -88,6 +89,11 @@ struct ResultStatusModel: Equatable {
 
         controls.showsModeSwitcher = snapshot.availableModes.count > 1
         controls.showsStructureActions = viewMode == .structure && snapshot.hasStructureActions
+
+        /// A plan keeps the bar so it stays choosable and pinnable, and gives up everything the bar
+        /// says about rows. It has none, and reporting "No rows" under a plan states something
+        /// false about the statement that produced it.
+        guard !snapshot.isQueryPlan else { return controls }
 
         /// A table tab describes a table whether or not its rows have arrived, so its controls are
         /// decided by what the tab IS, never by what its buffer currently holds. Retargeting empties

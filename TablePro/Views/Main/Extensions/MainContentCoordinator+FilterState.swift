@@ -24,10 +24,6 @@ extension MainContentCoordinator {
         filterCoordinator.addFilterForColumn(columnName)
     }
 
-    func setFKFilter(_ filter: TableFilter) {
-        filterCoordinator.setFKFilter(filter)
-    }
-
     func duplicateFilter(_ filter: TableFilter) {
         filterCoordinator.duplicateFilter(filter)
     }
@@ -96,8 +92,8 @@ extension MainContentCoordinator {
         filterCoordinator.saveLastFiltersForActiveTable()
     }
 
-    func saveLastFilters(for tableName: String) {
-        filterCoordinator.saveLastFilters(for: tableName)
+    func saveLastFilters(of tab: QueryTab) {
+        filterCoordinator.saveLastFilters(of: tab)
     }
 
     func restoreLastFilters(for tableName: String) {

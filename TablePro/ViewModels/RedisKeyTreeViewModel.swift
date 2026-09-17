@@ -3,22 +3,22 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
-import Observation
 import os
 import TableProPluginKit
 
-@MainActor @Observable
-internal final class RedisKeyTreeViewModel {
+@MainActor
+internal final class RedisKeyTreeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
     internal static let maxKeys = 50_000
 
-    var rootNodes: [RedisKeyNode] = []
-    var isLoading = false
-    var isTruncated = false
-    var separator: String = ":"
+    @Published var rootNodes: [RedisKeyNode] = []
+    @Published var isLoading = false
+    @Published var isTruncated = false
+    @Published var separator: String = ":"
 
-    private(set) var allKeys: [(key: String, type: String)] = []
+    @Published private(set) var allKeys: [(key: String, type: String)] = []
 
     /// Test-only setter for allKeys
     var allKeysForTesting: [(key: String, type: String)] {
@@ -32,13 +32,17 @@ internal final class RedisKeyTreeViewModel {
         isTruncated = false
         defer { isLoading = false }
 
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+        guard DatabaseManager.shared.driver(for: connectionId) != nil else {
             clear()
             return
         }
 
+        let scope = DatabaseScope(connectionId: connectionId, database: database, schema: nil)
+        let limit = Self.maxKeys
         do {
-            let result = try await driver.execute(query: "KEYTREE LIMIT \(Self.maxKeys)")
+            let result = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver in
+                try await driver.execute(query: "KEYTREE LIMIT \(limit)")
+            }
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1

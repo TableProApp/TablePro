@@ -20,6 +20,7 @@ extension RowEditingCoordinator {
         pendingDeletes: inout Set<DatabaseTreeTableRef>,
         tableOperationOptions: inout [DatabaseTreeTableRef: TableOperationOptions]
     ) {
+        endInspectorEditRun()
         let hasEditedCells = parent.changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 
@@ -210,7 +211,8 @@ extension RowEditingCoordinator {
                     plan: plan,
                     savingTabId: savingTabId,
                     clearTableOps: clearTableOps,
-                    deletedTables: deletedTables
+                    deletedTables: deletedTables,
+                    truncatedTables: truncatedTables
                 )
 
                 endSaveInFlight()
@@ -265,12 +267,18 @@ extension RowEditingCoordinator {
                 }
 
                 if clearTableOps {
+                    /// On an engine whose DDL commits as it runs, a TRUNCATE before the failure has
+                    /// already emptied its table, and nothing reports which ones ran. Queuing them
+                    /// again would empty the table a second time on the next Save, rows added since
+                    /// included, so they are left for the user to stage again.
+                    let ddlRolledBack = DatabaseManager.shared.driver(for: conn.id)?.supportsTransactionalDDL ?? false
                     restorePendingTableOperations(
                         connectionId: conn.id,
-                        truncates: truncatedTables,
+                        truncates: ddlRolledBack ? truncatedTables : [],
                         deletes: deletedTables,
                         options: capturedOptions
                     )
+                    reconcileDropsAfterFailedSave(deletedTables, scope: scope)
                 }
 
                 failSave(
@@ -292,7 +300,8 @@ extension RowEditingCoordinator {
         plan: DataWritePlan,
         savingTabId: UUID?,
         clearTableOps: Bool,
-        deletedTables: Set<DatabaseTreeTableRef>
+        deletedTables: Set<DatabaseTreeTableRef>,
+        truncatedTables: Set<DatabaseTreeTableRef>
     ) {
         let savingTabIsSelected = savingTabId != nil && parent.tabManager.selectedTabId == savingTabId
         if savingTabIsSelected {
@@ -305,16 +314,19 @@ extension RowEditingCoordinator {
             }
         }
 
-        if clearTableOps {
-            if !deletedTables.isEmpty {
-                closeTabsForDroppedTables(deletedTables)
-            }
-            Task { [parent] in await parent.refreshTables() }
+        if clearTableOps, !deletedTables.isEmpty {
+            parent.services.catalogChangeService.record(
+                .tablesDropped(Array(deletedTables), connectionId: parent.connectionId)
+            )
         }
 
+        /// The saving tab reloads only when this save changed its rows: rows it wrote, or a truncate of
+        /// the table it shows. A save of table operations alone used to re-run whatever the selected
+        /// tab held, which on a query tab executed its statement again. A tab on a dropped table closes.
         guard savingTabIsSelected,
               let savedTabIndex = parent.tabManager.selectedTabIndex,
-              !parent.tabManager.tabs.isEmpty
+              !tab(at: savedTabIndex, shows: deletedTables),
+              plan.steps.contains(where: { $0.kind == .rowWrite }) || tab(at: savedTabIndex, shows: truncatedTables)
         else { return }
 
         /// An insert or a delete changes the number this tab is reporting, so a count
@@ -322,42 +334,45 @@ extension RowEditingCoordinator {
         /// retiring it the reload's automatic count refuses to replace it, and the bar
         /// keeps the pre-save total with no `Count Exactly` offered to correct it.
         parent.tabManager.mutate(at: savedTabIndex) { $0.pagination.retireDerivedRowCount() }
-        parent.runQuery()
+        parent.runQuery(viewport: .keepPlace)
     }
 
-    /// A tab is closed only when the object it is showing is one of the objects that went.
-    ///
-    /// It used to compare bare names, so dropping `analytics.users` also closed the tab on
-    /// `public.users` and threw away its row buffer, with nothing to undo it.
-    private func closeTabsForDroppedTables(_ deletedTables: Set<DatabaseTreeTableRef>) {
-        let browseDatabase = parent.browseDatabaseName
-        let dropped = Set(deletedTables.map { ref in
-            TableTabIdentity(
-                ref: ref,
-                browsing: browseDatabase,
-                resolvedSchema: DatabaseManager.shared.resolvedSchemaName(
-                    ref.qualifyingSchema, for: parent.connectionId
-                )
-            )
-        })
-        let tabIdsToRemove = Set(
-            parent.tabManager.tabs
-                .filter { tab in tab.tableIdentity(browsing: browseDatabase).map(dropped.contains) ?? false }
-                .map(\.id)
-        )
-        guard !tabIdsToRemove.isEmpty else { return }
+    /// MySQL, MariaDB and Oracle commit each DROP as it runs, so a save that failed part way can
+    /// already have dropped tables its rollback could not bring back. The refreshed catalog says
+    /// which, and those are then treated as the drops they were: unstaged, and their tabs closed.
+    private func reconcileDropsAfterFailedSave(_ drops: Set<DatabaseTreeTableRef>, scope: DatabaseScope) {
+        guard !drops.isEmpty else { return }
+        let connectionId = parent.connectionId
+        let service = parent.services.catalogChangeService
+        let adoption = catalogEditAdoption
+        service.record(.changed(CatalogChange(connectionId: connectionId, database: scope.database, kinds: .tables)))
+        Task { @MainActor in
+            await service.waitUntilIdle(connectionId: connectionId)
+            guard let catalog = adoption.loadedBrowseCatalog(connectionId: connectionId) else { return }
+            let gone = catalog.staleRefs(in: drops)
+            guard !gone.isEmpty else { return }
+            service.record(.tablesDropped(Array(gone), connectionId: connectionId))
+        }
+    }
 
-        let firstRemovedIndex = parent.tabManager.tabs.firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
-        for tabId in tabIdsToRemove {
-            parent.tabSessionRegistry.removeTableRows(for: tabId)
+    /// Matched on the object rather than the bare name, so dropping `analytics.users` says nothing
+    /// about a tab on `public.users`.
+    private func tab(at index: Int, shows tables: Set<DatabaseTreeTableRef>) -> Bool {
+        guard !tables.isEmpty,
+              let identity = parent.tabManager.tabs[index].tableIdentity(browsing: parent.browseDatabaseName)
+        else { return false }
+        let adoption = catalogEditAdoption
+        return tables.contains { ref in
+            guard let scope = adoption.objectScope(for: ref, connectionId: parent.connectionId) else { return false }
+            return TableTabIdentity(table: ref.table.name, database: scope.database, schema: scope.schema) == identity
         }
-        parent.tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
-        if parent.tabManager.tabs.isEmpty {
-            parent.tabManager.selectedTabId = nil
-            return
-        }
-        let neighborIndex = min(firstRemovedIndex, parent.tabManager.tabs.count - 1)
-        parent.tabManager.selectedTabId = parent.tabManager.tabs[neighborIndex].id
+    }
+
+    private var catalogEditAdoption: CatalogEditAdoption {
+        CatalogEditAdoption(
+            databaseManager: parent.services.databaseManager,
+            schemaService: parent.services.schemaService
+        )
     }
 
     /// Zipped against the steps that ran, not the steps that were planned: the executor drops
@@ -513,11 +528,7 @@ extension RowEditingCoordinator {
         options: [DatabaseTreeTableRef: TableOperationOptions]
     ) {
         DatabaseManager.shared.updateSession(connectionId) { session in
-            session.pendingTruncates = truncates
-            session.pendingDeletes = deletes
-            for (table, opts) in options {
-                session.tableOperationOptions[table] = opts
-            }
+            session.restoreStagedTableOperations(truncates: truncates, deletes: deletes, options: options)
         }
     }
 }

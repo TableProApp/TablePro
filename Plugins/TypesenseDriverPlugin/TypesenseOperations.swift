@@ -49,6 +49,12 @@ enum TypesenseOperations {
         )
     }
 
+    /// A request as the console would be typed, which is what the driver's own parser reads and
+    /// what the confirmation dialog can show a person. Only for a request that carries no body.
+    static func consoleText(_ request: TypesenseWriteRequest) -> String {
+        "\(request.method) \(request.path)"
+    }
+
     /// `truncate=true` empties the collection and keeps its schema, which is what TRUNCATE means.
     /// Deleting by a match-everything filter would drop the schema's learned fields with it.
     static func truncateCollection(named name: String) -> TypesenseWriteRequest {

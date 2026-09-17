@@ -43,4 +43,30 @@ struct SQLExportOptionsDecodingTests {
         #expect(options.excludeAutoIncrementValue)
         #expect(options.excludeDefiner)
     }
+
+    /// A profile saved before the size limit existed has to come back with the limit on, or the
+    /// user who already had wide-row tables keeps writing dumps their server rejects.
+    @Test("A payload that predates the size limit takes its default rather than none")
+    func legacyPayloadGainsTheStatementSizeDefault() throws {
+        let stored = Data(#"{"batchSize":500,"splitSizeMegabytes":8}"#.utf8)
+        let decoded = try JSONDecoder().decode(SQLExportOptions.self, from: stored)
+        #expect(decoded.maxStatementBytes == 1_048_576)
+        #expect(decoded.splitSizeMegabytes == 8)
+    }
+
+    @Test("No limit survives the round trip rather than reverting to the default")
+    func storedZeroIsNotOverwrittenByTheDefault() throws {
+        var options = SQLExportOptions()
+        options.maxStatementBytes = 0
+        let restored = try JSONDecoder().decode(SQLExportOptions.self, from: JSONEncoder().encode(options))
+        #expect(restored.maxStatementBytes == 0)
+        #expect(restored == options)
+    }
+
+    /// A mebibyte, which is under every `max_allowed_packet` MySQL or MariaDB has shipped this
+    /// decade, and what `mysqldump` and HeidiSQL both settle on.
+    @Test("The size limit starts at one mebibyte")
+    func statementSizeDefaultsToOneMebibyte() {
+        #expect(SQLExportOptions().maxStatementBytes == 1_048_576)
+    }
 }

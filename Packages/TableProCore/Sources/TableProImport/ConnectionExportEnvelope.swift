@@ -51,6 +51,7 @@ public struct ConnectionExportEnvelope: Codable, Sendable {
     public let groups: [ExportableGroup]?
     public let tags: [ExportableTag]?
     public let credentials: [String: ExportableCredentials]?
+    public let credentialProfiles: [ExportableCredentialProfile]?
 
     public init(
         formatVersion: Int,
@@ -59,7 +60,8 @@ public struct ConnectionExportEnvelope: Codable, Sendable {
         connections: [ExportableConnection],
         groups: [ExportableGroup]?,
         tags: [ExportableTag]?,
-        credentials: [String: ExportableCredentials]?
+        credentials: [String: ExportableCredentials]?,
+        credentialProfiles: [ExportableCredentialProfile]? = nil
     ) {
         self.formatVersion = formatVersion
         self.exportedAt = exportedAt
@@ -68,6 +70,27 @@ public struct ConnectionExportEnvelope: Codable, Sendable {
         self.groups = groups
         self.tags = tags
         self.credentials = credentials
+        self.credentialProfiles = credentialProfiles
+    }
+}
+
+/// A credential profile in an export bundle: enough to re-create it by name on the importing Mac,
+/// and nothing that executes.
+///
+/// `passwordMode` is one of `stored`, `prompt` or `pgpass`. A profile reading its password from a
+/// file or a command exports as `prompt`, because a shared bundle that carried a shell command
+/// would run it on a Mac that never agreed to it.
+public struct ExportableCredentialProfile: Codable, Sendable {
+    public let name: String
+    public let username: String
+    public let passwordMode: String
+    public let secureFieldIds: [String]?
+
+    public init(name: String, username: String, passwordMode: String, secureFieldIds: [String]? = nil) {
+        self.name = name
+        self.username = username
+        self.passwordMode = passwordMode
+        self.secureFieldIds = secureFieldIds
     }
 }
 
@@ -87,6 +110,8 @@ public struct ExportableConnection: Codable, Sendable {
     public let tagNames: [String]?
     public let groupName: String?
     public let sshProfileId: String?
+    public let sshProfileName: String?
+    public let credentialProfileName: String?
     public let safeModeLevel: String?
     public let aiPolicy: String?
     public let additionalFields: [String: String]?
@@ -109,6 +134,8 @@ public struct ExportableConnection: Codable, Sendable {
         tagNames: [String]? = nil,
         groupName: String?,
         sshProfileId: String?,
+        sshProfileName: String? = nil,
+        credentialProfileName: String? = nil,
         safeModeLevel: String?,
         aiPolicy: String?,
         additionalFields: [String: String]?,
@@ -130,6 +157,8 @@ public struct ExportableConnection: Codable, Sendable {
         self.tagNames = tagNames
         self.groupName = groupName
         self.sshProfileId = sshProfileId
+        self.sshProfileName = sshProfileName
+        self.credentialProfileName = credentialProfileName
         self.safeModeLevel = safeModeLevel
         self.aiPolicy = aiPolicy
         self.additionalFields = additionalFields
@@ -145,6 +174,7 @@ public struct ExportableConnection: Codable, Sendable {
             username: username, type: newType, sshConfig: sshConfig,
             sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
+            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
@@ -158,6 +188,7 @@ public struct ExportableConnection: Codable, Sendable {
             username: username, type: type, sshConfig: sshConfig,
             sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
+            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
@@ -232,6 +263,7 @@ public extension ExportableConnection {
             username: username, type: type, sshConfig: sshConfig,
             sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
+            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: nil, localOnly: localOnly,
@@ -248,6 +280,7 @@ public extension ExportableConnection {
             username: username, type: type, sshConfig: sshConfig,
             sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
+            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: additionalFields, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
@@ -264,6 +297,7 @@ public extension ExportableConnection {
             username: username, type: type, sshConfig: sshConfig,
             sslConfig: sslConfig, color: color, tagName: tagName, tagNames: tagNames,
             groupName: groupName, sshProfileId: sshProfileId,
+            sshProfileName: sshProfileName, credentialProfileName: credentialProfileName,
             safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
             additionalFields: allowed.isEmpty ? nil : allowed, redisDatabase: redisDatabase,
             startupCommands: startupCommands, localOnly: localOnly,
@@ -288,6 +322,14 @@ public struct ExportableSSHConfig: Codable, Sendable {
     public let totpDigits: Int?
     public let totpPeriod: Int?
 
+    /// The database file on the SSH server, for a file-backed connection reached as a Remote
+    /// Database File. Optional and defaulted so the many importers that never see one keep compiling
+    /// and an export written before this field existed decodes with nil.
+    public let remoteFilePath: String?
+
+    /// How that file is opened, `onServer` or `readOnlyCopy`, as the raw value. Nil means the copy.
+    public let remoteFileAccess: String?
+
     public init(
         enabled: Bool,
         host: String,
@@ -300,7 +342,9 @@ public struct ExportableSSHConfig: Codable, Sendable {
         totpMode: String?,
         totpAlgorithm: String?,
         totpDigits: Int?,
-        totpPeriod: Int?
+        totpPeriod: Int?,
+        remoteFilePath: String? = nil,
+        remoteFileAccess: String? = nil
     ) {
         self.enabled = enabled
         self.host = host
@@ -314,6 +358,8 @@ public struct ExportableSSHConfig: Codable, Sendable {
         self.totpAlgorithm = totpAlgorithm
         self.totpDigits = totpDigits
         self.totpPeriod = totpPeriod
+        self.remoteFilePath = remoteFilePath
+        self.remoteFileAccess = remoteFileAccess
     }
 }
 

@@ -192,6 +192,7 @@ struct MainWindowToolbarNativeContractTests {
     /// Finder ships 8 controls and Xcode 13. The default set was 17 plus a hosted status blob, and
     /// the HIG asks that items be chosen "deliberately to avoid overcrowding". Spaces do not count,
     /// because they cost no titlebar width of their own.
+    @available(macOS 14.0, *)
     @Test("The default set stays inside a titlebar")
     func defaultSetIsNotCrowded() {
         let spaces: Set<NSToolbarItem.Identifier> = [

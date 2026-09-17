@@ -77,17 +77,17 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
             "MATERIALIZED", "WITH"
         ],
         functions: [
-            "COUNT", "SUM", "AVG", "MAX", "MIN",
-            "CONCAT", "SUBSTRING", "LEFT", "RIGHT", "LENGTH", "LOWER", "UPPER",
-            "TRIM", "LTRIM", "RTRIM", "REPLACE",
-            "NOW", "TODAY", "YESTERDAY",
+            "count", "sum", "avg", "max", "min",
+            "concat", "substring", "left", "right", "length", "lower", "upper",
+            "trim", "ltrim", "rtrim", "replace",
+            "now", "today", "yesterday",
             "CAST",
-            "UNIQ", "UNIQEXACT", "ARGMIN", "ARGMAX", "GROUPARRAY",
-            "TOSTRING", "TOINT32", "FORMATDATETIME",
-            "IF", "MULTIIF",
-            "ARRAYMAP", "ARRAYJOIN",
-            "MATCH", "CURRENTDATABASE", "VERSION",
-            "QUANTILE", "TOPK"
+            "uniq", "uniqExact", "argMin", "argMax", "groupArray",
+            "toString", "toInt32", "formatDateTime",
+            "if", "multiIf",
+            "arrayMap", "arrayJoin",
+            "match", "currentDatabase", "version",
+            "quantile", "topK"
         ],
         dataTypes: [
             "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
@@ -111,7 +111,9 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         paginationStyle: .limit,
         requiresBackslashEscaping: true,
         caseSensitivityStyle: .caseFoldFunction,
-        caseFoldFunction: "lowerUTF8"
+        caseFoldFunction: "lowerUTF8",
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: false
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
@@ -798,10 +800,16 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    /// Nil for every index. A data skipping index is an expression, a type with its arguments and a
+    /// granularity, and an index row carries none of them: it holds a column list and says `BTREE`
+    /// when new or `DATA_SKIPPING` when read. A changed index is a drop and an add, and the app builds
+    /// every statement before it runs one, so declining here keeps the index the table has rather than
+    /// dropping it ahead of an add that could not say what the index was.
+    ///
+    /// Not a `schemaOperationRefusal`: that also answers for the indexes of a copied `CREATE TABLE`,
+    /// which this driver leaves out of the statement, and refusing those would refuse the whole copy.
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let indexType = index.indexType ?? "minmax"
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD INDEX \(quoteIdentifier(index.name)) (\(cols)) TYPE \(indexType) GRANULARITY 1"
+        nil
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {

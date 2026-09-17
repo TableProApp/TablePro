@@ -3,13 +3,13 @@
 //  TablePro
 //
 
+import Combine
 import Foundation
 import os
 import TableProPluginKit
 
 @MainActor
-@Observable
-final class DatabaseTreeMetadataService {
+final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
     static let shared = DatabaseTreeMetadataService()
 
     struct DatabaseKey: Hashable, Sendable {
@@ -30,23 +30,31 @@ final class DatabaseTreeMetadataService {
         let table: String
     }
 
-    private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
-    private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
-    private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
-    private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
-    private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
-    private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
-    private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[TableInfo]>] = [:]
+    @Published private(set) var databaseList: [UUID: MetadataLoadState<[DatabaseMetadata]>] = [:]
+    @Published private(set) var schemaList: [DatabaseKey: MetadataLoadState<[String]>] = [:]
+    @Published private(set) var tablesState: [ObjectsKey: MetadataLoadState<[TableInfo]>] = [:]
+    @Published private(set) var routinesState: [ObjectsKey: MetadataLoadState<[RoutineInfo]>] = [:]
+    @Published private(set) var triggersState: [ObjectsKey: MetadataLoadState<[TriggerInfo]>] = [:]
+    @Published private(set) var typesState: [ObjectsKey: MetadataLoadState<[UserDefinedTypeInfo]>] = [:]
+    @Published private(set) var partitionsState: [PartitionsKey: MetadataLoadState<[PartitionInfo]>] = [:]
 
-    @ObservationIgnored private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
-    @ObservationIgnored private let schemaDedup = OnceTask<DatabaseKey, [String]>()
-    @ObservationIgnored private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
-    @ObservationIgnored private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
-    @ObservationIgnored private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
-    @ObservationIgnored private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
-    @ObservationIgnored private let partitionsDedup = OnceTask<PartitionsKey, [TableInfo]>()
+    private let databaseDedup = OnceTask<UUID, [DatabaseMetadata]>()
+    private let schemaDedup = OnceTask<DatabaseKey, [String]>()
+    private let tablesDedup = OnceTask<ObjectsKey, [TableInfo]>()
+    private let routinesDedup = OnceTask<ObjectsKey, [RoutineInfo]>()
+    private let triggersDedup = OnceTask<ObjectsKey, [TriggerInfo]>()
+    private let typesDedup = OnceTask<ObjectsKey, [UserDefinedTypeInfo]>()
+    private let partitionsDedup = OnceTask<PartitionsKey, [PartitionInfo]>()
 
-    @ObservationIgnored nonisolated private static let logger = Logger(
+    private var databaseListFence = CommitFence<UUID>()
+    private var schemaListFence = CommitFence<DatabaseKey>()
+    private var tablesFence = CommitFence<ObjectsKey>()
+    private var routinesFence = CommitFence<ObjectsKey>()
+    private var triggersFence = CommitFence<ObjectsKey>()
+    private var typesFence = CommitFence<ObjectsKey>()
+    private var partitionsFence = CommitFence<PartitionsKey>()
+
+    nonisolated private static let logger = Logger(
         subsystem: "com.TablePro", category: "SidebarTree"
     )
 
@@ -106,7 +114,7 @@ final class DatabaseTreeMetadataService {
 
     func partitionsLoadState(
         connectionId: UUID, database: String, schema: String?, table: String
-    ) -> MetadataLoadState<[TableInfo]> {
+    ) -> MetadataLoadState<[PartitionInfo]> {
         let key = Self.partitionsKey(connectionId: connectionId, database: database, schema: schema, table: table)
         return partitionsState[key] ?? .idle
     }
@@ -120,12 +128,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         databaseList[connectionId] = .loading
+        let token = databaseListFence.token(for: connectionId)
         do {
             let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
+            guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             databaseList[connectionId] = .loaded(list)
         } catch is CancellationError {
+            guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             if case .loading = databaseList[connectionId] { databaseList[connectionId] = .idle }
         } catch {
+            guard databaseListFence.isCurrent(token, for: connectionId) else { return }
             databaseList[connectionId] = .failed(error.localizedDescription)
             Self.logger.warning("databases load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
@@ -150,12 +162,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         schemaList[key] = .loading
+        let token = schemaListFence.token(for: key)
         do {
             let list = try await fetchSchemaList(connectionId: connectionId, database: database, key: key)
+            guard schemaListFence.isCurrent(token, for: key) else { return }
             schemaList[key] = .loaded(list)
         } catch is CancellationError {
+            guard schemaListFence.isCurrent(token, for: key) else { return }
             if case .loading = schemaList[key] { schemaList[key] = .idle }
         } catch {
+            guard schemaListFence.isCurrent(token, for: key) else { return }
             schemaList[key] = .failed(error.localizedDescription)
             Self.logger.warning("schemas load failed db=\(database, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
         }
@@ -177,11 +193,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         tablesState[key] = .loading
+        let token = tablesFence.token(for: key)
         do {
-            tablesState[key] = .loaded(try await fetchTableList(key))
+            let list = try await fetchTableList(key)
+            guard tablesFence.isCurrent(token, for: key) else { return }
+            tablesState[key] = .loaded(list)
         } catch is CancellationError {
+            guard tablesFence.isCurrent(token, for: key) else { return }
             if case .loading = tablesState[key] { tablesState[key] = .idle }
         } catch {
+            guard tablesFence.isCurrent(token, for: key) else { return }
             tablesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
                 "tables load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -197,11 +218,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         routinesState[key] = .loading
+        let token = routinesFence.token(for: key)
         do {
-            routinesState[key] = .loaded(try await fetchRoutineList(key))
+            let list = try await fetchRoutineList(key)
+            guard routinesFence.isCurrent(token, for: key) else { return }
+            routinesState[key] = .loaded(list)
         } catch is CancellationError {
+            guard routinesFence.isCurrent(token, for: key) else { return }
             if case .loading = routinesState[key] { routinesState[key] = .idle }
         } catch {
+            guard routinesFence.isCurrent(token, for: key) else { return }
             routinesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
                 "routines load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -226,11 +252,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         triggersState[key] = .loading
+        let token = triggersFence.token(for: key)
         do {
-            triggersState[key] = .loaded(try await fetchTriggerList(key))
+            let list = try await fetchTriggerList(key)
+            guard triggersFence.isCurrent(token, for: key) else { return }
+            triggersState[key] = .loaded(list)
         } catch is CancellationError {
+            guard triggersFence.isCurrent(token, for: key) else { return }
             if case .loading = triggersState[key] { triggersState[key] = .idle }
         } catch {
+            guard triggersFence.isCurrent(token, for: key) else { return }
             triggersState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
                 "triggers load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -274,11 +305,16 @@ final class DatabaseTreeMetadataService {
         case .idle, .failed: break
         }
         typesState[key] = .loading
+        let token = typesFence.token(for: key)
         do {
-            typesState[key] = .loaded(try await fetchTypeList(key))
+            let list = try await fetchTypeList(key)
+            guard typesFence.isCurrent(token, for: key) else { return }
+            typesState[key] = .loaded(list)
         } catch is CancellationError {
+            guard typesFence.isCurrent(token, for: key) else { return }
             if case .loading = typesState[key] { typesState[key] = .idle }
         } catch {
+            guard typesFence.isCurrent(token, for: key) else { return }
             typesState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
                 "types load failed db=\(database, privacy: .public) schema=\(schema ?? "nil", privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -309,16 +345,20 @@ final class DatabaseTreeMetadataService {
         }
         partitionsState[key] = .loading
         let normalizedSchema = key.schema
+        let token = partitionsFence.token(for: key)
         do {
             let list = try await partitionsDedup.execute(key: key) { [self] in
                 try await withDriver(connectionId: connectionId, database: database) { driver in
-                    try await driver.fetchPartitions(table: table, schema: normalizedSchema)
+                    try await driver.fetchPartitionDetails(table: table, schema: normalizedSchema)
                 }
             }
+            guard partitionsFence.isCurrent(token, for: key) else { return }
             partitionsState[key] = .loaded(list)
         } catch is CancellationError {
+            guard partitionsFence.isCurrent(token, for: key) else { return }
             if case .loading = partitionsState[key] { partitionsState[key] = .idle }
         } catch {
+            guard partitionsFence.isCurrent(token, for: key) else { return }
             partitionsState[key] = .failed(error.localizedDescription)
             Self.logger.warning(
                 "partitions load failed db=\(database, privacy: .public) table=\(table, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
@@ -331,7 +371,9 @@ final class DatabaseTreeMetadataService {
     /// Fetches first and commits over the old list, so a refresh never empties the tree
     /// and a failed refresh keeps the databases already on screen.
     func refreshDatabases(connectionId: UUID, databaseType: DatabaseType) async {
+        let token = databaseListFence.supersede(connectionId)
         await databaseDedup.cancel(key: connectionId)
+        guard databaseListFence.isCurrent(token, for: connectionId) else { return }
         guard case .loaded = databaseListState(for: connectionId) else {
             databaseList.removeValue(forKey: connectionId)
             await loadDatabases(connectionId: connectionId, databaseType: databaseType)
@@ -339,9 +381,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(connectionId) else { return }
         do {
-            databaseList[connectionId] = .loaded(
-                try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
-            )
+            let list = try await fetchDatabaseList(connectionId: connectionId, databaseType: databaseType)
+            guard databaseListFence.isCurrent(token, for: connectionId) else { return }
+            databaseList[connectionId] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -352,7 +394,9 @@ final class DatabaseTreeMetadataService {
 
     func refreshSchemas(connectionId: UUID, database: String) async {
         let key = DatabaseKey(connectionId: connectionId, database: database)
+        let token = schemaListFence.supersede(key)
         await schemaDedup.cancel(key: key)
+        guard schemaListFence.isCurrent(token, for: key) else { return }
         guard case .loaded = schemaList[key] ?? .idle else {
             schemaList.removeValue(forKey: key)
             await loadSchemas(connectionId: connectionId, database: database)
@@ -360,9 +404,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(connectionId) else { return }
         do {
-            schemaList[key] = .loaded(
-                try await fetchSchemaList(connectionId: connectionId, database: database, key: key)
-            )
+            let list = try await fetchSchemaList(connectionId: connectionId, database: database, key: key)
+            guard schemaListFence.isCurrent(token, for: key) else { return }
+            schemaList[key] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -386,31 +430,39 @@ final class DatabaseTreeMetadataService {
     /// ride with the tables, because a partition row is drawn as a child of the table it belongs to.
     func refreshTableObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let token = tablesFence.supersede(key)
         await tablesDedup.cancel(key: key)
-        async let tables: Void = refreshTables(key)
+        async let tables: Void = refreshTables(key, token: token)
         async let partitions: Void = refreshPartitions(under: key)
         _ = await (tables, partitions)
     }
 
+    /// Each refresh supersedes its key before its first suspension and carries the token it issued,
+    /// so a fetch that returns while the cancellation is still in flight cannot commit, and a refresh
+    /// that was itself superseded meanwhile stops rather than committing under the newer token.
     func refreshRoutineObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let token = routinesFence.supersede(key)
         await routinesDedup.cancel(key: key)
-        await refreshRoutines(key)
+        await refreshRoutines(key, token: token)
     }
 
     func refreshTriggerObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let token = triggersFence.supersede(key)
         await triggersDedup.cancel(key: key)
-        await refreshTriggers(key)
+        await refreshTriggers(key, token: token)
     }
 
     func refreshUserDefinedTypeObjects(connectionId: UUID, database: String, schema: String?) async {
         let key = Self.objectsKey(connectionId: connectionId, database: database, schema: schema)
+        let token = typesFence.supersede(key)
         await typesDedup.cancel(key: key)
-        await refreshUserDefinedTypes(key)
+        await refreshUserDefinedTypes(key, token: token)
     }
 
-    private func refreshUserDefinedTypes(_ key: ObjectsKey) async {
+    private func refreshUserDefinedTypes(_ key: ObjectsKey, token: Int) async {
+        guard typesFence.isCurrent(token, for: key) else { return }
         guard case .loaded = typesState[key] ?? .idle else {
             typesState.removeValue(forKey: key)
             await loadUserDefinedTypes(connectionId: key.connectionId, database: key.database, schema: key.schema)
@@ -418,7 +470,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(key.connectionId) else { return }
         do {
-            typesState[key] = .loaded(try await fetchTypeList(key))
+            let list = try await fetchTypeList(key)
+            guard typesFence.isCurrent(token, for: key) else { return }
+            typesState[key] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -427,7 +481,8 @@ final class DatabaseTreeMetadataService {
         }
     }
 
-    private func refreshTables(_ key: ObjectsKey) async {
+    private func refreshTables(_ key: ObjectsKey, token: Int) async {
+        guard tablesFence.isCurrent(token, for: key) else { return }
         guard case .loaded = tablesState[key] ?? .idle else {
             tablesState.removeValue(forKey: key)
             await loadTables(connectionId: key.connectionId, database: key.database, schema: key.schema)
@@ -435,7 +490,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(key.connectionId) else { return }
         do {
-            tablesState[key] = .loaded(try await fetchTableList(key))
+            let list = try await fetchTableList(key)
+            guard tablesFence.isCurrent(token, for: key) else { return }
+            tablesState[key] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -444,7 +501,8 @@ final class DatabaseTreeMetadataService {
         }
     }
 
-    private func refreshRoutines(_ key: ObjectsKey) async {
+    private func refreshRoutines(_ key: ObjectsKey, token: Int) async {
+        guard routinesFence.isCurrent(token, for: key) else { return }
         guard case .loaded = routinesState[key] ?? .idle else {
             routinesState.removeValue(forKey: key)
             await loadRoutines(connectionId: key.connectionId, database: key.database, schema: key.schema)
@@ -452,7 +510,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(key.connectionId) else { return }
         do {
-            routinesState[key] = .loaded(try await fetchRoutineList(key))
+            let list = try await fetchRoutineList(key)
+            guard routinesFence.isCurrent(token, for: key) else { return }
+            routinesState[key] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -461,7 +521,8 @@ final class DatabaseTreeMetadataService {
         }
     }
 
-    private func refreshTriggers(_ key: ObjectsKey) async {
+    private func refreshTriggers(_ key: ObjectsKey, token: Int) async {
+        guard triggersFence.isCurrent(token, for: key) else { return }
         guard case .loaded = triggersState[key] ?? .idle else {
             triggersState.removeValue(forKey: key)
             await loadTriggers(connectionId: key.connectionId, database: key.database, schema: key.schema)
@@ -469,7 +530,9 @@ final class DatabaseTreeMetadataService {
         }
         guard isConnected(key.connectionId) else { return }
         do {
-            triggersState[key] = .loaded(try await fetchTriggerList(key))
+            let list = try await fetchTriggerList(key)
+            guard triggersFence.isCurrent(token, for: key) else { return }
+            triggersState[key] = .loaded(list)
         } catch is CancellationError {
         } catch {
             Self.logger.warning(
@@ -481,6 +544,7 @@ final class DatabaseTreeMetadataService {
     private func refreshPartitions(under key: ObjectsKey) async {
         for partitionKey in partitionKeys(matching: key) {
             guard case .loaded = partitionsState[partitionKey] ?? .idle else {
+                partitionsFence.supersede(partitionKey)
                 await partitionsDedup.cancel(key: partitionKey)
                 partitionsState.removeValue(forKey: partitionKey)
                 continue
@@ -512,6 +576,7 @@ final class DatabaseTreeMetadataService {
 
     private func reloadTablesInPlace(_ key: ObjectsKey) async {
         guard isConnected(key.connectionId) else { return }
+        let token = tablesFence.supersede(key)
         await tablesDedup.cancel(key: key)
         do {
             let list = try await tablesDedup.execute(key: key) { [self] in
@@ -519,8 +584,10 @@ final class DatabaseTreeMetadataService {
                     try await driver.fetchTables(schema: key.schema)
                 }
             }
+            guard tablesFence.isCurrent(token, for: key) else { return }
             let next: MetadataLoadState<[TableInfo]> = .loaded(list)
-            guard tablesState[key] != next else { return }
+            guard tablesState[key] != next || Self.partitionCountsChanged(from: tablesState[key], to: next)
+            else { return }
             tablesState[key] = next
         } catch is CancellationError {
         } catch {
@@ -530,16 +597,44 @@ final class DatabaseTreeMetadataService {
         }
     }
 
+    /// A table's identity deliberately ignores its partition count, because the same table with one
+    /// more partition is the same table. That makes the equality guard above blind to a count that
+    /// moved on its own, which is exactly what a refresh after another client added a partition
+    /// brings back, so the counts are compared separately.
+    nonisolated internal static func partitionCountsChanged(
+        from previous: MetadataLoadState<[TableInfo]>?,
+        to next: MetadataLoadState<[TableInfo]>
+    ) -> Bool {
+        guard case .loaded(let nextTables) = next else { return false }
+        guard case .loaded(let previousTables) = previous else { return true }
+        let previousCounts = Dictionary(
+            previousTables.map { ($0.id, $0.partitionCount) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return nextTables.contains { table in
+            guard let previous = previousCounts[table.id] else { return true }
+            return previous != table.partitionCount
+        }
+    }
+
+    /// One loaded partition list, reloaded in place. The catalog-change path names its keys
+    /// directly, because a partition list does not follow its parent's table list.
+    internal func refreshPartitions(_ key: PartitionsKey) async {
+        await reloadPartitionsInPlace(key)
+    }
+
     private func reloadPartitionsInPlace(_ key: PartitionsKey) async {
         guard isConnected(key.connectionId) else { return }
+        let token = partitionsFence.supersede(key)
         await partitionsDedup.cancel(key: key)
         do {
             let list = try await partitionsDedup.execute(key: key) { [self] in
                 try await withDriver(connectionId: key.connectionId, database: key.database) { driver in
-                    try await driver.fetchPartitions(table: key.table, schema: key.schema)
+                    try await driver.fetchPartitionDetails(table: key.table, schema: key.schema)
                 }
             }
-            let next: MetadataLoadState<[TableInfo]> = .loaded(list)
+            guard partitionsFence.isCurrent(token, for: key) else { return }
+            let next: MetadataLoadState<[PartitionInfo]> = .loaded(list)
             guard partitionsState[key] != next else { return }
             partitionsState[key] = next
         } catch is CancellationError {
@@ -552,13 +647,22 @@ final class DatabaseTreeMetadataService {
 
     // MARK: - Lifecycle
 
+    /// A fetch still running on the driver the reconnect replaced answers for the old session, so
+    /// every key of the connection is superseded before anything suspends and none of those fetches
+    /// may commit. What is already on screen stays until the new session's own loads replace it.
+    ///
+    /// The pooled connections are not this service's to close. They stand on the transport rather
+    /// than on the session driver, and `DatabaseManager`, which rebuilds the transport, holds them
+    /// back while it does. Closing them on every reconnect withdrew an open a table tab on another
+    /// database was waiting on, and that tab then showed nothing and no error.
     func handleReconnect(connectionId: UUID) async {
-        MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
+        supersedeEveryKey(of: connectionId)
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         await resetPending(connectionId: connectionId)
     }
 
     func handleDisconnect(connectionId: UUID) async {
+        supersedeEveryKey(of: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         SchemaForeignKeyStore.shared.invalidate(connectionId: connectionId)
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }
@@ -590,6 +694,29 @@ final class DatabaseTreeMetadataService {
     }
 
     // MARK: - Private
+
+    private func supersedeEveryKey(of connectionId: UUID) {
+        databaseListFence.supersede(connectionId)
+        for key in schemaList.keys where key.connectionId == connectionId {
+            schemaListFence.supersede(key)
+        }
+        let objectKeys = Self.connectionObjectKeys(
+            tableKeys: tablesState.keys,
+            routineKeys: routinesState.keys,
+            triggerKeys: triggersState.keys,
+            typeKeys: typesState.keys,
+            connectionId: connectionId
+        )
+        for key in objectKeys {
+            tablesFence.supersede(key)
+            routinesFence.supersede(key)
+            triggersFence.supersede(key)
+            typesFence.supersede(key)
+        }
+        for key in connectionPartitionKeys(connectionId) {
+            partitionsFence.supersede(key)
+        }
+    }
 
     private func resetPending(connectionId: UUID) async {
         let schemaKeys = schemaList.keys.filter { $0.connectionId == connectionId }

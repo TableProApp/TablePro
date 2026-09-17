@@ -18,6 +18,6 @@ internal struct PhpSerializedFieldView: View {
         .frame(height: isExpanded ? ResizableFieldMetrics.expandedHeight : nil)
         .frame(minHeight: isExpanded ? nil : 80, maxHeight: isExpanded ? nil : 200)
         .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(ThemeEngine.shared.palette.color(.panelSeparator)))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }

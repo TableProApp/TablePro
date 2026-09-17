@@ -18,6 +18,15 @@ struct RecentTableEntry: Codable, Equatable, Identifiable {
 
     var id: String { "\(scopeKey)\u{1}\(identityKey)" }
 
+    var isUnqualified: Bool { schema?.isEmpty ?? true }
+
+    /// An entry recorded before the schema was known names the same table as a qualified one, but
+    /// opens that name in whichever schema is browsed when it is clicked. Only a qualified entry
+    /// replaces an unqualified one: the reverse would trade a known schema for a guess.
+    func supersedes(_ other: RecentTableEntry) -> Bool {
+        !isUnqualified && other.isUnqualified && other.scopeKey == scopeKey && other.name == name
+    }
+
     var tableInfo: TableInfo {
         TableInfo(name: name, type: isView ? .view : .table, rowCount: nil, schema: schema)
     }
@@ -85,6 +94,18 @@ final class RecentTablesStore {
         return updated
     }
 
+    /// Drops the entries inside one schema, for a schema that no longer exists. Dropping the whole
+    /// database's entries would take the sibling schemas with it, and leaving them is what made a
+    /// Recent row open a tab whose query failed with "relation does not exist".
+    @discardableResult
+    func clear(connectionId: UUID, database: String?, schema: String) -> [RecentTableEntry] {
+        let updated = entries(connectionId: connectionId).filter {
+            !($0.database == database && $0.schema == schema)
+        }
+        persist(updated, connectionId: connectionId)
+        return updated
+    }
+
     /// A renamed table keeps its position rather than being dropped and re-added, which would look
     /// like the user had just opened it. Any stale entry already sitting on the new name is removed
     /// first: two entries with one id map to a single cached node and the outline draws neither.
@@ -136,6 +157,27 @@ final class RecentTablesStore {
         }
     }
 
+    /// The entry takes the schema where it stands, keeping its position and the time it was opened,
+    /// rather than being recorded again as if the user had just opened it.
+    func resolveSchema(
+        connectionId: UUID,
+        database: String?,
+        name: String,
+        to schema: String
+    ) -> [RecentTableEntry] {
+        mutate(connectionId: connectionId) { entries in
+            guard let index = entries.firstIndex(where: {
+                $0.database == database && $0.name == name && $0.isUnqualified
+            }) else { return false }
+            let existing = entries[index]
+            entries[index] = RecentTableEntry(
+                database: existing.database, schema: schema, name: existing.name,
+                isView: existing.isView, openedAt: existing.openedAt
+            )
+            return Self.deduplicate(&entries)
+        }
+    }
+
     /// Reads, mutates and persists in one place, so a rename lands on disk whether or not the
     /// Recent section is on screen. The live list is empty while Show Recent Tables is off, and
     /// renaming only that left a dead entry to reappear under the old name when it came back on.
@@ -162,7 +204,7 @@ final class RecentTablesStore {
     }
 
     static func merged(_ entry: RecentTableEntry, into existing: [RecentTableEntry]) -> [RecentTableEntry] {
-        var result = existing.filter { $0.id != entry.id }
+        var result = existing.filter { $0.id != entry.id && !entry.supersedes($0) }
         result.insert(entry, at: 0)
         var perScopeCount: [String: Int] = [:]
         return result.filter { candidate in

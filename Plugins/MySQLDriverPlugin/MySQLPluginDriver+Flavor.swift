@@ -10,6 +10,7 @@ internal struct MySQLFlavorMismatchError: Error, Equatable {
     enum Kind: Equatable {
         case databendNeedsItsOwnType
         case notDatabend
+        case notOceanBase
     }
 
     let kind: Kind
@@ -22,13 +23,22 @@ extension MySQLFlavorMismatchError: PluginDriverError {
             return String(localized: "This server is Databend. Edit the connection and choose Databend as its type.")
         case .notDatabend:
             return String(localized: "This server did not identify as Databend. Check the host and port of its MySQL handler.")
+        case .notOceanBase:
+            return String(localized: "This server did not identify as OceanBase. Check the host and port of its MySQL mode tenant.")
         }
     }
 }
 
 extension MySQLPluginDriver {
     static func initialFlavor(for config: DriverConnectionConfig) -> MySQLServerFlavor {
-        config.additionalFields["driverVariant"] == MySQLServerFlavor.databendVariant ? .databend : .mysql
+        switch config.additionalFields["driverVariant"] {
+        case MySQLServerFlavor.databendVariant:
+            return .databend
+        case MySQLServerFlavor.oceanbaseVariant:
+            return .oceanbase(version: nil)
+        default:
+            return .mysql
+        }
     }
 
     func resolveFlavor(on connection: MariaDBPluginConnection, variant: String?) async throws -> MySQLServerFlavor {
@@ -48,6 +58,17 @@ extension MySQLPluginDriver {
             throw MySQLFlavorMismatchError(kind: .databendNeedsItsOwnType)
         }
 
+        if variant == MySQLServerFlavor.oceanbaseVariant {
+            let identity = try await connection.executeQuery(MySQLFlavorResolution.oceanbaseProbe).rows.first
+            guard let flavor = MySQLFlavorResolution.oceanbaseFlavor(
+                versionComment: identity?[safe: 0]?.asText,
+                serverVersion: identity?[safe: 1]?.asText
+            ) else {
+                throw MySQLFlavorMismatchError(kind: .notOceanBase)
+            }
+            return flavor
+        }
+
         guard MySQLFlavorResolution.needsTiDBVersionProbe(banner: banner, variant: variant) else {
             return bannerFlavor
         }
@@ -64,8 +85,8 @@ extension MySQLPluginDriver {
         return flavor.killTarget(connectionIdentifier: identifier)
     }
 
-    func tidbCheckConstraints(table: String) async throws -> [PluginCheckConstraintInfo] {
-        let result = try await execute(query: "SHOW CREATE TABLE \(quoteIdentifier(table))")
+    func tidbCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
+        let result = try await execute(query: "SHOW CREATE TABLE \(qualifiedName(table, schema: schema))")
         guard let createTable = result.rows.first?[safe: 1]?.asText else { return [] }
         return TiDBCheckConstraints.parse(createTable: createTable)
     }

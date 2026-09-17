@@ -315,7 +315,7 @@ public struct ListUserDefinedTypesTool: MCPToolImplementation {
     public static let name = "list_types"
     public static let title: String? = String(localized: "List Types")
     public static let description = String(
-        localized: "List the user-defined types in a schema: enums, composites, domains and ranges."
+        localized: "List the user-defined types in a schema, whichever shapes the engine has."
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]
     public static let annotations = MCPToolAnnotations(
@@ -348,7 +348,7 @@ public struct ListUserDefinedTypesTool: MCPToolImplementation {
                 of: MCPToolSchema.object(
                     properties: [
                         "name": MCPToolSchema.string(String(localized: "Type name")),
-                        "kind": MCPToolSchema.string(String(localized: "enum, composite, domain or range")),
+                        "kind": MCPToolSchema.string(String(localized: "The type's shape, such as enum, composite, domain, range, aliasType, tableType or clrType")),
                         "schema": MCPToolSchema.string(String(localized: "Schema the type lives in")),
                         "qualified_name": MCPToolSchema.string(String(localized: "Schema-qualified name")),
                         "labels": MCPToolSchema.array(
@@ -422,7 +422,7 @@ public struct ListPartitionsTool: MCPToolImplementation {
             "table": MCPToolSchema.string(String(localized: "Parent table")),
             "partitions": MCPToolSchema.array(
                 String(localized: "Direct partitions"),
-                of: MCPToolSchema.tableSummary
+                of: MCPToolSchema.partitionSummary
             )
         ],
         required: ["table", "partitions"]

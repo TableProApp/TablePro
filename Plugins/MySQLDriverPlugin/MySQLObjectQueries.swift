@@ -2,25 +2,102 @@
 //  MySQLObjectQueries.swift
 //  MySQLDriverPlugin
 //
-//  Catalog SQL for routines and triggers. Pure, so it is testable without a server.
+//  Catalog SQL for routines and triggers, and the rule every catalog read shares for naming the
+//  database it means. Pure, so it is testable without a server.
 //
 
 import Foundation
 
 public enum MySQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+        mysqlEscapeStringLiteral(value)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
         "`\(value.replacingOccurrences(of: "`", with: "``"))`"
     }
 
+    /// The database a catalog read means.
+    ///
+    /// These engines have no schema layer, so every `schema:` the driver protocol hands them is a
+    /// database name, and a caller that names none means the one the connection is already on. That
+    /// fallback is the whole rule: an unqualified name resolves against the session's current
+    /// database, so a read that drops the caller's schema silently answers about a same-named table
+    /// somewhere else.
+    public static func effectiveSchema(_ schema: String?, activeDatabase: String) -> String {
+        guard let schema, !schema.isEmpty else { return activeDatabase }
+        return schema
+    }
+
+    /// Quoting is the caller's, not this file's: Databend answers the same protocol through the same
+    /// driver and escapes a backtick-bearing name by switching to double quotes, so rendering one
+    /// here with the MySQL quoter would corrupt it.
+    public static func qualifiedIdentifier(
+        schema: String?,
+        name: String,
+        quote: (String) -> String
+    ) -> String {
+        guard let schema, !schema.isEmpty else { return quote(name) }
+        return "\(quote(schema)).\(quote(name))"
+    }
+
     public static func qualifiedIdentifier(schema: String?, name: String) -> String {
-        guard let schema, !schema.isEmpty else { return quoteIdentifier(name) }
-        return "\(quoteIdentifier(schema)).\(quoteIdentifier(name))"
+        qualifiedIdentifier(schema: schema, name: name, quote: quoteIdentifier)
+    }
+
+    /// Lists a schema's tables, with the partition count joined in for the ones that have any.
+    ///
+    /// `information_schema.PARTITIONS` holds one all-null row for a table that is not partitioned,
+    /// so `PARTITION_NAME IS NOT NULL` is what separates the two. A subpartitioned table repeats its
+    /// partition name once per subpartition, so the count is over distinct names rather than rows.
+    ///
+    /// The grouping and the join are both binary. `INFORMATION_SCHEMA` compares identifiers
+    /// case-insensitively, so on a server with `lower_case_table_names=0` a schema holding both
+    /// `orders` and `Orders` would merge their counts and could label the unpartitioned one
+    /// `PARTITIONED TABLE`.
+    ///
+    /// `includePartitions` is false for Databend, which answers the same wire protocol through the
+    /// same driver without this catalog.
+    public static func tableList(schema: String, includePartitions: Bool) -> String {
+        let schemaLiteral = escapeLiteral(schema)
+        guard includePartitions else {
+            return """
+                SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT, NULL
+                FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
+                """
+        }
+        return """
+            SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_COMMENT, p.PARTITION_COUNT
+            FROM information_schema.TABLES t
+            LEFT JOIN (
+                SELECT TABLE_NAME AS P_TABLE_NAME, COUNT(DISTINCT PARTITION_NAME) AS PARTITION_COUNT
+                FROM information_schema.PARTITIONS
+                WHERE TABLE_SCHEMA = '\(schemaLiteral)' AND PARTITION_NAME IS NOT NULL
+                GROUP BY BINARY TABLE_NAME, TABLE_NAME
+            ) p ON BINARY p.P_TABLE_NAME = BINARY t.TABLE_NAME
+            WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
+            """
+    }
+
+    /// The server's own answer to which tables an account can see in a database. Unlike
+    /// `information_schema`, it reports an account with no table privilege there as an access error.
+    public static func showFullTables(schema: String) -> String {
+        "SHOW FULL TABLES FROM \(quoteIdentifier(schema))"
+    }
+
+    /// One table's partitions, subpartitions included. A subpartition arrives as its own row
+    /// carrying its parent partition's name, ordered so the parent is read before its children.
+    public static func partitionList(schema: String, table: String) -> String {
+        """
+        SELECT PARTITION_NAME, SUBPARTITION_NAME, PARTITION_METHOD, PARTITION_DESCRIPTION,
+               PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION, TABLE_ROWS
+        FROM information_schema.PARTITIONS
+        WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+          AND TABLE_NAME = '\(escapeLiteral(table))'
+          AND PARTITION_NAME IS NOT NULL
+        ORDER BY PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION
+        """
     }
 
     /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's

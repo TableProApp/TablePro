@@ -122,4 +122,24 @@ struct ConnectionSession: Identifiable {
             && browseSchema == other.browseSchema
             && browseDatabase == other.browseDatabase
     }
+
+    /// Puts back the Truncate and Drop a save took off the queue and did not complete.
+    ///
+    /// Added back rather than assigned over: the user can stage more while the save waits on its
+    /// confirmation and its round trip, and an assignment erased those. An object staged again in the
+    /// meantime keeps its newer choice, and its options with it.
+    mutating func restoreStagedTableOperations(
+        truncates: Set<DatabaseTreeTableRef>,
+        deletes: Set<DatabaseTreeTableRef>,
+        options: [DatabaseTreeTableRef: TableOperationOptions]
+    ) {
+        let stagedMeanwhile = pendingTruncates.union(pendingDeletes)
+        let restoredTruncates = truncates.subtracting(stagedMeanwhile)
+        let restoredDeletes = deletes.subtracting(stagedMeanwhile)
+        pendingTruncates.formUnion(restoredTruncates)
+        pendingDeletes.formUnion(restoredDeletes)
+        for (table, value) in options where restoredTruncates.contains(table) || restoredDeletes.contains(table) {
+            tableOperationOptions[table] = value
+        }
+    }
 }
