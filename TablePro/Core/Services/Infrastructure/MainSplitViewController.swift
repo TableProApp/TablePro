@@ -1373,13 +1373,6 @@ internal final class MainSplitViewController: NSSplitViewController, TrailingPan
 
 /// The inspector is its own `NSHostingController`, so `@FocusedValue` set in the detail pane
 /// never reaches it. This window's controller injects its own actions instead.
-private struct CommandActionsEnvironmentKey: EnvironmentKey {
-    static let defaultValue: MainContentCommandActions? = nil
-}
-
-extension EnvironmentValues {
-    var commandActions: MainContentCommandActions? {
-        get { self[CommandActionsEnvironmentKey.self] }
-        set { self[CommandActionsEnvironmentKey.self] = newValue }
-    }
+internal extension EnvironmentValues {
+    @Entry var commandActions: MainContentCommandActions?
 }
