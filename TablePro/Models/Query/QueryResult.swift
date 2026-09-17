@@ -207,11 +207,13 @@ struct ColumnInfo: Identifiable, Hashable {
     let allowedValues: [String]?
     let generationExpression: String?
     let generationKind: GenerationKind?
-    /// The server's own spellings of `dataType`, `defaultValue` and `generationExpression` for a
-    /// `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` says why they differ.
+    /// The server's own spellings of `dataType`, `defaultValue`, `generationExpression` and
+    /// `collation` for a `CREATE TABLE`. `PluginColumnInfo.ddlSpelling` and
+    /// `PluginColumnInfo.ddlCollation` say why they differ.
     let ddlSpelling: String?
     let ddlDefault: String?
     let ddlGenerationExpression: String?
+    let ddlCollation: String?
 
     init(
         name: String,
@@ -230,7 +232,8 @@ struct ColumnInfo: Identifiable, Hashable {
         generationKind: GenerationKind? = nil,
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
-        ddlGenerationExpression: String? = nil
+        ddlGenerationExpression: String? = nil,
+        ddlCollation: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -249,6 +252,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.ddlSpelling = ddlSpelling
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 }
 

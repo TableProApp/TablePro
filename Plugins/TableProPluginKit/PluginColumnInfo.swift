@@ -57,13 +57,23 @@ public struct PluginColumnInfo: Codable, Sendable {
     /// `defaultValue`.
     ///
     /// A default names types and functions the same way a column type does, so `'new'::status` and
-    /// `st_geomfromtext(...)` failed under a target `search_path` just as `geometry` did. A default
-    /// that reads a sequence stays nil on purpose: a copy recreates that sequence beside the table,
-    /// and `nextval('orders_id_seq')` has to bind to the new one rather than to the source's.
+    /// `st_geomfromtext(...)` failed under a target `search_path` just as `geometry` did. A sequence
+    /// in the table's own schema is the one name left relative: a copy recreates that sequence beside
+    /// the table, and `nextval('orders_id_seq'::regclass)` has to bind to the new one rather than to
+    /// the source's. A sequence in any other schema stays qualified, because nothing recreates it.
     public let ddlDefault: String?
     /// `generationExpression` as a `CREATE TABLE` on another schema has to write it, or nil to write
     /// `generationExpression`.
     public let ddlGenerationExpression: String?
+    /// What follows `COLLATE` in a `CREATE TABLE`, or nil where the column keeps its type's own
+    /// collation.
+    ///
+    /// `collation` is the name to show, and it cannot also be this one. PostgreSQL reports `C` for a
+    /// column declared `COLLATE "C"` and for one that only inherits `C` from its type, and it reports
+    /// no schema: a bare `COLLATE C` is refused, and `"Case Insens"` names nothing outside its own
+    /// schema. This spelling is qualified and quoted, and set only when the column declares a
+    /// collation its type does not, so a DDL writer emits it verbatim.
+    public let ddlCollation: String?
 
     public var isIdentity: Bool { identityKind != nil }
 
@@ -103,6 +113,7 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlSpelling = nil
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
     }
 
     /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
@@ -141,8 +152,12 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlSpelling = nil
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
     }
 
+    /// The signature published before `ddlCollation` existed, kept byte-identical and disfavoured for
+    /// the same reason as the ones above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -179,5 +194,46 @@ public struct PluginColumnInfo: Codable, Sendable {
         self.ddlSpelling = ddlSpelling
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        isPrimaryKey: Bool = false,
+        defaultValue: String? = nil,
+        extra: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        comment: String? = nil,
+        identityKind: IdentityKind? = nil,
+        isGenerated: Bool = false,
+        allowedValues: [String]? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?,
+        ddlCollation: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.isPrimaryKey = isPrimaryKey
+        self.defaultValue = defaultValue
+        self.extra = extra
+        self.charset = charset
+        self.collation = collation
+        self.comment = comment
+        self.identityKind = identityKind
+        self.isGenerated = isGenerated
+        self.allowedValues = allowedValues
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 }

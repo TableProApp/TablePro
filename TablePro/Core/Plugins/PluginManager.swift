@@ -66,7 +66,7 @@ final class PluginManager: ObservableObject {
     /// `adoptingSchema` to `PluginUserDefinedTypeInfo`. The enum is not `@frozen` and every app-side
     /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
     /// the minimum stays where it is and no bulk re-release is needed.
-    nonisolated static let currentPluginKitVersion = 31
+    nonisolated static let currentPluginKitVersion = 32
 
     /// Still 19, so every plugin already published for the previous release keeps loading.
     nonisolated static let minimumCompatiblePluginKitVersion = 19

@@ -28,7 +28,8 @@ extension ColumnInfo {
             generationKind: column.generationKind,
             ddlSpelling: column.ddlSpelling,
             ddlDefault: column.ddlDefault,
-            ddlGenerationExpression: column.ddlGenerationExpression
+            ddlGenerationExpression: column.ddlGenerationExpression,
+            ddlCollation: column.ddlCollation
         )
     }
 }

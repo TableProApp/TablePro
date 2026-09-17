@@ -41,6 +41,9 @@ public struct PluginColumnDefinition: Sendable {
     /// The server's own spelling of `generationExpression` for a `CREATE TABLE`, or nil to write
     /// `generationExpression`.
     public let ddlGenerationExpression: String?
+    /// What follows `COLLATE` in a `CREATE TABLE`, or nil to write no `COLLATE` clause.
+    /// `PluginColumnInfo.ddlCollation` says why it is not `collation`.
+    public let ddlCollation: String?
 
     /// The signature published before generated-column detail existed. Kept byte-identical and
     /// disfavoured so already-built plugins keep resolving their own mangled symbol.
@@ -74,6 +77,7 @@ public struct PluginColumnDefinition: Sendable {
         self.ddlSpelling = nil
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
     }
 
     /// The signature published before the DDL spellings existed, kept byte-identical and disfavoured
@@ -110,8 +114,12 @@ public struct PluginColumnDefinition: Sendable {
         self.ddlSpelling = nil
         self.ddlDefault = nil
         self.ddlGenerationExpression = nil
+        self.ddlCollation = nil
     }
 
+    /// The signature published before `ddlCollation` existed, kept byte-identical and disfavoured for
+    /// the same reason as the ones above.
+    @_disfavoredOverload
     public init(
         name: String,
         dataType: String,
@@ -146,6 +154,45 @@ public struct PluginColumnDefinition: Sendable {
         self.ddlSpelling = ddlSpelling
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = nil
+    }
+
+    public init(
+        name: String,
+        dataType: String,
+        isNullable: Bool = true,
+        defaultValue: String? = nil,
+        isPrimaryKey: Bool = false,
+        autoIncrement: Bool = false,
+        comment: String? = nil,
+        unsigned: Bool = false,
+        onUpdate: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        generationExpression: String?,
+        generationKind: GenerationKind?,
+        ddlSpelling: String?,
+        ddlDefault: String?,
+        ddlGenerationExpression: String?,
+        ddlCollation: String?
+    ) {
+        self.name = name
+        self.dataType = dataType
+        self.isNullable = isNullable
+        self.defaultValue = defaultValue
+        self.isPrimaryKey = isPrimaryKey
+        self.autoIncrement = autoIncrement
+        self.comment = comment
+        self.unsigned = unsigned
+        self.onUpdate = onUpdate
+        self.charset = charset
+        self.collation = collation
+        self.generationExpression = generationExpression
+        self.generationKind = generationKind
+        self.ddlSpelling = ddlSpelling
+        self.ddlDefault = ddlDefault
+        self.ddlGenerationExpression = ddlGenerationExpression
+        self.ddlCollation = ddlCollation
     }
 
     public var isGenerated: Bool { generationExpression?.isEmpty == false }
