@@ -53,10 +53,17 @@ internal enum ChatToolTarget {
         return sessionConnectionId
     }
 
-    /// The connection this call acts on, once `MCPAuthPolicy` has allowed it.
+    /// The connection this call acts on, once the assistant is allowed to touch it.
     ///
-    /// `sql` is passed by the two write tools so the policy's write-scope and write-intent arms bind
-    /// to the statement rather than to the tool name alone.
+    /// Authorized against **AI Policy**, deliberately not against the External Clients level. The
+    /// connection form states the separation: AI Policy governs the in-app assistant, and External
+    /// Clients governs Raycast, Cursor, Claude Desktop, other MCP clients and AppleScript. Routing
+    /// the assistant through `MCPAuthPolicy.authorize` would apply the external gate to it, and
+    /// `externalAccess` defaults to `.readOnly` on every connection, so the assistant would have
+    /// stopped being able to write at all.
+    ///
+    /// Safe Mode is not consulted here. It is the execution gate's question, asked per statement
+    /// with the statement in hand, and asking it twice in two places is how the two answers drift.
     internal static func authorized(
         context: ChatToolContext,
         input: JsonValue,
@@ -64,23 +71,15 @@ internal enum ChatToolTarget {
         sql: String? = nil
     ) async throws -> UUID {
         let connectionId = try resolve(context: context, input: input)
-        let decision = try await context.authPolicy.authorize(
-            principal: .inAppAssistant,
-            tool: tool,
-            connectionId: connectionId,
-            sql: sql
-        )
-        switch decision {
-        case .allowed:
-            return connectionId
-        case .denied(let reason), .deniedInsufficientScope(_, let reason):
-            throw ChatToolAuthorizationError.denied(reason)
-        case .requiresUserApproval:
-            /// The connection-approval ledger exists to ask before an outside MCP client reaches a
-            /// connection. The assistant is not one: this is the connection whose window the user
-            /// opened, which is the same consent the ledger collects, so it is not asked for twice.
-            return connectionId
+        guard let policy = await context.aiPolicy(for: connectionId) else {
+            throw ChatToolAuthorizationError.denied(String(localized: "Connection not found"))
         }
+        guard policy != .never else {
+            throw ChatToolAuthorizationError.denied(
+                String(localized: "AI access is turned off for this connection.")
+            )
+        }
+        return connectionId
     }
 }
 

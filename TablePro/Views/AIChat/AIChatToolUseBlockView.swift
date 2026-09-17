@@ -11,19 +11,21 @@ struct AIChatToolUseBlockView: View {
 
     @State private var isExpanded: Bool = false
 
+    @Environment(\.chatApprovalConnectionName) private var connectionName
+
     private var isPending: Bool {
         if case .pending = block.approvalState { return true }
         return false
     }
 
     private var shouldShowInput: Bool {
-        hasInput && (isExpanded || isPending)
+        hasInput && (isExpanded || (isPending && proposedStatement == nil))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                guard hasInput, !isPending else { return }
+                guard hasInput else { return }
                 isExpanded.toggle()
             } label: {
                 HStack(spacing: 6) {
@@ -41,7 +43,7 @@ struct AIChatToolUseBlockView: View {
                             .truncationMode(.middle)
                     }
                     .font(.caption)
-                    if hasInput && !isPending {
+                    if hasInput {
                         Image(systemName: "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
@@ -73,7 +75,18 @@ struct AIChatToolUseBlockView: View {
                 )
                 .accessibilityLabel(String(localized: "Proposed statement"))
                 .accessibilityValue(proposedStatement)
-            } else if shouldShowInput {
+            }
+
+            if isPending {
+                Text(targetDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(String(localized: "Runs against"))
+                    .accessibilityValue(targetDescription)
+            }
+
+            if shouldShowInput {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(prettyInput)
                         .font(.caption)
@@ -113,6 +126,33 @@ struct AIChatToolUseBlockView: View {
     private var standingGrantUnavailableReason: String? {
         guard !allowsStandingGrant else { return nil }
         return String(localized: "Confirmed each time.")
+    }
+
+    /// Where the statement will run.
+    ///
+    /// The card used to print the model's whole input, which happened to include the `database` it
+    /// named. Showing the statement alone read better and hid the one field most able to surprise:
+    /// a model can name a database the user is not looking at, and an explicit Run pre-clears the
+    /// execution gate, whose own dialog names only the connection. So the target is spelled out
+    /// here, and the full input stays one click away.
+    private var targetDescription: String {
+        var parts: [String] = []
+        if let connectionName { parts.append(connectionName) }
+        if case .object(let fields) = block.input {
+            if case .string(let database)? = fields["database"], !database.isEmpty {
+                parts.append(database)
+            }
+            if case .string(let schema)? = fields["schema"], !schema.isEmpty {
+                parts.append(schema)
+            }
+        }
+        guard !parts.isEmpty else {
+            return String(localized: "Runs against this connection's current database.")
+        }
+        return String(
+            format: String(localized: "Runs against %@"),
+            parts.joined(separator: " / ")
+        )
     }
 
     /// The statement itself, when the call carries one, so the user answers about SQL rather than

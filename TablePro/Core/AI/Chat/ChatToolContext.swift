@@ -53,6 +53,23 @@ struct ChatToolContext: Sendable {
         )
     }
 
+    /// This connection's AI Policy, or nil when no such connection is saved.
+    ///
+    /// Read live rather than from a held record: the view model's copy is refreshed only when the
+    /// connection's id changes, so a policy set while the pane stayed mounted would not be seen.
+    func aiPolicy(for connectionId: UUID) async -> AIConnectionPolicy? {
+        await MainActor.run {
+            let resolved: DatabaseConnection?
+            switch DatabaseManager.shared.connectionState(connectionId) {
+            case .live(_, let session): resolved = session.connection
+            case .stored(let connection): resolved = connection
+            case .unknown: resolved = nil
+            }
+            guard let resolved else { return nil }
+            return resolved.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy
+        }
+    }
+
     /// The write capabilities this call may claim, which is where approval provenance is spent.
     var writeCapabilities: CallerCapabilities {
         approvalWasExplicit

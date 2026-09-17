@@ -59,12 +59,31 @@ struct ToolApprovalOrderingTests {
         }
     }
 
+    /// A turn awaits its cards one at a time, so the later ones are announced but not awaited yet.
+    /// Clearing them left the loop free to install a fresh continuation for the next card after the
+    /// first resumed, and sit there for good.
+    @Test("cancelAll answers a card the turn has not reached yet")
+    func cancelAllAnswersUnreachedCards() async {
+        let center = ToolApprovalCenter()
+        center.expect(["first", "second"])
+
+        let firstWaiter = Task { await center.awaitDecision(for: "first") }
+        await Task.yield()
+        center.cancelAll()
+
+        if case .cancel = await firstWaiter.value {} else { Issue.record("first should cancel") }
+        if case .cancel = await center.awaitDecision(for: "second") {} else {
+            Issue.record("the second card would have hung")
+        }
+    }
+
     @Test("cancelAll clears buffered answers as well as waiters")
     func cancelAllClearsTheBuffer() async {
         let center = ToolApprovalCenter()
         center.expect(["pending"])
         center.resolve(toolUseId: "pending", decision: .run)
         center.cancelAll()
+        center.forget(["pending"])
 
         center.expect(["pending"])
         let waiter = Task { await center.awaitDecision(for: "pending") }
