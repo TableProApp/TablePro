@@ -66,6 +66,25 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
         )
     }
 
+    /// One definition per constraint from rows that drivers report one per column, in the order each
+    /// constraint's first row arrives. Columns keep row order, which is key order; everything else
+    /// comes from the constraint's first row.
+    static func grouping(_ rows: [ForeignKeyInfo]) -> [EditableForeignKeyDefinition] {
+        var names: [String] = []
+        var rowsByName: [String: [ForeignKeyInfo]] = [:]
+        for row in rows {
+            if rowsByName[row.name] == nil { names.append(row.name) }
+            rowsByName[row.name, default: []].append(row)
+        }
+        return names.compactMap { name in
+            guard let constraintRows = rowsByName[name], let first = constraintRows.first else { return nil }
+            var definition = from(first)
+            definition.columns = constraintRows.map(\.column)
+            definition.referencedColumns = constraintRows.map(\.referencedColumn)
+            return definition
+        }
+    }
+
     func toPlugin() -> PluginForeignKeyDefinition {
         PluginForeignKeyDefinition(
             name: name, columns: columns, referencedTable: referencedTable,

@@ -156,12 +156,16 @@ jobs:
   # unit step spent 12 of its 15.3 minutes compiling and the UI step could not start until the
   # unit step had finished. All 12,662 unit cases execute in 206 seconds, so the build was almost
   # all of the cost and none of it was parallel.
+  #
+  # The limit is 60 minutes, measured rather than rounded: four runs on 2026-09-17 took 38, 39, 43
+  # and 44 minutes, and the v0.75.0 release run hit a 45 minute limit mid-build and skipped the
+  # release for it.
   build:
     name: Build for testing
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

@@ -20,6 +20,10 @@
 //  whitespace and drop an AUTO_INCREMENT seed. Guarding the normalized values
 //  would pass exactly the edits the generators would then carry into the target.
 //
+//  The one thing left out is the `id` each column, index and foreign key carries. Every read mints
+//  a fresh one and no generator reads it, so comparing it refused every table the script would
+//  create or alter, even when neither database had changed.
+//
 
 import Foundation
 
@@ -46,9 +50,9 @@ internal enum StructureChangeGuard {
                 qualifiedName: result.identity.qualifiedName,
                 action: action,
                 status: result.status,
-                changes: result.identity.kind == .table ? result.changes : [],
+                changes: result.identity.kind == .table ? result.changes.map { $0.withoutIdentity() } : [],
                 sourceSnapshot: result.identity.kind == .table
-                    ? sourceSnapshots[result.identity.qualifiedName]
+                    ? sourceSnapshots[result.identity.qualifiedName]?.withoutIdentity()
                     : nil,
                 sourceDefinition: result.identity.kind == .table ? [] : result.sourceDefinition
             )
