@@ -88,6 +88,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.referenceMenus = ForeignKeyReferenceMenus(
             connectionId: connection.id, databaseType: connection.type
         )
+        /// The inspector builds its reference pickers from the same menus the grid opens, once per
+        /// revision, so one built while a list was still loading offers only `Loading…` until the
+        /// revision moves. The coordinator is read when the list lands, not captured here, because
+        /// the view hands it over again on every appearance.
+        referenceMenus.onListsChanged = { [weak self] in
+            self?.coordinator?.inspectorRowSourceRevision += 1
+        }
     }
 
     // MARK: - Index Translation
