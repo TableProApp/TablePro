@@ -49,9 +49,21 @@ enum PostgreSQLIndexClauses {
         index.ddlWhereClause?.nilIfEmpty ?? index.whereClause?.nilIfEmpty
     }
 
-    private static func method(for index: PluginIndexDefinition) -> String? {
-        guard let type = index.indexType?.uppercased(),
-              PostgreSQLVersionedStatements.postgreSQLIndexMethods.contains(type) else { return nil }
-        return type.lowercased()
+    /// Any access method the index names, not a fixed list: `pg_am` is open, and an extension adds
+    /// `bloom`, `hnsw` or `ivfflat`. A list of five wrote every other method as a b-tree. The name is
+    /// lowercased, as `pg_am` names every method PostgreSQL and its contrib extensions ship, and quoted
+    /// unless it is a plain identifier, so a type read from another engine fails as a method that does
+    /// not exist rather than as SQL.
+    static func method(for index: PluginIndexDefinition) -> String? {
+        guard let type = index.indexType?.trimmingCharacters(in: .whitespaces).lowercased(),
+              !type.isEmpty else { return nil }
+        return isPlainIdentifier(type) ? type : PostgreSQLObjectQueries.quoteIdentifier(type)
+    }
+
+    private static func isPlainIdentifier(_ name: String) -> Bool {
+        guard let first = name.unicodeScalars.first, first == "_" || ("a"..."z").contains(first) else {
+            return false
+        }
+        return name.unicodeScalars.allSatisfy { $0 == "_" || ("a"..."z").contains($0) || ("0"..."9").contains($0) }
     }
 }
