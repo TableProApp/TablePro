@@ -17,6 +17,10 @@ pub struct ColumnInfo {
     /// `GENERATED ALWAYS AS`. Read-only, and never written.
     pub is_generated: bool,
     pub default: ColumnDefault,
+    /// What the schema says the column is for, where the engine stores
+    /// such a thing. `None` on an engine that has no column comments,
+    /// which is not the same as one left empty.
+    pub comment: Option<String>,
 }
 
 impl ColumnInfo {
@@ -58,6 +62,7 @@ mod tests {
             is_auto_increment: false,
             is_generated: false,
             default: ColumnDefault::None,
+            comment: None,
         }
     }
 

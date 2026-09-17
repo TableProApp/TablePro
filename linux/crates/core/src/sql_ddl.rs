@@ -154,6 +154,9 @@ pub struct DraftColumn {
     pub primary_key: bool,
     pub auto_increment: bool,
     pub default_value: Option<String>,
+    /// What the schema says the column is for. `None` where the
+    /// engine has no such thing, and where the user cleared it.
+    pub comment: Option<String>,
 }
 
 /// A column default as the DDL text the form edits.
@@ -179,6 +182,7 @@ impl DraftColumn {
         let auto_increment = info.is_auto_increment;
         let default_value = default_text(&info.default);
         let name = info.name.clone();
+        let comment = info.comment.clone();
         Self {
             original: Some(info),
             name,
@@ -187,6 +191,7 @@ impl DraftColumn {
             primary_key,
             auto_increment,
             default_value,
+            comment,
         }
     }
 
@@ -217,6 +222,7 @@ impl DraftColumn {
                     || orig.primary_key != self.primary_key
                     || orig.is_auto_increment != self.auto_increment
                     || default_text(&orig.default) != self.default_value
+                    || comment_value(orig.comment.as_deref()) != comment_value(self.comment.as_deref())
             }
         }
     }
@@ -317,6 +323,22 @@ fn sql_literal(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+/// MySQL reads a backslash inside a string literal as an escape unless
+/// NO_BACKSLASH_ESCAPES is set, so a value ending in one would swallow
+/// the closing quote. Doubling the quote is enough on the others.
+fn sql_literal_for(driver_id: &str, value: &str) -> String {
+    match driver_id {
+        "mysql" => value.replace('\\', "\\\\").replace('\'', "''"),
+        _ => sql_literal(value),
+    }
+}
+
+/// An empty entry is the user saying "no description", not a
+/// description that happens to be the empty string.
+fn comment_value(comment: Option<&str>) -> Option<&str> {
+    comment.filter(|text| !text.is_empty())
+}
+
 /// Drop the default constraint bound to `column`, if any. SQL Server
 /// generates the constraint name, and `DROP CONSTRAINT` does not accept
 /// a variable, so the name is resolved from `sys.default_constraints`
@@ -334,6 +356,92 @@ WHERE dc.parent_object_id = OBJECT_ID('{table_literal}') AND c.name = '{column_l
 IF @default_constraint IS NOT NULL \
 EXEC('ALTER TABLE {table_literal} DROP CONSTRAINT [' + @default_constraint + ']')"
     )
+}
+
+/// SQL Server keeps a column description in an extended property named
+/// `MS_Description`, which is added, updated and dropped by three
+/// different procedures. Which one applies depends on whether the
+/// column already carried a description, and the loaded original
+/// answers that without a round trip. The schema goes through a
+/// variable because a procedure argument cannot be a function call.
+fn mssql_set_column_comment(
+    schema: Option<&str>,
+    table: &str,
+    column: &str,
+    had_comment: bool,
+    comment: Option<&str>,
+) -> String {
+    let table_literal = sql_literal(table.trim());
+    let column_literal = sql_literal(column.trim());
+    let schema_source = match schema.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(name) => format!("N'{}'", sql_literal(name)),
+        None => "SCHEMA_NAME()".to_owned(),
+    };
+    let levels = format!(
+        "@level0type = N'SCHEMA', @level0name = @comment_schema, \
+@level1type = N'TABLE', @level1name = N'{table_literal}', \
+@level2type = N'COLUMN', @level2name = N'{column_literal}'"
+    );
+    let head = format!("DECLARE @comment_schema sysname = {schema_source}; ");
+    match comment {
+        Some(text) => {
+            let procedure = match had_comment {
+                true => "sp_updateextendedproperty",
+                false => "sp_addextendedproperty",
+            };
+            let value = sql_literal(text);
+            format!("{head}EXEC {procedure} @name = N'MS_Description', @value = N'{value}', {levels}")
+        }
+        None => format!("{head}EXEC sp_dropextendedproperty @name = N'MS_Description', {levels}"),
+    }
+}
+
+/// The statement that writes `column`'s description where the engine
+/// keeps it. `None` when there is nothing to write, when the
+/// description rides on the column definition (MySQL), or when the
+/// engine has nowhere to put one (SQLite).
+fn build_column_comment(driver_id: &str, schema: Option<&str>, table: &str, column: &DraftColumn) -> Option<String> {
+    let comment = comment_value(column.comment.as_deref());
+    let had_comment = column
+        .original
+        .as_ref()
+        .and_then(|original| comment_value(original.comment.as_deref()))
+        .is_some();
+    if comment.is_none() && !had_comment {
+        return None;
+    }
+    match driver_id {
+        "postgres" => {
+            let target = format!(
+                "{}.{}",
+                qualified_table(driver_id, schema, table),
+                quote_ident(driver_id, &column.name)
+            );
+            Some(match comment {
+                Some(text) => format!("COMMENT ON COLUMN {target} IS '{}'", sql_literal_for(driver_id, text)),
+                None => format!("COMMENT ON COLUMN {target} IS NULL"),
+            })
+        }
+        "mssql" => Some(mssql_set_column_comment(
+            schema,
+            table,
+            &column.name,
+            had_comment,
+            comment,
+        )),
+        _ => None,
+    }
+}
+
+/// True when the user moved the description away from what the server
+/// had, which is the only reason to emit a comment statement for a
+/// column that already exists.
+fn comment_changed(column: &DraftColumn) -> bool {
+    let original = column
+        .original
+        .as_ref()
+        .and_then(|original| comment_value(original.comment.as_deref()));
+    original != comment_value(column.comment.as_deref())
 }
 
 fn validate_table(table: &str) -> Result<(), BuildDdlError> {
@@ -443,6 +551,15 @@ fn render_column_definition(driver_id: &str, column: &DraftColumn, inline_pk: bo
         parts.push("PRIMARY KEY".into());
     }
 
+    // MySQL hangs the description off the column definition, so every
+    // statement that restates the definition has to restate it too or
+    // the description is dropped.
+    if driver_id == "mysql"
+        && let Some(text) = comment_value(column.comment.as_deref())
+    {
+        parts.push(format!("COMMENT '{}'", sql_literal_for(driver_id, text)));
+    }
+
     Ok(parts.join(" "))
 }
 
@@ -487,6 +604,10 @@ pub fn build_create_table(
         col_defs.join(",\n  ")
     );
     out.push(create_sql);
+
+    for col in columns {
+        out.extend(build_column_comment(driver_id, schema, table, col));
+    }
 
     for index in indexes {
         if index.primary {
@@ -553,12 +674,15 @@ pub fn build_rename_table(
     ))
 }
 
+/// Add one column. Returns more than one statement where the engine
+/// keeps a column description outside the column definition, which is
+/// everywhere except MySQL.
 pub fn build_add_column(
     driver_id: &str,
     schema: Option<&str>,
     table: &str,
     column: &DraftColumn,
-) -> Result<String, BuildDdlError> {
+) -> Result<Vec<String>, BuildDdlError> {
     validate_table(table)?;
     let column_def = render_column_definition(driver_id, column, false)?;
     if driver_id == "sqlite" && !column.nullable && column.default_value.as_deref().unwrap_or("").is_empty() {
@@ -569,12 +693,14 @@ pub fn build_add_column(
         return Err(BuildDdlError::SqliteNotSupported("ADD COLUMN NOT NULL without DEFAULT"));
     }
     let keyword = if driver_id == "mssql" { "ADD" } else { "ADD COLUMN" };
-    Ok(format!(
+    let mut out = vec![format!(
         "ALTER TABLE {} {} {}",
         qualified_table(driver_id, schema, table),
         keyword,
         column_def
-    ))
+    )];
+    out.extend(build_column_comment(driver_id, schema, table, column));
+    Ok(out)
 }
 
 pub fn build_drop_column(
@@ -717,6 +843,9 @@ pub fn build_alter_column(
                     ),
                 });
             }
+            if comment_changed(column) {
+                stmts.extend(build_column_comment(driver_id, schema, table, column));
+            }
             if stmts.is_empty() {
                 // Nothing actually changed — surface as NoChange so
                 // the caller can skip emission.
@@ -763,6 +892,9 @@ pub fn build_alter_column(
                         quote_ident(driver_id, &column.name)
                     ));
                 }
+            }
+            if comment_changed(column) {
+                stmts.extend(build_column_comment(driver_id, schema, table, column));
             }
             if stmts.is_empty() {
                 return Err(BuildDdlError::NoChange);
@@ -1173,7 +1305,7 @@ pub fn materialize_ops(ops: &[StructureOp], driver_id: &str) -> Result<Vec<Strin
     }
     for op in ops {
         if let StructureOp::AddColumn { schema, table, column } = op {
-            out.push(build_add_column(driver_id, schema.as_deref(), table, column)?);
+            out.extend(build_add_column(driver_id, schema.as_deref(), table, column)?);
         }
     }
     for op in ops {
@@ -1217,6 +1349,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         }
     }
 
@@ -1241,6 +1374,22 @@ mod tests {
         col
     }
 
+    fn commented(mut col: DraftColumn, comment: &str) -> DraftColumn {
+        col.comment = Some(comment.into());
+        col
+    }
+
+    /// The same draft as `edited`, with the server already carrying a
+    /// description for the column.
+    fn edited_with_comment(original_name: &str, ty: &str, comment: &str) -> DraftColumn {
+        let mut col = edited(original_name, ty);
+        if let Some(original) = col.original.as_mut() {
+            original.comment = Some(comment.into());
+        }
+        col.comment = Some(comment.into());
+        col
+    }
+
     /// A draft carrying an original, for diffing an edit against the
     /// loaded column.
     fn edited(original_name: &str, ty: &str) -> DraftColumn {
@@ -1253,6 +1402,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: original_name.into(),
             data_type: ty.into(),
@@ -1260,6 +1410,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         }
     }
 
@@ -1563,7 +1714,7 @@ mod tests {
         let col = nn(def(dc("created_at", "timestamp"), "now()"));
         assert_eq!(
             build_add_column("postgres", None, "users", &col).unwrap(),
-            "ALTER TABLE \"users\" ADD COLUMN \"created_at\" timestamp NOT NULL DEFAULT now()"
+            vec!["ALTER TABLE \"users\" ADD COLUMN \"created_at\" timestamp NOT NULL DEFAULT now()".to_owned()]
         );
     }
 
@@ -1578,7 +1729,7 @@ mod tests {
     fn add_column_sqlite_with_default_ok() {
         let col = nn(def(dc("name", "TEXT"), "''"));
         let sql = build_add_column("sqlite", None, "t", &col).unwrap();
-        assert!(sql.starts_with("ALTER TABLE \"t\" ADD COLUMN"));
+        assert!(sql[0].starts_with("ALTER TABLE \"t\" ADD COLUMN"));
     }
 
     #[test]
@@ -1587,9 +1738,9 @@ mod tests {
         let sql = build_add_column("mssql", None, "users", &col).unwrap();
         assert_eq!(
             sql,
-            "ALTER TABLE [users] ADD [created_at] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()"
+            vec!["ALTER TABLE [users] ADD [created_at] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()".to_owned()]
         );
-        assert!(!sql.contains("ADD COLUMN"));
+        assert!(!sql[0].contains("ADD COLUMN"));
     }
 
     #[test]
@@ -1657,6 +1808,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "bigint".into(),
@@ -1664,6 +1816,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
         let joined = stmts.join("\n");
@@ -1682,6 +1835,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "text".into(),
@@ -1689,6 +1843,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
         assert!(stmts.iter().any(|s| s.contains("SET NOT NULL")));
@@ -1705,6 +1860,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "text".into(),
@@ -1712,6 +1868,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: Some("'pending'".into()),
+            comment: None,
         };
         let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
         assert!(stmts.iter().any(|s| s.contains("SET DEFAULT 'pending'")));
@@ -1739,6 +1896,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "bigint".into(),
@@ -1746,6 +1904,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: Some("'fallback'".into()),
+            comment: None,
         };
         let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
         // Type, nullable AND default all changed — all three must
@@ -1775,6 +1934,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "int".into(),
@@ -1782,6 +1942,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 1);
@@ -1799,6 +1960,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "text".into(),
@@ -1806,6 +1968,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: Some("'pending'".into()),
+            comment: None,
         };
         let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 2);
@@ -1829,6 +1992,7 @@ mod tests {
                     "'pending'",
                 )),
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "text".into(),
@@ -1836,6 +2000,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 1);
@@ -1854,6 +2019,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "bigint".into(),
@@ -1861,6 +2027,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: Some("0".into()),
+            comment: None,
         };
         let stmts = build_alter_column("mssql", None, "t", &col).unwrap();
         assert_eq!(stmts.len(), 3);
@@ -1880,6 +2047,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "int".into(),
@@ -1887,6 +2055,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let err = build_alter_column("mssql", None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::NoChange));
@@ -1903,6 +2072,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text("0")),
                 is_generated: false,
+                comment: None,
             }),
             name: "o'brien".into(),
             data_type: "int".into(),
@@ -1910,6 +2080,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let stmts = build_alter_column("mssql", Some("s'x"), "t'q", &col).unwrap();
         assert!(stmts[0].contains("OBJECT_ID('[s''x].[t''q]')"));
@@ -2204,6 +2375,7 @@ mod tests {
                 is_auto_increment: false,
                 default: crate::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             }),
             name: "x".into(),
             data_type: "bigint; DROP TABLE u; --".into(),
@@ -2211,6 +2383,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         };
         let err = build_alter_column("postgres", None, "t", &col).unwrap_err();
         assert!(matches!(err, BuildDdlError::UnsafeType(_)), "got {err:?}");
@@ -2244,6 +2417,7 @@ mod tests {
                         is_auto_increment: false,
                         default: crate::column::ColumnDefault::None,
                         is_generated: false,
+                        comment: None,
                     }),
                     name: "x".into(),
                     data_type: "text".into(),
@@ -2251,6 +2425,7 @@ mod tests {
                     primary_key: false,
                     auto_increment: false,
                     default_value: Some("'x'".into()),
+                    comment: None,
                 },
             },
             StructureOp::AddColumn {
@@ -2265,5 +2440,170 @@ mod tests {
         assert!(stmts[1].contains("DROP CONSTRAINT"));
         assert_eq!(stmts[2], "ALTER TABLE [new_t] ADD DEFAULT ('x') FOR [x]");
         assert_eq!(stmts[3], "ALTER TABLE [new_t] ADD [flag] BIT NOT NULL");
+    }
+
+    #[test]
+    fn postgres_writes_a_column_comment_as_its_own_statement() {
+        let mut col = edited("email", "text");
+        col.comment = Some("primary contact".into());
+
+        let stmts = build_alter_column("postgres", Some("public"), "users", &col).unwrap();
+
+        assert_eq!(
+            stmts,
+            vec!["COMMENT ON COLUMN \"public\".\"users\".\"email\" IS 'primary contact'".to_owned()]
+        );
+    }
+
+    #[test]
+    fn postgres_clears_a_column_comment_with_is_null() {
+        let mut col = edited_with_comment("email", "text", "primary contact");
+        col.comment = None;
+
+        let stmts = build_alter_column("postgres", None, "users", &col).unwrap();
+
+        assert_eq!(stmts, vec!["COMMENT ON COLUMN \"users\".\"email\" IS NULL".to_owned()]);
+    }
+
+    #[test]
+    fn an_empty_comment_reads_as_no_comment() {
+        let mut col = edited("email", "text");
+        col.comment = Some(String::new());
+
+        assert!(!col.differs_beyond_name());
+        assert!(matches!(
+            build_alter_column("postgres", None, "users", &col),
+            Err(BuildDdlError::NoChange)
+        ));
+    }
+
+    #[test]
+    fn an_unchanged_comment_emits_nothing() {
+        let col = edited_with_comment("email", "text", "primary contact");
+
+        assert!(matches!(
+            build_alter_column("postgres", None, "users", &col),
+            Err(BuildDdlError::NoChange)
+        ));
+    }
+
+    #[test]
+    fn mysql_carries_the_comment_on_the_column_definition() {
+        let col = commented(nn(dc("email", "VARCHAR(255)")), "primary contact");
+
+        let stmts = build_alter_column("mysql", None, "users", &col).unwrap();
+
+        assert_eq!(
+            stmts,
+            vec![
+                "ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(255) NOT NULL COMMENT 'primary contact'".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn mysql_restates_an_untouched_comment_so_modify_does_not_drop_it() {
+        let mut col = edited_with_comment("email", "text", "primary contact");
+        col.nullable = false;
+
+        let stmts = build_alter_column("mysql", None, "users", &col).unwrap();
+
+        assert!(stmts[0].ends_with("COMMENT 'primary contact'"));
+    }
+
+    #[test]
+    fn mysql_escapes_a_backslash_in_a_comment() {
+        // MySQL reads a backslash as an escape, so a trailing one would
+        // otherwise swallow the closing quote and splice the rest of
+        // the statement into the literal.
+        let col = commented(dc("path", "TEXT"), "ends with a backslash \\");
+
+        let stmts = build_alter_column("mysql", None, "t", &col).unwrap();
+
+        assert!(stmts[0].ends_with("COMMENT 'ends with a backslash \\\\'"));
+    }
+
+    #[test]
+    fn a_quote_in_a_comment_is_doubled() {
+        let col = commented(dc("note", "text"), "o'brien");
+
+        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+
+        assert!(stmts.iter().any(|sql| sql.contains("IS 'o''brien'")));
+    }
+
+    #[test]
+    fn adding_a_column_with_a_comment_emits_the_comment_after_it() {
+        let col = commented(dc("email", "text"), "primary contact");
+
+        let stmts = build_add_column("postgres", None, "users", &col).unwrap();
+
+        assert_eq!(
+            stmts,
+            vec![
+                "ALTER TABLE \"users\" ADD COLUMN \"email\" text".to_owned(),
+                "COMMENT ON COLUMN \"users\".\"email\" IS 'primary contact'".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn creating_a_table_comments_every_commented_column() {
+        let columns = vec![
+            pk(dc("id", "integer")),
+            commented(dc("email", "text"), "primary contact"),
+            dc("note", "text"),
+        ];
+
+        let stmts = build_create_table("postgres", None, "users", &columns, &[], &[]).unwrap();
+
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].starts_with("CREATE TABLE"));
+        assert_eq!(stmts[1], "COMMENT ON COLUMN \"users\".\"email\" IS 'primary contact'");
+    }
+
+    #[test]
+    fn mssql_adds_a_description_the_column_did_not_have() {
+        let col = commented(edited("email", "nvarchar(255)"), "primary contact");
+
+        let stmts = build_alter_column("mssql", Some("dbo"), "users", &col).unwrap();
+
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("DECLARE @comment_schema sysname = N'dbo';"));
+        assert!(stmts[0].contains("EXEC sp_addextendedproperty @name = N'MS_Description'"));
+        assert!(stmts[0].contains("@value = N'primary contact'"));
+        assert!(stmts[0].contains("@level2type = N'COLUMN', @level2name = N'email'"));
+    }
+
+    #[test]
+    fn mssql_updates_a_description_the_column_already_had() {
+        let mut col = edited_with_comment("email", "nvarchar(255)", "old text");
+        col.comment = Some("new text".into());
+
+        let stmts = build_alter_column("mssql", None, "users", &col).unwrap();
+
+        assert!(stmts[0].contains("DECLARE @comment_schema sysname = SCHEMA_NAME();"));
+        assert!(stmts[0].contains("EXEC sp_updateextendedproperty"));
+        assert!(stmts[0].contains("@value = N'new text'"));
+    }
+
+    #[test]
+    fn mssql_drops_a_description_the_user_cleared() {
+        let mut col = edited_with_comment("email", "nvarchar(255)", "old text");
+        col.comment = None;
+
+        let stmts = build_alter_column("mssql", None, "users", &col).unwrap();
+
+        assert!(stmts[0].contains("EXEC sp_dropextendedproperty @name = N'MS_Description'"));
+        assert!(!stmts[0].contains("@value"));
+    }
+
+    #[test]
+    fn a_comment_change_alone_is_a_pending_op() {
+        let mut col = edited("email", "text");
+        col.comment = Some("primary contact".into());
+
+        assert!(col.differs_from_original());
+        assert!(col.differs_beyond_name());
     }
 }

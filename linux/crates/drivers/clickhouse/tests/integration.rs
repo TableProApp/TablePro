@@ -356,3 +356,25 @@ async fn bad_sql_returns_query_error() {
         .unwrap_err();
     assert!(matches!(err, tablepro_core::DriverError::Server(_)), "got {err:?}");
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn column_comments_are_read_back() {
+    let (_c, opts) = start_clickhouse().await.unwrap();
+    let conn = ClickhouseDriver.connect(opts).await.unwrap();
+
+    conn.execute(
+        "CREATE TABLE comment_demo (
+            id UInt32,
+            email String COMMENT 'primary contact'
+        ) ENGINE = MergeTree ORDER BY id",
+    )
+    .await
+    .unwrap();
+
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    let comment = |name: &str| cols.iter().find(|c| c.name == name).unwrap().comment.clone();
+    assert_eq!(comment("email").as_deref(), Some("primary contact"));
+    // ClickHouse stores the empty string for an undescribed column.
+    assert_eq!(comment("id"), None);
+}

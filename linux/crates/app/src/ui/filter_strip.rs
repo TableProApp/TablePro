@@ -132,6 +132,7 @@ fn placeholder_column(name: &str) -> ColumnInfo {
         is_auto_increment: false,
         is_generated: false,
         default: tablepro_core::column::ColumnDefault::None,
+        comment: None,
     }
 }
 

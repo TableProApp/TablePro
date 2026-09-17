@@ -23,6 +23,7 @@ fn column(name: &str, kind: ColumnKind) -> ColumnInfo {
         is_auto_increment: false,
         is_generated: false,
         default: ColumnDefault::None,
+        comment: None,
     }
 }
 

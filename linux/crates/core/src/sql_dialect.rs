@@ -298,6 +298,7 @@ mod tests {
             is_auto_increment: false,
             default: crate::column::ColumnDefault::None,
             is_generated: false,
+            comment: None,
         }
     }
 
@@ -514,6 +515,7 @@ mod tests {
             is_auto_increment: true,
             default: crate::column::ColumnDefault::None,
             is_generated: false,
+            comment: None,
         }
     }
 
@@ -526,6 +528,7 @@ mod tests {
             is_auto_increment: false,
             default: crate::column::ColumnDefault::Expression(crate::column::SqlExpression::from_catalog_text(default)),
             is_generated: false,
+            comment: None,
         }
     }
 
@@ -538,6 +541,7 @@ mod tests {
             is_auto_increment: false,
             default: crate::column::ColumnDefault::None,
             is_generated: true,
+            comment: None,
         }
     }
 

@@ -154,6 +154,10 @@ impl Connection for SqliteConnection {
                     is_auto_increment,
                     is_generated,
                     default,
+                    // SQLite keeps no column descriptions. A comment in
+                    // the CREATE TABLE text is discarded by the parser,
+                    // so there is nothing to read back.
+                    comment: None,
                 }
             })
             .collect())

@@ -172,6 +172,7 @@ impl Connection for ClickhouseConnection {
             is_in_primary_key: u8,
             default_kind: String,
             default_expression: String,
+            comment: String,
         }
 
         let rows = self
@@ -182,7 +183,8 @@ impl Connection for ClickhouseConnection {
                     type,
                     is_in_primary_key,
                     default_kind,
-                    default_expression
+                    default_expression,
+                    comment
                  FROM system.columns
                  WHERE database = ?
                    AND table = ?
@@ -219,6 +221,10 @@ impl Connection for ClickhouseConnection {
                         Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
                         None => ColumnDefault::None,
                     },
+                    // ClickHouse has no "no comment" either: an
+                    // uncommented column comes back as the empty
+                    // string.
+                    comment: (!r.comment.is_empty()).then_some(r.comment),
                 }
             })
             .collect())

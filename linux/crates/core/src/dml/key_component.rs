@@ -65,6 +65,7 @@ mod tests {
             is_auto_increment: false,
             is_generated: false,
             default: ColumnDefault::None,
+            comment: None,
         }
     }
 

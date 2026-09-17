@@ -302,3 +302,40 @@ async fn binary_only_types_read_back() {
     // reads as a NULL, not as an unreadable value.
     assert_eq!(row[5], Value::Null);
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn column_comments_round_trip() {
+    let (_c, opts) = start_pg().await.unwrap();
+    let conn = PgDriver.connect(opts).await.unwrap();
+
+    conn.execute("CREATE TABLE comment_demo (id integer, email text)")
+        .await
+        .unwrap();
+    conn.execute("COMMENT ON COLUMN comment_demo.email IS 'primary contact'")
+        .await
+        .unwrap();
+
+    let read =
+        |cols: Vec<tablepro_core::ColumnInfo>, name: &str| cols.into_iter().find(|c| c.name == name).unwrap().comment;
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("primary contact"));
+    assert_eq!(read(cols.clone(), "id"), None);
+
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = Some("who to mail".into());
+    for sql in tablepro_core::sql_ddl::build_alter_column("postgres", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("who to mail"));
+
+    column = tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = None;
+    for sql in tablepro_core::sql_ddl::build_alter_column("postgres", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols, "email"), None);
+}

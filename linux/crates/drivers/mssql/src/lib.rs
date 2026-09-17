@@ -185,6 +185,8 @@ impl Connection for MssqlConnection {
         // expression, and the primary-key join flags PK members. Type text
         // is rebuilt from sys.types + length/precision so it reads like the
         // user's CREATE TABLE (e.g. `nvarchar(255)`, `decimal(18,2)`).
+        // A column description lives in an extended property named
+        // MS_Description, which is the one SSMS writes and reads.
         let sql = "SELECT \
                        c.name AS col_name, \
                        ty.name AS type_name, \
@@ -195,7 +197,8 @@ impl Connection for MssqlConnection {
                        c.is_identity, \
                        c.is_computed, \
                        dc.definition AS default_def, \
-                       CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS is_pk \
+                       CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS is_pk, \
+                       CAST(ep.value AS nvarchar(max)) AS comment \
                    FROM sys.columns c \
                    JOIN sys.objects o ON c.object_id = o.object_id \
                    JOIN sys.schemas sc ON o.schema_id = sc.schema_id \
@@ -207,6 +210,11 @@ impl Connection for MssqlConnection {
                        JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id \
                        WHERE i.is_primary_key = 1 \
                    ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
+                   LEFT JOIN sys.extended_properties ep \
+                       ON ep.class = 1 \
+                       AND ep.major_id = c.object_id \
+                       AND ep.minor_id = c.column_id \
+                       AND ep.name = 'MS_Description' \
                    WHERE o.name = @P1 AND sc.name = COALESCE(@P2, SCHEMA_NAME()) \
                    ORDER BY c.column_id";
         let mut client = self.client.lock().await;
@@ -588,6 +596,7 @@ fn row_to_column_info(row: &[Value]) -> ColumnInfo {
         is_auto_increment: is_identity,
         is_generated: as_bool(row.get(7)).unwrap_or(false),
         default,
+        comment: as_text(row.get(10)),
     }
 }
 

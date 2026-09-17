@@ -788,6 +788,7 @@ mod tests {
             is_auto_increment: false,
             is_generated: false,
             default: tablepro_core::column::ColumnDefault::None,
+            comment: None,
         }
     }
 
@@ -803,6 +804,7 @@ mod tests {
             is_auto_increment: true,
             default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
+            comment: None,
         }
     }
 
@@ -815,6 +817,7 @@ mod tests {
             is_auto_increment: false,
             default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
+            comment: None,
         }
     }
 
@@ -945,6 +948,7 @@ mod tests {
                 is_auto_increment: false,
                 default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             },
             ColumnInfo {
                 name: "b".into(),
@@ -954,6 +958,7 @@ mod tests {
                 is_auto_increment: false,
                 default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             },
             data_col("name"),
         ];
@@ -981,6 +986,7 @@ mod tests {
                 is_auto_increment: false,
                 default: tablepro_core::column::ColumnDefault::None,
                 is_generated: false,
+                comment: None,
             },
             data_col("name"),
         ];

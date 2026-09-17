@@ -2203,6 +2203,7 @@ mod tests {
             is_auto_increment: false,
             is_generated: false,
             default: tablepro_core::column::ColumnDefault::None,
+            comment: None,
         }
     }
 

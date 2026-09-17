@@ -257,6 +257,7 @@ async fn alter_column_default_round_trips() {
         primary_key: false,
         auto_increment: false,
         default_value: Some("'pending'".into()),
+        comment: None,
     };
     for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "def_demo", &column).unwrap() {
         conn.execute(&sql).await.unwrap();
@@ -394,4 +395,50 @@ async fn a_decimal_past_a_fixed_width_type_reads_back_whole() {
         v => panic!("expected a wide decimal, got {v:?}"),
     }
     assert_eq!(row[1], Value::Null);
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn column_comments_round_trip() {
+    let (_c, opts) = start_mssql().await.unwrap();
+    let conn = MssqlDriver.connect(opts).await.unwrap();
+
+    conn.execute("CREATE TABLE comment_demo (id int, email nvarchar(255))")
+        .await
+        .unwrap();
+
+    let read =
+        |cols: Vec<tablepro_core::ColumnInfo>, name: &str| cols.into_iter().find(|c| c.name == name).unwrap().comment;
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email"), None);
+
+    // sp_addextendedproperty, because the column had no description.
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = Some("primary contact".into());
+    for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("primary contact"));
+
+    // sp_updateextendedproperty, because it has one now.
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = Some("who to mail".into());
+    for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("who to mail"));
+
+    // sp_dropextendedproperty, because the user cleared it.
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = None;
+    for sql in tablepro_core::sql_ddl::build_alter_column("mssql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols, "email"), None);
 }

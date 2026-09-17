@@ -149,7 +149,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 
 - [x] Structure tab: columns, indexes, foreign keys (edit + DDL diff)
 - [x] Column metadata: type, nullable, default
-- [ ] Column comments (`ColumnInfo` has no `comment` field and no driver reads one)
+- [x] Column comments: read on PostgreSQL, MySQL, SQL Server and ClickHouse, edited in the Structure tab everywhere but SQLite, which stores none
 - [ ] Sidebar tabs: Views, Triggers, Functions, Sequences
 - [ ] Click view → SELECT * FROM view (re-uses browse view)
 - [ ] Click index → show CREATE INDEX DDL + which columns

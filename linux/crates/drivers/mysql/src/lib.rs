@@ -95,7 +95,7 @@ impl Connection for MysqlConnection {
             "SELECT CAST(column_name AS CHAR), CAST(column_type AS CHAR),
                     CAST(is_nullable AS CHAR), CAST(column_key AS CHAR),
                     CAST(extra AS CHAR), CAST(column_default AS CHAR),
-                    CAST(generation_expression AS CHAR)
+                    CAST(generation_expression AS CHAR), CAST(column_comment AS CHAR)
              FROM information_schema.columns
              WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ?
              ORDER BY ordinal_position",
@@ -119,6 +119,13 @@ impl Connection for MysqlConnection {
                     .unwrap_or(None)
                     .filter(|s| !s.is_empty());
                 let generation_expr: Option<String> = r.try_get::<Option<String>, _>(6).unwrap_or(None);
+                // MySQL has no "no comment": a column without one
+                // carries the empty string, so that is what absent
+                // looks like here.
+                let comment = r
+                    .try_get::<Option<String>, _>(7)
+                    .unwrap_or(None)
+                    .filter(|text| !text.is_empty());
                 let type_name = r.get::<String, _>(1);
                 ColumnInfo {
                     name: r.get::<String, _>(0),
@@ -143,6 +150,7 @@ impl Connection for MysqlConnection {
                     is_generated: generation_expr.as_deref().is_some_and(|s| !s.is_empty())
                         || extra.contains("virtual generated")
                         || extra.contains("stored generated"),
+                    comment,
                 }
             })
             .collect())

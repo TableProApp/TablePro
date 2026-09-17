@@ -113,7 +113,8 @@ impl Connection for PgConnection {
                 ) AS is_pk,
                 pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_value,
                 a.attidentity <> '' AS is_identity,
-                a.attgenerated <> '' AS is_generated
+                a.attgenerated <> '' AS is_generated,
+                pg_catalog.col_description(a.attrelid, a.attnum) AS comment
              FROM pg_catalog.pg_attribute a
              JOIN pg_catalog.pg_class t ON a.attrelid = t.oid
              JOIN pg_catalog.pg_namespace n ON t.relnamespace = n.oid
@@ -136,6 +137,7 @@ impl Connection for PgConnection {
                 let raw_default: Option<String> = r.try_get::<Option<String>, _>(4).unwrap_or(None);
                 let is_identity = r.try_get::<bool, _>(5).unwrap_or(false);
                 let is_generated = r.try_get::<bool, _>(6).unwrap_or(false);
+                let comment = r.try_get::<Option<String>, _>(7).unwrap_or(None);
                 // SERIAL / BIGSERIAL columns aren't IDENTITY in PG's
                 // catalog terms but have a `nextval(...)` default; treat
                 // them as auto-increment for the inline-insert UI.
@@ -164,6 +166,7 @@ impl Connection for PgConnection {
                         Some(text) => ColumnDefault::Expression(SqlExpression::from_catalog_text(text)),
                         None => ColumnDefault::None,
                     },
+                    comment,
                 }
             })
             .collect())

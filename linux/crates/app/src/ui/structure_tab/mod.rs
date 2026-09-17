@@ -203,6 +203,7 @@ pub enum ColumnField {
     PrimaryKey(bool),
     AutoIncrement(bool),
     Default(Option<String>),
+    Comment(Option<String>),
 }
 
 #[derive(Debug)]
@@ -911,6 +912,7 @@ impl SimpleComponent for StructureTab {
                     }
                     ColumnField::AutoIncrement(b) => col.auto_increment = b,
                     ColumnField::Default(s) => col.default_value = s,
+                    ColumnField::Comment(s) => col.comment = s,
                 }
                 let new_col = col.clone();
                 drop(cols);
@@ -937,6 +939,7 @@ impl SimpleComponent for StructureTab {
                     primary_key: false,
                     auto_increment: false,
                     default_value: None,
+                    comment: None,
                 };
                 self.columns.borrow_mut().push(new_col);
                 self.recompute_dirty_state(&sender);

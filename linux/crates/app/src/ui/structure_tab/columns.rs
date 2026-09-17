@@ -93,6 +93,13 @@ fn driver_can_alter_existing_column(driver_id: &str) -> bool {
     !matches!(driver_id, "sqlite")
 }
 
+/// Whether the engine has somewhere to keep a column description.
+/// SQLite does not: a comment in the CREATE TABLE text is thrown away
+/// by the parser, so the field is shown but cannot be edited.
+fn driver_stores_column_comments(driver_id: &str) -> bool {
+    !matches!(driver_id, "sqlite")
+}
+
 fn driver_can_drop_column(_driver_id: &str) -> bool {
     // SQLite ≥ 3.35 supports DROP COLUMN; the builder doesn't probe
     // the runtime version. Always enable; the driver surfaces the
@@ -309,7 +316,8 @@ pub(super) fn build_column_expander_row(
         .sync_create()
         .build();
     let sender_for_auto = sender.clone();
-    let suppress_for_auto = suppress_emit;
+    let suppress_for_auto = suppress_emit.clone();
+    let suppress_emit_for_comment = suppress_emit;
     auto_row.connect_active_notify(move |s| {
         if suppress_for_auto.get() {
             return;
@@ -320,6 +328,30 @@ pub(super) fn build_column_expander_row(
         });
     });
     row.add_row(&auto_row);
+
+    // Comment (AdwEntryRow). Empty means the column carries no
+    // description; clearing a description the server had drops it.
+    let comment_row = adw::EntryRow::builder().title(crate::i18n::gettext("Comment")).build();
+    comment_row.set_text(col.comment.as_deref().unwrap_or(""));
+    comment_row.set_widget_name(&format!("col-comment-{index}"));
+    if !driver_stores_column_comments(driver_id) {
+        comment_row.set_sensitive(false);
+        comment_row.set_tooltip_text(Some(&crate::i18n::gettext("SQLite doesn't store column comments.")));
+    }
+    let sender_for_comment = sender;
+    let suppress_for_comment = suppress_emit_for_comment;
+    comment_row.connect_changed(move |e| {
+        if suppress_for_comment.get() {
+            return;
+        }
+        let text = e.text().to_string();
+        let value = if text.is_empty() { None } else { Some(text) };
+        sender_for_comment.input(StructureTabInput::ColumnEdited {
+            index,
+            field: ColumnField::Comment(value),
+        });
+    });
+    row.add_row(&comment_row);
 
     row
 }

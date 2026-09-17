@@ -144,6 +144,7 @@ mod tests {
             primary_key: false,
             auto_increment: false,
             default_value: None,
+            comment: None,
         }
     }
 

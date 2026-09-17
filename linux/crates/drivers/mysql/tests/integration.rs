@@ -333,3 +333,56 @@ async fn wire_only_types_read_back() {
     // reads as a NULL, not as an unreadable value.
     assert_eq!(row[6], Value::Null);
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn column_comments_round_trip() {
+    let (_c, opts) = start_mysql().await.unwrap();
+    let conn = MysqlDriver.connect(opts).await.unwrap();
+
+    conn.execute(
+        "CREATE TABLE comment_demo (
+            id INT,
+            email VARCHAR(255) COMMENT 'primary contact'
+        )",
+    )
+    .await
+    .unwrap();
+
+    let read =
+        |cols: Vec<tablepro_core::ColumnInfo>, name: &str| cols.into_iter().find(|c| c.name == name).unwrap().comment;
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("primary contact"));
+    // MySQL stores the empty string for a column nobody described, and
+    // that has to read as absent rather than as an empty description.
+    assert_eq!(read(cols.clone(), "id"), None);
+
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = Some("who to mail".into());
+    for sql in tablepro_core::sql_ddl::build_alter_column("mysql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("who to mail"));
+
+    // A change to something else must not take the description with
+    // it: MODIFY COLUMN replaces the whole definition.
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.nullable = false;
+    for sql in tablepro_core::sql_ddl::build_alter_column("mysql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols.clone(), "email").as_deref(), Some("who to mail"));
+
+    let mut column =
+        tablepro_core::sql_ddl::DraftColumn::from_info(cols.into_iter().find(|c| c.name == "email").unwrap());
+    column.comment = None;
+    for sql in tablepro_core::sql_ddl::build_alter_column("mysql", None, "comment_demo", &column).unwrap() {
+        conn.execute(&sql).await.unwrap();
+    }
+    let cols = conn.fetch_columns(None, "comment_demo").await.unwrap();
+    assert_eq!(read(cols, "email"), None);
+}
