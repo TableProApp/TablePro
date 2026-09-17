@@ -288,6 +288,45 @@ impl App {
         });
     }
 
+    /// Put a colour on a connection, or take the one it has off.
+    ///
+    /// The whole entry is rewritten because that is what the store
+    /// takes, and it comes from the list the app already holds rather
+    /// than from a re-read: the row that asked is showing that entry.
+    pub(super) fn on_set_connection_color(
+        &self,
+        id: Uuid,
+        color: Option<tablepro_storage::ConnectionColor>,
+        sender: ComponentSender<Self>,
+    ) {
+        let Some(mut saved) = self.saved_connections.iter().find(|saved| saved.id == id).cloned() else {
+            return;
+        };
+        if saved.color == color {
+            return;
+        }
+        saved.color = color;
+        let connections = self.storage.connections().clone();
+        let tasks = self.tasks.clone();
+        let sender_clone = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    let written = tasks
+                        .spawn_blocking_task(move || connections.upsert_blocking(saved))
+                        .await;
+                    if let Ok(Err(error)) = written {
+                        tracing::warn!(%error, "could not save the connection colour");
+                        sender_clone.input(AppMsg::ShowToast(crate::i18n::gettext(
+                            "The colour could not be saved.",
+                        )));
+                    }
+                    sender_clone.input(AppMsg::ReloadConnections);
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         self.set_loading_page(

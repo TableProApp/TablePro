@@ -33,6 +33,10 @@ pub struct SavedConnection {
     /// once and fall back to alphabetical against each other.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<DateTime<Utc>>,
+    /// A colour the user put on this connection to tell production
+    /// apart from staging at a glance. `None` until they pick one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<crate::ConnectionColor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,6 +303,8 @@ pub fn duplicate(source: &SavedConnection, taken: &[SavedConnection]) -> SavedCo
         name: copy_name(&source.name, &taken.iter().map(|c| c.name.as_str()).collect::<Vec<_>>()),
         // A copy has never been opened, whatever the original did, so
         // it sorts by name rather than claiming the original's recency.
+        // The colour does carry: a copy points at the same server, so
+        // it belongs to the same group of connections at a glance.
         last_opened_at: None,
         ..source.clone()
     }
@@ -336,6 +342,7 @@ mod tests {
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
+            color: None,
         }
     }
 
@@ -351,6 +358,16 @@ mod tests {
         assert_eq!(copy.username, source.username);
         assert_eq!(copy.use_tls, source.use_tls);
         assert_eq!(copy.driver_id, source.driver_id);
+    }
+
+    #[test]
+    fn a_copy_keeps_the_colour_because_it_points_at_the_same_server() {
+        let mut source = saved("production");
+        source.color = Some(crate::ConnectionColor::Red);
+
+        let copy = duplicate(&source, std::slice::from_ref(&source));
+
+        assert_eq!(copy.color, Some(crate::ConnectionColor::Red));
     }
 
     #[test]
@@ -401,6 +418,7 @@ mod tests {
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
+            color: None,
         }
     }
 

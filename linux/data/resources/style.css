@@ -76,3 +76,59 @@ columnview > listview > row > cell:focus-within > .tp-cell-editor {
     box-shadow: inset 0 0 0 3px var(--accent-color);
   }
 }
+
+/* Connection colour tags. The palette is libadwaita's accent set, kept
+   as literal values rather than the accent variables: a tag names a
+   specific colour, so it must not follow whatever accent the user has
+   set in Settings. Both shades read against the list background in
+   light and dark. */
+.tp-connection-tag {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 9999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.tp-connection-tag.tp-tag-blue {
+  background: #3584e4;
+}
+
+.tp-connection-tag.tp-tag-teal {
+  background: #2190a4;
+}
+
+.tp-connection-tag.tp-tag-green {
+  background: #3a944a;
+}
+
+.tp-connection-tag.tp-tag-yellow {
+  background: #c88800;
+}
+
+.tp-connection-tag.tp-tag-orange {
+  background: #ed5b00;
+}
+
+.tp-connection-tag.tp-tag-red {
+  background: #e62d42;
+}
+
+.tp-connection-tag.tp-tag-pink {
+  background: #d56199;
+}
+
+.tp-connection-tag.tp-tag-purple {
+  background: #9141ac;
+}
+
+.tp-connection-tag.tp-tag-slate {
+  background: #6f8396;
+}
+
+@media (prefers-contrast: more) {
+  .tp-connection-tag {
+    min-width: 14px;
+    min-height: 14px;
+    box-shadow: inset 0 0 0 1px var(--window-fg-color);
+  }
+}

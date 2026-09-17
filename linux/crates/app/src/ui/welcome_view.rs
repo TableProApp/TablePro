@@ -3,7 +3,7 @@ use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
-use tablepro_storage::SavedConnection;
+use tablepro_storage::{ConnectionColor, SavedConnection};
 use uuid::Uuid;
 
 use super::connection_row::{ConnectionRow, ConnectionRowOutput};
@@ -21,6 +21,7 @@ pub enum WelcomeViewInput {
     OpenSaved(SavedConnection),
     Delete(Uuid),
     Duplicate(SavedConnection),
+    SetColor(Uuid, Option<ConnectionColor>),
 }
 
 #[derive(Debug)]
@@ -29,6 +30,7 @@ pub enum WelcomeViewOutput {
     OpenSaved(SavedConnection),
     Delete(Uuid),
     Duplicate(SavedConnection),
+    SetColor(Uuid, Option<ConnectionColor>),
 }
 
 #[derive(Debug, Default)]
@@ -57,6 +59,7 @@ impl SimpleComponent for WelcomeView {
                 ConnectionRowOutput::Open(saved) => WelcomeViewInput::OpenSaved(saved),
                 ConnectionRowOutput::Delete(id) => WelcomeViewInput::Delete(id),
                 ConnectionRowOutput::Duplicate(saved) => WelcomeViewInput::Duplicate(saved),
+                ConnectionRowOutput::SetColor(id, color) => WelcomeViewInput::SetColor(id, color),
             });
 
         // Empty page — no saved connections yet. GNOME convention is
@@ -180,6 +183,9 @@ impl SimpleComponent for WelcomeView {
             }
             WelcomeViewInput::Duplicate(saved) => {
                 let _ = sender.output(WelcomeViewOutput::Duplicate(saved));
+            }
+            WelcomeViewInput::SetColor(id, color) => {
+                let _ = sender.output(WelcomeViewOutput::SetColor(id, color));
             }
         }
     }

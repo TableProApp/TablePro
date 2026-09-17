@@ -744,13 +744,11 @@ async fn run_connect(
         connection_service::establish(driver.as_ref(), opts.clone(), ssh_for_establish, read_only).await?;
     let tables = conn.list_tables().await.map_err(|e| format!("list_tables: {e}"))?;
 
-    let id = match find_existing_id(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await {
-        Some(id) => id,
-        None => Uuid::new_v4(),
-    };
-    let is_new = find_existing_id(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref())
-        .await
-        .is_none();
+    // Read once: the entry says both which id to write under and what
+    // the user already put on it that this form does not carry.
+    let existing = find_existing(&targets, &driver_id, &opts_clone, driver.is_file_based(), ssh.as_ref()).await;
+    let is_new = existing.is_none();
+    let id = existing.as_ref().map(|saved| saved.id).unwrap_or_else(Uuid::new_v4);
 
     let mut saved = SavedConnection {
         id,
@@ -768,6 +766,10 @@ async fn run_connect(
         // connect arrives in that order, so a freshly-saved entry is
         // briefly None on disk before the touch lands.
         last_opened_at: None,
+        // The colour is put on from the connection list, not from this
+        // form, so reconnecting through the dialog has to carry the
+        // one already there instead of clearing it.
+        color: existing.as_ref().and_then(|saved| saved.color),
     };
 
     // Secrets go in first, so the single list write can record whether
@@ -877,18 +879,18 @@ async fn load_connections(
         })?
 }
 
-async fn find_existing_id(
+async fn find_existing(
     targets: &SaveTargets,
     driver_id: &str,
     opts: &ConnectOptions,
     file_based: bool,
     ssh: Option<&SshInputs>,
-) -> Option<Uuid> {
+) -> Option<SavedConnection> {
     let existing = load_connections(targets).await.ok()?;
     existing
         .iter()
         .find(|saved| matches_existing(saved, driver_id, opts, file_based, ssh))
-        .map(|saved| saved.id)
+        .cloned()
 }
 
 fn matches_existing(
@@ -1004,6 +1006,7 @@ mod tests {
             auth_mode,
             ssh: None,
             last_opened_at: None,
+            color: None,
         }
     }
 

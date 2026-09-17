@@ -1,3 +1,4 @@
+mod connection_color;
 mod connections;
 pub mod document;
 mod document_problem;
@@ -11,6 +12,7 @@ mod secrets;
 pub mod settings;
 mod unix_time;
 
+pub use connection_color::ConnectionColor;
 pub use connections::{
     ConnectionListSnapshot, ConnectionListState, ConnectionStore, RemoveOutcome, SavedConnection, SavedSshAuth,
     SavedSshConfig, duplicate,

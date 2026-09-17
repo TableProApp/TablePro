@@ -347,6 +347,9 @@ pub enum AppMsg {
         name: String,
         query: String,
     },
+    /// A colour picked from a connection row's menu, or `None` when the
+    /// user cleared it.
+    SetConnectionColor(Uuid, Option<tablepro_storage::ConnectionColor>),
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
@@ -1134,6 +1137,7 @@ impl SimpleComponent for App {
                 ConnectionRowOutput::Open(saved) => AppMsg::OpenSaved(saved),
                 ConnectionRowOutput::Delete(id) => AppMsg::DeleteConnection(id),
                 ConnectionRowOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
+                ConnectionRowOutput::SetColor(id, color) => AppMsg::SetConnectionColor(id, color),
             });
 
         // The SplitButton's tooltip already labels the popover, so we drop
@@ -1208,6 +1212,7 @@ impl SimpleComponent for App {
                     WelcomeViewOutput::OpenSaved(saved) => AppMsg::OpenSaved(saved),
                     WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
                     WelcomeViewOutput::Duplicate(saved) => AppMsg::DuplicateConnection(saved),
+                    WelcomeViewOutput::SetColor(id, color) => AppMsg::SetConnectionColor(id, color),
                 });
 
         let model = App {
@@ -1440,6 +1445,7 @@ impl SimpleComponent for App {
             AppMsg::WorkspaceTabsRead { saved, drafts } => self.on_workspace_tabs_read(saved, drafts, sender),
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::ShowSavedQueries => self.on_show_saved_queries(sender),
+            AppMsg::SetConnectionColor(id, color) => self.on_set_connection_color(id, color, sender),
             AppMsg::SaveActiveQuery => self.on_save_active_query(sender),
             AppMsg::SaveQueryNamed { name, query } => self.on_save_query_named(name, query, sender),
             AppMsg::OpenHistoryQuery(text) => {

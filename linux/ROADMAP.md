@@ -166,7 +166,7 @@ Exit criterion: a developer can demo the basic flows (connect, browse, edit, que
 ### Connection management (partial)
 
 - [ ] Connection groups (folders in saved-connections list)
-- [ ] Color tags per connection
+- [x] Colour tags per connection, from the row's own menu, shown as a dot ahead of the name
 - [ ] Import / export connections to JSON file
 - [x] Clone connection, from the row's own menu, secrets carried onto the copy's id
 - [x] "Test connection" button in dialog before save

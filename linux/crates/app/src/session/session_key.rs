@@ -60,6 +60,7 @@ mod tests {
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,
+            color: None,
         }
     }
 
