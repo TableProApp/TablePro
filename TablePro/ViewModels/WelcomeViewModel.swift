@@ -630,7 +630,7 @@ final class WelcomeViewModel: ObservableObject {
 
     // MARK: - Connection Errors
 
-    private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
+    func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
             Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
             return

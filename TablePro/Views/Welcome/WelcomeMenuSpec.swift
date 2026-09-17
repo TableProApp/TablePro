@@ -9,6 +9,9 @@ import TableProConnectionLibrary
 internal enum WelcomeMenuCommand: Equatable {
     case connect([LibraryRowID])
     case disconnect(UUID)
+    /// Open the connection and hand its window to the agent, which is the welcome window's second
+    /// way in. Its own command rather than a mode on Connect, because they land somewhere different.
+    case startAgentSession(UUID)
     case edit(UUID)
     case rename(LibraryRowID)
     case duplicate(UUID)
@@ -135,7 +138,10 @@ internal enum WelcomeMenuSpec {
         context: WelcomeMenuContext
     ) -> [WelcomeMenuSection] {
         let id = connection.id
-        var primary: [WelcomeMenuItem] = [.command(Titles.connect(count: 1), .connect(context.rows))]
+        var primary: [WelcomeMenuItem] = [
+            .command(Titles.connect(count: 1), .connect(context.rows)),
+            .command(Titles.startAgentSession, .startAgentSession(id)),
+        ]
         if context.disconnectableConnectionIds.contains(id) {
             primary.append(.command(Titles.disconnect, .disconnect(id)))
         }
@@ -374,6 +380,8 @@ internal extension WelcomeMenuSpec {
         static var moveGroupTo: String { String(localized: "Move Group To") }
         static var topLevel: String { String(localized: "Top Level") }
         static var deleteGroup: String { String(localized: "Delete Group…") }
+
+        static let startAgentSession = String(localized: "Open in Agent Mode")
 
         static func connect(count: Int) -> String {
             count == 1

@@ -28,11 +28,30 @@ internal struct AgentConversationView: View {
                     connection: connection,
                     viewModel: session.viewModel
                 )
+                /// A prompt typed before the connection landed is sent once, here, when the session
+                /// can take it. It is cleared before it is dispatched, so a second flush site cannot
+                /// send it again.
+                .task(id: flushKey(session)) {
+                    sendPendingPromptIfReady(session)
+                }
             } else {
                 emptyState
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The prompt is dispatched when the session exists and nothing is in flight. Keyed on both, so
+    /// a connect that lands after the view is already on screen still flushes.
+    private func flushKey(_ session: AgentSession) -> String {
+        "\(session.id)-\(isConnecting)-\(session.pendingPrompt != nil)"
+    }
+
+    private func sendPendingPromptIfReady(_ session: AgentSession) {
+        guard !isConnecting, let prompt = session.pendingPrompt else { return }
+        session.pendingPrompt = nil
+        session.viewModel.inputText = prompt
+        session.viewModel.sendMessage()
     }
 
     /// Named rather than spun. A connect the user can see is a connect they can type through, so the

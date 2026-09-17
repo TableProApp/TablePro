@@ -21,6 +21,7 @@ internal final class LaunchIntentRouter {
             case .openConnection,
                  .openTable,
                  .openQuery,
+                 .openAgentSession,
                  .openDatabaseURL,
                  .openDatabaseFile,
                  .openSQLFile,
@@ -141,8 +142,8 @@ internal final class LaunchIntentRouter {
         /// `openSampleDatabase` presents its own failure through `SampleDatabaseLauncher` and never
         /// throws out of `route`, so this arm exists to keep the switch exhaustive rather than to
         /// be reached. Grouped with the connection cases because that is what it opens.
-        case .openConnection, .openTable, .openQuery, .openDatabaseURL, .openDatabaseFile,
-             .reopenClosedTab, .openSampleDatabase:
+        case .openConnection, .openTable, .openQuery, .openAgentSession, .openDatabaseURL,
+             .openDatabaseFile, .reopenClosedTab, .openSampleDatabase:
             title = String(localized: "Connection Failed")
         case .openSQLFile, .openInspectorFile:
             title = String(localized: "Could Not Open File")
