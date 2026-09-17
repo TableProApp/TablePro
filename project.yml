@@ -529,6 +529,7 @@ targets:
       - Plugins/PostgreSQLDriverPlugin/LibPQPluginError.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQSSLMapping.swift
       - Plugins/PostgreSQLDriverPlugin/LibPQStringConformance.swift
+      - Plugins/PostgreSQLDriverPlugin/LibPQTypeNameRegistry.swift
       - Plugins/PostgreSQLDriverPlugin/PostGISSpatialRewrite.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCapabilities.swift
       - Plugins/PostgreSQLDriverPlugin/PostgreSQLCatalogBoolean.swift

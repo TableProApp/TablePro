@@ -23,6 +23,32 @@ struct LibPQPluginConnectionSourceScanTests {
             .appendingPathComponent("LibPQPluginConnection.swift")
     }()
 
+    private static let membersReachingTheConnection: Set<String> = [
+        "connectionHandle",
+        "fetchResults",
+        "resolvingUnknownTypes",
+        "learnTypeNames",
+        "noteCommandTag",
+        "applySpatialRendering"
+    ]
+
+    private static func pluginSources() throws -> [(name: String, text: String)] {
+        try FileManager.default
+            .contentsOfDirectory(at: connectionSource.deletingLastPathComponent(), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .map { ($0.lastPathComponent, try String(contentsOf: $0, encoding: .utf8)) }
+    }
+
+    private static func isConnectionFile(_ name: String) -> Bool {
+        name == "LibPQPluginConnection.swift" || name.hasPrefix("LibPQPluginConnection+")
+    }
+
+    private static func matches(_ pattern: String, in text: String) throws -> [NSTextCheckingResult] {
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return try NSRegularExpression(pattern: pattern).matches(in: text, range: range)
+    }
+
     @Test("Every underscored stored property is read and written while stateLock is held")
     func underscoredStateIsOnlyTouchedUnderStateLock() throws {
         let source = try String(contentsOf: Self.connectionSource, encoding: .utf8)
@@ -104,6 +130,79 @@ struct LibPQPluginConnectionSourceScanTests {
             let scan = try StateLockScan(source: source)
             #expect(!scan.endsBalanced, "Read as balanced: \(source)")
         }
+    }
+
+    @Test("stateLock is named in no plugin file but the connection's own")
+    func stateLockStaysInTheConnectionFile() throws {
+        let sources = try Self.pluginSources()
+        #expect(sources.contains { $0.name == "LibPQPluginConnection.swift" && $0.text.contains("stateLock") })
+
+        let others = sources.filter { $0.name != "LibPQPluginConnection.swift" && $0.text.contains("stateLock") }
+        #expect(others.isEmpty, "stateLock named in \(others.map(\.name))")
+    }
+
+    /// Code in an extension file runs inside a block the connection already put on its queue, so a
+    /// lock or a dispatch there would be a second owner of the connection's threading.
+    @Test("The connection's extension files neither lock nor dispatch")
+    func extensionFilesNeitherLockNorDispatch() throws {
+        let extensions = try Self.pluginSources().filter { $0.name.hasPrefix("LibPQPluginConnection+") }
+        #expect(extensions.count >= 3, "Found only \(extensions.map(\.name))")
+
+        let forbidden = [
+            "stateLock", "queue.", "DispatchQueue", "pluginDispatch", ".async {", ".sync {", "withLock", ".lock()"
+        ]
+        let offenders = extensions.flatMap { source in
+            forbidden.filter { source.text.contains($0) }.map { "\(source.name): \($0)" }
+        }
+        #expect(offenders.isEmpty, "\(offenders)")
+    }
+
+    /// A member moved out of the connection's file loses the compiler's proof that only a block on
+    /// the queue calls it. Each one that uses the `PGconn` therefore checks the queue before anything
+    /// else, and no file outside the connection's own names it.
+    @Test("Every member other files can reach that uses the PGconn checks the queue first")
+    func connectionReachingMembersCheckTheQueue() throws {
+        let sources = try Self.pluginSources()
+        let connectionText = sources.filter { Self.isConnectionFile($0.name) }.map(\.text).joined(separator: "\n")
+        let nsText = connectionText as NSString
+
+        for member in Self.membersReachingTheConnection.sorted() {
+            let declarationPattern = #"\b(?:func|var)\s+"# + member + #"\b[^{]*\{\s*(\S[^\n]*)"#
+            let declarations = try Self.matches(declarationPattern, in: connectionText)
+            #expect(declarations.count == 1, "\(member) is declared \(declarations.count) times")
+            if let declaration = declarations.first {
+                let firstStatement = nsText.substring(with: declaration.range(at: 1))
+                #expect(firstStatement == "preconditionOnQueue()", "\(member) opens with \(firstStatement)")
+            }
+
+            var namedOutside: [String] = []
+            for source in sources where !Self.isConnectionFile(source.name) {
+                if try !Self.matches(#"\b"# + member + #"\b"#, in: source.text).isEmpty {
+                    namedOutside.append(source.name)
+                }
+            }
+            #expect(namedOutside.isEmpty, "\(member) is named in \(namedOutside)")
+        }
+    }
+
+    @Test("Every connection member other files can reach that takes the PGconn is one the queue check covers")
+    func connectionTakingMembersAreCovered() throws {
+        let signature = #"(?m)^\s*((?:private\s+|fileprivate\s+)?)(?:static\s+)?func\s+(\w+)\(([^)]*)\)"#
+        var reachable: [String] = []
+        var uncovered: [String] = []
+
+        for source in try Self.pluginSources() where Self.isConnectionFile(source.name) {
+            let nsText = source.text as NSString
+            for match in try Self.matches(signature, in: source.text) where match.range(at: 1).length == 0 {
+                let name = nsText.substring(with: match.range(at: 2))
+                guard nsText.substring(with: match.range(at: 3)).contains("conn: OpaquePointer") else { continue }
+                reachable.append(name)
+                if !Self.membersReachingTheConnection.contains(name) { uncovered.append("\(source.name): \(name)") }
+            }
+        }
+
+        #expect(Set(reachable).isSuperset(of: ["fetchResults", "learnTypeNames", "noteCommandTag"]), "Found only \(reachable)")
+        #expect(uncovered.isEmpty, "Not checked for the queue: \(uncovered)")
     }
 }
 
