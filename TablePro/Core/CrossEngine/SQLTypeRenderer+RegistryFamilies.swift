@@ -123,13 +123,18 @@ internal extension SQLTypeRenderer {
         /// A bare `NUMBER` has no declared precision either, and keeps 38 significant digits
         /// wherever the point falls.
         case .decimal(let precision, let scale):
-            guard precision != nil else {
+            guard let precision else {
                 return RenderedColumnType(
                     spelling: "NUMBER", fidelity: .approximated,
                     reason: String(
                         localized: "With no precision on the source, the column keeps 38 significant digits. A longer value is rounded."
                     )
                 )
+            }
+            /// A scale from -84 to 127 means on Oracle what it means on PostgreSQL, including below
+            /// zero and above the precision, so it crosses as written.
+            if precision <= 38, let scale, (-84...127).contains(scale), !(0...precision).contains(scale) {
+                return RenderedColumnType(spelling: "NUMBER(\(precision), \(scale))")
             }
             return decimalSpelling(
                 "NUMBER", precision: precision, scale: scale, precisionCeiling: 38
@@ -218,9 +223,11 @@ internal extension SQLTypeRenderer {
             )
         case .floatingPoint(let bits):
             return RenderedColumnType(spelling: bits <= 32 ? "Float32" : "Float64")
-        case .text(let length, let isFixed):
-            guard isFixed, let length else { return RenderedColumnType(spelling: "String") }
-            return RenderedColumnType(spelling: "FixedString(\(length))")
+        /// `FixedString(n)` holds at most n bytes, where a PostgreSQL or MySQL `CHAR(n)` counts
+        /// characters: a PostgreSQL `char(20)` holding `José` is 21 bytes once padded, which
+        /// `FixedString(20)` refuses. `String` has no length to pass.
+        case .text:
+            return RenderedColumnType(spelling: "String")
         case .binary:
             return RenderedColumnType(spelling: "String", fidelity: .widened, reason: widenedTo("String"))
         case .date:

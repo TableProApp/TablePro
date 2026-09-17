@@ -111,6 +111,70 @@ final class SQLTypeRendererModifierTests: XCTestCase {
         XCTAssertEqual(spelling("NUMBER", from: .oracle, to: .postgres), "NUMERIC(38)")
     }
 
+    // MARK: - Scales
+
+    /// PostgreSQL 17 stores `numeric(5,-2)` as whole hundreds below 10^7 and `numeric(3,5)` as
+    /// fractions below 10^-2. MySQL 8.4 and MariaDB 12.3 refuse `DECIMAL(5, -2)` with ERROR 1064
+    /// and `DECIMAL(3, 5)` with ERROR 1427, and create `DECIMAL(7, 0)` and `DECIMAL(5, 5)`.
+    func testAScaleOutsideThePrecisionKeepsTheDigitsItsValuesHave() {
+        let rounded = rendered("numeric(5,-2)", from: .postgres, to: .mysql)
+        XCTAssertEqual(rounded.spelling, "DECIMAL(7, 0)")
+        XCTAssertEqual(rounded.fidelity, .widened)
+        XCTAssertNotNil(rounded.reason)
+
+        let tiny = rendered("numeric(3,5)", from: .postgres, to: .mysql)
+        XCTAssertEqual(tiny.spelling, "DECIMAL(5, 5)")
+        XCTAssertEqual(tiny.fidelity, .widened)
+
+        XCTAssertEqual(spelling("numeric(5,-2)", from: .postgres, to: .mssql), "DECIMAL(7, 0)")
+        XCTAssertEqual(spelling("numeric(3,5)", from: .postgres, to: .duckdb), "DECIMAL(5, 5)")
+        XCTAssertEqual(spelling("numeric(5,-2)", from: .postgres, to: .clickhouse), "Decimal(7, 0)")
+        XCTAssertEqual(spelling("NUMBER(5,-2)", from: .oracle, to: .mysql), "DECIMAL(7, 0)")
+    }
+
+    /// Oracle's `NUMBER` takes a scale from -84 to 127 with the same meaning.
+    func testOracleKeepsAScaleOutsideThePrecisionAsWritten() {
+        let rounded = rendered("numeric(5,-2)", from: .postgres, to: .oracle)
+        XCTAssertEqual(rounded.spelling, "NUMBER(5, -2)")
+        XCTAssertEqual(rounded.fidelity, .exact)
+        XCTAssertEqual(spelling("numeric(3,5)", from: .postgres, to: .oracle), "NUMBER(3, 5)")
+        XCTAssertEqual(spelling("numeric(10,-90)", from: .postgres, to: .oracle), "NUMBER(38, 0)")
+    }
+
+    /// MySQL 8.4 refuses `DECIMAL(40, 35)` and `DECIMAL(65, 31)` with ERROR 1425, a scale over 30, and
+    /// creates `DECIMAL(35, 30)`.
+    func testMySQLKeepsAtMost30DigitsAfterThePoint() {
+        let fine = rendered("numeric(40,35)", from: .postgres, to: .mysql)
+        XCTAssertEqual(fine.spelling, "DECIMAL(35, 30)")
+        XCTAssertEqual(fine.fidelity, .approximated)
+        XCTAssertNotNil(fine.reason)
+
+        XCTAssertEqual(spelling("numeric(70,40)", from: .postgres, to: .mysql), "DECIMAL(65, 30)")
+        XCTAssertEqual(spelling("numeric(38,-10)", from: .postgres, to: .mysql), "DECIMAL(48, 0)")
+        XCTAssertEqual(spelling("numeric(65,30)", from: .postgres, to: .mysql), "DECIMAL(65, 30)")
+        XCTAssertEqual(rendered("numeric(65,30)", from: .postgres, to: .mysql).fidelity, .exact)
+    }
+
+    /// Only MySQL has a scale ceiling below its precision; elsewhere a precision cut keeps the scale.
+    func testAPrecisionCutKeepsTheScaleWhereTheEngineAllowsIt() {
+        let fine = rendered("numeric(40,35)", from: .postgres, to: .mssql)
+        XCTAssertEqual(fine.spelling, "DECIMAL(38, 35)")
+        XCTAssertEqual(fine.fidelity, .approximated)
+        XCTAssertEqual(spelling("numeric(38,-10)", from: .postgres, to: .mssql), "DECIMAL(38, 0)")
+        XCTAssertEqual(spelling("DECIMAL(65,30)", from: .mysql, to: .mssql), "DECIMAL(38, 30)")
+    }
+
+    // MARK: - ClickHouse text
+
+    /// `FixedString(n)` holds at most n bytes, and a padded PostgreSQL `char(20)` holding `José` is 21.
+    func testFixedLengthTextReachesClickHouseAsString() {
+        let padded = rendered("character(20)", from: .postgres, to: .clickhouse)
+        XCTAssertEqual(padded.spelling, "String")
+        XCTAssertEqual(padded.fidelity, .exact)
+        XCTAssertEqual(spelling("CHAR(20)", from: .mysql, to: .clickhouse), "String")
+        XCTAssertEqual(spelling("NCHAR(10)", from: .mssql, to: .clickhouse), "String")
+    }
+
     // MARK: - Oracle character semantics
 
     /// A byte length refuses multibyte text an engine counting characters accepted, so the length

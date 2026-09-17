@@ -86,22 +86,55 @@ internal enum SQLTypeRenderer {
     /// crossing to any of them loses 27 of them. Reported as exact, the review step said nothing
     /// and the copy failed part way through the data phase on the first row that needed the digits
     /// the target no longer had.
+    ///
+    /// A scale below zero or above the precision is PostgreSQL's, from 15, and Oracle's.
+    /// `numeric(5,-2)` holds whole hundreds up to 9,999,900 and `numeric(3,5)` fractions under
+    /// 0.01, and MySQL refuses both spellings, with ERROR 1064 and ERROR 1427. So the column takes
+    /// the digits its values have on each side of the point, `DECIMAL(7, 0)` and `DECIMAL(5, 5)`,
+    /// which hold every value and accept more. MySQL also keeps at most 30 digits after the point
+    /// and refuses a larger scale with ERROR 1425, which is what `scaleCeiling` carries.
     internal static func decimalSpelling(
         _ name: String,
         precision: Int?,
         scale: Int?,
-        precisionCeiling: Int
+        precisionCeiling: Int,
+        scaleCeiling: Int? = nil
     ) -> RenderedColumnType {
         guard let requested = precision else {
             return unconstrainedDecimal(name, precisionCeiling: precisionCeiling)
         }
-        let resolved = min(requested, precisionCeiling)
-        let spelling: String
-        if let scale {
-            spelling = "\(name)(\(resolved), \(min(scale, resolved)))"
-        } else {
-            spelling = "\(name)(\(resolved))"
+        guard let scale else {
+            let resolved = min(requested, precisionCeiling)
+            return precisionCut("\(name)(\(resolved))", resolved: resolved, requested: requested)
         }
+
+        let integerDigits = max(0, requested - scale)
+        let fractionDigits = max(0, scale)
+        let digits = integerDigits + fractionDigits
+        let keptFraction = min(fractionDigits, scaleCeiling ?? precisionCeiling, precisionCeiling)
+        guard digits <= precisionCeiling else {
+            return precisionCut(
+                "\(name)(\(precisionCeiling), \(keptFraction))", resolved: precisionCeiling, requested: digits
+            )
+        }
+        guard keptFraction == fractionDigits else {
+            return RenderedColumnType(
+                spelling: "\(name)(\(integerDigits + keptFraction), \(keptFraction))",
+                fidelity: .approximated,
+                reason: String(
+                    format: String(
+                        localized: "The column keeps %1$lld of its %2$lld digits after the point, so a longer fraction is rounded."
+                    ),
+                    keptFraction, fractionDigits
+                )
+            )
+        }
+        let spelling = "\(name)(\(digits), \(fractionDigits))"
+        guard scale < 0 || scale > requested else { return RenderedColumnType(spelling: spelling) }
+        return RenderedColumnType(spelling: spelling, fidelity: .widened, reason: widenedTo(spelling))
+    }
+
+    private static func precisionCut(_ spelling: String, resolved: Int, requested: Int) -> RenderedColumnType {
         guard resolved < requested else { return RenderedColumnType(spelling: spelling) }
         return RenderedColumnType(
             spelling: spelling,

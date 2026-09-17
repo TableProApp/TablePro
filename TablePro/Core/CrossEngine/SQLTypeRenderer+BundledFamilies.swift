@@ -21,7 +21,7 @@ internal extension SQLTypeRenderer {
             return mysqlInteger(bytes: bytes, isUnsigned: type.isUnsigned)
         case .decimal(let precision, let scale):
             return decimalSpelling(
-                "DECIMAL", precision: precision, scale: scale, precisionCeiling: 65
+                "DECIMAL", precision: precision, scale: scale, precisionCeiling: 65, scaleCeiling: 30
             )
         case .floatingPoint(let bits):
             return RenderedColumnType(spelling: bits <= 32 ? "FLOAT" : "DOUBLE")
