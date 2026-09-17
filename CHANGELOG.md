@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- PostgreSQL column types shown without their length, precision, enum name or domain name.
+- Compare & Sync missing a PostgreSQL column's length, precision or type change.
+
 ## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.
