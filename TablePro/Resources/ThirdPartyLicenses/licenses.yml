@@ -266,12 +266,12 @@
     brew has installed (UNVERIFIED at build time; the shipped dylibs are the pinned 3.4.3).
 - id: oracle-nio
   name: OracleNIO
-  version: rev:42f85189a910e8432e5c55b5bf92ce59307a3cb8
+  version: rev:f09d088889e252655ea1833eed821cd2be0de03a
   spdx: Apache-2.0
   copyrights:
   - Copyright (c) 2023 Timo Zacherl
   homepageURL: https://github.com/TableProApp/oracle-nio
-  licenseTextURL: https://github.com/TableProApp/oracle-nio/blob/42f85189a910e8432e5c55b5bf92ce59307a3cb8/LICENSE
+  licenseTextURL: https://github.com/TableProApp/oracle-nio/blob/f09d088889e252655ea1833eed821cd2be0de03a/LICENSE
   textFile: texts/oracle-nio.txt
   source: spm:oracle-nio
   patched: false
