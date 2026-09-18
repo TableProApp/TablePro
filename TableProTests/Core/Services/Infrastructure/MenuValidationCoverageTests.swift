@@ -25,6 +25,8 @@ private let liveValidatedSelectors: Set<Selector> = [
     #selector(MainSplitViewController.toggleAssistant(_:)),
     #selector(MainSplitViewController.setResultView(_:)),
     #selector(MainSplitViewController.setSafeModeLevel(_:)),
+    #selector(MainSplitViewController.setContentModeFromMenu(_:)),
+    #selector(MainSplitViewController.toggleContentModeFromMenu(_:)),
     #selector(MainSplitViewController.requestDisconnect),
     #selector(MainSplitViewController.retryConnection),
 ]
