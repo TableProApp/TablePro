@@ -138,11 +138,24 @@ struct ConnectionCoordinatorStoreTests {
     private let fixture: AppStateFixture
     private let appState: AppState
     private let store: ConnectionCoordinatorStore
+    private let scene = UUID()
+    private let editor = UUID()
 
     init() throws {
         fixture = try AppStateFixture()
         appState = fixture.makeState(syncEnabled: false)
-        store = ConnectionCoordinatorStore(connectionManager: appState.connectionManager)
+        store = ConnectionCoordinatorStore(
+            connectionManager: appState.connectionManager,
+            editorHolds: appState.editorHolds
+        )
+    }
+
+    private func holdForUnsavedEdits() {
+        appState.editorHolds.setHold(editor, in: scene, isHolding: true)
+    }
+
+    private func releaseUnsavedEdits() {
+        appState.editorHolds.setHold(editor, in: scene, isHolding: false)
     }
 
     private func connection(_ name: String) -> DatabaseConnection {
@@ -265,7 +278,7 @@ struct ConnectionCoordinatorStoreTests {
         #expect(appState.addConnection(original))
         let coordinator = store.coordinator(for: original, appState: appState)
         let form = fixture.makeFormViewModel(editing: original)
-        store.holdRebuilds(true)
+        holdForUnsavedEdits()
 
         form.password = "rotated"
         form.host = "replica.example.com"
@@ -281,7 +294,7 @@ struct ConnectionCoordinatorStoreTests {
         #expect(store.generation(for: original.id) == 0)
         #expect(coordinator.connection.host == "replica.example.com")
 
-        store.holdRebuilds(false)
+        releaseUnsavedEdits()
 
         #expect(store.generation(for: original.id) == 1)
         #expect(store.coordinator(for: original, appState: appState) !== coordinator)
@@ -295,14 +308,14 @@ struct ConnectionCoordinatorStoreTests {
         rehosted.host = "replica.example.com"
         rehosted.safeModeLevel = .readOnly
 
-        store.holdRebuilds(true)
+        holdForUnsavedEdits()
         store.reconcile(from: [original], to: [rehosted])
 
         #expect(store.generation(for: original.id) == 0)
         #expect(store.coordinator(for: rehosted, appState: appState) === coordinator)
         #expect(coordinator.connection.safeModeLevel == .readOnly)
 
-        store.holdRebuilds(false)
+        releaseUnsavedEdits()
 
         #expect(store.generation(for: original.id) == 1)
         #expect(store.coordinator(for: rehosted, appState: appState) !== coordinator)
@@ -313,11 +326,11 @@ struct ConnectionCoordinatorStoreTests {
         let original = connection("A")
         _ = store.coordinator(for: original, appState: appState)
 
-        store.holdRebuilds(true)
+        holdForUnsavedEdits()
         store.invalidate(original.id)
         #expect(store.generation(for: original.id) == 0)
 
-        store.holdRebuilds(false)
+        releaseUnsavedEdits()
         #expect(store.generation(for: original.id) == 1)
     }
 
@@ -330,11 +343,11 @@ struct ConnectionCoordinatorStoreTests {
         var reported = rehosted
         reported.port = 5_433
 
-        store.holdRebuilds(true)
+        holdForUnsavedEdits()
         store.reconcile(from: [original], to: [rehosted])
         store.reconcile(from: [rehosted], to: [reported])
-        store.holdRebuilds(true)
-        store.holdRebuilds(false)
+        holdForUnsavedEdits()
+        releaseUnsavedEdits()
 
         #expect(store.generation(for: original.id) == 1)
     }
@@ -346,13 +359,127 @@ struct ConnectionCoordinatorStoreTests {
         var rehosted = original
         rehosted.host = "replica.example.com"
 
-        store.holdRebuilds(true)
+        holdForUnsavedEdits()
         store.reconcile(from: [original], to: [rehosted])
         store.reconcile(from: [rehosted], to: [])
-        store.holdRebuilds(false)
+        releaseUnsavedEdits()
 
         #expect(store.generation(for: original.id) == 0)
         #expect(coordinator.session == nil)
         #expect(store.presentedRecord(for: original.id, in: [])?.host == "replica.example.com")
+    }
+}
+
+@MainActor
+private final class DroppedSessions {
+    private(set) var drops: [String] = []
+
+    func record(_ window: String, _ id: UUID) {
+        drops.append("\(window) \(id.uuidString)")
+    }
+}
+
+@MainActor
+@Suite("Editor holds across windows")
+struct EditorHoldAcrossWindowsTests {
+    private let fixture: AppStateFixture
+    private let appState: AppState
+    private let holds = EditorHoldRegistry()
+    private let dropped = DroppedSessions()
+
+    init() throws {
+        fixture = try AppStateFixture()
+        appState = fixture.makeState(syncEnabled: false)
+    }
+
+    private func window(_ name: String) -> ConnectionCoordinatorStore {
+        ConnectionCoordinatorStore(editorHolds: holds) { [dropped] id in
+            dropped.record(name, id)
+        }
+    }
+
+    private func connection() -> DatabaseConnection {
+        DatabaseConnection(name: "A", type: .postgresql, host: "a.example.com", port: 5_432)
+    }
+
+    @Test("A redial seen by a window with no editor waits for an editor in another window")
+    func redialWaitsForAnEditorInAnyWindow() {
+        let original = connection()
+        let editing = window("editing")
+        let listing = window("listing")
+        let coordinator = editing.coordinator(for: original, appState: appState)
+        let editor = UUID()
+        let editingScene = UUID()
+        var rehosted = original
+        rehosted.host = "replica.example.com"
+        holds.setHold(editor, in: editingScene, isHolding: true)
+
+        editing.reconcile(from: [original], to: [rehosted])
+        listing.reconcile(from: [original], to: [rehosted])
+
+        #expect(dropped.drops.isEmpty)
+        #expect(editing.coordinator(for: rehosted, appState: appState) === coordinator)
+        #expect(coordinator.connection.host == "replica.example.com")
+        #expect(listing.generation(for: original.id) == 0)
+
+        holds.setHold(editor, in: editingScene, isHolding: false)
+
+        #expect(dropped.drops.sorted() == ["editing \(original.id.uuidString)", "listing \(original.id.uuidString)"])
+        #expect(editing.generation(for: original.id) == 1)
+        #expect(listing.generation(for: original.id) == 1)
+        #expect(editing.coordinator(for: rehosted, appState: appState) !== coordinator)
+    }
+
+    @Test("A session held by editors in two windows is dropped only after the last one lets go")
+    func lastEditorReleasesTheDrop() {
+        let original = connection()
+        let listing = window("listing")
+        let first = UUID()
+        let second = UUID()
+        var rehosted = original
+        rehosted.port = 5_433
+        holds.setHold(first, in: UUID(), isHolding: true)
+        holds.setHold(second, in: UUID(), isHolding: true)
+
+        listing.reconcile(from: [original], to: [rehosted])
+        holds.setHold(first, in: UUID(), isHolding: false)
+
+        #expect(dropped.drops.isEmpty)
+        #expect(listing.generation(for: original.id) == 0)
+
+        holds.setHold(second, in: UUID(), isHolding: false)
+
+        #expect(dropped.drops == ["listing \(original.id.uuidString)"])
+        #expect(listing.generation(for: original.id) == 1)
+    }
+
+    @Test("A redial with no editor anywhere drops the session at once")
+    func redialWithoutEditorDropsAtOnce() {
+        let original = connection()
+        let listing = window("listing")
+        var rehosted = original
+        rehosted.username = "readonly"
+
+        listing.reconcile(from: [original], to: [rehosted])
+
+        #expect(dropped.drops == ["listing \(original.id.uuidString)"])
+    }
+
+    @Test("Each window's presenter reports only its own editors, while every window's rebuilds wait")
+    func presentersShareOneRegistry() {
+        let first = ScenePresenter(editorHolds: holds)
+        let second = ScenePresenter(editorHolds: holds)
+        let editor = UUID()
+
+        first.setEditorHold(editor, isHolding: true)
+
+        #expect(first.isHeldByEditor)
+        #expect(second.isHeldByEditor == false)
+        #expect(holds.isHolding)
+
+        first.setEditorHold(editor, isHolding: false)
+
+        #expect(first.isHeldByEditor == false)
+        #expect(holds.isHolding == false)
     }
 }
