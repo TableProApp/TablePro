@@ -28,7 +28,7 @@ final class RowDetailViewModel {
     var operationError: AppError?
     private(set) var showSaveSuccess = false
 
-    @ObservationIgnored private var pendingSaveSQL: String?
+    @ObservationIgnored private var writeGate = ConfirmedWriteGate()
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -184,7 +184,7 @@ final class RowDetailViewModel {
         guard let session, let table else { return false }
 
         pendingWriteConfirmation = false
-        pendingSaveSQL = nil
+        writeGate.cancel()
 
         let pkValues: [(column: String, value: String)] = columnDetails.compactMap { col in
             guard col.isPrimaryKey else { return nil }
@@ -221,24 +221,22 @@ final class RowDetailViewModel {
             primaryKeys: pkValues
         )
 
-        switch safeModeLevel.writePermission {
+        switch writeGate.submit(sql, under: safeModeLevel) {
         case .blocked:
             return false
-        case .requiresConfirmation:
-            pendingSaveSQL = sql
+        case .awaitConfirmation:
             pendingWriteConfirmation = true
             return false
-        case .proceed:
-            return await execute(sql: sql, session: session)
+        case .run(let statement):
+            return await execute(sql: statement, session: session)
         }
     }
 
     func executePendingSave() async -> Bool {
         pendingWriteConfirmation = false
-        guard let session, let sql = pendingSaveSQL else { return false }
-        pendingSaveSQL = nil
-        guard !safeModeLevel.blocksWrites else { return false }
-        return await execute(sql: sql, session: session)
+        let confirmed = writeGate.confirm(under: safeModeLevel)
+        guard let session, let confirmed else { return false }
+        return await execute(sql: confirmed, session: session)
     }
 
     private func execute(sql: String, session: ConnectionSession) async -> Bool {

@@ -484,7 +484,7 @@ struct DataBrowserView: View {
             session: session,
             databaseType: connection.type,
             schema: viewModel.schema,
-            safeModeLevel: connection.safeModeLevel,
+            safeModeLevel: { [coordinator] in coordinator.connection.safeModeLevel },
             onInserted: { Task { await viewModel.load() } }
         )
     }
