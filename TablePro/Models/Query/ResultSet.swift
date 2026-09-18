@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import os
+import TableProPluginKit
 
 /// One execution's product: its rows, and the facts about how they were produced.
 ///
@@ -31,6 +32,8 @@ final class ResultSet: ObservableObject, Identifiable {
     @Published var rowsAffected: Int = 0
     @Published var errorMessage: String?
     @Published var statusMessage: String?
+    /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`, read right after it ran.
+    @Published var serverOutput: PluginServerOutput = .none
     @Published var isPinned: Bool = false
     @Published var isTruncated: Bool = false
     @Published var baseQuery: String?

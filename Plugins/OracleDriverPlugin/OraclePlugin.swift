@@ -247,6 +247,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         self.core = connection
 
+        do {
+            try await connection.captureServerOutput()
+        } catch {
+            Self.logger.warning("DBMS_OUTPUT could not be enabled for this session: \(String(describing: error), privacy: .public)")
+        }
+
         if let result = try? await connection.executeQuery(OracleSchemaQueries.currentSchema),
            let schema = result.rows.first?.first?.stringValue {
             _currentSchema = schema
@@ -318,6 +324,20 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         return result.toPluginResult(executionTime: executionTime)
+    }
+
+    /// At most this many lines are read after one statement. A loop that prints more is reported as truncated
+    /// rather than read into memory, and the rest of its buffer is discarded on the server.
+    static let serverOutputLineLimit = 10_000
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        guard let core else { return .none }
+        do {
+            let output = try await core.drainServerOutput(maxLines: Self.serverOutputLineLimit)
+            return PluginServerOutput(lines: output.lines, isTruncated: output.isTruncated)
+        } catch let error as OracleCoreError {
+            throw error.asPluginError
+        }
     }
 
     /// Turns a `CREATE` that stored an INVALID unit into the failure it is.

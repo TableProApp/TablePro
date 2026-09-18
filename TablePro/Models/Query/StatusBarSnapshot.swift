@@ -74,7 +74,8 @@ struct StatusBarSnapshot: Equatable {
         isFetching: Bool = false,
         hasStructureActions: Bool = false,
         isQueryPlan: Bool = false,
-        paginationCapability: PaginationCapability = .offset
+        paginationCapability: PaginationCapability = .offset,
+        hasServerOutput: Bool = false
     ) {
         let loaded = tableRows?.rows.count ?? 0
         let displayed = displayRowCount ?? loaded
@@ -93,7 +94,8 @@ struct StatusBarSnapshot: Equatable {
                 tabType: tab?.tabType,
                 hasTableName: tab?.tableContext.tableName != nil,
                 hasColumns: !(tableRows?.columns.isEmpty ?? true),
-                hasSpatialColumn: !(tab?.display.spatialColumns.isEmpty ?? true)
+                hasSpatialColumn: !(tab?.display.spatialColumns.isEmpty ?? true),
+                hasServerOutput: hasServerOutput
             ),
             hasStructureActions: hasStructureActions,
             isQueryPlan: isQueryPlan,

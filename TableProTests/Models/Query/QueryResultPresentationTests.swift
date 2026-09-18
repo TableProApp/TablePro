@@ -10,6 +10,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @Suite("QueryResultPresentation")
@@ -95,8 +96,56 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .statementSucceeded(
             rowsAffected: 7,
             executionTime: 0.1,
-            statusMessage: "OK"
+            statusMessage: "OK",
+            serverOutput: .none
         ))
+    }
+
+    @Test("A block that printed shows its output with the success view")
+    func statementSucceededCarriesItsOutput() {
+        let output = PluginServerOutput(lines: ["Hello from PL/SQL"], isTruncated: false)
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = false
+        inputs.activeResultServerOutput = output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .statementSucceeded(
+            rowsAffected: 0,
+            executionTime: nil,
+            statusMessage: nil,
+            serverOutput: output
+        ))
+    }
+
+    @Test("Output mode shows what a query that returned rows printed")
+    func outputModeShowsTheOutput() {
+        let output = PluginServerOutput(lines: ["row printed"], isTruncated: false)
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = true
+        inputs.loadedColumnCount = 1
+        inputs.loadedRowCount = 1
+        inputs.viewMode = .output
+        inputs.activeResultServerOutput = output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .serverOutput(output))
+    }
+
+    /// Switching to a result that printed nothing leaves the tab in Output mode until the next install reconciles
+    /// it, and the pane must not go blank in the meantime.
+    @Test("Output mode over a result that printed nothing shows the grid")
+    func outputModeWithoutOutputFallsBackToTheGrid() {
+        var inputs = QueryResultInputs()
+        inputs.hasExecuted = true
+        inputs.hasActiveResultSet = true
+        inputs.activeResultHasColumns = true
+        inputs.loadedColumnCount = 1
+        inputs.loadedRowCount = 1
+        inputs.viewMode = .output
+
+        #expect(QueryResultPresentation(inputs: inputs).content == .grid)
     }
 
     @Test("A failed execution shows the banner and does not claim success")

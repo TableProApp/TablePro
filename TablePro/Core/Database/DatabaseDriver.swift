@@ -332,6 +332,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// transaction over one the user already has open on the same session.
     func sessionTransactionState() async -> PluginSessionTransactionState
 
+    /// Reads and consumes what the session printed on the server since the last read.
+    func fetchServerOutput() async throws -> PluginServerOutput
+
     /// Access to the underlying plugin driver for query building dispatch
     var queryBuildingPluginDriver: (any PluginDatabaseDriver)? { get }
 
@@ -412,6 +415,8 @@ extension DatabaseDriver {
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
+    func fetchServerOutput() async throws -> PluginServerOutput { .none }
 
     func quoteIdentifier(_ name: String) -> String {
         SQLEscaping.quoteIdentifier(name)

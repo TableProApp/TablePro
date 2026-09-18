@@ -12,13 +12,16 @@ enum ResultsViewMode: String, CaseIterable, Equatable {
     case json
     case chart
     case map
+    /// What the statement printed on the server, such as Oracle's `DBMS_OUTPUT`. Offered only for a result that
+    /// printed something.
+    case output
 
     /// How much of the loaded result the mode is showing, and how to load more. A chart draws the
     /// same buffer the grid does, so it needs the same scope controls: a warning that the chart is
     /// incomplete is only useful next to the control that completes it. A map draws that same
-    /// buffer, so the same argument puts it here.
+    /// buffer, so the same argument puts it here. Output is not drawn from the buffer at all.
     var showsResultScope: Bool {
-        self != .structure
+        self != .structure && self != .output
     }
 
     var showsColumnControls: Bool {

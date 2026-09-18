@@ -177,6 +177,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// over one the user already has open. A driver that cannot ask keeps the `.unknown` default.
     func sessionTransactionState() async -> PluginSessionTransactionState
 
+    /// Reads and consumes what the session printed since the last read, which the app asks for after each statement
+    /// the editor runs, on the same session. A driver whose engine prints nothing keeps the empty default.
+    func fetchServerOutput() async throws -> PluginServerOutput
+
     func cancelQuery() throws
     func applyQueryTimeout(_ seconds: Int) async throws
 
@@ -638,6 +642,8 @@ public extension PluginDatabaseDriver {
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
+    func fetchServerOutput() async throws -> PluginServerOutput { .none }
 
     func cancelQuery() throws {}
 

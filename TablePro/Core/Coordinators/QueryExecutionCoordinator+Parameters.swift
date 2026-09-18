@@ -26,6 +26,7 @@ private struct MultiStatementRun {
     let outcome: BatchStatementOutcome
     let plan: BatchTransactionPlan
     let sessionState: PluginSessionTransactionState
+    var failureOutput: PluginServerOutput = .none
 }
 
 private struct PreparedStatement: @unchecked Sendable {
@@ -150,6 +151,7 @@ extension QueryExecutionCoordinator {
         )
 
         let boundValues = BoundParameterValues(values: parameters)
+        let failureOutput = ServerOutputBox()
         let parameterizedTask = Task { [weak self, parent] in
             guard let self else { return }
 
@@ -170,7 +172,8 @@ extension QueryExecutionCoordinator {
                         driver: driver,
                         sql: statement.sql,
                         parameters: boundValues.values,
-                        rowCap: rowCap
+                        rowCap: rowCap,
+                        capturingOutputInto: failureOutput
                     )
                 }
                 CatalogChangeService.post(
@@ -240,7 +243,13 @@ extension QueryExecutionCoordinator {
                         ])
                         return
                     }
-                    handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
+                    handleQueryExecutionError(
+                        error,
+                        sql: sql,
+                        tabId: tabId,
+                        connection: conn,
+                        serverOutput: failureOutput.output
+                    )
                     reportOperation(kind: .query, claim: claim, outcome: .failed(reason: error.localizedDescription))
                 }
             }
@@ -379,7 +388,8 @@ extension QueryExecutionCoordinator {
                     tabId: tabId,
                     claim: claim,
                     statements: statements,
-                    timing: PluginQueryTiming.batch(of: results)
+                    timing: PluginQueryTiming.batch(of: results),
+                    failureOutput: run.failureOutput
                 )
             }
         }
@@ -426,8 +436,9 @@ extension QueryExecutionCoordinator {
         claim: TabExecutionClaim,
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
+        let failureOutput = ServerOutputBox()
         do {
-            return try await DatabaseManager.shared.withScopedDriver(
+            var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: DatabaseManager.shared.executionRoute(for: scope),
                 cancellation: .cancellableRead(lease)
@@ -443,12 +454,14 @@ extension QueryExecutionCoordinator {
                     failureSQL: \.executableSQL,
                     isCommitPoint: \.isCommitPoint
                 ) { statement in
-                    try await self.executeStatement(
-                        rowCap: statement.rowCap,
-                        originalSQL: statement.sentSQL,
-                        driver: driver,
-                        parameters: statement.parameterValues
-                    )
+                    try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
+                        try await self.executeStatement(
+                            rowCap: statement.rowCap,
+                            originalSQL: statement.sentSQL,
+                            driver: driver,
+                            parameters: statement.parameterValues
+                        )
+                    }
                 }
                 guard sessionPlan == .sessionTransaction else {
                     return MultiStatementRun(outcome: outcome, plan: sessionPlan, sessionState: .idle)
@@ -459,6 +472,8 @@ extension QueryExecutionCoordinator {
                     sessionState: await driver.heldSessionTransactionState()
                 )
             }
+            run.failureOutput = failureOutput.output
+            return run
         } catch {
             if DatabaseCancellationDiagnosis.isCancellation(error) || Task.isCancelled {
                 return MultiStatementRun(outcome: .cancelled(results: []), plan: plan, sessionState: .unknown)
@@ -622,7 +637,8 @@ extension QueryExecutionCoordinator {
                 queryParameterValues: originalParameters,
                 historySQL: originalSQL,
                 anchor: anchor,
-                timing: fetchResult.resolvedTiming
+                timing: fetchResult.resolvedTiming,
+                serverOutput: fetchResult.serverOutput
             )
 
             let parameterValues = nativeParameters.map { $0 as? String }
@@ -645,12 +661,13 @@ extension QueryExecutionCoordinator {
         tabId: UUID,
         claim: TabExecutionClaim,
         statements: [SQLStatementScanner.ExecutableStatement],
-        timing: PluginQueryTiming
+        timing: PluginQueryTiming,
+        failureOutput: PluginServerOutput
     ) {
         let cumulativeTime = timing.total
         let errorDescription = context.errorDescription
         let report = context.report()
-        let contextMsg = report.message
+        let contextMsg = ServerOutputCapture.failureMessage(report.message, output: failureOutput)
 
         let errorRS = ResultSet(label: report.resultLabel)
         errorRS.errorMessage = contextMsg
@@ -688,7 +705,7 @@ extension QueryExecutionCoordinator {
         if parent.tabManager.selectedTabId == tabId {
             parent.toolbarState.isResultsCollapsed = false
             parent.toolbarState.recordQueryTiming(timing, for: tabId)
-            parent.announceQueryError(contextMsg)
+            parent.announceQueryError(report.message)
         }
 
         guard let rawSQL = failedStatementSQL else { return }

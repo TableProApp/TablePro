@@ -636,6 +636,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         await pluginDriver.sessionTransactionState()
     }
 
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        try await pluginDriver.fetchServerOutput()
+    }
+
     // MARK: - Schema Switching
 
     func switchSchema(to schema: String) async throws {

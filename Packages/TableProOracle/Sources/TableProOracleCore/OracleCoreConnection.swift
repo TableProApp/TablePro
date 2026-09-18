@@ -60,6 +60,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
         var nioConnection: OracleNIO.OracleConnection?
         var queryTimeoutSeconds = 0
         var sessionSchema: String?
+        var capturesServerOutput = false
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -324,7 +325,72 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 try await collectRows(OracleSchemaQueries.setCurrentSchema(schema), on: connection)
             }
         }
+        if state.withLock({ $0.capturesServerOutput }) {
+            _ = try await withQueryDeadline { [self] in
+                try await collectRows(OracleServerOutput.enableStatement, on: connection)
+            }
+        }
         return connection
+    }
+
+    // MARK: - Server Output
+
+    /// Turns `DBMS_OUTPUT` on for this session, and for every session a reconnect replaces it with, since the setting
+    /// belongs to the session and a new one starts with it off.
+    public func captureServerOutput() async throws {
+        state.withLock { $0.capturesServerOutput = true }
+        _ = try await executeQuery(OracleServerOutput.enableStatement)
+    }
+
+    /// Reads and consumes the lines the session has written since the last read, at most `maxLines` of them.
+    ///
+    /// One round trip: `GET_LINES` fills a collection, the same block splits every line into pieces a SQL `VARCHAR2`
+    /// holds, and a cursor returns them. The split has to happen in PL/SQL. A line can be 32767 bytes, and measured on
+    /// Oracle 23ai with `MAX_STRING_SIZE=STANDARD` any SQL over a longer-than-4000-byte element fails with ORA-00910,
+    /// which oracle-nio does not throw: a failure while the block opens its cursor ends the process inside the driver.
+    ///
+    /// A session that is closed has lost its buffer with it, so it reads as no output rather than paying for a
+    /// reconnect: a query timeout or a dropped transport closes the connection, and the statement's error would
+    /// otherwise wait on a whole login before it could be shown.
+    public func drainServerOutput(maxLines: Int) async throws -> OracleServerOutput {
+        guard state.withLock({ $0.capturesServerOutput }), maxLines > 0 else { return .empty }
+        await queryGate.acquire()
+
+        guard let connection = state.withLock({ $0.isConnected ? $0.nioConnection : nil }) else {
+            await queryGate.release()
+            return .empty
+        }
+        do {
+            let output = try await withQueryDeadline { [self] in
+                try await readServerOutput(on: connection, maxLines: maxLines)
+            }
+            await queryGate.release()
+            return output
+        } catch {
+            let mapped = mapExecutionError(error)
+            await queryGate.release()
+            throw mapped
+        }
+    }
+
+    private func readServerOutput(
+        on connection: OracleNIO.OracleConnection,
+        maxLines: Int
+    ) async throws -> OracleServerOutput {
+        let countRef = OracleRef(dataType: .number)
+        let cursorRef = OracleRef(dataType: .cursor)
+        var binds = OracleBindings()
+        binds.append(countRef, bindName: OracleServerOutput.lineCountBindName, isReturning: false)
+        binds.append(cursorRef, bindName: OracleServerOutput.piecesBindName, isReturning: false)
+        let statement = OracleStatement(unsafeSQL: OracleServerOutput.drainBlock(maxLines: maxLines), binds: binds)
+        try await connection.execute(statement, logger: nioLogger)
+        let count: Int = try countRef.decode()
+        let cursor = try cursorRef.decode(as: Cursor.self)
+        var pieces: [String?] = []
+        for try await row in try await cursor.execute(on: connection, logger: nioLogger) {
+            pieces.append(try row.decode(String?.self))
+        }
+        return OracleServerOutput.read(pieces: pieces, reportedCount: count, cap: maxLines)
     }
 
     /// Races the operation against the configured query timeout. On timeout the

@@ -1304,12 +1304,7 @@ final class MainContentCoordinator: ObservableObject {
         let rowCap = statement.rowCap
         let (tableName, isEditable) = resolveTableEditability(tab: tab, sql: sql)
 
-        let needsMetadataFetch: Bool
-        if isEditable, let tableName {
-            needsMetadataFetch = !isMetadataCached(tabId: tabId, tableName: tableName)
-        } else {
-            needsMetadataFetch = false
-        }
+        let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
         /// Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: tabSessionRegistry.tableRows(for: tabId),
@@ -1329,6 +1324,7 @@ final class MainContentCoordinator: ObservableObject {
         }
         let isTableTab = tab.tabType == .table
 
+        let failureOutput = ServerOutputBox()
         let queryTask = Task { [weak self] in
             guard let self else { return }
 
@@ -1365,7 +1361,8 @@ final class MainContentCoordinator: ObservableObject {
                         driver: driver,
                         sql: statement.sql,
                         parameters: nil,
-                        rowCap: rowCap
+                        rowCap: rowCap,
+                        capturingOutputInto: isTableTab ? nil : failureOutput
                     )
                 }
                 let fetchEndedAt = ContinuousClock.now
@@ -1422,7 +1419,8 @@ final class MainContentCoordinator: ObservableObject {
                         isTruncated: fetchResult.isTruncated,
                         anchor: anchor,
                         timing: fetchResult.resolvedTiming,
-                        viewport: viewport
+                        viewport: viewport,
+                        serverOutput: fetchResult.serverOutput
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
@@ -1467,7 +1465,8 @@ final class MainContentCoordinator: ObservableObject {
                     claim: claim,
                     isAutoLoad: isAutoLoad,
                     trigger: trigger,
-                    traceToken: traceToken
+                    traceToken: traceToken,
+                    serverOutput: failureOutput.output
                 )
             }
         }

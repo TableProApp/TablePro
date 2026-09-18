@@ -50,6 +50,14 @@ final class MockDatabaseDriver: DatabaseDriver, SchemaSwitchable, @unchecked Sen
     var fetchTablesError: Error?
     private var hangContinuation: CheckedContinuation<Void, Never>?
 
+    var serverOutputToReturn: PluginServerOutput = .none
+    var fetchServerOutputCallCount = 0
+
+    func fetchServerOutput() async throws -> PluginServerOutput {
+        fetchServerOutputCallCount += 1
+        return serverOutputToReturn
+    }
+
     init(connection: DatabaseConnection = TestFixtures.makeConnection()) {
         self.connection = connection
     }
