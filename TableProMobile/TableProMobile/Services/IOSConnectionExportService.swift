@@ -119,10 +119,9 @@ enum IOSConnectionExportService {
 
         var credentialsMap: [String: ExportableCredentials] = [:]
         for (index, connection) in connections.enumerated() {
-            let suffix = connection.id.uuidString
-            let password = secret(from: store, key: "com.TablePro.password.\(suffix)")
-            let sshPassword = secret(from: store, key: "com.TablePro.sshpassword.\(suffix)")
-            let keyPassphrase = secret(from: store, key: "com.TablePro.keypassphrase.\(suffix)")
+            let password = secret(.password, of: connection.id, from: store)
+            let sshPassword = secret(.sshPassword, of: connection.id, from: store)
+            let keyPassphrase = secret(.keyPassphrase, of: connection.id, from: store)
 
             guard password != nil || sshPassword != nil || keyPassphrase != nil else { continue }
             credentialsMap[String(index)] = ExportableCredentials(
@@ -148,8 +147,12 @@ enum IOSConnectionExportService {
 
     // MARK: - Helpers
 
-    private static func secret(from store: any SecureStore, key: String) -> String? {
-        (try? store.retrieve(forKey: key)) ?? nil
+    private static func secret(
+        _ kind: ConnectionSecretKind,
+        of connectionId: UUID,
+        from store: any SecureStore
+    ) -> String? {
+        (try? store.retrieve(forKey: kind.account(for: connectionId))) ?? nil
     }
 
     private static func exportableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {

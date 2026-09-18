@@ -17,7 +17,10 @@ nonisolated final class KeychainSecureStore: SecureStore {
         guard let prefix = Bundle.main.infoDictionary?["AppIdentifierPrefix"] as? String,
               !prefix.isEmpty,
               !prefix.hasPrefix("$(") else {
-            logger.warning("AppIdentifierPrefix unavailable; using the app-local keychain without a shared access group (expected for unsigned or test builds; in a signed build, widget keychain sharing is off).")
+            logger.warning("""
+                AppIdentifierPrefix unavailable; using the app-local keychain without a shared access group \
+                (expected for unsigned or test builds; in a signed build, widget keychain sharing is off).
+                """)
             return nil
         }
 
@@ -115,15 +118,15 @@ nonisolated final class KeychainSecureStore: SecureStore {
         }
     }
 
-    /// Remove passwords left under ids no saved connection uses, such as a test connection an older
-    /// build stored and was killed before deleting.
+    /// Remove secrets left under ids no saved connection uses, such as a test connection an older
+    /// build stored and was killed before deleting, or a connection deleted on another device.
     ///
-    /// Three limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
+    /// Two limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
     /// simply not heard of yet. An empty valid set means the connections have not loaded, which is
-    /// every launch before the first sync merge, and sweeping then would delete all of them. Only
-    /// device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
-    /// deleting one here removes it from the Mac that wrote it too. And a pasted private key is
-    /// never swept, because a connection sync has not delivered yet may hold its only copy.
+    /// every launch before the first sync merge, and sweeping then would delete all of them. And
+    /// only device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
+    /// deleting one here removes it from the Mac that wrote it too, and a synchronizable pasted
+    /// private key may be the only copy of a key for a connection sync has not delivered yet.
     static func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
         guard !validConnectionIds.isEmpty else { return }
 
@@ -140,15 +143,9 @@ nonisolated final class KeychainSecureStore: SecureStore {
         guard SecItemCopyMatching(applying(accessGroup: accessGroup, to: query) as CFDictionary, &result) == errSecSuccess,
               let items = result as? [[String: Any]] else { return }
 
-        for item in items {
-            guard let account = item[kSecAttrAccount as String] as? String else { continue }
-            for prefix in ConnectionSecretKind.orphanSweepPrefixes {
-                guard account.hasPrefix(prefix) else { continue }
-                let uuidString = String(account.dropFirst(prefix.count))
-                guard let uuid = UUID(uuidString: uuidString),
-                      !validConnectionIds.contains(uuid) else { continue }
-                deleteDeviceLocal(forKey: account, accessGroup: accessGroup)
-            }
+        let accounts = items.compactMap { $0[kSecAttrAccount as String] as? String }
+        for account in ConnectionSecretKind.orphanedAccounts(accounts, keeping: validConnectionIds) {
+            deleteDeviceLocal(forKey: account, accessGroup: accessGroup)
         }
     }
 
