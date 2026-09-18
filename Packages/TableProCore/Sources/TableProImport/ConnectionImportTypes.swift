@@ -251,10 +251,11 @@ public enum ConnectionImportDecoder {
         )
     }
 
-    public static func decodeEncryptedData(_ data: Data, passphrase: String) throws -> ConnectionExportEnvelope {
+    @concurrent
+    public static func decodeEncryptedData(_ data: Data, passphrase: String) async throws -> ConnectionExportEnvelope {
         let decryptedData: Data
         do {
-            decryptedData = try ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
+            decryptedData = try await ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
         } catch {
             throw ConnectionExportError.decryptionFailed(error.localizedDescription)
         }

@@ -1,7 +1,7 @@
 import Foundation
-import Testing
-import TableProModels
 @testable import TableProMobile
+import TableProModels
+import Testing
 
 @MainActor
 @Suite("ConnectionFormViewModel DuckDB")
@@ -19,7 +19,7 @@ struct ConnectionFormViewModelDuckDBTests {
         vm.type = .duckdb
         vm.duckDBInMemory = true
 
-        #expect(vm.database == DuckDBDriver.inMemoryPath)
+        #expect(vm.database == LocalDatabaseLocation.inMemoryPath)
         #expect(vm.canSave)
         #expect(vm.selectedFileURL == nil)
     }
@@ -36,14 +36,39 @@ struct ConnectionFormViewModelDuckDBTests {
     }
 
     @Test("create new database uses the .duckdb extension")
-    func createNewUsesDuckDBExtension() {
-        let vm = ConnectionFormViewModel()
+    func createNewUsesDuckDBExtension() throws {
+        let fixture = try AppStateFixture()
+        let vm = fixture.makeFormViewModel()
         vm.type = .duckdb
         vm.newDatabaseName = "analytics"
         vm.createNewDatabase()
 
-        #expect(vm.database.hasSuffix("analytics.duckdb"))
+        #expect(vm.database == fixture.documentsFile("analytics.duckdb").path)
         #expect(vm.canSave)
+    }
+
+    @Test("A DuckDB file picked inside Documents is used in place, with no bookmark")
+    func documentsPickNeedsNoBookmark() throws {
+        let fixture = try AppStateFixture()
+        let file = fixture.documentsFile("cube.duckdb")
+        try Data().write(to: file)
+        let vm = fixture.makeFormViewModel()
+        vm.type = .duckdb
+
+        vm.handleDuckDBFilePicker(.success([file]))
+
+        #expect(vm.database == file.path)
+        #expect(vm.pendingFile == .documentsFile)
+    }
+
+    @Test("An in-memory DuckDB connection opens the form in in-memory mode")
+    func inMemoryConnectionHydrates() {
+        let stored = DatabaseConnection(type: .duckdb, database: LocalDatabaseLocation.inMemoryPath)
+        let vm = ConnectionFormViewModel(editing: stored)
+
+        #expect(vm.duckDBInMemory)
+        #expect(vm.selectedFileURL == nil)
+        #expect(vm.database == LocalDatabaseLocation.inMemoryPath)
     }
 
     @Test("switching type away from DuckDB resets in-memory state")

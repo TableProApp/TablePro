@@ -107,6 +107,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection names cut off at large text sizes on iPhone and iPad.
 - `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked.
 - **Reset Sample Database** leaving the old Chinook copy's journal files beside the fresh one.
+- iPhone and iPad edits undoing changes synced while the form was open, and dropping SSH jump hosts set on the Mac.
+- Edits on iPhone and iPad closing as if saved after the connection, group or tag changed or was deleted on another device.
+- iCloud sync failing on iPhone and iPad after signing in to a different Apple Account.
+- SQLite and DuckDB connections on iPhone and iPad losing their file after a restore, or opening an empty database.
+- Table page arrows and row arrows hidden under the tab bar on iPhone and iPad with iOS 26 and later.
+- App unresponsive while a connection file is encrypted or decrypted with a passphrase.
+- Unsaved changes in the connection, group, tag and row forms discarded without asking on iPhone and iPad.
+- Open connection on iPhone and iPad jumping back to the table list after a rename, reorder or synced change.
+- Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad.
+- No confirmation before deleting a tag on iPhone and iPad.
+- Picking an SSH key file on iPhone and iPad replacing another connection's key file of the same name.
 
 ### Security
 
@@ -115,6 +126,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
 - An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
+- SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
+- Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 
 ## [0.75.0] - 2026-09-18
 

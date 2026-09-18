@@ -12,8 +12,7 @@ enum SSHTunnelFactory {
         config: SSHConfiguration,
         remoteHost: String,
         remotePort: Int,
-        sshPassword: String?,
-        keyPassphrase: String?
+        credentials: SSHTunnelCredentials
     ) async throws -> SSHTunnel {
         _ = initialized
 
@@ -39,25 +38,26 @@ enum SSHTunnelFactory {
 
         switch config.authMethod {
         case .password:
-            guard let password = sshPassword else {
+            guard let password = credentials.password else {
                 throw SSHTunnelError.authenticationFailed("No SSH password provided")
             }
             try await tunnel.authenticatePassword(username: config.username, password: password)
 
         case .privateKey:
-            if let keyContent = config.privateKeyData, !keyContent.isEmpty {
+            switch credentials.privateKeySource(keyPath: config.privateKeyPath) {
+            case .inMemory(let keyContent):
                 try await tunnel.authenticatePublicKeyFromMemory(
                     username: config.username,
                     keyContent: keyContent,
-                    passphrase: keyPassphrase
+                    passphrase: credentials.keyPassphrase
                 )
-            } else if let keyPath = config.privateKeyPath, !keyPath.isEmpty {
+            case .file(let keyPath):
                 try await tunnel.authenticatePublicKey(
                     username: config.username,
                     keyPath: keyPath,
-                    passphrase: keyPassphrase
+                    passphrase: credentials.keyPassphrase
                 )
-            } else {
+            case .missing:
                 throw SSHTunnelError.authenticationFailed("No private key provided")
             }
 

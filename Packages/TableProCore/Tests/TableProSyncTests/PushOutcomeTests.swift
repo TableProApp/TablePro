@@ -121,4 +121,27 @@ struct PushOutcomeTests {
         #expect(first.savedRecords.count == 2)
         #expect(first.failures.count == 1)
     }
+
+    @Test("Deleting a record the server never had counts as deleted, and only for deletions")
+    func missingDeletionCountsAsDeleted() {
+        var outcome = PushOutcome()
+        let missing = recordID("Connection_Missing")
+        let missingSave = recordID("Connection_MissingSave")
+        let rejected = recordID("Connection_Rejected")
+        let notFound = SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: nil, message: "not found")
+        outcome.recordFailure(notFound, for: missing)
+        outcome.recordFailure(notFound, for: missingSave)
+        outcome.recordFailure(
+            SyncItemFailure(code: .permissionFailure, serverRecord: nil, clientRecord: nil, message: "denied"),
+            for: rejected
+        )
+
+        outcome.acceptMissingDeletions(of: [missing, rejected])
+
+        #expect(outcome.didDelete(missing))
+        #expect(outcome.failures[missing] == nil)
+        #expect(outcome.failures[missingSave] != nil)
+        #expect(outcome.failures[rejected] != nil)
+        #expect(!outcome.didDelete(rejected))
+    }
 }

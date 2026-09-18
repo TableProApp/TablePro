@@ -21,7 +21,7 @@ struct RowDetailView: View {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
-        safeModeLevel: SafeModeLevel = .off,
+        safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil
@@ -71,6 +71,13 @@ struct RowDetailView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .bottomSafeAreaBar {
+            if viewModel.showsRowNavigator {
+                rowNavigator
+            }
+        }
+        .navigationBarBackButtonHidden(viewModel.isEditing)
+        .holdsScene(withUnsavedChanges: viewModel.hasUnsavedEdits)
         .navigationTitle(viewModel.table?.name ?? String(format: String(localized: "Row %d of %d"), viewModel.currentIndex + 1, viewModel.rows.count))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { rowDetailToolbar }
@@ -138,35 +145,28 @@ struct RowDetailView: View {
 
         if viewModel.isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                CancelButton { viewModel.cancelEditing() }
-                    .disabled(viewModel.isSaving)
+                DiscardChangesCancelButton(hasChanges: viewModel.hasUnsavedEdits) {
+                    viewModel.cancelEditing()
+                }
+                .disabled(viewModel.isSaving)
             }
         }
+    }
 
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                viewModel.currentIndex -= 1
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(viewModel.currentIndex <= 0 || viewModel.isEditing)
-
-            Spacer()
-
+    private var rowNavigator: some View {
+        PagingBar(
+            previousTitle: "Previous Row",
+            nextTitle: "Next Row",
+            canGoPrevious: viewModel.canGoToPreviousRow,
+            canGoNext: viewModel.canGoToNextRow,
+            onPrevious: viewModel.goToPreviousRow,
+            onNext: viewModel.goToNextRow
+        ) {
             Text("\(viewModel.currentIndex + 1) of \(viewModel.rows.count)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .fixedSize()
-
-            Spacer()
-
-            Button {
-                viewModel.currentIndex += 1
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(viewModel.currentIndex >= viewModel.rows.count - 1 || viewModel.isEditing)
         }
     }
 

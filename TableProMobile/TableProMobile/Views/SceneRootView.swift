@@ -24,6 +24,9 @@ struct SceneRootView: View {
             .onChange(of: appState.connections) { previous, current in
                 coordinatorStore.reconcile(from: previous, to: current)
             }
+            .onChange(of: presenter.isHeldByEditor, initial: true) { _, isHeld in
+                coordinatorStore.holdRebuilds(isHeld)
+            }
             .onChange(of: appState.sampleResetRevision) { _, _ in
                 for sample in appState.connections where sample.isSample {
                     coordinatorStore.invalidate(sample.id, droppingSession: false)

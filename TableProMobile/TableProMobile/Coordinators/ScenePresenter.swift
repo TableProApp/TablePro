@@ -49,9 +49,13 @@ final class ScenePresenter {
     let sceneId = UUID()
 
     var sheet: SceneSheet?
+    private(set) var editingConnectionId: UUID?
     private(set) var pendingIntent: SceneIntent?
     private(set) var pendingTable: PendingTableRequest?
     private(set) var holdsConnectionRestore = false
+    private(set) var editorHolds: Set<UUID> = []
+
+    var isHeldByEditor: Bool { !editorHolds.isEmpty }
 
     @ObservationIgnored private var hasBegunLaunch = false
     @ObservationIgnored private var presentedLaunchSheet = false
@@ -92,12 +96,33 @@ final class ScenePresenter {
         sheet = newSheet
     }
 
+    func presentConnectionEditor(for connectionId: UUID) {
+        editingConnectionId = connectionId
+    }
+
+    func dismissConnectionEditor() {
+        editingConnectionId = nil
+    }
+
+    func isEditingConnection(_ connectionId: UUID) -> Bool {
+        editingConnectionId == connectionId
+    }
+
     func receive(_ intent: SceneIntent) {
         pendingIntent = intent
     }
 
+    func setEditorHold(_ token: UUID, isHolding: Bool) {
+        guard editorHolds.contains(token) != isHolding else { return }
+        if isHolding {
+            editorHolds.insert(token)
+        } else {
+            editorHolds.remove(token)
+        }
+    }
+
     func takeDeliverableIntent(isLocked: Bool, isLibraryWritable: Bool) -> SceneIntent? {
-        guard let pendingIntent, sheet == nil, !isLocked, !holdsConnectionRestore else { return nil }
+        guard let pendingIntent, sheet == nil, !isLocked, !holdsConnectionRestore, !isHeldByEditor else { return nil }
         if case .importConnections = pendingIntent, !isLibraryWritable {
             return nil
         }

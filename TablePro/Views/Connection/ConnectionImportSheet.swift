@@ -226,7 +226,7 @@ struct ConnectionImportSheet: View {
 
         Task.detached(priority: .userInitiated) {
             do {
-                let envelope = try ConnectionImportDecoder.decodeEncryptedData(data, passphrase: currentPassphrase)
+                let envelope = try await ConnectionImportDecoder.decodeEncryptedData(data, passphrase: currentPassphrase)
                 let result = await ConnectionExportService.analyzeImport(envelope)
                 await MainActor.run {
                     passphraseError = nil

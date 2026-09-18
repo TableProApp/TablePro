@@ -8,7 +8,7 @@ struct InsertRowView: View {
     let session: ConnectionSession?
     let databaseType: DatabaseType
     let schema: String?
-    let safeModeLevel: SafeModeLevel
+    let safeModeLevel: () -> SafeModeLevel
     var onInserted: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -21,11 +21,12 @@ struct InsertRowView: View {
     @State private var operationError: AppError?
     @State private var showOperationError = false
     @State private var showInsertConfirmation = false
-    @State private var pendingInsertSQL: String?
+    @State private var writeGate = ConfirmedWriteGate()
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
     private var columnNames: [String] { columnDetails.map(\.name) }
+    private var hasChanges: Bool { !fields.isEmpty }
 
     private var canSave: Bool {
         guard let driver = session?.driver else { return false }
@@ -54,12 +55,14 @@ struct InsertRowView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .interactiveDismissDisabled(isSaving || hasChanges)
+            .holdsScene(withUnsavedChanges: isSaving || hasChanges)
             .formStyle(.grouped)
             .navigationTitle("Insert Row")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: hasChanges) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -88,7 +91,7 @@ struct InsertRowView: View {
                 Button(String(localized: "Insert"), role: .destructive) {
                     Task { await executePendingInsert() }
                 }
-                Button(String(localized: "Cancel"), role: .cancel) {}
+                Button(String(localized: "Cancel"), role: .cancel) { writeGate.cancel() }
             } message: {
                 Text(String(format: String(localized: "This will insert a row into %@. Continue?"), table.name))
             }
@@ -250,21 +253,20 @@ struct InsertRowView: View {
 
         guard let sql = buildInsertSQL(driver: session.driver) else { return }
 
-        switch safeModeLevel.writePermission {
+        switch writeGate.submit(sql, under: safeModeLevel()) {
         case .blocked:
             return
-        case .requiresConfirmation:
-            pendingInsertSQL = sql
+        case .awaitConfirmation:
             showInsertConfirmation = true
-        case .proceed:
-            await executeInsert(sql: sql, session: session)
+        case .run(let statement):
+            await executeInsert(sql: statement, session: session)
         }
     }
 
     private func executePendingInsert() async {
-        guard let session, let sql = pendingInsertSQL else { return }
-        pendingInsertSQL = nil
-        await executeInsert(sql: sql, session: session)
+        let confirmed = writeGate.confirm(under: safeModeLevel())
+        guard let session, let confirmed else { return }
+        await executeInsert(sql: confirmed, session: session)
     }
 
     private func buildInsertSQL(driver: any DatabaseDriver) -> String? {

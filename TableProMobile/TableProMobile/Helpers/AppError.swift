@@ -97,6 +97,16 @@ nonisolated enum ErrorClassifier {
 
         logger.error("[\(context.operation)] \(error.localizedDescription, privacy: .public)")
 
+        if let fileError = error as? LocalDatabaseFileError {
+            return AppError(
+                category: .config,
+                title: String(localized: "Database File Unavailable"),
+                message: fileError.localizedDescription,
+                recovery: fileError.recoverySuggestion,
+                underlying: error
+            )
+        }
+
         if error is LocalNetworkPermissionError {
             return AppError(
                 category: .network,

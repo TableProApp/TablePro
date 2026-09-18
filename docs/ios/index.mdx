@@ -61,9 +61,12 @@ Favorites come first, then **Recent** with the five connections opened last, the
 | Change several at once | Tap **Edit**, select the rows, and tap **Move**, **Favorite** or **Delete** |
 | Delete | Swipe left, or touch and hold and choose **Delete** |
 | Edit or delete a group | Swipe right on the group to edit it, swipe left to delete it |
+| Delete a tag | Open **More > Manage Tags**, then swipe left on the tag, or touch and hold it and choose **Delete Tag**. Built-in tags cannot be deleted |
 | Sync now | Pull down on the list, with iCloud Sync on |
 
 **Duplicate** copies the saved password, SSH secrets, client certificates and file access along with the settings. Recent and the sort order stay on the device.
+
+A connection, group or tag form with unsaved changes stays open when swiped down, and **Cancel** asks before it discards them.
 
 ## The sample database
 
@@ -71,21 +74,25 @@ Favorites come first, then **Recent** with the five connections opened last, the
 
 ## What syncs over
 
-The same CloudKit container as the Mac. iCloud Sync is off on both until you turn it on: here during first launch or under **Settings > iCloud**. While it is off nothing leaves the device, and edits made in the meantime go up when you turn it back on. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
+The same CloudKit container as the Mac. iCloud Sync is off on both until you turn it on: here during first launch or under **Settings > iCloud**. While it is off nothing leaves the device, and edits made in the meantime go up when you turn it back on, provided the device is still signed in to the same Apple Account. Sign in to a different Apple Account and sync starts over for that account: its connections come down, edits not yet sent go up to it, deletions not yet sent are dropped, and the other connections already on the device stay and go up the next time you edit them. Three record types cross: connections (host, port, SSH tunnel and SSL settings, color, safe mode level, favorite), groups with their nesting, and tags. SSH profiles, table favorites, saved queries, and app settings are skipped, and query history on the phone is only what you ran on the phone.
 
 Three things a connection depends on are per device and never sync:
 
 | Per device | What you see | What to do |
 | --- | --- | --- |
 | CA and client certificates | The SSL section reads **Not set** | Import them here. One PKCS#12 file covers the client certificate and its key |
-| An SSH private key | It arrived as a path on the Mac, so the tunnel cannot find it | Pick the key on this device, or paste it into **Private Key** |
-| SQLite and DuckDB file paths | The path points at the Mac's disk | Pick the file again here |
+| An SSH key file | It arrived as a path on the Mac, so the tunnel cannot find it | Pick the key on this device, or paste it into **Private Key** |
+| SQLite and DuckDB files | Opening one says the file isn't available on this device | Edit the connection and pick the file here |
 
-Passwords are a separate opt-in, off by default, at **Settings > iCloud > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. Pull down on the connection list to sync now; a background refresh runs about every 30 minutes.
+Passwords are a separate opt-in, off by default, at **Settings > iCloud > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. A private key saved on this device follows the same setting: with **Sync Passwords** on, iCloud Keychain copies the key to your other iPhones and iPads, which use it, and to your Mac, which does not. Pull down on the connection list to sync now; a background refresh runs about every 30 minutes.
+
+A change that syncs in while a connection is open leaves the screen where it is. A change to how it connects, such as a new host, port, username, database, SSH tunnel or SSL mode, reconnects it once no row or form on it has unsaved changes. Saving a new password, SSH password, key passphrase, private key or certificate for an open connection reconnects it the same way. A connection deleted on another device shows **Connection Deleted** before returning to the list.
 
 <Warning>
 Picking a SQLite file copies it into the app, and edits go to that copy, so the original never changes and the two drift apart. DuckDB writes back to the file you picked.
 </Warning>
+
+A database created with **Create New Database**, or copied in by picking it, stays with its connection through an app update and a restore from backup. A file that is gone is reported as unavailable, and so is a file connection synced from another iPhone or iPad; the connection never opens an empty database, or a file of the same name on this device, in its place.
 
 ## What works
 
@@ -97,7 +104,7 @@ Search the table list by name. Page a table at 50, 100, 200, or 500 rows, jump t
 
 ### Editing
 
-Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. Inserting and deleting rows, and truncating or dropping a table, are here too. Editing needs a primary key.
+Tap a row to open it full screen, page between rows, edit values, toggle one to `NULL`, and save. While you edit, **Cancel** takes the place of the back button and asks before it throws away a changed value, and so does **Connections** in another tab. Inserting and deleting rows, and truncating or dropping a table, are here too. Editing needs a primary key.
 
 A new row starts with every column on **DEFAULT**, which leaves that column out of the `INSERT` so the database fills it in. The badge beside a field switches it between **DEFAULT**, **NULL** and a typed value, and **NULL** is offered on nullable columns only. Generated columns are never written, and an auto-increment key stays on **DEFAULT** until you type one.
 
@@ -121,7 +128,7 @@ Turn on Face ID, Touch ID, or Optic ID under **Settings > Security**. A cold lau
 
 Each connection carries its own [safe mode](/features/safe-mode) level, synced from the Mac and settable here. iOS has three: **Off**, **Confirm Writes**, and **Read-Only**, which refuses writes outright. **Settings > New Connections** sets the level a new connection starts at.
 
-SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first.
+SSH tunnels authenticate with a password or a private key, and an unknown host key prompts with its fingerprint first. A key pasted under **Paste Key**, or picked as a text file, is kept in the Keychain beside the connection's passwords, never in the saved connection list. A key file that is not text is copied into the app and read from there. Setting **Auth Method** to **Password**, choosing **Import File**, or turning **SSH Tunnel** off deletes the saved key when you tap **Save**.
 
 ## Privacy
 

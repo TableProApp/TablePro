@@ -6,6 +6,17 @@ import TableProModels
 
 @MainActor
 enum IOSConnectionExportService {
+    nonisolated enum ExportError: LocalizedError, Equatable {
+        case credentialsNeedPassphrase
+
+        var errorDescription: String? {
+            switch self {
+            case .credentialsNeedPassphrase:
+                String(localized: "Set a passphrase to include passwords.")
+            }
+        }
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSConnectionExport")
     private static let currentFormatVersion = 1
 
@@ -14,16 +25,23 @@ enum IOSConnectionExportService {
         appState: AppState,
         includeCredentials: Bool,
         passphrase: String?
-    ) throws -> Data {
+    ) async throws -> Data {
         let envelope = includeCredentials
             ? buildEnvelopeWithCredentials(connections, appState: appState)
             : buildEnvelope(connections, appState: appState)
-        let json = try ConnectionImportDecoder.encode(envelope)
+        return try await fileData(for: envelope, passphrase: includeCredentials ? passphrase : nil)
+    }
 
-        guard includeCredentials, let passphrase, !passphrase.isEmpty else {
+    static func fileData(for envelope: ConnectionExportEnvelope, passphrase: String?) async throws -> Data {
+        let json = try ConnectionImportDecoder.encode(envelope)
+        guard let passphrase, !passphrase.isEmpty else {
+            guard envelope.credentials == nil else {
+                logger.error("Refusing to write saved passwords to a connection file without a passphrase")
+                throw ExportError.credentialsNeedPassphrase
+            }
             return json
         }
-        return try ConnectionExportCrypto.encrypt(data: json, passphrase: passphrase)
+        return try await ConnectionExportCrypto.encrypt(data: json, passphrase: passphrase)
     }
 
     static func suggestedFilename(for connections: [DatabaseConnection]) -> String {
@@ -101,10 +119,9 @@ enum IOSConnectionExportService {
 
         var credentialsMap: [String: ExportableCredentials] = [:]
         for (index, connection) in connections.enumerated() {
-            let suffix = connection.id.uuidString
-            let password = secret(from: store, key: "com.TablePro.password.\(suffix)")
-            let sshPassword = secret(from: store, key: "com.TablePro.sshpassword.\(suffix)")
-            let keyPassphrase = secret(from: store, key: "com.TablePro.keypassphrase.\(suffix)")
+            let password = secret(.password, of: connection.id, from: store)
+            let sshPassword = secret(.sshPassword, of: connection.id, from: store)
+            let keyPassphrase = secret(.keyPassphrase, of: connection.id, from: store)
 
             guard password != nil || sshPassword != nil || keyPassphrase != nil else { continue }
             credentialsMap[String(index)] = ExportableCredentials(
@@ -130,8 +147,12 @@ enum IOSConnectionExportService {
 
     // MARK: - Helpers
 
-    private static func secret(from store: any SecureStore, key: String) -> String? {
-        (try? store.retrieve(forKey: key)) ?? nil
+    private static func secret(
+        _ kind: ConnectionSecretKind,
+        of connectionId: UUID,
+        from store: any SecureStore
+    ) -> String? {
+        (try? store.retrieve(forKey: kind.account(for: connectionId))) ?? nil
     }
 
     private static func exportableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {

@@ -7,7 +7,7 @@ import TableProModels
 
 @MainActor @Observable
 final class ConnectionCoordinator {
-    let connection: DatabaseConnection
+    private(set) var connection: DatabaseConnection
 
     private(set) var session: ConnectionSession?
     private(set) var phase: ConnectionPhase = .connecting
@@ -30,7 +30,6 @@ final class ConnectionCoordinator {
     var pendingQuery: String?
     var pendingTableName: String?
     var tablesPath = NavigationPath()
-    var showingEditSheet = false
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private let historyStorage = QueryHistoryStorage()
@@ -106,14 +105,23 @@ final class ConnectionCoordinator {
         if connectTask == task { connectTask = nil }
     }
 
-    /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
-    func cancelConnect() {
-        guard connectTask != nil else { return }
+    func adopt(_ record: DatabaseConnection) {
+        guard record.id == connection.id, record != connection else { return }
+        connection = record
+    }
+
+    func retire() {
         attemptToken = UUID()
         connectTask?.cancel()
         connectTask = nil
         appState.connectionManager.invalidateAttempt(for: connection.id)
         session = nil
+    }
+
+    /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
+    func cancelConnect() {
+        guard connectTask != nil else { return }
+        retire()
         phase = .error(Self.cancelledError)
     }
 

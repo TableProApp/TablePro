@@ -5,20 +5,18 @@ import TableProDatabase
 import TableProModels
 
 nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
-    static let inMemoryPath = ":memory:"
-
     let actor = DuckDBActor()
-    private let dbPath: String
-    private let bookmark: Data?
+    private let source: LocalDatabaseFileSource
+    private let openMode: LocalDatabaseOpenMode
+    private let fileAccess = LocalDatabaseFileAccess()
     private let stateLock = NSLock()
     private var currentSchemaName = "main"
-    private var securedURL: URL?
     nonisolated(unsafe) private var interruptHandle: duckdb_connection?
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
     var serverVersion: String? { String(cString: duckdb_library_version()) }
-    var holdsSuspensionBlockingResource: Bool { dbPath != Self.inMemoryPath }
+    var holdsSuspensionBlockingResource: Bool { source != .inMemory }
 
     var currentSchema: String? {
         stateLock.lock()
@@ -26,16 +24,21 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         return currentSchemaName
     }
 
-    init(path: String, bookmark: Data?) {
-        self.dbPath = path
-        self.bookmark = bookmark
+    init(source: LocalDatabaseFileSource, openMode: LocalDatabaseOpenMode = .existingOnly) {
+        self.source = source
+        self.openMode = openMode
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        let resolvedPath = try resolvePath()
-        try await actor.open(path: resolvedPath)
+        let path = try fileAccess.begin(source, openMode: openMode)
+        do {
+            try await actor.open(path: path)
+        } catch {
+            fileAccess.end()
+            throw error
+        }
         try? await actor.query("SET autoinstall_known_extensions=false")
         try? await actor.query("SET autoload_known_extensions=false")
         setInterruptHandle(await actor.connectionHandle.connection)
@@ -44,44 +47,12 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     func disconnect() async throws {
         setInterruptHandle(nil)
         await actor.close()
-        if let url = takeSecuredURL() {
-            url.stopAccessingSecurityScopedResource()
-        }
+        fileAccess.end()
     }
 
     func ping() async throws -> Bool {
         _ = try await actor.query("SELECT 1")
         return true
-    }
-
-    private func resolvePath() throws -> String {
-        if dbPath == Self.inMemoryPath {
-            return Self.inMemoryPath
-        }
-
-        if let bookmark {
-            var isStale = false
-            let url = try URL(
-                resolvingBookmarkData: bookmark,
-                options: [],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            guard url.startAccessingSecurityScopedResource() else {
-                throw DuckDBDriverError.connectionFailed("Cannot access the DuckDB file. Open it again to grant access.")
-            }
-            setSecuredURL(url)
-            return url.path
-        }
-
-        let expanded = (dbPath as NSString).expandingTildeInPath
-        if !FileManager.default.fileExists(atPath: expanded) {
-            let directory = (expanded as NSString).deletingLastPathComponent
-            if !directory.isEmpty {
-                try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-            }
-        }
-        return expanded
     }
 
     // MARK: - Query Execution
@@ -143,20 +114,6 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
         stateLock.lock()
         interruptHandle = handle
         stateLock.unlock()
-    }
-
-    private func setSecuredURL(_ url: URL) {
-        stateLock.lock()
-        securedURL = url
-        stateLock.unlock()
-    }
-
-    private func takeSecuredURL() -> URL? {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        let url = securedURL
-        securedURL = nil
-        return url
     }
 }
 

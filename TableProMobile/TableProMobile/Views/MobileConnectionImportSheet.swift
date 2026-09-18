@@ -17,6 +17,7 @@ struct MobileConnectionImportSheet: View {
     @State private var passphrase = ""
     @State private var passphraseError: String?
     @State private var wasEncryptedImport = false
+    @State private var isDecrypting = false
 
     private enum Phase: Equatable {
         case loading
@@ -43,6 +44,11 @@ struct MobileConnectionImportSheet: View {
                 }
         }
         .task { await loadFile() }
+        .task(id: isDecrypting) {
+            guard isDecrypting else { return }
+            await decrypt()
+            isDecrypting = false
+        }
     }
 
     @ViewBuilder
@@ -68,7 +74,7 @@ struct MobileConnectionImportSheet: View {
             Section {
                 SecureField(String(localized: "Passphrase"), text: $passphrase)
                     .textContentType(.password)
-                    .onSubmit { Task { await decrypt() } }
+                    .onSubmit(requestDecryption)
             } header: {
                 Text("This file is encrypted")
             } footer: {
@@ -78,8 +84,14 @@ struct MobileConnectionImportSheet: View {
                     Text("Enter the passphrase to decrypt and import connections.")
                 }
             }
-            Button(String(localized: "Decrypt")) { Task { await decrypt() } }
-                .disabled(passphrase.isEmpty)
+            HStack {
+                Button(String(localized: "Decrypt"), action: requestDecryption)
+                    .disabled(passphrase.isEmpty || isDecrypting)
+                if isDecrypting {
+                    Spacer()
+                    ProgressView()
+                }
+            }
         }
     }
 
@@ -188,12 +200,21 @@ struct MobileConnectionImportSheet: View {
         }
     }
 
+    private func requestDecryption() {
+        guard !passphrase.isEmpty, !isDecrypting else { return }
+        passphraseError = nil
+        isDecrypting = true
+    }
+
     private func decrypt() async {
         guard let data = encryptedData, !passphrase.isEmpty else { return }
         do {
-            let envelope = try ConnectionImportDecoder.decodeEncryptedData(data, passphrase: passphrase)
+            let envelope = try await ConnectionImportDecoder.decodeEncryptedData(data, passphrase: passphrase)
+            try Task.checkCancellation()
             wasEncryptedImport = true
             applyPreview(IOSConnectionImportService.analyze(envelope, appState: appState))
+        } catch is CancellationError {
+            return
         } catch {
             passphraseError = error.localizedDescription
             passphrase = ""

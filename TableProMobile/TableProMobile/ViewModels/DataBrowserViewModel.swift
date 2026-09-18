@@ -64,6 +64,13 @@ final class DataBrowserViewModel {
     var activeFilterCount: Int { filters.filter { $0.isEnabled && $0.isValid }.count }
     var hasPrimaryKeys: Bool { columnDetails.contains(where: \.isPrimaryKey) }
 
+    var showsPaginationBar: Bool {
+        !legacyRows.isEmpty || hasActiveSearch || hasActiveFilters || isPageLoading
+    }
+
+    var canGoToPreviousPage: Bool { pagination.currentPage > 0 && !isLoading }
+    var canGoToNextPage: Bool { pagination.hasNextPage && !isLoading }
+
     var paginationLabel: String {
         guard !legacyRows.isEmpty else { return "" }
         let start = pagination.currentOffset + 1

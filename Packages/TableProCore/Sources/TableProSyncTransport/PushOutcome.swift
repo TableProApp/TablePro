@@ -69,6 +69,13 @@ public struct PushOutcome: Sendable {
         failures[recordID] = failure
     }
 
+    public mutating func acceptMissingDeletions(of deletions: [CKRecord.ID]) {
+        for recordID in deletions where failures[recordID]?.code == .unknownItem {
+            failures[recordID] = nil
+            deletedRecordIDs.insert(recordID)
+        }
+    }
+
     public mutating func merge(_ other: PushOutcome) {
         savedRecords.merge(other.savedRecords) { _, new in new }
         deletedRecordIDs.formUnion(other.deletedRecordIDs)

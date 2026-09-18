@@ -26,6 +26,12 @@ final class ConnectionFormViewModel {
         var suggestedOracleMode: OracleConnectionOptions.IdentifierMode?
     }
 
+    nonisolated enum PendingDatabaseFile: Equatable, Sendable {
+        case documentsFile
+        case newDocumentsFile(URL)
+        case bookmarked(Data)
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
 
     // Form fields
@@ -48,10 +54,11 @@ final class ConnectionFormViewModel {
     var certificateError: String?
     var pastedCertificate = ""
     var pkcs12Password = ""
-    @ObservationIgnored var pendingCertificates: [CertificateRole: String] = [:]
-    @ObservationIgnored var removedCertificates: Set<CertificateRole> = []
+    var pendingCertificates: [CertificateRole: String] = [:]
+    var removedCertificates: Set<CertificateRole> = []
+    var storedCertificateRoles: Set<CertificateRole> = []
     @ObservationIgnored var pendingPKCS12: Data?
-    @ObservationIgnored let certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
+    @ObservationIgnored let certificateStore: any CertificateMaterialStoring
     var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
     var oracleServiceName = ""
     var oracleSID = ""
@@ -81,18 +88,41 @@ final class ConnectionFormViewModel {
     var duckDBInMemory = false {
         didSet { onDuckDBInMemoryChange() }
     }
-    private var pendingBookmark: Data?
-    private let bookmarkStore = FileBookmarkStore()
+    private(set) var pendingFile: PendingDatabaseFile?
+    private(set) var fileError: String?
+    private(set) var sshKeyFileError: String?
 
     // Async state
     private(set) var isTesting = false
+    private(set) var isSaving = false
     private(set) var testResult: TestResult?
     private(set) var credentialError: String?
+    private(set) var saveFailure: LibraryWriteFailure?
 
     @ObservationIgnored let existingConnection: DatabaseConnection?
+    @ObservationIgnored let connectionId: UUID
+    @ObservationIgnored private var createdFileURL: URL?
+    @ObservationIgnored private var addedNewConnection = false
+    private(set) var baseline: ConnectionFormSnapshot?
+    private(set) var storedSecrets = ConnectionFormSecrets()
+    private let localFiles: LocalDatabaseFileLocator
+    private let fileCreator: any LocalDatabaseFileCreating
+    private let bookmarkStore: FileBookmarkStore
 
-    init(editing: DatabaseConnection? = nil) {
+    init(
+        editing: DatabaseConnection? = nil,
+        localFiles: LocalDatabaseFileLocator = .live,
+        fileCreator: any LocalDatabaseFileCreating = DriverDatabaseFileCreator(),
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
+    ) {
         self.existingConnection = editing
+        self.connectionId = editing?.id ?? UUID()
+        self.localFiles = localFiles
+        self.fileCreator = fileCreator
+        self.bookmarkStore = bookmarkStore
+        self.certificateStore = certificateStore
+        defer { baseline = snapshot }
         guard let conn = editing else {
             safeModeLevel = AppPreferences.defaultSafeMode
             return
@@ -125,21 +155,24 @@ final class ConnectionFormViewModel {
             sshUsername = ssh.username
             sshAuthMethod = ssh.authMethod
             sshKeyPath = ssh.privateKeyPath ?? ""
-            sshKeyContent = ssh.privateKeyData ?? ""
-            if let keyData = ssh.privateKeyData, !keyData.isEmpty {
+            if ssh.authMethod == .privateKey, sshKeyPath.isEmpty {
                 sshKeyInputMode = .paste
             }
         }
-        if conn.type == .sqlite {
-            selectedFileURL = URL(fileURLWithPath: conn.database)
-        }
-        if conn.type == .duckdb {
-            if conn.database == DuckDBDriver.inMemoryPath {
+        hydrateDatabaseFile(from: conn)
+    }
+
+    private func hydrateDatabaseFile(from connection: DatabaseConnection) {
+        guard connection.type == .sqlite || connection.type == .duckdb else { return }
+        let location = localFiles.location(forStoredPath: connection.database)
+        guard location != .inMemory else {
+            if connection.type == .duckdb {
                 duckDBInMemory = true
-            } else if !conn.database.isEmpty {
-                selectedFileURL = URL(fileURLWithPath: conn.database)
             }
+            return
         }
+        guard !connection.database.isEmpty else { return }
+        selectedFileURL = location.fileURL ?? URL(fileURLWithPath: connection.database)
     }
 
     // MARK: - Computed
@@ -160,20 +193,92 @@ final class ConnectionFormViewModel {
 
     var isEditing: Bool { existingConnection != nil }
 
+    var pastedPrivateKey: String? {
+        guard sshEnabled, sshAuthMethod == .privateKey, sshKeyInputMode == .paste,
+              !sshKeyContent.isEmpty else { return nil }
+        return sshKeyContent
+    }
+
+    var edits: ConnectionFormEdits {
+        ConnectionFormEdits(
+            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
+            type: type,
+            host: host,
+            port: Int(port) ?? 3_306,
+            username: username,
+            database: database,
+            groupId: groupId,
+            tagId: tagId,
+            safeModeLevel: safeModeLevel,
+            sslMode: effectiveSSLMode,
+            sshTunnel: sshTunnel,
+            oracle: oracleOptions
+        )
+    }
+
+    private var effectiveSSLMode: SSLConfiguration.SSLMode? {
+        switch type {
+        case .sqlite, .duckdb: nil
+        case .mssql: mssqlSSLMode
+        case .oracle: oracleSSLMode
+        default: sslMode
+        }
+    }
+
+    private var sshTunnel: ConnectionFormEdits.SSHTunnel? {
+        guard sshEnabled else { return nil }
+        return ConnectionFormEdits.SSHTunnel(
+            host: sshHost,
+            port: Int(sshPort) ?? 22,
+            username: sshUsername,
+            authMethod: sshAuthMethod,
+            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath
+        )
+    }
+
+    private var oracleOptions: ConnectionFormEdits.OracleOptions? {
+        guard type == .oracle else { return nil }
+        return ConnectionFormEdits.OracleOptions(
+            identifierMode: oracleConnectionType,
+            serviceName: oracleServiceName,
+            sid: oracleSID,
+            role: oracleRole,
+            networkEncryption: oracleNetworkEncryption
+        )
+    }
+
     // MARK: - Credential Hydration
 
     func loadStoredCredentials(secureStore: any SecureStore) async {
         guard let conn = existingConnection else { return }
-        let connKey = "com.TablePro.password.\(conn.id.uuidString)"
-        if let stored = try? secureStore.retrieve(forKey: connKey), !stored.isEmpty {
+        if let stored = Self.storedSecret(.password, for: conn.id, in: secureStore) {
             password = stored
+            storedSecrets.password = stored
         }
-        if let sshPwd = try? secureStore.retrieve(forKey: "com.TablePro.sshpassword.\(conn.id.uuidString)"), !sshPwd.isEmpty {
+        if let sshPwd = Self.storedSecret(.sshPassword, for: conn.id, in: secureStore) {
             sshPassword = sshPwd
+            storedSecrets.sshPassword = sshPwd
         }
-        if let passphrase = try? secureStore.retrieve(forKey: "com.TablePro.keypassphrase.\(conn.id.uuidString)"), !passphrase.isEmpty {
+        if let passphrase = Self.storedSecret(.keyPassphrase, for: conn.id, in: secureStore) {
             sshKeyPassphrase = passphrase
+            storedSecrets.sshKeyPassphrase = passphrase
         }
+        if let privateKey = Self.storedSecret(.sshPrivateKey, for: conn.id, in: secureStore) {
+            sshKeyContent = privateKey
+            storedSecrets.privateKey = privateKey
+            sshKeyInputMode = .paste
+        }
+        baseline?.secrets = snapshot.secrets
+    }
+
+    private static func storedSecret(
+        _ kind: ConnectionSecretKind,
+        for connectionId: UUID,
+        in secureStore: any SecureStore
+    ) -> String? {
+        guard let value = try? secureStore.retrieve(forKey: kind.account(for: connectionId)),
+              !value.isEmpty else { return nil }
+        return value
     }
 
     // MARK: - Type Change
@@ -183,16 +288,16 @@ final class ConnectionFormViewModel {
         updateDefaultPort()
         selectedFileURL = nil
         database = ""
-        pendingBookmark = nil
+        pendingFile = nil
         duckDBInMemory = false
     }
 
     private func onDuckDBInMemoryChange() {
         if duckDBInMemory {
             selectedFileURL = nil
-            pendingBookmark = nil
-            database = DuckDBDriver.inMemoryPath
-        } else if database == DuckDBDriver.inMemoryPath {
+            pendingFile = nil
+            database = LocalDatabaseLocation.inMemoryPath
+        } else if database == LocalDatabaseLocation.inMemoryPath {
             database = ""
         }
     }
@@ -204,93 +309,136 @@ final class ConnectionFormViewModel {
     // MARK: - File Picker
 
     func handleSQLiteFilePicker(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
-
-        let destURL = copyToDocuments(url)
-        selectedFileURL = destURL
-        database = destURL.path
-        if name.isEmpty {
-            name = destURL.deletingPathExtension().lastPathComponent
+        guard let url = pickedDatabaseURL(from: result) else { return }
+        guard !localFiles.isInDocuments(url) else {
+            adopt(url, pending: .documentsFile)
+            return
+        }
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            adopt(try localFiles.importCopy(of: url), pending: .documentsFile)
+        } catch {
+            fileError = error.localizedDescription
         }
     }
 
     func handleDuckDBFilePicker(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
+        guard let url = pickedDatabaseURL(from: result) else { return }
+        guard !localFiles.isInDocuments(url) else {
+            adopt(url, pending: .documentsFile)
+            return
+        }
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            adopt(url, pending: .bookmarked(try url.bookmarkData()))
+        } catch {
+            Self.logger.error("Bookmarking a DuckDB file failed: \(error.localizedDescription, privacy: .private)")
+            fileError = LocalDatabaseFileError.accessDenied(fileName: url.lastPathComponent).localizedDescription
+        }
+    }
 
-        guard let data = try? url.bookmarkData() else { return }
-        pendingBookmark = data
+    private func pickedDatabaseURL(from result: Result<[URL], Error>) -> URL? {
+        switch result {
+        case .success(let urls):
+            return urls.first
+        case .failure(let error):
+            fileError = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func adopt(_ url: URL, pending: PendingDatabaseFile) {
         selectedFileURL = url
         database = url.path
+        pendingFile = pending
         if name.isEmpty {
             name = url.deletingPathExtension().lastPathComponent
         }
     }
 
     func handleSSHKeyFilePicker(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        guard url.startAccessingSecurityScopedResource() else { return }
-        defer { url.stopAccessingSecurityScopedResource() }
+        let url: URL
+        switch result {
+        case .success(let urls):
+            guard let first = urls.first else { return }
+            url = first
+        case .failure(let error):
+            sshKeyFileError = error.localizedDescription
+            return
+        }
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
 
         if let content = try? String(contentsOf: url, encoding: .utf8) {
             sshKeyContent = content
             sshKeyInputMode = .paste
-        } else {
-            guard let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-            let dest = docsDir.appendingPathComponent("ssh_" + url.lastPathComponent)
-            try? FileManager.default.removeItem(at: dest)
-            try? FileManager.default.copyItem(at: url, to: dest)
-            sshKeyPath = dest.path
+            return
+        }
+        guard !localFiles.isInDocuments(url) else {
+            sshKeyPath = url.path
+            return
+        }
+        do {
+            sshKeyPath = try localFiles.importCopy(of: url).path
+        } catch {
+            sshKeyFileError = error.localizedDescription
         }
     }
 
-    private func copyToDocuments(_ sourceURL: URL) -> URL {
-        guard let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            return sourceURL
-        }
-        var destURL = documentsDir.appendingPathComponent(sourceURL.lastPathComponent)
-
-        if FileManager.default.fileExists(atPath: destURL.path) {
-            let baseName = sourceURL.deletingPathExtension().lastPathComponent
-            let ext = sourceURL.pathExtension
-            let suffix = UUID().uuidString.prefix(8)
-            destURL = documentsDir.appendingPathComponent("\(baseName)_\(suffix).\(ext)")
-        }
-
-        try? FileManager.default.copyItem(at: sourceURL, to: destURL)
-        return destURL
+    func dismissSSHKeyFileError() {
+        sshKeyFileError = nil
     }
 
     func clearSelectedFile() {
         selectedFileURL = nil
         database = ""
-        pendingBookmark = nil
+        pendingFile = nil
     }
 
     func createNewDatabase() {
-        guard !newDatabaseName.isEmpty else { return }
-
-        let fileExtension = type == .duckdb ? "duckdb" : "db"
-        let suffix = ".\(fileExtension)"
-        let safeName = newDatabaseName.hasSuffix(suffix) ? newDatabaseName : "\(newDatabaseName)\(suffix)"
-        guard let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        let fileURL = documentsDir.appendingPathComponent(safeName)
-
-        selectedFileURL = fileURL
-        database = fileURL.path
-        pendingBookmark = nil
-        if name.isEmpty {
-            name = newDatabaseName
-        }
+        let requestedName = newDatabaseName
         newDatabaseName = ""
+        do {
+            let url = try localFiles.newDatabaseFile(named: requestedName, type: type)
+            adopt(url, pending: .newDocumentsFile(url))
+        } catch {
+            fileError = error.localizedDescription
+        }
+    }
+
+    func dismissFileError() {
+        fileError = nil
     }
 
     // MARK: - Test Connection
 
-    func testConnection(appState: AppState, secureStore: any SecureStore) async {
+    func testSecrets(for connectionId: UUID) -> [String: String] {
+        var secrets: [String: String] = [:]
+        if !password.isEmpty {
+            secrets[ConnectionSecretKind.password.account(for: connectionId)] = password
+        }
+        guard sshEnabled else { return secrets }
+        if !sshPassword.isEmpty {
+            secrets[ConnectionSecretKind.sshPassword.account(for: connectionId)] = sshPassword
+        }
+        if !sshKeyPassphrase.isEmpty {
+            secrets[ConnectionSecretKind.keyPassphrase.account(for: connectionId)] = sshKeyPassphrase
+        }
+        if let pastedPrivateKey {
+            secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        return secrets
+    }
+
+    func testConnection() async {
         isTesting = true
         testResult = nil
         defer { isTesting = false }
@@ -298,30 +446,29 @@ final class ConnectionFormViewModel {
         let tempId = UUID()
         var testConn = buildConnection()
         testConn.id = tempId
+        let scratchDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ConnectionTest-\(tempId.uuidString)", isDirectory: true)
 
-        if !password.isEmpty {
-            try? appState.connectionManager.storePassword(password, for: tempId)
+        let secrets = EphemeralSecureStore(testSecrets(for: tempId))
+        let manager = ConnectionManager(
+            driverFactory: IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localFiles),
+            secureStore: secrets,
+            sshProvider: IOSSSHProvider(secureStore: secrets, container: localFiles.container)
+        )
+        if let bookmark = bookmarkForTest {
+            bookmarkStore.save(bookmark, for: tempId)
         }
-        if sshEnabled && !sshPassword.isEmpty {
-            try? secureStore.store(sshPassword, forKey: "com.TablePro.sshpassword.\(tempId.uuidString)")
-        }
-        if sshEnabled && !sshKeyPassphrase.isEmpty {
-            try? secureStore.store(sshKeyPassphrase, forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
-        }
-        if sshEnabled && !sshKeyContent.isEmpty {
-            try? secureStore.store(sshKeyContent, forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
-        }
-
         defer {
-            try? appState.connectionManager.deletePassword(for: tempId)
-            try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(tempId.uuidString)")
-            try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
-            try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
+            bookmarkStore.delete(for: tempId)
+            removeScratchDirectory(scratchDirectory)
         }
 
         do {
-            _ = try await appState.connectionManager.connect(testConn)
-            await appState.connectionManager.disconnect(tempId)
+            if let scratchPath = try await scratchDatabasePath(in: scratchDirectory) {
+                testConn.database = scratchPath
+            }
+            _ = try await manager.connect(testConn)
+            await manager.disconnect(tempId)
             testResult = TestResult(
                 success: true,
                 message: String(localized: "Connection successful"),
@@ -344,138 +491,191 @@ final class ConnectionFormViewModel {
         }
     }
 
+    private var bookmarkForTest: Data? {
+        guard type == .duckdb, !duckDBInMemory else { return nil }
+        switch pendingFile {
+        case .bookmarked(let bookmark):
+            return bookmark
+        case .documentsFile, .newDocumentsFile:
+            return nil
+        case nil:
+            return existingConnection.flatMap { bookmarkStore.bookmark(for: $0.id) }
+        }
+    }
+
+    private func scratchDatabasePath(in scratchDirectory: URL) async throws -> String? {
+        guard case .newDocumentsFile(let destination) = pendingFile else { return nil }
+        try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+        let scratchFile = scratchDirectory.appendingPathComponent(destination.lastPathComponent)
+        try await fileCreator.createDatabase(at: scratchFile, type: type)
+        return scratchFile.path
+    }
+
+    private func removeScratchDirectory(_ directory: URL) {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: directory)
+        } catch {
+            Self.logger.error("Removing a test database failed: \(error.localizedDescription, privacy: .private)")
+        }
+    }
+
     // MARK: - Save
 
-    func save(appState: AppState, secureStore: any SecureStore) -> DatabaseConnection? {
-        let connection = buildConnection()
-        var storageFailed = false
+    func save(appState: AppState, secureStore: any SecureStore) async -> UUID? {
+        guard !isSaving else { return nil }
+        isSaving = true
+        defer { isSaving = false }
 
-        persistCertificates(for: connection.id)
+        guard await createPendingDatabaseFile() else { return nil }
+        let draft = buildConnection()
+        let outcome = writeToLibrary(draft, appState: appState)
+        if let failure = LibraryWriteFailure(outcome, kind: .connection) {
+            discardCreatedFile()
+            saveFailure = failure
+            return nil
+        }
+        createdFileURL = nil
+        settleBookmark()
+        let storedEverySecret = storeSecrets(appState: appState, secureStore: secureStore)
+        advanceBaselineToSavedState()
+        guard storedEverySecret else { return nil }
+        return connectionId
+    }
 
-        if type == .duckdb {
+    func applyingEdits(to current: DatabaseConnection) -> DatabaseConnection {
+        edits.applied(to: current, changedSince: openingEdits)
+    }
+
+    func buildConnection() -> DatabaseConnection {
+        edits.applied(to: existingConnection ?? DatabaseConnection(id: connectionId), changedSince: nil)
+    }
+
+    func dismissSaveFailure() {
+        saveFailure = nil
+    }
+
+    private func writeToLibrary(_ draft: DatabaseConnection, appState: AppState) -> LibraryWriteOutcome {
+        guard isEditing || addedNewConnection else {
+            guard appState.addConnection(draft) else { return .refused }
+            addedNewConnection = true
+            return .applied
+        }
+        return appState.mutateConnection(draft.id) { $0 = applyingEdits(to: $0) }
+    }
+
+    private func createPendingDatabaseFile() async -> Bool {
+        guard case .newDocumentsFile(let url) = pendingFile else { return true }
+        do {
+            try await fileCreator.createDatabase(at: url, type: type)
+        } catch {
+            fileError = error.localizedDescription
+            return false
+        }
+        createdFileURL = url
+        if pendingFile == .newDocumentsFile(url) {
+            pendingFile = .documentsFile
+        }
+        return true
+    }
+
+    private func settleBookmark() {
+        guard type == .duckdb else {
+            if existingConnection?.type == .duckdb {
+                bookmarkStore.delete(for: connectionId)
+            }
+            return
+        }
+        switch pendingFile {
+        case .bookmarked(let bookmark):
+            bookmarkStore.save(bookmark, for: connectionId)
+        case .documentsFile, .newDocumentsFile:
+            bookmarkStore.delete(for: connectionId)
+        case nil:
             if duckDBInMemory {
-                bookmarkStore.delete(for: connection.id)
-            } else if let pendingBookmark {
-                bookmarkStore.save(pendingBookmark, for: connection.id)
+                bookmarkStore.delete(for: connectionId)
             }
         }
+    }
 
-        if !password.isEmpty {
+    private func discardCreatedFile() {
+        guard let createdFileURL else { return }
+        fileCreator.removeDatabase(at: createdFileURL)
+        self.createdFileURL = nil
+        if pendingFile == .documentsFile {
+            pendingFile = .newDocumentsFile(createdFileURL)
+        }
+    }
+
+    private func storeSecrets(appState: AppState, secureStore: any SecureStore) -> Bool {
+        let writes = secretWrites
+        var storageFailed = !persistCertificates(for: connectionId)
+
+        if let changed = writes.password {
             do {
-                try appState.connectionManager.storePassword(password, for: connection.id)
+                try appState.connectionManager.storePassword(changed, for: connectionId)
+                storedSecrets.password = changed
             } catch {
                 Self.logger.error("Failed to store password: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
             }
         }
 
-        if sshEnabled {
-            if !sshPassword.isEmpty {
-                do {
-                    try secureStore.store(sshPassword, forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)")
-                } catch {
-                    Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
+        if let changed = writes.sshPassword {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
+                storedSecrets.sshPassword = changed
+            } catch {
+                Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
             }
-            if !sshKeyPassphrase.isEmpty {
-                do {
-                    try secureStore.store(sshKeyPassphrase, forKey: "com.TablePro.keypassphrase.\(connection.id.uuidString)")
-                } catch {
-                    Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
-            }
-            if !sshKeyContent.isEmpty {
-                do {
-                    try secureStore.store(sshKeyContent, forKey: "com.TablePro.sshkeydata.\(connection.id.uuidString)")
-                } catch {
-                    Self.logger.error("Failed to store SSH key data: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
+        }
+        if let changed = writes.sshKeyPassphrase {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
+                storedSecrets.sshKeyPassphrase = changed
+            } catch {
+                Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
             }
         }
 
-        if storageFailed {
+        do {
+            try persistPrivateKey(secureStore: secureStore)
+        } catch {
+            Self.logger.error("Failed to store SSH private key: \(error.localizedDescription, privacy: .public)")
+            storageFailed = true
+        }
+
+        guard !storageFailed else {
             credentialError = String(localized: "Some credentials could not be saved to the keychain. You may need to re-enter them later.")
-            return nil
+            return false
         }
+        return true
+    }
 
-        return connection
+    private func advanceBaselineToSavedState() {
+        baseline = ConnectionFormSnapshot(
+            edits: edits,
+            secrets: storedSecrets,
+            stagedCertificates: [:],
+            removedStoredCertificates: []
+        )
+    }
+
+    func persistPrivateKey(secureStore: any SecureStore) throws {
+        let key = pastedPrivateKey
+        guard key != storedSecrets.privateKey else { return }
+        let account = ConnectionSecretKind.sshPrivateKey.account(for: connectionId)
+        if let key {
+            try secureStore.store(key, forKey: account)
+        } else {
+            try secureStore.delete(forKey: account)
+        }
+        storedSecrets.privateKey = key
     }
 
     func dismissCredentialError() {
         credentialError = nil
-    }
-
-    private var effectiveSSLEnabled: Bool {
-        switch type {
-        case .mssql: return mssqlSSLMode != .disable
-        case .oracle: return oracleSSLMode != .disable
-        default: return sslMode != .disable
-        }
-    }
-
-    static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
-        let others = existing.dropFirst().filter { $0 != tagId }
-        guard let tagId else { return Array(others) }
-        return [tagId] + others
-    }
-
-    func buildConnection() -> DatabaseConnection {
-        var conn = existingConnection ?? DatabaseConnection()
-        conn.name = name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name
-        conn.type = type
-        conn.host = host
-        conn.port = Int(port) ?? 3_306
-        conn.username = username
-        conn.database = database
-        conn.sshEnabled = sshEnabled
-        conn.sslEnabled = effectiveSSLEnabled
-        conn.groupId = groupId
-        conn.tagIds = Self.tagIds(selecting: tagId, over: existingConnection?.tagIds ?? [])
-        conn.sshConfiguration = nil
-        conn.additionalFields = existingConnection?.additionalFields ?? [:]
-        conn.sslConfiguration = existingConnection?.sslConfiguration
-
-        if usesCertificateSection {
-            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: sslMode)
-        }
-        if type == .mssql {
-            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: mssqlSSLMode)
-        }
-        if type == .oracle {
-            conn.sslConfiguration = sslConfigurationPreservingCertificates(mode: oracleSSLMode)
-            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.connectionType] =
-                oracleConnectionType.rawValue
-            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] = oracleServiceName
-            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] = oracleSID
-            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.role] = oracleRole.rawValue
-            conn.additionalFields[OracleConnectionOptions.AdditionalFieldKey.networkEncryption] =
-                oracleNetworkEncryption.rawValue
-        }
-        conn.safeModeLevel = safeModeLevel
-        conn.isReadOnly = safeModeLevel.blocksWrites
-        if sshEnabled {
-            conn.sshConfiguration = SSHConfiguration(
-                host: sshHost,
-                port: Int(sshPort) ?? 22,
-                username: sshUsername,
-                authMethod: sshAuthMethod,
-                privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
-                privateKeyData: sshKeyContent.isEmpty ? nil : sshKeyContent
-            )
-        }
-        return conn
-    }
-
-    private func sslConfigurationPreservingCertificates(mode: SSLConfiguration.SSLMode) -> SSLConfiguration {
-        let existing = existingConnection?.sslConfiguration
-        return SSLConfiguration(
-            mode: mode,
-            caCertificatePath: existing?.caCertificatePath,
-            clientCertificatePath: existing?.clientCertificatePath,
-            clientKeyPath: existing?.clientKeyPath
-        )
     }
 }

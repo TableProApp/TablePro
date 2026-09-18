@@ -6,7 +6,7 @@ import TableProDatabase
 nonisolated final class KeychainSecureStore: SecureStore {
     private static let logger = Logger(subsystem: "com.TablePro", category: "KeychainSecureStore")
 
-    private let serviceName = "com.TablePro"
+    private static let serviceName = "com.TablePro"
     private let accessGroup: String?
 
     private static let cachedAccessGroup = OSAllocatedUnfairLock<String?>(initialState: nil)
@@ -17,7 +17,10 @@ nonisolated final class KeychainSecureStore: SecureStore {
         guard let prefix = Bundle.main.infoDictionary?["AppIdentifierPrefix"] as? String,
               !prefix.isEmpty,
               !prefix.hasPrefix("$(") else {
-            logger.warning("AppIdentifierPrefix unavailable; using the app-local keychain without a shared access group (expected for unsigned or test builds; in a signed build, widget keychain sharing is off).")
+            logger.warning("""
+                AppIdentifierPrefix unavailable; using the app-local keychain without a shared access group \
+                (expected for unsigned or test builds; in a signed build, widget keychain sharing is off).
+                """)
             return nil
         }
 
@@ -31,6 +34,10 @@ nonisolated final class KeychainSecureStore: SecureStore {
     }
 
     private func applyingAccessGroup(_ query: [String: Any]) -> [String: Any] {
+        Self.applying(accessGroup: accessGroup, to: query)
+    }
+
+    private static func applying(accessGroup: String?, to query: [String: Any]) -> [String: Any] {
         guard let accessGroup else { return query }
         var query = query
         query[kSecAttrAccessGroup as String] = accessGroup
@@ -50,7 +57,7 @@ nonisolated final class KeychainSecureStore: SecureStore {
 
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: key,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecUseDataProtectionKeychain as String: true,
@@ -59,7 +66,7 @@ nonisolated final class KeychainSecureStore: SecureStore {
 
         var addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: Self.accessibility(forSync: synchronizable),
@@ -77,7 +84,7 @@ nonisolated final class KeychainSecureStore: SecureStore {
     func retrieve(forKey key: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -100,7 +107,7 @@ nonisolated final class KeychainSecureStore: SecureStore {
     func delete(forKey key: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
+            kSecAttrService as String: Self.serviceName,
             kSecAttrAccount as String: key,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
             kSecUseDataProtectionKeychain as String: true,
@@ -111,18 +118,19 @@ nonisolated final class KeychainSecureStore: SecureStore {
         }
     }
 
-    /// Remove orphaned test connection credentials that may remain after a SIGKILL.
-    /// Test credentials use temp UUIDs not associated with any saved connection.
+    /// Remove passwords left under ids no saved connection uses, such as a test connection an older
+    /// build stored and was killed before deleting.
     ///
-    /// Two limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
+    /// Three limits, because this deletes by prefix and cannot tell a throwaway id from an id it has
     /// simply not heard of yet. An empty valid set means the connections have not loaded, which is
-    /// every launch before the first sync merge, and sweeping then would delete all of them. And
-    /// only device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
-    /// deleting one here removes it from the Mac that wrote it too.
-    func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
+    /// every launch before the first sync merge, and sweeping then would delete all of them. Only
+    /// device-local items are considered: a synchronizable item belongs to iCloud Keychain, so
+    /// deleting one here removes it from the Mac that wrote it too. And a pasted private key is
+    /// never swept, because a connection sync has not delivered yet may hold its only copy.
+    static func cleanOrphanedCredentials(validConnectionIds: Set<UUID>) {
         guard !validConnectionIds.isEmpty else { return }
 
-        let prefixes = ["com.TablePro.password.", "com.TablePro.sshpassword.", "com.TablePro.keypassphrase."]
+        let accessGroup = resolveAccessGroup()
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -132,25 +140,19 @@ nonisolated final class KeychainSecureStore: SecureStore {
             kSecUseDataProtectionKeychain as String: true,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(applyingAccessGroup(query) as CFDictionary, &result) == errSecSuccess,
+        guard SecItemCopyMatching(applying(accessGroup: accessGroup, to: query) as CFDictionary, &result) == errSecSuccess,
               let items = result as? [[String: Any]] else { return }
 
-        for item in items {
-            guard let account = item[kSecAttrAccount as String] as? String else { continue }
-            for prefix in prefixes {
-                guard account.hasPrefix(prefix) else { continue }
-                let uuidString = String(account.dropFirst(prefix.count))
-                guard let uuid = UUID(uuidString: uuidString),
-                      !validConnectionIds.contains(uuid) else { continue }
-                deleteDeviceLocal(forKey: account)
-            }
+        let accounts = items.compactMap { $0[kSecAttrAccount as String] as? String }
+        for account in ConnectionSecretKind.orphanedAccounts(accounts, keeping: validConnectionIds) {
+            deleteDeviceLocal(forKey: account, accessGroup: accessGroup)
         }
     }
 
     /// The sweep's own delete. `delete(forKey:)` matches `kSecAttrSynchronizableAny` because an
     /// ordinary delete has to reach the item whichever it is; here that would let a device-local
     /// match take an iCloud-shared item of the same name with it.
-    private func deleteDeviceLocal(forKey key: String) {
+    private static func deleteDeviceLocal(forKey key: String, accessGroup: String?) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -158,7 +160,7 @@ nonisolated final class KeychainSecureStore: SecureStore {
             kSecAttrSynchronizable as String: false,
             kSecUseDataProtectionKeychain as String: true,
         ]
-        SecItemDelete(applyingAccessGroup(query) as CFDictionary)
+        SecItemDelete(applying(accessGroup: accessGroup, to: query) as CFDictionary)
     }
 }
 

@@ -43,7 +43,7 @@ struct ConnectionListView: View {
         Binding(
             get: {
                 guard !presenter.holdsConnectionRestore, let id = selectedConnectionUUID else { return nil }
-                return appState.connections.first { $0.id == id }
+                return coordinatorStore.presentedRecord(for: id, in: appState.connections)
             },
             set: { selectedConnectionIdString = $0?.id.uuidString }
         )
@@ -153,11 +153,12 @@ struct ConnectionListView: View {
                     iCloudAccountAvailable = await appState.syncCoordinator.accountStatus() == .available
                 }
                 .task {
+                    clearUnknownSelection()
                     presenter.beginLaunch(with: appState)
                     deliverPendingIntent()
                 }
         }
-        .fullScreenCover(item: openConnection, onDismiss: presentImportAfterCoverDismissal) { connection in
+        .fullScreenCover(item: openConnection, onDismiss: connectionCoverDidDismiss) { connection in
             ConnectedView(connection: connection)
                 .id(connection.id)
         }
@@ -178,11 +179,18 @@ struct ConnectionListView: View {
         .onChange(of: presenter.holdsConnectionRestore) { _, _ in
             deliverPendingIntent()
         }
+        .onChange(of: presenter.isHeldByEditor) { _, _ in
+            deliverPendingIntent()
+        }
         .onChange(of: lockState.isLocked) { _, _ in
             deliverPendingIntent()
         }
         .onChange(of: appState.loadStatus) { _, _ in
+            clearUnknownSelection()
             deliverPendingIntent()
+        }
+        .onChange(of: appState.connections) { _, _ in
+            clearUnknownSelection()
         }
         .alert(importResultMessage, isPresented: importResultPresented) {
             Button(String(localized: "OK")) { importResultCount = nil }
@@ -653,26 +661,19 @@ struct ConnectionListView: View {
         case .whatsNew(let version):
             WhatsNewSheet(version: version)
         case .addConnection:
-            ConnectionFormView { connection in
-                appState.addConnection(connection)
+            ConnectionFormView { _ in
                 presenter.sheet = nil
             }
         case .editConnection(let connection):
-            ConnectionFormView(editing: connection) { updated in
-                appState.updateConnection(updated)
-                coordinatorStore.invalidate(updated.id)
+            ConnectionFormView(editing: connection) { _ in
                 presenter.sheet = nil
             }
         case .moveConnections(let ids):
             MoveToGroupSheet(connectionIds: ids)
         case .newGroup(let parentId):
-            GroupFormSheet(parentId: parentId) { group in
-                appState.addGroup(group)
-            }
+            GroupFormSheet(parentId: parentId)
         case .editGroup(let group):
-            GroupFormSheet(editing: group) { updated in
-                appState.updateGroup(updated)
-            }
+            GroupFormSheet(editing: group)
         case .tags:
             TagManagementView()
         case .settings:
@@ -843,6 +844,19 @@ struct ConnectionListView: View {
             importAfterCoverDismissal = url
             selectedConnectionIdString = nil
         }
+    }
+
+    private func clearUnknownSelection() {
+        guard appState.loadStatus == .ready,
+              let id = selectedConnectionUUID,
+              coordinatorStore.presentedRecord(for: id, in: appState.connections) == nil else { return }
+        selectedConnectionIdString = nil
+    }
+
+    private func connectionCoverDidDismiss() {
+        presenter.dismissConnectionEditor()
+        coordinatorStore.discardRemovedRecords()
+        presentImportAfterCoverDismissal()
     }
 
     private func presentImportAfterCoverDismissal() {
