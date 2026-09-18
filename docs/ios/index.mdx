@@ -86,7 +86,7 @@ Three things a connection depends on are per device and never sync:
 
 Passwords are a separate opt-in, off by default, at **Settings > iCloud > Sync Passwords**. They ride iCloud Keychain and only new saves are affected, so re-save a password on the Mac to push it across. A private key saved on this device follows the same setting: with **Sync Passwords** on, iCloud Keychain copies the key to your other iPhones and iPads, which use it, and to your Mac, which does not. Pull down on the connection list to sync now; a background refresh runs about every 30 minutes.
 
-A change that syncs in while a connection is open leaves the screen where it is. A change to how it connects, such as a new host, port, username, database, SSH tunnel or SSL mode, reconnects it once no row or form on it has unsaved changes. A connection deleted on another device shows **Connection Deleted** before returning to the list.
+A change that syncs in while a connection is open leaves the screen where it is. A change to how it connects, such as a new host, port, username, database, SSH tunnel or SSL mode, reconnects it once no row or connection form has unsaved changes, in this window or another. Saving a new password, SSH password, key passphrase, private key or certificate for an open connection reconnects it the same way. A connection deleted on another device shows **Connection Deleted** before returning to the list.
 
 <Warning>
 Picking a SQLite file copies it into the app, and edits go to that copy, so the original never changes and the two drift apart. DuckDB writes back to the file you picked.
