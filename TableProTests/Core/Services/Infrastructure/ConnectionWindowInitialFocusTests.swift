@@ -63,6 +63,26 @@ struct ConnectionWindowInitialFocusTests {
         #expect(responder?.isDescendant(of: host.rail) != true)
     }
 
+    /// Leaving the keyboard with the window itself would make every key beep until the next click,
+    /// so it goes where AppKit sends it when a focused view is hidden: the next key view.
+    @Test("Collapsing the connections strip hands the keyboard to the next key view")
+    func collapsingStripHandsTheKeyboardOn() throws {
+        let host = SidebarHost()
+        defer { host.tearDown() }
+        let field = NSTextField(frame: NSRect(x: 400, y: 200, width: 120, height: 22))
+        host.sidebar.view.addSubview(field)
+
+        host.sidebar.setRailVisible(true, animated: false)
+        let list = try #require(host.rail.firstKeyViewDescendant)
+        #expect(host.window.makeFirstResponder(list))
+
+        host.sidebar.setRailVisible(false, animated: true)
+
+        #expect(host.window.firstResponder !== host.window)
+        let responder = host.window.firstResponder as? NSView
+        #expect(responder?.isDescendant(of: host.rail) == false)
+    }
+
     /// The strip on screen at first show is the case hiding it cannot reach: two restored
     /// connections, or a connection opened while another is already open.
     @Test("A connection window leaves its first focus to the tab content, with the strip on screen")
@@ -118,6 +138,7 @@ struct ConnectionWindowInitialFocusTests {
                 defer: false
             )
             window.isReleasedWhenClosed = false
+            window.keepsKeyViewLoopCurrent()
             window.contentViewController = sidebar
             window.orderFront(nil)
         }

@@ -89,8 +89,8 @@ internal final class NavigationSidebarViewController: NSViewController {
     /// accessibility tree.
     ///
     /// It is shown before it grows and hidden once it has shrunk, so the animation stays visible.
-    /// The keyboard is let go of on the way down, because a list that is about to vanish must not
-    /// keep answering keys for the whole of the animation.
+    /// The keyboard moves on as the collapse starts, because a list that is about to vanish must
+    /// not keep answering keys for the whole of the animation.
     internal func setRailVisible(_ visible: Bool, animated: Bool, alongside: (() -> Void)? = nil) {
         guard isRailVisible != visible else { return }
         isRailVisible = visible
@@ -98,7 +98,7 @@ internal final class NavigationSidebarViewController: NSViewController {
         if visible {
             railController.view.isHidden = false
         } else {
-            resignFirstResponderInsideRail()
+            handKeyboardOnFromRail()
         }
         applyRailWidth(animated: animated, alongside: alongside)
     }
@@ -138,11 +138,17 @@ internal final class NavigationSidebarViewController: NSViewController {
         railController.view.isHidden = true
     }
 
-    private func resignFirstResponderInsideRail() {
+    /// Moves the keyboard to the next key view, which is what AppKit does itself when a focused
+    /// view is hidden, only at the start of the collapse rather than the end. Leaving it with the
+    /// window instead would make every key beep until the next click. The window takes it only
+    /// when nothing else in the loop can.
+    private func handKeyboardOnFromRail() {
         guard let window = view.window,
               let responder = window.firstResponder as? NSView,
               responder.isDescendant(of: railController.view)
         else { return }
+        window.selectKeyView(following: responder)
+        guard let next = window.firstResponder as? NSView, next.isDescendant(of: railController.view) else { return }
         window.makeFirstResponder(nil)
     }
 }
