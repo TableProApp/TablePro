@@ -87,7 +87,32 @@
       }
     },
     "%1$@ via %2$@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@(%2$@ 경유)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ qua %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（经由 %2$@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（經由 %2$@）"
+          }
+        }
+      }
     },
     "%@" : {
       "localizations" : {
@@ -152,7 +177,32 @@
       }
     },
     "%@ Copy" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 복사본"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ bản sao"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 副本"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 副本"
+          }
+        }
+      }
     },
     "%@ connections do not support adding rows from Shortcuts." : {
       "localizations" : {
@@ -836,10 +886,60 @@
       }
     },
     "A hashed identifier for this device" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기의 해시된 식별자"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mã định danh đã băm của thiết bị này"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此设备经过哈希处理的标识符"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此裝置的雜湊識別碼"
+          }
+        }
+      }
     },
     "A running query shows its time and row count in a Live Activity." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행 중인 쿼리의 경과 시간과 행 수가 실시간 현황에 표시됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn đang chạy hiển thị thời gian và số dòng trong Hoạt động trực tiếp."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在运行的查询会在实时活动中显示用时和行数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行中的查詢會在即時動態中顯示經過時間與列數。"
+          }
+        }
+      }
     },
     "A sync conflict was detected and needs to be resolved." : {
       "extractionState" : "stale",
@@ -927,10 +1027,60 @@
       }
     },
     "Accepted" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "수락"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chấp nhận"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接受"
+          }
+        }
+      }
     },
     "Acknowledgements" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "감사의 글"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ghi nhận"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "致谢"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "致謝"
+          }
+        }
+      }
     },
     "Active DB" : {
       "localizations" : {
@@ -1135,7 +1285,32 @@
       }
     },
     "Add Tag" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "태그 추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm nhãn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加标签"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增標籤"
+          }
+        }
+      }
     },
     "Add a connection in TablePro" : {
       "localizations" : {
@@ -1166,7 +1341,32 @@
       }
     },
     "Add a connection to your database, or explore TablePro with the sample database." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스 연결을 추가하거나 샘플 데이터베이스로 TablePro를 둘러보십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm kết nối tới cơ sở dữ liệu của bạn, hoặc khám phá TablePro với cơ sở dữ liệu mẫu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加数据库连接，或通过示例数据库体验 TablePro。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增資料庫連線，或透過範例資料庫探索 TablePro。"
+          }
+        }
+      }
     },
     "Add a database connection to get started." : {
       "extractionState" : "stale",
@@ -1338,7 +1538,32 @@
       }
     },
     "Add to Favorites" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기에 추가"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm vào Yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加到收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入我的最愛"
+          }
+        }
+      }
     },
     "Added %lld rows to %@." : {
       "localizations" : {
@@ -1910,7 +2135,32 @@
       }
     },
     "Authenticate to stop locking TablePro." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 잠금을 끄려면 인증하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xác thực để ngừng khóa TablePro."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "进行认证以停止锁定 TablePro。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "進行驗證以停止鎖定 TablePro。"
+          }
+        }
+      }
     },
     "Authentication Failed" : {
       "localizations" : {
@@ -2025,7 +2275,32 @@
       }
     },
     "Browse and Edit Data" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터 탐색 및 편집"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duyệt và sửa dữ liệu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浏览和编辑数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "瀏覽與編輯資料"
+          }
+        }
+      }
     },
     "Build" : {
       "extractionState" : "stale",
@@ -2478,10 +2753,60 @@
       }
     },
     "Checking iCloud" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 확인 중"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang kiểm tra iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查 iCloud"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在檢查 iCloud"
+          }
+        }
+      }
     },
     "Chinook (Sample)" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chinook(샘플)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chinook (Mẫu)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chinook（示例）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chinook（範例）"
+          }
+        }
+      }
     },
     "Choose File" : {
       "localizations" : {
@@ -2935,7 +3260,32 @@
       }
     },
     "Computed by the database" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스에서 계산됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do cơ sở dữ liệu tính toán"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由数据库计算"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由資料庫計算"
+          }
+        }
+      }
     },
     "Configuration Error" : {
       "localizations" : {
@@ -3051,7 +3401,32 @@
       }
     },
     "Connect Securely" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안전하게 연결"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối an toàn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "安全連線"
+          }
+        }
+      }
     },
     "Connect Using" : {
       "localizations" : {
@@ -3194,7 +3569,32 @@
       }
     },
     "Connection Cancelled" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 취소됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã hủy kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接已取消"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線已取消"
+          }
+        }
+      }
     },
     "Connection Deleted" : {
       "localizations" : {
@@ -3253,7 +3653,32 @@
       }
     },
     "Connection failed while waiting on the socket." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "소켓을 기다리는 동안 연결에 실패했습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối thất bại khi đang chờ trên socket."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 socket 时连接失败。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待 socket 時連線失敗。"
+          }
+        }
+      }
     },
     "Connection failed: %@" : {
       "extractionState" : "stale",
@@ -3341,7 +3766,32 @@
       }
     },
     "Connection timed out." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 시간이 초과되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối đã hết thời gian chờ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接超时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線逾時。"
+          }
+        }
+      }
     },
     "Connections" : {
       "localizations" : {
@@ -3372,10 +3822,60 @@
       }
     },
     "Connections Unavailable" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 사용할 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối không khả dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線無法使用"
+          }
+        }
+      }
     },
     "Connections from your other devices appear here." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 기기의 연결이 여기에 표시됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối từ các thiết bị khác của bạn sẽ hiển thị ở đây."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你其他设备上的连接会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來自你其他裝置的連線會顯示在這裡。"
+          }
+        }
+      }
     },
     "Connections in this group will be moved to ungrouped." : {
       "localizations" : {
@@ -3406,10 +3906,60 @@
       }
     },
     "Connections you add here or in TablePro on your Mac appear on all your devices." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기 또는 Mac용 TablePro에서 추가한 연결이 모든 기기에 표시됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối bạn thêm ở đây hoặc trong TablePro trên máy Mac sẽ xuất hiện trên mọi thiết bị của bạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在此处或 Mac 上的 TablePro 中添加的连接，会显示在你的所有设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你在這裡或 Mac 版 TablePro 中新增的連線，會顯示在你所有的裝置上。"
+          }
+        }
+      }
     },
     "Connections, groups, and tags from TablePro on your Mac appear here over iCloud." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac용 TablePro의 연결, 그룹 및 태그가 iCloud를 통해 여기에 표시됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối, nhóm và nhãn từ TablePro trên máy Mac sẽ xuất hiện ở đây qua iCloud."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac 上 TablePro 中的连接、分组和标签会通过 iCloud 显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac 版 TablePro 中的連線、群組與標籤會透過 iCloud 顯示在這裡。"
+          }
+        }
+      }
     },
     "Continue" : {
       "localizations" : {
@@ -3721,7 +4271,32 @@
       }
     },
     "Could not install the sample database: %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스를 설치할 수 없습니다: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể cài đặt cơ sở dữ liệu mẫu: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法安装示例数据库：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法安裝範例資料庫：%@"
+          }
+        }
+      }
     },
     "Could not read the columns of %@." : {
       "localizations" : {
@@ -3752,7 +4327,32 @@
       }
     },
     "Could not start a connection." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 시작할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể bắt đầu kết nối."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法发起连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法啟動連線。"
+          }
+        }
+      }
     },
     "Create" : {
       "localizations" : {
@@ -3925,7 +4525,32 @@
       }
     },
     "DEFAULT" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DEFAULT"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MẶC ĐỊNH"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "默认"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "預設"
+          }
+        }
+      }
     },
     "Database" : {
       "localizations" : {
@@ -4349,7 +4974,32 @@
       }
     },
     "Delete %d Connections" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 %d개 삭제"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa %d kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除 %d 个连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除 %d 個連線"
+          }
+        }
+      }
     },
     "Delete Connection" : {
       "localizations" : {
@@ -4605,7 +5255,32 @@
       }
     },
     "Don't Share" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 안 함"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không chia sẻ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不共享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不要分享"
+          }
+        }
+      }
     },
     "Done" : {
       "localizations" : {
@@ -4832,7 +5507,32 @@
       }
     },
     "Empty String" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "빈 문자열"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chuỗi rỗng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空字符串"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空字串"
+          }
+        }
+      }
     },
     "Enabled" : {
       "localizations" : {
@@ -4863,7 +5563,32 @@
       }
     },
     "Encoding" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인코딩"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bảng mã"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編碼"
+          }
+        }
+      }
     },
     "Enter a name for the new SQLite database." : {
       "extractionState" : "stale",
@@ -5120,7 +5845,32 @@
       }
     },
     "Every change you made to the sample database is replaced with the original data." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스에서 변경한 모든 내용이 원본 데이터로 대체됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mọi thay đổi bạn đã thực hiện trên cơ sở dữ liệu mẫu sẽ được thay bằng dữ liệu gốc."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你对示例数据库所做的所有更改都将被原始数据替换。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你對範例資料庫所做的每項變更都會被原始資料取代。"
+          }
+        }
+      }
     },
     "Execute" : {
       "localizations" : {
@@ -5235,7 +5985,32 @@
       }
     },
     "Explore a music store database without connecting to a server." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에 연결하지 않고도 음악 상점 데이터베이스를 둘러볼 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khám phá cơ sở dữ liệu của một cửa hàng âm nhạc mà không cần kết nối tới máy chủ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无需连接服务器，即可探索一个音乐商店数据库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不必連線到伺服器，就能探索一個音樂商店資料庫。"
+          }
+        }
+      }
     },
     "Export" : {
       "localizations" : {
@@ -5637,10 +6412,60 @@
       }
     },
     "Favorite" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的最愛"
+          }
+        }
+      }
     },
     "Favorites" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我的最愛"
+          }
+        }
+      }
     },
     "File" : {
       "localizations" : {
@@ -5671,10 +6496,60 @@
       }
     },
     "Fill in Password, and Username too if the server uses Redis 6 ACL users." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호 필드를 입력하고, 서버에서 Redis 6 ACL 사용자를 사용하는 경우 사용자 이름 필드도 입력하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy điền Mật khẩu, và cả Tên đăng nhập nếu máy chủ dùng người dùng ACL của Redis 6."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请填写“密码”；如果服务器使用 Redis 6 ACL 用户，还需填写“用户名”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請填寫「密碼」；如果伺服器使用 Redis 6 ACL 使用者，也請填寫「使用者名稱」。"
+          }
+        }
+      }
     },
     "Fill in at least one column. This database cannot insert a row made only of defaults." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "열을 하나 이상 입력하십시오. 이 데이터베이스는 기본값만으로 이루어진 행을 삽입할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hãy điền ít nhất một cột. Cơ sở dữ liệu này không thể chèn một dòng chỉ gồm giá trị mặc định."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请至少填写一列。此数据库无法插入仅由默认值组成的行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請至少填寫一個欄位。此資料庫無法插入只含預設值的列。"
+          }
+        }
+      }
     },
     "Filter" : {
       "localizations" : {
@@ -6127,7 +7002,32 @@
       }
     },
     "Help decide what to improve next by sending one small report a day." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하루에 한 번 간단한 보고서를 보내 다음에 개선할 부분을 정하는 데 도움을 주십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giúp chọn điều cần cải thiện tiếp theo bằng cách gửi một báo cáo nhỏ mỗi ngày."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天发送一份简短报告，帮助决定接下来改进什么。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天傳送一份簡短報告，協助決定接下來要改進哪些地方。"
+          }
+        }
+      }
     },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
       "extractionState" : "stale",
@@ -6158,8 +7058,62 @@
         }
       }
     },
+    "Hide Query" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Ẩn truy vấn",
+            "state" : "translated"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "쿼리 가리기",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "隐藏查询",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "隱藏查詢",
+            "state" : "translated"
+          }
+        }
+      }
+    },
     "Hide Query in Live Activities" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실시간 현황에서 쿼리 가리기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ẩn truy vấn trong Hoạt động trực tiếp"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在实时活动中隐藏查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在即時動態中隱藏查詢"
+          }
+        }
+      }
     },
     "Hide query in Live Activities" : {
       "extractionState" : "manual",
@@ -6219,7 +7173,32 @@
       }
     },
     "Homepage" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "홈페이지"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trang chủ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主页"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首頁"
+          }
+        }
+      }
     },
     "Host" : {
       "localizations" : {
@@ -6476,7 +7455,32 @@
       }
     },
     "In Memory" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인메모리"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trong bộ nhớ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内存中"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記憶體內"
+          }
+        }
+      }
     },
     "In-Memory Database" : {
       "localizations" : {
@@ -6732,16 +7736,116 @@
       }
     },
     "Interrupted" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "중단됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bị gián đoạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已中断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已中斷"
+          }
+        }
+      }
     },
     "Interrupted before the query finished." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리가 완료되기 전에 중단되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bị gián đoạn trước khi truy vấn hoàn tất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询完成前已中断。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢完成前已中斷。"
+          }
+        }
+      }
     },
     "It never contains a hostname, username, password, query, or any data from your databases. You can change this in Settings." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트 이름, 사용자 이름, 암호, 쿼리 또는 데이터베이스의 데이터는 절대 포함되지 않습니다. 설정에서 변경할 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Báo cáo không bao giờ chứa tên máy chủ, tên đăng nhập, mật khẩu, truy vấn hay bất kỳ dữ liệu nào từ cơ sở dữ liệu của bạn. Bạn có thể thay đổi điều này trong Cài đặt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告绝不包含主机名、用户名、密码、查询或数据库中的任何数据。你可以在设置中更改此选项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "報告絕不包含主機名稱、使用者名稱、密碼、查詢，或你資料庫中的任何資料。你可以在「設定」中更改此選項。"
+          }
+        }
+      }
     },
     "Its subgroups are deleted too. Their connections move to Ungrouped." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하위 그룹도 함께 삭제됩니다. 그 안의 연결은 그룹 없음으로 이동됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các nhóm con của nhóm này cũng bị xóa. Kết nối trong các nhóm con được chuyển sang Chưa phân nhóm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其子分组也会被删除，其中的连接将移至“未分组”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其子群組也會一併刪除。其中的連線將移至「未分組」。"
+          }
+        }
+      }
     },
     "Jump host key not found: %@" : {
       "extractionState" : "stale",
@@ -6773,10 +7877,60 @@
       }
     },
     "Keep Connections at the Top" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 맨 위에 고정"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ kết nối ở đầu danh sách"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将连接置顶"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將連線保留在最上方"
+          }
+        }
+      }
     },
     "Keep your connections, groups, and tags the same on your iPhone, iPad, and Mac." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone, iPad 및 Mac에서 연결, 그룹 및 태그를 동일하게 유지합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giữ kết nối, nhóm và nhãn giống nhau trên iPhone, iPad và máy Mac của bạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让你的 iPhone、iPad 和 Mac 上的连接、分组和标签保持一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓你的連線、群組與標籤在 iPhone、iPad 與 Mac 上保持一致。"
+          }
+        }
+      }
     },
     "Kerberos authentication failed: %@" : {
       "extractionState" : "stale",
@@ -6836,7 +7990,32 @@
       }
     },
     "Last Connected" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마지막 연결"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lần kết nối gần nhất"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次连接时间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上次連線時間"
+          }
+        }
+      }
     },
     "Last Sync" : {
       "localizations" : {
@@ -6867,7 +8046,60 @@
       }
     },
     "License" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giấy phép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "许可证"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授權"
+          }
+        }
+      }
+    },
+    "Live Activities" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "value" : "Hoạt động trực tiếp",
+            "state" : "translated"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "value" : "실시간 현황",
+            "state" : "translated"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "value" : "实时活动",
+            "state" : "translated"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "value" : "即時動態",
+            "state" : "translated"
+          }
+        }
+      }
     },
     "Load Failed" : {
       "localizations" : {
@@ -7267,13 +8499,88 @@
       }
     },
     "Manual" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "수동"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thủ công"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動"
+          }
+        }
+      }
     },
     "Many Databases, One App" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하나의 앱, 다양한 데이터베이스"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhiều cơ sở dữ liệu, một ứng dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个应用，多种数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多種資料庫，一個 App"
+          }
+        }
+      }
     },
     "Match All Tags" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 태그 일치"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khớp tất cả nhãn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "匹配所有标签"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "符合所有標籤"
+          }
+        }
+      }
     },
     "Match Case" : {
       "localizations" : {
@@ -7388,22 +8695,172 @@
       }
     },
     "More Actions" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추가 동작"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thao tác khác"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多操作"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多動作"
+          }
+        }
+      }
     },
     "Move" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이동"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動"
+          }
+        }
+      }
     },
     "Move %d Connections" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 %d개 이동"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển %d kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动 %d 个连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動 %d 個連線"
+          }
+        }
+      }
     },
     "Move Connection" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 이동"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動連線"
+          }
+        }
+      }
     },
     "Move to Group" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹으로 이동"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển vào nhóm"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动到分组"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移動至群組"
+          }
+        }
+      }
     },
     "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB, and more." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB 등."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL, PostgreSQL, SQL Server, Oracle, Redis, SQLite, DuckDB và nhiều loại khác."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL、PostgreSQL、SQL Server、Oracle、Redis、SQLite、DuckDB 等。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL、PostgreSQL、SQL Server、Oracle、Redis、SQLite、DuckDB 等等。"
+          }
+        }
+      }
     },
     "NULL" : {
       "localizations" : {
@@ -7462,7 +8919,32 @@
       }
     },
     "Network Encryption" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "네트워크 암호화"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mã hóa mạng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网络加密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "網路加密"
+          }
+        }
+      }
     },
     "Network is unavailable. Changes will sync when connectivity is restored." : {
       "extractionState" : "stale",
@@ -7634,7 +9116,32 @@
       }
     },
     "New Subgroup" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 하위 그룹"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm con mới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子分组"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增子群組"
+          }
+        }
+      }
     },
     "New Tag" : {
       "localizations" : {
@@ -7834,7 +9341,32 @@
       }
     },
     "No License Information" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이선스 정보 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có thông tin giấy phép"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有许可证信息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有授權資訊"
+          }
+        }
+      }
     },
     "No Matching Connections" : {
       "extractionState" : "stale",
@@ -8231,7 +9763,32 @@
       }
     },
     "Not Now" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나중에"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Để sau"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以后再说"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "稍後再說"
+          }
+        }
+      }
     },
     "Not connected to SQL Server" : {
       "extractionState" : "stale",
@@ -8488,10 +10045,60 @@
       }
     },
     "One report a day: hashed device ID, versions, language, database types, first-use dates. Never hostnames, credentials, queries, or data." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "하루 한 번 보고서 전송: 해시된 기기 ID, 버전, 언어, 데이터베이스 유형, 최초 사용 날짜. 호스트 이름, 자격 증명, 쿼리 또는 데이터는 절대 포함되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một báo cáo mỗi ngày: ID thiết bị đã băm, phiên bản, ngôn ngữ, loại cơ sở dữ liệu, ngày sử dụng đầu tiên. Không bao giờ có tên máy chủ, thông tin đăng nhập, truy vấn hay dữ liệu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一份报告：经过哈希处理的设备 ID、版本、语言、数据库类型、首次使用日期。绝不包含主机名、凭证、查询或数据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每天一份報告：雜湊後的裝置 ID、版本、語言、資料庫類型、首次使用日期。絕不包含主機名稱、憑證、查詢或資料。"
+          }
+        }
+      }
     },
     "Open" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "열기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟"
+          }
+        }
+      }
     },
     "Open Connection" : {
       "localizations" : {
@@ -8550,7 +10157,32 @@
       }
     },
     "Open Sample Database" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스 열기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở cơ sở dữ liệu mẫu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开示例数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟範例資料庫"
+          }
+        }
+      }
     },
     "Open Settings > Privacy & Security > Local Network and turn TablePro on, then try again." : {
       "localizations" : {
@@ -8581,10 +10213,60 @@
       }
     },
     "Open a connection or add rows from Shortcuts, Siri, and the Home Screen." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단축어, Siri 및 홈 화면에서 연결을 열거나 행을 추가할 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở kết nối hoặc thêm dòng từ Phím tắt, Siri và Màn hình chính."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过“快捷指令”、Siri 和主屏幕打开连接或添加行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過「捷徑」、Siri 和主畫面開啟連線或新增列。"
+          }
+        }
+      }
     },
     "Open a table, filter its rows, and change values in place." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "테이블을 열고, 행을 필터링하고, 그 자리에서 바로 값을 변경할 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở bảng, lọc các dòng và sửa giá trị ngay tại chỗ."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开表、筛选行，并直接修改值。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟資料表、篩選其中的列，並直接修改值。"
+          }
+        }
+      }
     },
     "Opens a database connection in TablePro" : {
       "localizations" : {
@@ -8811,7 +10493,32 @@
       }
     },
     "PING failed: %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PING 실패: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PING thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PING 失败：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PING 失敗：%@"
+          }
+        }
+      }
     },
     "Page number" : {
       "localizations" : {
@@ -8842,7 +10549,32 @@
       }
     },
     "Parent Group" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "상위 그룹"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm cha"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父分组"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上層群組"
+          }
+        }
+      }
     },
     "Passphrase" : {
       "localizations" : {
@@ -8985,10 +10717,60 @@
       }
     },
     "Passwords stay in your Keychain. Connect through an SSH tunnel or over SSL." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 키체인에 보관됩니다. SSH 터널 또는 SSL을 통해 연결할 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu được giữ trong Chuỗi khóa. Kết nối qua đường hầm SSH hoặc qua SSL."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码保存在你的钥匙串中。可通过 SSH 隧道或 SSL 连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼保存在你的鑰匙圈中。可透過 SSH 隧道或 SSL 連線。"
+          }
+        }
+      }
     },
     "Passwords stay on this device unless you turn on Sync Passwords in Settings. You can change this at any time in Settings." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정에서 암호 동기화를 켜지 않는 한 암호는 이 기기에만 저장됩니다. 설정에서 언제든지 변경할 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu chỉ ở trên thiết bị này trừ khi bạn bật Đồng bộ mật khẩu trong Cài đặt. Bạn có thể thay đổi điều này bất cứ lúc nào trong Cài đặt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非你在设置中开启“同步密码”，否则密码只保留在此设备上。你可以随时在设置中更改此选项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除非你在「設定」中開啟「同步密碼」，否則密碼只會保留在此裝置上。你隨時可以在「設定」中更改此選項。"
+          }
+        }
+      }
     },
     "Passwords sync through iCloud Keychain, which is end-to-end encrypted. Only affects new saves. Re-save a password to update its sync." : {
       "extractionState" : "stale",
@@ -9020,7 +10802,32 @@
       }
     },
     "Passwords sync through iCloud Keychain, which is end-to-end encrypted. Turning it on affects new saves only, so re-save a password to sync it." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호는 종단 간 암호화된 iCloud 키체인을 통해 동기화됩니다. 켜면 새로 저장하는 암호에만 적용되므로, 기존 암호를 동기화하려면 다시 저장하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mật khẩu được đồng bộ qua Chuỗi khóa iCloud, vốn được mã hóa đầu cuối. Việc bật chỉ ảnh hưởng đến các lần lưu mới, vì vậy hãy lưu lại mật khẩu để đồng bộ nó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码通过端到端加密的 iCloud 钥匙串同步。开启后仅影响新的保存，因此请重新保存密码以同步它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼透過端對端加密的 iCloud 鑰匙圈同步。開啟後只會影響新的儲存，因此請重新儲存密碼以同步它。"
+          }
+        }
+      }
     },
     "Paste" : {
       "localizations" : {
@@ -9304,7 +11111,32 @@
       }
     },
     "Privacy Policy" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "개인정보 처리방침"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chính sách quyền riêng tư"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私政策"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱私權政策"
+          }
+        }
+      }
     },
     "Private Key" : {
       "localizations" : {
@@ -9419,7 +11251,32 @@
       }
     },
     "Queries on the Lock Screen" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잠금 화면에서 쿼리 확인"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Truy vấn trên Màn hình khóa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "锁定屏幕上的查询"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鎖定畫面上的查詢"
+          }
+        }
+      }
     },
     "Query" : {
       "localizations" : {
@@ -9707,7 +11564,32 @@
       }
     },
     "Recent" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近"
+          }
+        }
+      }
     },
     "Reconnecting..." : {
       "localizations" : {
@@ -9822,7 +11704,32 @@
       }
     },
     "Redis connection failed" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 연결 실패"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối Redis thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 连接失败"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redis 連線失敗"
+          }
+        }
+      }
     },
     "Refresh from iCloud" : {
       "extractionState" : "stale",
@@ -9883,7 +11790,32 @@
       }
     },
     "Rejected" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "거부"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Từ chối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒絕"
+          }
+        }
+      }
     },
     "Reload" : {
       "localizations" : {
@@ -9942,10 +11874,60 @@
       }
     },
     "Remove from Favorites" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기에서 제거"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gỡ khỏi Yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从收藏中移除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從我的最愛中移除"
+          }
+        }
+      }
     },
     "Remove from Recent" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최근 항목에서 제거"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa khỏi mục Gần đây"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从“最近”中移除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "從「最近」中移除"
+          }
+        }
+      }
     },
     "Replace" : {
       "localizations" : {
@@ -9976,7 +11958,32 @@
       }
     },
     "Requested" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "요청"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đề nghị"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要求"
+          }
+        }
+      }
     },
     "Require Face ID" : {
       "localizations" : {
@@ -10091,13 +12098,88 @@
       }
     },
     "Reset" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "재설정"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đặt lại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重設"
+          }
+        }
+      }
     },
     "Reset Database" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "데이터베이스 재설정"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đặt lại cơ sở dữ liệu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重置数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重設資料庫"
+          }
+        }
+      }
     },
     "Reset Sample Database?" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스를 재설정하시겠습니까?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đặt lại cơ sở dữ liệu mẫu?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要重置示例数据库吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要重設範例資料庫嗎？"
+          }
+        }
+      }
     },
     "Results Cleared" : {
       "localizations" : {
@@ -10437,10 +12519,60 @@
       }
     },
     "Run queries and find the ones you ran before in History." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리를 실행하고, 이전에 실행한 쿼리를 기록에서 찾을 수 있습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạy truy vấn và tìm lại những truy vấn đã chạy trong Lịch sử."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行查询，并在“历史”中找到之前运行过的查询。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行查詢，並在「歷程記錄」中找到你之前執行過的查詢。"
+          }
+        }
+      }
     },
     "Running" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행 중"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đang chạy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行中"
+          }
+        }
+      }
     },
     "Running query" : {
       "extractionState" : "manual",
@@ -10921,10 +13053,60 @@
       }
     },
     "Sample Database" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu mẫu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "示例数据库"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範例資料庫"
+          }
+        }
+      }
     },
     "Sample Database Unavailable" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "샘플 데이터베이스를 사용할 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cơ sở dữ liệu mẫu không khả dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "示例数据库不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範例資料庫無法使用"
+          }
+        }
+      }
     },
     "Save" : {
       "localizations" : {
@@ -10983,7 +13165,32 @@
       }
     },
     "Saved credentials for these connections will be permanently removed." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 연결들에 저장된 자격 증명이 영구적으로 제거됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thông tin đăng nhập đã lưu của các kết nối này sẽ bị xóa vĩnh viễn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些连接已保存的凭据将被永久移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些連線已儲存的憑證將被永久移除。"
+          }
+        }
+      }
     },
     "Schema" : {
       "localizations" : {
@@ -11042,7 +13249,32 @@
       }
     },
     "Search Connections" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 검색"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tìm kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋連線"
+          }
+        }
+      }
     },
     "Search all columns" : {
       "localizations" : {
@@ -11467,10 +13699,60 @@
       }
     },
     "Share Usage Data" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용 데이터 공유"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chia sẻ dữ liệu sử dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享使用数据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享使用資料"
+          }
+        }
+      }
     },
     "Share Usage Data?" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용 데이터를 공유하시겠습니까?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chia sẻ dữ liệu sử dụng?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要共享使用数据吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要分享使用資料嗎？"
+          }
+        }
+      }
     },
     "Share anonymous usage data" : {
       "extractionState" : "stale",
@@ -11502,7 +13784,32 @@
       }
     },
     "Shortcuts and Widgets" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단축어 및 위젯"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phím tắt và tiện ích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快捷指令和小组件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "捷徑與小工具"
+          }
+        }
+      }
     },
     "Showing the first %d rows. Add LIMIT to fetch more." : {
       "localizations" : {
@@ -11589,7 +13896,32 @@
       }
     },
     "Sign in to iCloud in the Settings app to sync your connections." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 동기화하려면 설정 앱에서 iCloud에 로그인하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đăng nhập iCloud trong ứng dụng Cài đặt để đồng bộ kết nối của bạn."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在“设置”App 中登录 iCloud 以同步你的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「設定」App 中登入 iCloud 以同步你的連線。"
+          }
+        }
+      }
     },
     "Skip" : {
       "extractionState" : "stale",
@@ -11789,7 +14121,32 @@
       }
     },
     "Stopped" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "중지됨"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã dừng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
+          }
+        }
+      }
     },
     "Stopped at %d rows to stay within memory limits. Add LIMIT to fetch fewer." : {
       "localizations" : {
@@ -11820,7 +14177,32 @@
       }
     },
     "Stopped before the query finished." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "쿼리가 완료되기 전에 중지되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã dừng trước khi truy vấn hoàn tất."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查询完成前已停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查詢完成前已停止。"
+          }
+        }
+      }
     },
     "Stopped. Showing %d rows." : {
       "localizations" : {
@@ -11851,7 +14233,32 @@
       }
     },
     "Swipe right on a connection to add it to Favorites." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 오른쪽으로 쓸어넘겨 즐겨찾기에 추가하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vuốt sang phải trên một kết nối để thêm vào Yêu thích."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在连接上向右轻扫，即可将其添加到收藏。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在連線上向右滑動，即可將其加入我的最愛。"
+          }
+        }
+      }
     },
     "Switching..." : {
       "extractionState" : "stale",
@@ -12141,7 +14548,32 @@
       }
     },
     "Syncs with Your Mac" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac과 동기화"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đồng bộ với máy Mac của bạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你的 Mac 同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你的 Mac 同步"
+          }
+        }
+      }
     },
     "TLS handshake failed: %@" : {
       "extractionState" : "stale",
@@ -12286,16 +14718,116 @@
       }
     },
     "TablePro Is Locked" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 잠겨 있습니다"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro đã khóa"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已锁定"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 已鎖定"
+          }
+        }
+      }
     },
     "TablePro cannot receive the output of COPY TO STDOUT, so it was discarded. Run a SELECT instead." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 COPY TO STDOUT의 출력을 받을 수 없으므로 출력이 삭제되었습니다. 대신 SELECT를 실행하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không thể nhận đầu ra của COPY TO STDOUT nên đầu ra đã bị bỏ qua. Hãy chạy SELECT thay thế."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法接收 COPY TO STDOUT 的输出，因此输出已被丢弃。请改为运行 SELECT。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法接收 COPY TO STDOUT 的輸出，因此已將其捨棄。請改為執行 SELECT。"
+          }
+        }
+      }
     },
     "TablePro cannot run a replication COPY." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 복제 COPY를 실행할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không thể chạy lệnh COPY dùng cho replication."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法运行用于复制的 COPY。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法執行複寫用的 COPY。"
+          }
+        }
+      }
     },
     "TablePro cannot send data to COPY FROM STDIN, so no rows were sent. Insert the rows with INSERT instead." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro는 COPY FROM STDIN으로 데이터를 보낼 수 없으므로 행을 보내지 않았습니다. 대신 INSERT로 행을 삽입하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không thể gửi dữ liệu tới COPY FROM STDIN nên không có dòng nào được gửi. Hãy chèn các dòng bằng INSERT thay thế."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法向 COPY FROM STDIN 发送数据，因此没有发送任何行。请改用 INSERT 插入这些行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法傳送資料給 COPY FROM STDIN，因此未傳送任何列。請改用 INSERT 插入這些列。"
+          }
+        }
+      }
     },
     "TablePro could not read that file." : {
       "localizations" : {
@@ -12326,7 +14858,32 @@
       }
     },
     "TablePro could not read your saved connections. Nothing on this device has been changed." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro가 저장된 연결을 읽을 수 없습니다. 이 기기에서 변경된 내용은 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro không đọc được các kết nối đã lưu. Không có gì trên thiết bị này bị thay đổi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 无法读取你已保存的连接。此设备上的任何内容都未被更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 無法讀取你已儲存的連線。此裝置上的任何內容都沒有變更。"
+          }
+        }
+      }
     },
     "TablePro doesn't support “%@” connections" : {
       "extractionState" : "manual",
@@ -12534,7 +15091,32 @@
       }
     },
     "Tap Retry to try again." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도하려면 ‘재시도’를 탭하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhấn Thử lại để thử lần nữa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点“重试”以再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點按「重試」以再試一次。"
+          }
+        }
+      }
     },
     "Test Connection" : {
       "localizations" : {
@@ -12960,7 +15542,32 @@
       }
     },
     "The Password field is empty. Fill it in, or clear Username to sign in as the default user." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "암호 필드가 비어 있습니다. 암호를 입력하거나, 기본 사용자로 로그인하려면 사용자 이름 필드를 비우십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trường Mật khẩu đang trống. Hãy điền vào, hoặc xóa trống Tên đăng nhập để đăng nhập bằng người dùng mặc định."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“密码”字段为空。请填写密码，或清空“用户名”以默认用户身份登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「密碼」欄位是空的。請填寫它，或清空「使用者名稱」以預設使用者身分登入。"
+          }
+        }
+      }
     },
     "The SSH server may be unreachable or running a different protocol." : {
       "localizations" : {
@@ -13019,7 +15626,32 @@
       }
     },
     "The app and iOS versions, and your language" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱 및 iOS 버전, 사용 언어"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên bản ứng dụng và iOS, cùng ngôn ngữ của bạn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用和 iOS 的版本，以及你的语言"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 與 iOS 版本，以及你的語言"
+          }
+        }
+      }
     },
     "The certificate could not be saved to this device's keychain." : {
       "localizations" : {
@@ -13134,7 +15766,32 @@
       }
     },
     "The connection attempt was cancelled." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 시도가 취소되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lần thử kết nối đã bị hủy."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接尝试已取消。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線嘗試已取消。"
+          }
+        }
+      }
     },
     "The data could not be read: %@" : {
       "localizations" : {
@@ -13312,10 +15969,60 @@
       }
     },
     "The license text is missing from this build." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 빌드에는 라이선스 본문이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bản dựng này thiếu nội dung giấy phép."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本缺少许可证文本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此建置版本缺少授權文字。"
+          }
+        }
+      }
     },
     "The list of open source libraries is missing from this build." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 빌드에는 오픈 소스 라이브러리 목록이 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bản dựng này thiếu danh sách thư viện mã nguồn mở."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此版本缺少开源库清单。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此建置版本缺少開放原始碼程式庫清單。"
+          }
+        }
+      }
     },
     "The listener does not know the requested SID" : {
       "extractionState" : "stale",
@@ -13575,10 +16282,60 @@
       }
     },
     "The report contains:" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보고서에 포함되는 내용:"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Báo cáo gồm:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告包含："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "報告包含："
+          }
+        }
+      }
     },
     "The sample database is missing from the app." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱에 샘플 데이터베이스가 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ứng dụng thiếu cơ sở dữ liệu mẫu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用中缺少示例数据库。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App 中缺少範例資料庫。"
+          }
+        }
+      }
     },
     "The server is not responding. Check the host and port." : {
       "localizations" : {
@@ -13892,7 +16649,32 @@
       }
     },
     "This column is generated, so it is never written." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 열은 생성 열이므로 값이 기록되지 않습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đây là cột tự sinh nên không bao giờ được ghi giá trị."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此列是生成列，因此永远不会被写入。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此欄位是產生欄位，因此永遠不會寫入。"
+          }
+        }
+      }
     },
     "This connection has a client certificate but no private key. Import both." : {
       "localizations" : {
@@ -14349,7 +17131,32 @@
       }
     },
     "This server requires authentication." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버는 인증이 필요합니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máy chủ này yêu cầu xác thực."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器需要认证。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器需要驗證。"
+          }
+        }
+      }
     },
     "This table has no foreign key relationships." : {
       "localizations" : {
@@ -14549,7 +17356,32 @@
       }
     },
     "Timed out connecting to the MySQL server." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MySQL 서버에 연결하는 동안 시간이 초과되었습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hết thời gian chờ khi kết nối tới máy chủ MySQL."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接 MySQL 服务器超时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線 MySQL 伺服器逾時。"
+          }
+        }
+      }
     },
     "Timed out connecting to the server. Check the host, port, and that the server is reachable and accepting connections." : {
       "extractionState" : "stale",
@@ -14638,7 +17470,32 @@
       }
     },
     "Touch and hold a connection to rename, duplicate, or move it to a group." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 길게 터치하여 이름을 변경하거나, 복제하거나, 그룹으로 이동하십시오."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạm và giữ một kết nối để đổi tên, nhân đôi hoặc di chuyển vào một nhóm."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "触碰并按住连接，即可将其重命名、复制或移动到分组。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住連線即可重新命名、複製，或將其移至群組。"
+          }
+        }
+      }
     },
     "Truncate" : {
       "localizations" : {
@@ -14781,7 +17638,32 @@
       }
     },
     "Turn On iCloud Sync" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 동기화 켜기"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bật Đồng bộ iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启 iCloud 同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 iCloud 同步"
+          }
+        }
+      }
     },
     "Type" : {
       "localizations" : {
@@ -14812,13 +17694,88 @@
       }
     },
     "Type a tag's name in the search field to show only the connections that carry it." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검색 필드에 태그 이름을 입력하면 해당 태그가 지정된 연결만 표시됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập tên nhãn vào trường tìm kiếm để chỉ hiện các kết nối có nhãn đó."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在搜索栏中输入标签名称，即可只显示带有该标签的连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在搜尋欄位中輸入標籤名稱，即可只顯示帶有該標籤的連線。"
+          }
+        }
+      }
     },
     "UTF-8 via Latin 1" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8(Latin 1 경유)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8 qua Latin 1"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8（经由 Latin 1）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UTF-8（透過 Latin 1）"
+          }
+        }
+      }
     },
     "Unfavorite" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "즐겨찾기 해제"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bỏ yêu thích"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取消收藏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移出我的最愛"
+          }
+        }
+      }
     },
     "Ungrouped" : {
       "localizations" : {
@@ -14906,7 +17863,32 @@
       }
     },
     "Unknown error" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알 수 없는 오류"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lỗi không xác định"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知错误"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未知錯誤"
+          }
+        }
+      }
     },
     "Unlock" : {
       "localizations" : {
@@ -14994,7 +17976,32 @@
       }
     },
     "Use Default" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기본값 사용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng mặc định"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用默认值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用預設值"
+          }
+        }
+      }
     },
     "Use Passcode" : {
       "localizations" : {
@@ -15081,7 +18088,32 @@
       }
     },
     "Use iCloud" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 사용"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dùng iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 iCloud"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 iCloud"
+          }
+        }
+      }
     },
     "Username" : {
       "localizations" : {
@@ -15140,7 +18172,32 @@
       }
     },
     "VALUE" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "값"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GIÁ TRỊ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "值"
+          }
+        }
+      }
     },
     "Value" : {
       "localizations" : {
@@ -15171,7 +18228,32 @@
       }
     },
     "Value for %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 값"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giá trị cho %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的值"
+          }
+        }
+      }
     },
     "Verify CA" : {
       "localizations" : {
@@ -15258,7 +18340,32 @@
       }
     },
     "Version %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "버전 %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên bản %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本 %@"
+          }
+        }
+      }
     },
     "View" : {
       "localizations" : {
@@ -15345,10 +18452,60 @@
       }
     },
     "What's New" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새로운 기능"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có gì mới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新功能"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新功能"
+          }
+        }
+      }
     },
     "What's New in TablePro" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro의 새로운 기능"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Có gì mới trong TablePro"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 新功能"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TablePro 的新功能"
+          }
+        }
+      }
     },
     "When off, connections, groups, and tags stay on this device only. Existing iCloud data is not deleted." : {
       "extractionState" : "stale",
@@ -15409,7 +18566,32 @@
       }
     },
     "When off, nothing is sent to iCloud and nothing already there is deleted. Changes you make meanwhile sync once you turn it back on." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끄면 iCloud로 아무것도 전송되지 않으며 이미 iCloud에 있는 데이터도 삭제되지 않습니다. 꺼져 있는 동안 변경한 내용은 다시 켜면 동기화됩니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khi tắt, không có gì được gửi lên iCloud và những gì đã có ở đó không bị xóa. Các thay đổi bạn thực hiện trong thời gian này sẽ đồng bộ khi bạn bật lại."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭后，不会向 iCloud 发送任何内容，也不会删除 iCloud 中已有的内容。在此期间所做的更改会在你重新开启后同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉時，不會傳送任何內容到 iCloud，也不會刪除 iCloud 上已有的內容。期間所做的變更會在你重新開啟後同步。"
+          }
+        }
+      }
     },
     "When on, the lock screen and Dynamic Island show \"Running query\" instead of the SQL preview." : {
       "extractionState" : "manual",
@@ -15441,10 +18623,60 @@
       }
     },
     "When you first connected and first ran a query" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음 연결한 시점과 처음 쿼리를 실행한 시점"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thời điểm bạn kết nối lần đầu và chạy truy vấn lần đầu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你首次连接和首次运行查询的时间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你首次連線與首次執行查詢的時間"
+          }
+        }
+      }
     },
     "Which database types you connect to, and how many connections are open" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결하는 데이터베이스 유형 및 열려 있는 연결 수"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Các loại cơ sở dữ liệu bạn kết nối tới và số kết nối đang mở"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你连接的数据库类型，以及打开的连接数量"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你連線的資料庫類型，以及開啟中的連線數量"
+          }
+        }
+      }
     },
     "Windows Authentication (Kerberos) isn't supported on iOS yet. Use SQL Server Authentication, or connect from the Mac app." : {
       "localizations" : {
@@ -15531,7 +18763,32 @@
       }
     },
     "Write and Run SQL" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SQL 작성 및 실행"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Viết và chạy SQL"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编写并运行 SQL"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撰寫並執行 SQL"
+          }
+        }
+      }
     },
     "Yellow" : {
       "localizations" : {
@@ -15562,7 +18819,32 @@
       }
     },
     "Your connections could not be loaded, so nothing can be added right now." : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결을 불러올 수 없어 지금은 아무것도 추가할 수 없습니다."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không tải được các kết nối của bạn nên hiện chưa thể thêm gì."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载你的连接，因此目前无法添加任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入你的連線，因此目前無法新增任何項目。"
+          }
+        }
+      }
     },
     "auto-increment" : {
       "localizations" : {
@@ -15789,7 +19071,32 @@
       }
     },
     "iCloud" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud"
+          }
+        }
+      }
     },
     "iCloud Sync" : {
       "localizations" : {
@@ -15820,7 +19127,32 @@
       }
     },
     "iCloud Unavailable" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud를 사용할 수 없음"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud không khả dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iCloud 無法使用"
+          }
+        }
+      }
     },
     "iCloud account is not available. Sign in to iCloud in System Settings." : {
       "extractionState" : "stale",
@@ -16001,7 +19333,32 @@
       }
     },
     "in %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "trong nhóm %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位于 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "位於 %@"
+          }
+        }
+      }
     },
     "insert" : {
       "localizations" : {
@@ -16424,7 +19781,32 @@
       }
     },
     "tags %@" : {
-
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "태그 %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nhãn %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標籤 %@"
+          }
+        }
+      }
     },
     "≤" : {
       "localizations" : {

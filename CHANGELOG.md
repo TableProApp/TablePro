@@ -96,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copying objects into a connection that already has a transaction open committing it.
 - Replace-copy into a remote libSQL target failing at `BEGIN`.
 - iOS edits uploaded to iCloud after iCloud Sync was turned off.
+- iOS text left in English for Korean, Vietnamese, Simplified Chinese and Traditional Chinese.
 - iOS connections overwritten by the next edit after the saved library failed to load.
 - A `.tablepro` file or link closing a half-filled form on iPhone and iPad.
 - Links to a table opening only its connection on iPhone and iPad.
