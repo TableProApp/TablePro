@@ -129,6 +129,16 @@ struct DataBrowserViewModelTests {
         #expect(vm.pagination.currentPage == 0, "previous on page 0 should not underflow")
     }
 
+    @Test("The page range reads in the app's language")
+    func pageRangeLabelIsLocalized() throws {
+        #expect(DataBrowserViewModel.pageRangeLabel(start: 1, end: 100, total: 3_503) == "1-100 of 3503")
+
+        let path = try #require(Bundle.main.path(forResource: "vi", ofType: "lproj"))
+        let vietnamese = try #require(Bundle(path: path))
+        let label = DataBrowserViewModel.pageRangeLabel(start: 1, end: 100, total: 3_503, bundle: vietnamese)
+        #expect(label == "1-100 trên 3503")
+    }
+
     @Test("primaryKeyValues returns only PK columns from row")
     func primaryKeyExtraction() async {
         let driver = MockDatabaseDriver()
