@@ -298,8 +298,15 @@ jobs:
           # plugins.json pointing at URLs that 404, and permanently replaced assets that a
           # published registry entry may point at. release-all-plugins.sh already states the
           # policy: an existing tag's assets are not to be replaced.
+          # Tagged at the commit this job built, which is `baseRef` when one was given. Without
+          # --target GitHub tags the default branch's head instead, so a plugin built against a
+          # shipped release recorded whatever main had moved on to: the v0.75.0 plugins point at a
+          # commit carrying PluginKit 33, while their binaries are 32.
+          BUILT_COMMIT=$(git rev-parse HEAD)
+
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" \
+              --target "$BUILT_COMMIT" \
               --title "$DISPLAY_NAME v$VERSION" \
               --notes "$RELEASE_BODY" \
               --latest=false \
