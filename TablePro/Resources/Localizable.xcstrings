@@ -180492,6 +180492,1617 @@
           }
         }
       }
+    },
+    "Beancount include cycle detected at %@" : {
+
+    },
+    "Could not read %@: %@" : {
+
+    },
+    "Could not initialize SQL projection" : {
+
+    },
+    "Beancount posting references missing transaction ID %@" : {
+
+    },
+    "Not connected to Beancount ledger" : {
+
+    },
+    "Failed to open Beancount ledger: %@" : {
+
+    },
+    "Beancount ledgers are exposed as a read-only SQL database" : {
+
+    },
+    "File does not exist at %@" : {
+
+    },
+    "BQL queries do not support SQL parameters" : {
+
+    },
+    "Failed to fetch DDL for table '%@'" : {
+
+    },
+    "Beancount ledger changed while building its SQL projection" : {
+
+    },
+    "rustledger command failed" : {
+
+    },
+    "The pad directive carries no date, so its accounts were not projected." : {
+
+    },
+    "The pad directive could not be matched to a rendered directive, so its accounts were not projected." : {
+
+    },
+    "rledger could not render the ledger's directives, so the pads table is empty: %@" : {
+
+    },
+    "rustledger validation failed" : {
+
+    },
+    "Beancount needs rledger or Python Beancount. Install one, or set TABLEPRO_RUSTLEDGER_BINARY or TABLEPRO_BEANCOUNT_PYTHON to its path." : {
+
+    },
+    "BQL queries need rledger. Install rustledger so rledger is on PATH or Homebrew, or set TABLEPRO_RUSTLEDGER_BINARY to its path." : {
+
+    },
+    "TABLEPRO_RUSTLEDGER_BINARY points to a missing or non-executable rledger at %@" : {
+
+    },
+    "Python Beancount projection failed" : {
+
+    },
+    "Invalid Python Beancount JSON output" : {
+
+    },
+    "Python Beancount backend requires python3 with the beancount package installed. Set TABLEPRO_BEANCOUNT_PYTHON to the Python executable if needed." : {
+
+    },
+    "TABLEPRO_BEANCOUNT_PYTHON points to a Python executable that cannot import beancount at %@" : {
+
+    },
+    "Python cannot import beancount" : {
+
+    },
+    "Invalid rustledger JSON output" : {
+
+    },
+    "Not connected to BigQuery" : {
+
+    },
+    "BigQuery returned HTTP %lld." : {
+
+    },
+    "The BigQuery job failed." : {
+
+    },
+    "BigQuery returned a response that can't be read." : {
+
+    },
+    "Can't reach BigQuery: %@" : {
+
+    },
+    "The request to BigQuery timed out." : {
+
+    },
+    "The BigQuery job did not finish within %lld seconds and was cancelled." : {
+
+    },
+    "The statement has %1$lld placeholders but %2$lld values were given." : {
+
+    },
+    "The table browse request can't be read." : {
+
+    },
+    "No DDL found for %@." : {
+
+    },
+    "No view definition found for %@." : {
+
+    },
+    "This table requires a partition filter. Add a WHERE clause on the partition column." : {
+
+    },
+    "Enter the %@." : {
+
+    },
+    "Choose an auth method for this connection." : {
+
+    },
+    "Value %lld is not a JSON array." : {
+
+    },
+    "Value %lld is not a JSON object." : {
+
+    },
+    "Value %lld is not a range such as [start, end)." : {
+
+    },
+    "Value %lld is binary data, not text." : {
+
+    },
+    "Values of type %@ can't be written." : {
+
+    },
+    "Not available in skip-and-continue mode" : {
+
+    },
+    "Insert all rows in a single transaction. If any row fails, all changes are rolled back." : {
+
+    },
+    "File modified externally" : {
+
+    },
+    "Another app changed this file. Discard your unsaved changes and reload?" : {
+
+    },
+    "Keep Changes" : {
+
+    },
+    "Split Column" : {
+
+    },
+    "Merge Columns" : {
+
+    },
+    "Switch Header Row" : {
+
+    },
+    "Could not encode CSV content" : {
+
+    },
+    "Failed to write CSV file: %@" : {
+
+    },
+    "Failed to write CSV file" : {
+
+    },
+    "Amazon Keyspaces IAM authentication requires TLS. Enable SSL in the connection's SSL settings." : {
+
+    },
+    "Cassandra %@ is not supported. TablePro requires Cassandra 3.0 or later (the system_schema keyspace was introduced in 3.0)." : {
+
+    },
+    "Operation not supported by Cassandra" : {
+
+    },
+    "ClickHouse returned no definition for view '%@'." : {
+
+    },
+    "Account ID is required" : {
+
+    },
+    "API Token is required" : {
+
+    },
+    "Database name or UUID is required" : {
+
+    },
+    "Database '%@' not found in account" : {
+
+    },
+    "Failed to connect to Cloudflare D1" : {
+
+    },
+    "Database '%@' not found" : {
+
+    },
+    "Transactions are not supported by Cloudflare D1" : {
+
+    },
+    "Empty response from Cloudflare D1" : {
+
+    },
+    "Failed to fetch database details" : {
+
+    },
+    "Failed to list databases" : {
+
+    },
+    "Failed to create database" : {
+
+    },
+    "Invalid Account ID" : {
+
+    },
+    "Invalid Account ID or database identifier" : {
+
+    },
+    "Authentication failed. Check your API token and Account ID." : {
+
+    },
+    "Rate limited by Cloudflare. Retry after %@ seconds." : {
+
+    },
+    "Rate limited by Cloudflare. Please try again later." : {
+
+    },
+    "API request failed" : {
+
+    },
+    "Stopped at %lld rows, the most R2 SQL returns from one query." : {
+
+    },
+    "The Dameng port must be between 1 and 65535." : {
+
+    },
+    "The Dameng connection is closed." : {
+
+    },
+    "Dameng returned invalid UTF-8 metadata." : {
+
+    },
+    "Dameng returned invalid UTF-8 text." : {
+
+    },
+    "Dameng returned an invalid result cell." : {
+
+    },
+    "Dameng returned an invalid result value." : {
+
+    },
+    "The Dameng operation failed." : {
+
+    },
+    "Dameng cannot store a text value that contains a null character." : {
+
+    },
+    "This Dameng statement has more placeholders than values." : {
+
+    },
+    "This Dameng statement has more values than placeholders." : {
+
+    },
+    "The Dameng schema name cannot be empty." : {
+
+    },
+    "Dameng did not switch to the requested schema." : {
+
+    },
+    "Dameng's built-in schemas cannot be dropped." : {
+
+    },
+    "Switch away from a schema before dropping it." : {
+
+    },
+    "Statement %1$d of %2$d failed: %3$@" : {
+
+    },
+    "This Dameng script contains no statement to run." : {
+
+    },
+    "Dameng returned an empty metadata result." : {
+
+    },
+    "Dameng did not return the view definition." : {
+
+    },
+    "Dameng did not return the table definition." : {
+
+    },
+    "DuckDB could not allocate a configuration to open the file read-only" : {
+
+    },
+    "This build of DuckDB does not accept a read-only access mode" : {
+
+    },
+    "the database file" : {
+
+    },
+    "Another app is using %@. Only one app can open a DuckDB file for writing." : {
+
+    },
+    "%@ is using %@. Only one app can open a DuckDB file for writing." : {
+
+    },
+    "Quit or disconnect the other app, then try again." : {
+
+    },
+    "Quit or disconnect the other app, or turn on Open the File Read-Only to join it as a reader." : {
+
+    },
+    "No file at %@" : {
+
+    },
+    "Host is required for a remote DuckDB connection" : {
+
+    },
+    "Port must be a number between 1 and 65535" : {
+
+    },
+    "DuckDB opened the file but reported no catalog to browse" : {
+
+    },
+    "DuckDB opened %d catalogs and none of them is current" : {
+
+    },
+    "This connection has an open transaction. Commit or roll it back first." : {
+
+    },
+    "This connection has session objects, such as a temporary table, a macro or a prepared statement, which closing the file would delete." : {
+
+    },
+    "This connection has another database attached, which closing the file would detach." : {
+
+    },
+    "This connection has settings that closing the file would reset." : {
+
+    },
+    "TablePro could not read what this connection is holding, so it kept the file." : {
+
+    },
+    "The connection has no current DuckDB catalog to read metadata from" : {
+
+    },
+    "Operation not supported" : {
+
+    },
+    "The database file is no longer at %@." : {
+
+    },
+    "Not connected to DynamoDB" : {
+
+    },
+    "DynamoDB error: %@" : {
+
+    },
+    "Request was cancelled" : {
+
+    },
+    "Invalid response: %@" : {
+
+    },
+    "Not connected to Elasticsearch" : {
+
+    },
+    "Elasticsearch error: %@" : {
+
+    },
+    "Enter a request like: GET /my-index/_search" : {
+
+    },
+    "Size: %@" : {
+
+    },
+    "Empty etcd command" : {
+
+    },
+    "Unknown command: %@" : {
+
+    },
+    "Not connected to etcd" : {
+
+    },
+    "Server error: %@" : {
+
+    },
+    "One JSON object" : {
+
+    },
+    "One row per line (NDJSON)" : {
+
+    },
+    "the compressed data is corrupt or was cut short" : {
+
+    },
+    "the broker closed the connection" : {
+
+    },
+    "the broker did not answer an ApiVersions request" : {
+
+    },
+    "the TLS handshake failed" : {
+
+    },
+    "the certificate file could not be read" : {
+
+    },
+    "the private key file could not be read" : {
+
+    },
+    "the broker's certificate does not cover the hostname you connected to" : {
+
+    },
+    "the connection timed out" : {
+
+    },
+    "the connection was refused" : {
+
+    },
+    "The broker answered a topic deletion with no result." : {
+
+    },
+    "Not connected to the Kafka cluster." : {
+
+    },
+    "Could not reach the Kafka cluster: %@" : {
+
+    },
+    "The broker's reply ended early: needed %d more bytes, had %d." : {
+
+    },
+    "Could not read the broker's reply: %@" : {
+
+    },
+    "This broker does not support the %@ request at all." : {
+
+    },
+    "This broker supports %@ v%d to v%d, and TablePro needs v%d." : {
+
+    },
+    "The broker rejected the %@ request: %@" : {
+
+    },
+    "Kafka authentication failed: %@" : {
+
+    },
+    "These messages use the %@ compression codec, which TablePro cannot read." : {
+
+    },
+    "Could not decompress a %@ batch: %@" : {
+
+    },
+    "No topic named %@ on this cluster." : {
+
+    },
+    "Topic %@ has no partition %d." : {
+
+    },
+    "the requested offset is outside the partition's range" : {
+
+    },
+    "unknown topic or partition" : {
+
+    },
+    "the partition leader is not available" : {
+
+    },
+    "this broker no longer leads the partition" : {
+
+    },
+    "the request timed out on the broker" : {
+
+    },
+    "the message is larger than the broker accepts" : {
+
+    },
+    "the group coordinator is still loading" : {
+
+    },
+    "the group coordinator is not available" : {
+
+    },
+    "this broker does not coordinate that group" : {
+
+    },
+    "the connection is not ready for authentication" : {
+
+    },
+    "the broker does not support this request version" : {
+
+    },
+    "not authorized for this topic" : {
+
+    },
+    "not authorized for this consumer group" : {
+
+    },
+    "not authorized for this cluster operation" : {
+
+    },
+    "the credentials were rejected" : {
+
+    },
+    "unknown topic id" : {
+
+    },
+    "error code %d" : {
+
+    },
+    "Empty statement." : {
+
+    },
+    "%@ is not a Kafka command. Try CONSUME, PRODUCE, SHOW, DESCRIBE or DROP." : {
+
+    },
+    "DROP needs TOPIC and a topic name." : {
+
+    },
+    "DROP TOPIC needs a topic name." : {
+
+    },
+    "DROP TOPIC takes one topic name." : {
+
+    },
+    "CONSUME needs a topic name." : {
+
+    },
+    "Unexpected %@ in a CONSUME statement." : {
+
+    },
+    "LIMIT must be between 1 and %d." : {
+
+    },
+    "SKIP must be between 0 and %d." : {
+
+    },
+    "FROM needs NEWEST, OLDEST, OFFSET, TIME or ANCHOR." : {
+
+    },
+    "%@ is not a start position. Use NEWEST, OLDEST, OFFSET, TIME or ANCHOR." : {
+
+    },
+    "ANCHOR needs a partition:offset list." : {
+
+    },
+    "%@ is not a partition:offset pair." : {
+
+    },
+    "PARTITION needs at least one partition number." : {
+
+    },
+    "PRODUCE needs a topic name." : {
+
+    },
+    "Unexpected %@ in a PRODUCE statement." : {
+
+    },
+    "PRODUCE needs at least a VALUE or a KEY." : {
+
+    },
+    "SHOW needs TOPICS, BROKERS, GROUPS or CLUSTER." : {
+
+    },
+    "SHOW %@ is not supported. Try TOPICS, BROKERS, GROUPS or CLUSTER." : {
+
+    },
+    "DESCRIBE needs GROUP or TOPIC." : {
+
+    },
+    "DESCRIBE needs a name." : {
+
+    },
+    "DESCRIBE %@ is not supported. Try GROUP or TOPIC." : {
+
+    },
+    "%@ needs a value." : {
+
+    },
+    "%@ needs a whole number, not %@." : {
+
+    },
+    "%@ is not a time. Use milliseconds since the epoch or an ISO 8601 instant." : {
+
+    },
+    "A quoted value was never closed." : {
+
+    },
+    "the broker does not offer %@, only %@" : {
+
+    },
+    "the broker's SCRAM challenge was not readable" : {
+
+    },
+    "the broker's SCRAM challenge was incomplete" : {
+
+    },
+    "the broker echoed a nonce that does not match ours" : {
+
+    },
+    "the broker asked for an unsafe iteration count" : {
+
+    },
+    "the broker's SCRAM response was not readable" : {
+
+    },
+    "the broker did not prove it knows the password" : {
+
+    },
+    "the broker's signature did not verify" : {
+
+    },
+    "could not derive the SCRAM key" : {
+
+    },
+    "Empty response from server" : {
+
+    },
+    "Invalid response from server" : {
+
+    },
+    "Authentication failed. Check your auth token." : {
+
+    },
+    "Server not found. Check your database URL." : {
+
+    },
+    "Rate limited. Retry after %@ seconds." : {
+
+    },
+    "Database URL is required" : {
+
+    },
+    "Invalid database URL" : {
+
+    },
+    "Failed to connect to libSQL database" : {
+
+    },
+    "Dropping databases is not supported" : {
+
+    },
+    "Switching databases is not supported" : {
+
+    },
+    "Transactions are not supported in this mode" : {
+
+    },
+    "Kerberos ticket request failed" : {
+
+    },
+    "Invalid Kerberos principal: %@" : {
+
+    },
+    "TLS: %@" : {
+
+    },
+    "No Kerberos ticket was found." : {
+
+    },
+    "Run kinit user@REALM.COM in Terminal, or enter a Kerberos principal and password, then reconnect." : {
+
+    },
+    "The Kerberos principal is unknown to the domain." : {
+
+    },
+    "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase." : {
+
+    },
+    "The Kerberos password was rejected." : {
+
+    },
+    "Re-enter the domain password for this principal." : {
+
+    },
+    "The SQL Server Kerberos service principal name is not registered." : {
+
+    },
+    "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address." : {
+
+    },
+    "This Mac's clock is too far out of sync with the domain controller." : {
+
+    },
+    "Turn on Set time automatically in System Settings > General > Date & Time, then reconnect." : {
+
+    },
+    "The Kerberos realm could not be resolved." : {
+
+    },
+    "Confirm this network resolves the domain, or add the realm to /etc/krb5.conf." : {
+
+    },
+    "The Kerberos ticket has expired." : {
+
+    },
+    "Run kinit user@REALM.COM to renew it, then reconnect." : {
+
+    },
+    "Not readable with your permissions" : {
+
+    },
+    "MongoDB support requires libmongoc. Run scripts/build-libmongoc.sh first." : {
+
+    },
+    "Enter a database name." : {
+
+    },
+    "A database name must be shorter than %ld bytes." : {
+
+    },
+    "A database name cannot contain %@." : {
+
+    },
+    "Enter a collection name." : {
+
+    },
+    "A collection name cannot contain %@." : {
+
+    },
+    "A collection name cannot start with %@." : {
+
+    },
+    "The database and collection names together must be %ld bytes or fewer." : {
+
+    },
+    "First Collection" : {
+
+    },
+    "Collection name" : {
+
+    },
+    "MongoDB stores a database only once it holds a collection, so a new database needs its first one." : {
+
+    },
+    "Not connected to MongoDB" : {
+
+    },
+    "Operation not supported for MongoDB" : {
+
+    },
+    "This is not a document MongoDB can read: %@" : {
+
+    },
+    "This filter is not a document MongoDB can read: %@" : {
+
+    },
+    "This pipeline is not something MongoDB can read: %@" : {
+
+    },
+    "MongoDB did not return a cursor for this query." : {
+
+    },
+    "A cursor has no .%@() modifier." : {
+
+    },
+    ".%@() takes a whole number." : {
+
+    },
+    "bulkWrite does not know this operation: %@" : {
+
+    },
+    "The script was cancelled." : {
+
+    },
+    "Unsupported script operation: %@" : {
+
+    },
+    "This cursor has already been closed." : {
+
+    },
+    ".%@() cannot be set once the cursor has started." : {
+
+    },
+    "The MongoDB script engine could not start." : {
+
+    },
+    "The script did not finish within %d seconds and was abandoned." : {
+
+    },
+    "%d line(s) printed" : {
+
+    },
+    "output" : {
+
+    },
+    "result" : {
+
+    },
+    "Switched to %@" : {
+
+    },
+    "The statement has %d placeholders but %d values were given." : {
+
+    },
+    "Failed to initialize MySQL client" : {
+
+    },
+    "(server default)" : {
+
+    },
+    "Character set is required" : {
+
+    },
+    "Invalid character set: %@" : {
+
+    },
+    "Unknown character set: %@" : {
+
+    },
+    "Invalid collation: %@" : {
+
+    },
+    "Unknown collation: %@" : {
+
+    },
+    "Collation %@ is not valid for character set %@" : {
+
+    },
+    "This server is Databend. Edit the connection and choose Databend as its type." : {
+
+    },
+    "This server did not identify as Databend. Check the host and port of its MySQL handler." : {
+
+    },
+    "This server did not identify as OceanBase. Check the host and port of its MySQL mode tenant." : {
+
+    },
+    "Release Server Connection" : {
+
+    },
+    "This connection has temporary tables, which reconnecting would delete." : {
+
+    },
+    "This connection holds table locks, which reconnecting would release." : {
+
+    },
+    "This connection holds advisory locks, which reconnecting would release." : {
+
+    },
+    "This connection has open HANDLER cursors, which reconnecting would close." : {
+
+    },
+    "This connection has prepared statements, which reconnecting would discard." : {
+
+    },
+    "This connection has session variables set, which reconnecting would clear." : {
+
+    },
+    "This connection has session settings changed, which reconnecting would reset." : {
+
+    },
+    "This connection switched database with USE, which reconnecting would undo." : {
+
+    },
+    "This connection called a stored routine, so TablePro cannot tell what the session is holding." : {
+
+    },
+    "Unsupported Password Verifier" : {
+
+    },
+    "Verify the user account exists and the password is correct." : {
+
+    },
+    "Ask your DBA to confirm the user has an 11G or 12C password verifier (SELECT password_versions FROM dba_users WHERE username = '<USER>')." : {
+
+    },
+    "If the verifier is brand-new (e.g. 23ai), file an issue with the verifier flag below." : {
+
+    },
+    "Connection Dropped During Handshake" : {
+
+    },
+    "Check for a firewall, VPN, or load balancer between you and the server that closes connections mid-handshake." : {
+
+    },
+    "If the listener endpoint is TLS-only (TCPS), set the SSL mode in the connection's SSL settings." : {
+
+    },
+    "Confirm the host and port reach the database listener directly, not a proxy that resets unknown traffic." : {
+
+    },
+    "If this is Oracle 11g, open an issue and include the handshake phase shown below." : {
+
+    },
+    "Handshake phase" : {
+
+    },
+    "Server Version Not Supported" : {
+
+    },
+    "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)." : {
+
+    },
+    "Upgrade the database to 11.2 or later, or connect with a client that bundles Oracle's OCI client such as SQL Developer or DataGrip." : {
+
+    },
+    "Connection Reset" : {
+
+    },
+    "Run the query again. TablePro reconnects to the server automatically." : {
+
+    },
+    "If the same query keeps failing, the server may be returning data the driver cannot decode. File an issue with your Oracle version." : {
+
+    },
+    "Native Network Encryption Not Completed" : {
+
+    },
+    "The server requires Oracle native network encryption, and negotiating it with this server did not complete." : {
+
+    },
+    "Ask the DBA which encryption and checksum algorithms the server requires. The driver supports AES with a SHA-2 checksum." : {
+
+    },
+    "File an issue with your Oracle version and the details below so the driver can add support." : {
+
+    },
+    "Login Handshake Timed Out" : {
+
+    },
+    "Confirm the host and port reach the database listener directly." : {
+
+    },
+    "If the server stopped answering at the network encryption step, set Network Encryption to Rejected on the Advanced tab and connect again." : {
+
+    },
+    "Check for a firewall, VPN, or proxy between you and the server that stalls connections after the TCP handshake." : {
+
+    },
+    "File an issue with your Oracle version and the step named above." : {
+
+    },
+    "Native Network Encryption Required" : {
+
+    },
+    "Ask the DBA to allow Native Network Encryption for this client, or to turn it off for this connection." : {
+
+    },
+    "TLS is the alternative: set an SSL mode instead of relying on native network encryption." : {
+
+    },
+    "Query Timed Out" : {
+
+    },
+    "If the query legitimately needs more time, raise the query timeout in Settings > General." : {
+
+    },
+    "If a metadata query timed out, the schema may hold a very large number of objects; try again once the server is less busy." : {
+
+    },
+    "Certificate Not Available" : {
+
+    },
+    "Check the certificate paths in the connection's SSL settings." : {
+
+    },
+    "Certificate files are not part of a synced connection, so a connection set up on another device needs its certificates added here." : {
+
+    },
+    "Oracle returned no definition for view '%@'." : {
+
+    },
+    "Could not start the Parquet writer." : {
+
+    },
+    "Parquet writer failed: %@" : {
+
+    },
+    "Compression" : {
+
+    },
+    "Rows per group" : {
+
+    },
+    "Parquet holds one table per file, so %lld files were written." : {
+
+    },
+    "%@ returned no columns." : {
+
+    },
+    "The query editor cannot send data to COPY FROM STDIN, so no rows were sent. Use Import to load a file into a table." : {
+
+    },
+    "The query editor cannot receive the output of COPY TO STDOUT, so it was discarded. Run a SELECT, or use Export to save the rows to a file." : {
+
+    },
+    "The query editor cannot run a replication COPY." : {
+
+    },
+    "Timed out while connecting to the server" : {
+
+    },
+    "FULL (rewrites the whole object, blocks access)" : {
+
+    },
+    "ANALYZE (update statistics afterwards)" : {
+
+    },
+    "VERBOSE (report progress)" : {
+
+    },
+    "Grants, row-level security policies, publications, extended statistics, partitioning and table inheritance are not carried over." : {
+
+    },
+    "An identity column keeps its value, but its sequence is recreated under a new name because the old table still holds the original name when the new one is created." : {
+
+    },
+    "Locale Provider" : {
+
+    },
+    "ICU Locale" : {
+
+    },
+    "Encoding is required" : {
+
+    },
+    "Invalid encoding: %@" : {
+
+    },
+    "Collation is required" : {
+
+    },
+    "Failed to read template1 collation defaults" : {
+
+    },
+    "ICU provider requires PostgreSQL 15 or later" : {
+
+    },
+    "ICU locale is required" : {
+
+    },
+    "Invalid ICU locale: %@" : {
+
+    },
+    "Invalid locale provider: %@" : {
+
+    },
+    "Renaming a check constraint needs PostgreSQL 9.2 or later." : {
+
+    },
+    "Column %@ is a generated column, which needs PostgreSQL 12 or later." : {
+
+    },
+    "INCLUDE columns need PostgreSQL 11 or later." : {
+
+    },
+    "PostgreSQL has no %@ index type." : {
+
+    },
+    "SP-GiST indexes need PostgreSQL 9.2 or later." : {
+
+    },
+    "BRIN indexes need PostgreSQL 9.5 or later." : {
+
+    },
+    "If this server uses Redis 6 or later ACL users, fill in the Username field." : {
+
+    },
+    "The Password field is empty. Fill it in, or clear Username to sign in as the default user." : {
+
+    },
+    "This server has no password set for the default user. Clear the Password field." : {
+
+    },
+    "This server predates Redis 6 and takes no username. Clear the Username field." : {
+
+    },
+    "Cluster mode needs at least one seed node." : {
+
+    },
+    "Discovering cluster topology" : {
+
+    },
+    "Redis Cluster serves database 0 only, so it cannot switch databases." : {
+
+    },
+    "The cluster reported no slot coverage, so it has no data to browse yet." : {
+
+    },
+    "The cluster is moving keys between shards. Try again once the migration finishes." : {
+
+    },
+    "The cluster is not serving requests: %@" : {
+
+    },
+    "some slots have no owner" : {
+
+    },
+    "unbalanced quotes" : {
+
+    },
+    "This server requires authentication." : {
+
+    },
+    "PING failed: %@" : {
+
+    },
+    "AUTH failed: %@" : {
+
+    },
+    "%@ is not a Redis database index." : {
+
+    },
+    "Not connected to Redis" : {
+
+    },
+    "Redis support requires hiredis. Run scripts/build-hiredis.sh first." : {
+
+    },
+    "Redis queued %@ instead of running it." : {
+
+    },
+    "the command" : {
+
+    },
+    "A MULTI block is open on this connection. Run EXEC to apply it, or DISCARD to drop it." : {
+
+    },
+    "Asking Sentinel for the primary" : {
+
+    },
+    "Sentinel mode needs at least one Sentinel node." : {
+
+    },
+    "Sentinel mode needs a primary group name, such as mymaster." : {
+
+    },
+    "Could not reach any Sentinel. Tried %@." : {
+
+    },
+    "Sentinel %@ sent a reply TablePro could not read (%@)." : {
+
+    },
+    "Sentinel %@ refused the request: %@" : {
+
+    },
+    "Timed out asking the Sentinels for the primary. Tried %@." : {
+
+    },
+    "%1$@ failed inside the Redis transaction: %2$@" : {
+
+    },
+    "%1$lld commands failed inside the Redis transaction: %2$@" : {
+
+    },
+    "EXEC ran the other commands in the block, and Redis cannot roll them back." : {
+
+    },
+    "Command %lld" : {
+
+    },
+    "Compression unavailable: gzip not found at %@" : {
+
+    },
+    "Compression failed with exit status %lld" : {
+
+    },
+    "Compression failed with exit status %1$lld: %2$@" : {
+
+    },
+    "Could not write %1$@. %2$@" : {
+
+    },
+    "Could not write %1$@. %2$@ These parts were written and are still on disk: %3$@" : {
+
+    },
+    "Insert, skip existing" : {
+
+    },
+    "Replace existing" : {
+
+    },
+    "Update existing" : {
+
+    },
+    "This engine has no conflict handling for INSERT, so the rows are written as plain inserts." : {
+
+    },
+    "A table with no primary key has no conflict target, so its rows are written as plain inserts." : {
+
+    },
+    "A table whose columns are all part of its key has nothing to update, so its rows are written as plain inserts." : {
+
+    },
+    "the server returned no definition" : {
+
+    },
+    "Max INSERT size" : {
+
+    },
+    "On existing rows" : {
+
+    },
+    "Split every" : {
+
+    },
+    "One file" : {
+
+    },
+    "A compressed export is written as one file, so the split size was not applied." : {
+
+    },
+    "Could not fetch table structure for: %@" : {
+
+    },
+    "Could not fetch indexes for: %@" : {
+
+    },
+    "Could not fetch comments for: %@" : {
+
+    },
+    "Largest INSERT written: %1$@ (1 row)." : {
+
+    },
+    "Largest INSERT written: %1$@ (%2$lld rows)." : {
+
+    },
+    "1 row does not fit a %1$@ INSERT on its own, so its statement passes that size." : {
+
+    },
+    "%2$lld rows do not fit a %1$@ INSERT on their own, so their statements pass that size." : {
+
+    },
+    "Could not fetch foreign keys, so foreign key constraints may be missing from the export." : {
+
+    },
+    "Could not fetch column metadata, so identity and generated columns may not round-trip correctly." : {
+
+    },
+    "The row filter on %@ was not a single expression, so every row was exported." : {
+
+    },
+    "Not connected to Snowflake" : {
+
+    },
+    "Unknown Snowflake error" : {
+
+    },
+    "Time Travel Retention" : {
+
+    },
+    "1 day (default)" : {
+
+    },
+    "14 days" : {
+
+    },
+    "Retention beyond 1 day requires Enterprise edition." : {
+
+    },
+    "Not connected to Spanner" : {
+
+    },
+    "%@ contains characters Spanner does not allow." : {
+
+    },
+    "The REST endpoint is not a valid URL." : {
+
+    },
+    "The REST endpoint must be an https address under googleapis.com. Choose the Emulator auth method for a local emulator." : {
+
+    },
+    "The emulator endpoint must be a local address, such as http://127.0.0.1:9020." : {
+
+    },
+    "A transaction is already open. Commit or roll it back first." : {
+
+    },
+    "No transaction is open." : {
+
+    },
+    "Spanner aborted the transaction. Roll it back and run it again." : {
+
+    },
+    "The connection failed while Spanner was committing, so the changes may have been saved. Check the data before running it again." : {
+
+    },
+    "EXPLAIN works for queries and DML statements only." : {
+
+    },
+    "EXPLAIN ANALYZE runs the statement, so it is not available. Use EXPLAIN." : {
+
+    },
+    "Only BEGIN, COMMIT and ROLLBACK are supported for Spanner transactions." : {
+
+    },
+    "The schema change is still running on the server (%@)." : {
+
+    },
+    "The request to Spanner timed out." : {
+
+    },
+    "Can't reach Spanner: %@" : {
+
+    },
+    "Spanner returned a response that can't be read." : {
+
+    },
+    "Value %lld is not TRUE or FALSE." : {
+
+    },
+    "Value %lld is not a number." : {
+
+    },
+    "Not connected to SurrealDB." : {
+
+    },
+    "Could not build a SurrealDB endpoint from %@." : {
+
+    },
+    "%@ is required for the selected authentication level." : {
+
+    },
+    "SurrealDB %@ is not supported. TablePro requires SurrealDB 2.0 or later." : {
+
+    },
+    "Could not read the SurrealDB response: %@" : {
+
+    },
+    "SurrealDB over HTTP does not support multi-request transactions." : {
+
+    },
+    "SurrealDB did not return a token." : {
+
+    },
+    "Empty response" : {
+
+    },
+    "SurrealDB rejected the request." : {
+
+    },
+    "The SurrealDB statement failed." : {
+
+    },
+    "SurrealDB returned no details." : {
+
+    },
+    "Access Key ID and Secret Access Key are required for AWS IAM authentication." : {
+
+    },
+    "Cannot read ~/.aws/credentials." : {
+
+    },
+    "AWS IAM (Access Key)" : {
+
+    },
+    "AWS IAM (Profile)" : {
+
+    },
+    "AWS IAM (SSO)" : {
+
+    },
+    "Optional, for temporary credentials" : {
+
+    },
+    "RDS Endpoint" : {
+
+    },
+    "Cache Name / Replication Group ID" : {
+
+    },
+    "my-cache" : {
+
+    },
+    "Cannot read ~/.aws/config." : {
+
+    },
+    "Could not reach AWS SSO: %@" : {
+
+    },
+    "AWS SSO returned an unexpected response." : {
+
+    },
+    "The AWS SSO sign-in timed out before it was approved." : {
+
+    },
+    "The AWS SSO sign-in was denied." : {
+
+    },
+    "AWS SSO sign-in failed: %@" : {
+
+    },
+    "Output" : {
+
+    },
+    "Directory (Tenant) ID" : {
+
+    },
+    "Optional, for a single-tenant directory" : {
+
+    },
+    "Application (Client) ID" : {
+
+    },
+    "Set the Microsoft Entra ID application (client) ID for this connection." : {
+
+    },
+    "Sign in to Microsoft Entra ID to use this connection." : {
+
+    },
+    "Could not reach Microsoft Entra ID: %@" : {
+
+    },
+    "Microsoft Entra ID returned an unexpected response." : {
+
+    },
+    "The Microsoft Entra ID sign-in timed out before it was approved." : {
+
+    },
+    "The Microsoft Entra ID sign-in was denied." : {
+
+    },
+    "Microsoft Entra ID needs you to sign in again." : {
+
+    },
+    "The saved Microsoft Entra ID sign-in expired. Sign in again." : {
+
+    },
+    "Microsoft Entra ID sign-in failed: %@" : {
+
+    },
+    "Expected ']' after the collection name" : {
+
+    },
+    "getCollection requires a collection name" : {
+
+    },
+    "getCollection takes a single quoted collection name" : {
+
+    },
+    "Expected '.method()' after the collection reference" : {
+
+    },
+    "Expected a quoted collection name" : {
+
+    },
+    "Unterminated string in the collection reference" : {
+
+    },
+    "%@ was given arguments it cannot use." : {
+
+    },
+    "A string literal is missing its closing quote." : {
+
+    },
+    "%@ is missing its closing parenthesis." : {
+
+    },
+    "This database cannot rename a table" : {
+
+    },
+    "This database cannot be renamed" : {
+
+    },
+    "This database cannot rename a schema" : {
+
+    },
+    "This database cannot show the source of %@" : {
+
+    },
+    "%@ no longer exists" : {
+
+    },
+    "Your account is not allowed to read the source of %@" : {
+
+    },
+    "A view that selects * from this table will return its columns in the new order." : {
+
+    },
+    "A replaced foreign key does not keep its MATCH or DEFERRABLE clause." : {
+
+    },
+    "The server requires an encrypted connection but TablePro is configured to connect in plain text." : {
+
+    },
+    "The server does not accept encrypted connections but TablePro is configured to require TLS." : {
+
+    },
+    "The server's TLS certificate could not be verified against any trusted root." : {
+
+    },
+    "The server's TLS certificate does not match the hostname being connected to." : {
+
+    },
+    "The server requires a client certificate for TLS mutual authentication." : {
+
+    },
+    "The client private key is encrypted and needs a passphrase." : {
+
+    },
+    "The passphrase for the client private key is incorrect." : {
+
+    },
+    "The client private key could not be read. It may be malformed or in an unsupported format." : {
+
+    },
+    "The server and TablePro could not agree on a TLS cipher or protocol version." : {
+
+    },
+    "TLS handshake failed." : {
+
+    },
+    "Server response: %@" : {
+
+    },
+    "Open the connection editor, switch to the SSL tab, and set Mode to Required (or stricter)." : {
+
+    },
+    "Open the connection editor, switch to the SSL tab, and set Mode to Disabled." : {
+
+    },
+    "Switch SSL Mode to Verify CA (validates the CA chain but skips hostname check), or update the host field to match the certificate." : {
+
+    },
+    "Provide the client certificate and key paths in the SSL tab." : {
+
+    },
+    "Open the connection editor, switch to the SSL tab, and enter the Key Passphrase." : {
+
+    },
+    "Open the connection editor, switch to the SSL tab, and correct the Key Passphrase." : {
+
+    },
+    "Check that the Client Key path points to a valid PEM private key." : {
+
+    },
+    "Update the server's TLS configuration or use a newer database server version that supports modern ciphers." : {
+
+    },
+    "Charset" : {
+
+    },
+    "Generated" : {
+
+    },
+    "Statement executed" : {
+
+    },
+    "%1$@: %2$lld rows" : {
+
+    },
+    "Starts with %@" : {
+
+    },
+    "All collections" : {
+
+    },
+    "Not connected to Typesense" : {
+
+    },
+    "Typesense error: %@" : {
+
+    },
+    "Not a path on this server: %@" : {
+
+    },
+    "Typesense cannot filter with %@." : {
+
+    },
+    "BETWEEN on %@ needs an upper bound." : {
+
+    },
+    "%@ is a numeric field, and %@ is not a number." : {
+
+    },
+    "%@ is a boolean field, so it matches only true or false, not %@." : {
+
+    },
+    "Typesense only compares numbers with %@, and %@ is not a numeric field." : {
+
+    },
+    "Typesense has no way to escape a backtick in a filter value, so %@ cannot be filtered on this text." : {
+
+    },
+    "Enter a request like: GET /collections" : {
+
+    },
+    "Typesense has no views" : {
+
+    },
+    "Default sorting field: %@" : {
+
+    },
+    "Enter a GraphQL query, or a request like GET /v1/schema." : {
+
+    },
+    "Invalid browse request." : {
+
+    },
+    "Invalid write request." : {
+
+    },
+    "Weaviate does not support views." : {
+
+    },
+    "The first sheet has no header row to map columns from." : {
+
+    },
+    "The workbook has no worksheet to read." : {
+
+    },
+    "That file is not a valid XLSX workbook." : {
+
+    },
+    "The workbook is missing %@." : {
+
+    },
+    "The workbook uses compression method %d, which TablePro cannot read." : {
+
+    },
+    "Could not read %@ from the workbook." : {
+
     }
   },
   "version" : "1.1"

@@ -106,6 +106,12 @@ jobs:
       - name: Check plugin sources that log import the module that defines it
         run: python3 scripts/ci/check-plugin-os-import.py
 
+      # A plugin's String(localized:) resolves against Bundle.main, which is the host app, so its
+      # strings live in the app's catalog. Xcode extracts per target and the plugin targets are not
+      # the app target, so nothing puts them there: 537 strings had never reached a translator.
+      - name: Check plugin strings reach the string catalog
+        run: python3 scripts/localization.py plugins
+
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py
 

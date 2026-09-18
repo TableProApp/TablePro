@@ -9,6 +9,7 @@ stall.
     scripts/localization.py export vi            -> Localization/vi.json
     scripts/localization.py import vi            -> merges it back
     scripts/localization.py status               -> per-language coverage
+    scripts/localization.py plugins [--add]      -> plugin strings missing from the catalog
 
 The exported file is flat and sorted: one key, one string, so it can be edited by hand or fed to
 any translation tool. It is a working copy and is not committed; the catalog stays the single
@@ -172,15 +173,68 @@ def verify() -> int:
     return failures
 
 
+PLUGIN_KEY = re.compile(r'String\(localized:\s*"((?:[^"\\\\]|\\\\.)*)"')
+
+
+def plugin_keys() -> list[str]:
+    """Every literal a plugin asks to localize, in the order the sources give them.
+
+    `String(localized:)` resolves against `Bundle.main`, which for a loaded `.tableplugin` is the
+    host app, so a plugin's strings are looked up in the app's catalog and nowhere else. Xcode
+    cannot put them there: it extracts per target, and the plugin targets are not the app target.
+    So a plugin string reaches a translator only if something adds the key by hand, which is what
+    this does.
+    """
+    seen: dict[str, None] = {}
+    for path in sorted(Path("Plugins").rglob("*.swift")):
+        if "Tests" in path.parts:
+            continue
+        for match in PLUGIN_KEY.finditer(path.read_text(encoding="utf8", errors="replace")):
+            key = match.group(1)
+            # An interpolated key is a different defect: it never matches any catalog entry.
+            if key and "\\(" not in key:
+                seen.setdefault(key, None)
+    return list(seen)
+
+
+def plugins(add: bool) -> int:
+    path = CATALOGS["mac"]
+    catalog = load(path)
+    strings = catalog["strings"]
+    missing = [key for key in plugin_keys() if key not in strings]
+
+    if not missing:
+        print(f"ok: every plugin string is in {path}")
+        return 0
+
+    if not add:
+        print(f"{len(missing)} plugin strings are missing from {path}:")
+        for key in missing[:20]:
+            print(f"  {key!r}")
+        if len(missing) > 20:
+            print(f"  ... and {len(missing) - 20} more")
+        print("Run with --add to append them as untranslated source entries.")
+        return 1
+
+    for key in missing:
+        strings[key] = {}
+    path.write_text(serialize(catalog), encoding="utf8")
+    print(f"added {len(missing)} plugin strings to {path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["export", "import", "status", "verify"])
+    parser.add_argument("command", choices=["export", "import", "plugins", "status", "verify"])
     parser.add_argument("language", nargs="?", help="for example vi, tr, zh-Hans")
     parser.add_argument("--target", choices=sorted(CATALOGS), default="mac")
+    parser.add_argument("--add", action="store_true", help="for plugins: append the missing keys")
     args = parser.parse_args()
 
     if args.command == "verify":
         return verify()
+    if args.command == "plugins":
+        return plugins(args.add)
     if args.command == "status":
         status(args.target)
         return 0

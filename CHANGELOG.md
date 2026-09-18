@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 537 driver and import/export strings are now translatable, having only ever shown in English.
 - Every plugin bundle compiled under the same concurrency settings as the app that loads it.
 - Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
 - Assistant conversations belong to one connection, and outlive the window that opened them.
