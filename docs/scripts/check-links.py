@@ -10,6 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 DOCS = Path(__file__).resolve().parent.parent
 LINK = re.compile(r"\]\((/[^)\s]*?)(?:\s+\"[^\"]*\")?\)")
@@ -26,6 +27,34 @@ def nav_pages(node, out, collecting=False):
             nav_pages(value, out, collecting)
     elif collecting and isinstance(node, str) and not node.startswith(("http", "#")):
         out.add(node)
+
+
+HEADING = re.compile(r"^#{2,4} +(.+?)\s*$", re.M)
+DROPPED = re.compile(r"[()\[\]{}:,;?!`~*+=<>|\\^$%#]")
+SEPARATORS = re.compile(r"[\s.]+")
+QUOTES = str.maketrans({"\"": "'", "\u201c": "'", "\u201d": "'", "\u2018": "'", "\u2019": "'"})
+
+
+def heading_anchor(heading):
+    """The id Mintlify gives a heading, as the published site shows it.
+
+    Measured against docs.tablepro.app on 2026-09-19 over every heading with punctuation in it:
+    `PL/SQL` is `pl/sql`, `SSL/TLS` is `ssl/tls`, `Users & Roles` is `users-&-roles`,
+    `Oracle Cloud (ADB)` is `oracle-cloud-adb`, `Breaking changes before 1.0` is
+    `breaking-changes-before-1-0` and `host:1433` is `host1433`. A slash, an ampersand, an at sign,
+    an underscore and an ellipsis stay; brackets, colons, commas, semicolons, question marks,
+    tildes and backticks go; a full stop separates words the way a space does.
+
+    Mintlify also curls straight quotes, and which way it curls one depends on the text around the
+    heading rather than on the heading alone, so quotes are compared as one character.
+    """
+    text = DROPPED.sub("", heading.lower())
+    text = SEPARATORS.sub("-", text)
+    return re.sub(r"-{2,}", "-", text).strip("-").translate(QUOTES)
+
+
+def link_anchor(anchor):
+    return unquote(anchor).lower().translate(QUOTES)
 
 
 IMPORT = re.compile(r'^import\s+(\w+)\s+from\s+"(/snippets/[^"]+)"', re.M)
@@ -99,10 +128,7 @@ def main() -> int:
             continue
         slug = "/" + str(path.relative_to(DOCS).with_suffix(""))
         body = FENCE.sub("", path.read_text())
-        anchors[slug] = {
-            "#" + re.sub(r"[^a-z0-9]+", "-", h.lower()).strip("-")
-            for h in re.findall(r"^#{2,4} +(.+?)\s*$", body, re.M)
-        }
+        anchors[slug] = {heading_anchor(h) for h in HEADING.findall(body)}
 
     for path in sorted(DOCS.rglob("*.mdx")):
         if "node_modules" in path.parts:
@@ -124,7 +150,7 @@ def main() -> int:
                     bare = page.lstrip("/")
                 if bare not in on_disk:
                     failures.append(f"{rel}:{line_no} links to {target}, which does not resolve")
-                elif anchor and "#" + anchor not in anchors.get(page, set()):
+                elif anchor and link_anchor(anchor) not in anchors.get(page, set()):
                     failures.append(f"{rel}:{line_no} links to {target}, but that heading does not exist")
             for asset in SRC.findall(line):
                 if not (DOCS / asset.lstrip("/")).exists():
