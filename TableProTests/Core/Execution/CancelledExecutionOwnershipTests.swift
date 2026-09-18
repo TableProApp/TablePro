@@ -111,6 +111,42 @@ struct CancelledExecutionOwnershipTests {
         #expect(coordinator.toolbarState.queryTimings.isEmpty)
     }
 
+    /// Stop keeps a claim whose commit is already on the wire, and a script-managed batch leaves the
+    /// phase and goes on running its remaining statements. Taking the handle down anyway left those
+    /// statements with nothing to cancel them: Stop did nothing for the rest of the run, and the
+    /// execution ended reporting a `preparationAbandoned` anomaly.
+    @Test("Stop leaves the query handle of a claim it could not end")
+    func stopKeepsTheHandleOfACommittingClaim() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        let claim = coordinator.tabExecution.claim(tabId)
+        let handle = neverEndingTask()
+        defer { handle.cancel() }
+        coordinator.installQueryTask(handle, owner: .claim(claim), lease: DriverLeaseOwner())
+        let entered = coordinator.tabExecution.enterUninterruptiblePhase(claim)
+        #expect(entered)
+
+        coordinator.stopExecution(for: tabId)
+
+        #expect(coordinator.queryTasks.hasTask(for: tabId))
+        #expect(coordinator.tabExecution.isCurrent(claim))
+    }
+
+    @Test("Stop takes down the query handle of a claim it ended")
+    func stopEndsTheHandleOfAnOrdinaryClaim() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addTableTab(to: tabManager)
+        let claim = coordinator.tabExecution.claim(tabId)
+        let handle = neverEndingTask()
+        defer { handle.cancel() }
+        coordinator.installQueryTask(handle, owner: .claim(claim), lease: DriverLeaseOwner())
+
+        coordinator.stopExecution(for: tabId)
+
+        #expect(coordinator.queryTasks.hasTask(for: tabId) == false)
+        #expect(coordinator.tabExecution.isCurrent(claim) == false)
+    }
+
     @Test("Closing a tab releases the execution it was running")
     func closingATabReleasesItsExecution() {
         let (coordinator, tabManager) = makeCoordinator()

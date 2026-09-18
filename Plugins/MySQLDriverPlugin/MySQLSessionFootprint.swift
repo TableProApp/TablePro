@@ -114,12 +114,19 @@ struct MySQLSessionFootprint: Equatable {
     /// Only the lock flag is taken back. The rest of the footprint stays set, because a statement
     /// that failed can still have created a temporary table, opened a transaction or moved a
     /// session setting on its way to failing.
+    ///
+    /// The failure names the whole text that was sent, not the statement inside it that the server
+    /// refused, so only a single statement is provably the one that failed. A server runs a batch
+    /// in order and stops at the first refusal, so `LOCK TABLES t WRITE; INSERT INTO t VALUES (bad)`
+    /// holds the lock and fails on the `INSERT`: clearing the flag for any `LOCK TABLES` anywhere in
+    /// the text released a lock the session was still holding, and the idle release then handed the
+    /// connection back.
     mutating func observeFailure(of sql: String) {
-        for statement in SQLStatementSplitting.statements(in: sql) {
-            let head = Self.collapsedHead(of: Self.executableBody(of: statement).uppercased())
-            guard head.hasPrefix("LOCK TABLE") else { continue }
-            hasLockedTables = false
-        }
+        let statements = SQLStatementSplitting.statements(in: sql)
+        guard statements.count == 1, let failed = statements.first else { return }
+        let head = Self.collapsedHead(of: Self.executableBody(of: failed).uppercased())
+        guard head.hasPrefix("LOCK TABLE") else { return }
+        hasLockedTables = false
     }
 
     /// What the session holds, for a caller deciding whether it may open a transaction of its own.

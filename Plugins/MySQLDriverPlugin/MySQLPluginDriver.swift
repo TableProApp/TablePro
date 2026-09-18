@@ -893,26 +893,41 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func applyQueryTimeout(_ seconds: Int) async throws {
         sessionLock.withLock { appliedQueryTimeoutSeconds = seconds }
         let sessionFlavor = flavor
-        for statement in sessionFlavor.queryTimeoutStatements(seconds: seconds) {
+        let deadline = await installServerQueryTimeout(seconds: seconds, flavor: sessionFlavor)
+        adopt(clientDeadline: deadline)
+    }
+
+    /// Sends the flavor's statements in order and answers with the client-side deadline the session
+    /// is left needing, which is `nil` whenever the server is enforcing one of its own.
+    private func installServerQueryTimeout(
+        seconds: Int,
+        flavor: MySQLServerFlavor
+    ) async -> MySQLStatementDeadline? {
+        var installation = MySQLQueryTimeoutInstallation(seconds: seconds, flavor: flavor)
+        for statement in flavor.queryTimeoutStatements(seconds: seconds) {
+            let step: MySQLQueryTimeoutInstallation.Step
             do {
                 _ = try await executeWithReconnect(query: statement, isRetry: false, countsAsActivity: false)
+                step = installation.accepted()
             } catch let error as MariaDBPluginError where mysqlRejectsStatementTimeout(code: error.code) {
-                adoptClientDeadline(seconds: seconds, flavor: sessionFlavor)
-                return
+                step = installation.refusedAsUnknownVariable()
             } catch {
                 Self.logger.warning(
                     "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
                 )
-                return
+                step = installation.failed()
             }
+            guard case .adopt(let deadline) = step else { continue }
+            return deadline
         }
-        mariadbConnection?.adopt(statementDeadline: nil)
+        return nil
     }
 
-    private func adoptClientDeadline(seconds: Int, flavor: MySQLServerFlavor) {
-        mariadbConnection?.adopt(statementDeadline: mysqlClientDeadline(seconds: seconds, flavor: flavor))
+    private func adopt(clientDeadline: MySQLStatementDeadline?) {
+        mariadbConnection?.adopt(statementDeadline: clientDeadline)
+        guard let clientDeadline else { return }
         Self.logger.info(
-            "Server has no statement timeout; a statement past \(seconds, privacy: .public)s is stopped with KILL QUERY"
+            "Server has no statement timeout; a statement past \(clientDeadline.seconds, privacy: .public)s is stopped with KILL QUERY"
         )
     }
 

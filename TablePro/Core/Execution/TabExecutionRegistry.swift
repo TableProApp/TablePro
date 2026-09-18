@@ -153,6 +153,19 @@ internal struct TabExecutionRegistry {
         entries[claim.tabId]?.isUninterruptible = false
     }
 
+    /// What a Stop did, so the caller can act on the one case where the claim outlives it.
+    ///
+    /// The answer and the release are one call for the same reason `settle` and
+    /// `enterUninterruptiblePhase` are: asking whether the claim is uninterruptible and then
+    /// stopping it are two reads of a value that decides what the caller does next, and an empty
+    /// `ended` cannot tell "nothing was running" from "the claim was kept".
+    internal struct StopOutcome: Equatable {
+        internal let ended: [EndedExecution]
+        /// True when the claim was past its point of no return, so the work it owns is still running
+        /// and everything the caller holds for it stays installed.
+        internal let keptUninterruptibleClaim: Bool
+    }
+
     /// What the user's Stop does, as against `invalidate(_:reason:)`, which every other end of an
     /// execution still uses.
     ///
@@ -161,15 +174,17 @@ internal struct TabExecutionRegistry {
     /// already on the wire still settles and still applies its results. Everything else ends exactly
     /// as it did: `invalidate` and `invalidateAll` ignore the mark, so closing the tab, a retarget or
     /// a lost session release it whatever it is doing.
-    internal mutating func stop(_ tabId: UUID) -> [EndedExecution] {
+    internal mutating func stop(_ tabId: UUID) -> StopOutcome {
         unclaimedWork.removeValue(forKey: tabId)
-        guard entries[tabId]?.isUninterruptible != true else { return [] }
+        guard entries[tabId]?.isUninterruptible != true else {
+            return StopOutcome(ended: [], keptUninterruptibleClaim: true)
+        }
         let ended = entries.removeValue(forKey: tabId).map {
             [EndedExecution(tabId: tabId, startedAt: $0.startedAt, reason: .cancelledByUser)]
         } ?? []
         lastEpoch += 1
         contentEpochs[tabId] = lastEpoch
-        return ended
+        return StopOutcome(ended: ended, keptUninterruptibleClaim: false)
     }
 
     /// Work that runs against a tab without owning its result.

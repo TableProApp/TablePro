@@ -633,6 +633,7 @@ targets:
       - Plugins/RedisDriverPlugin/RedisKeySummary.swift
       - Plugins/RedisDriverPlugin/RedisMultiShardPlanner.swift
       - Plugins/RedisDriverPlugin/RedisQueryBuilder.swift
+      - Plugins/RedisDriverPlugin/RedisQueuedCommandPolicy.swift
       - Plugins/RedisDriverPlugin/RedisQueuedDatabase.swift
       - Plugins/RedisDriverPlugin/RedisReply.swift
       - Plugins/RedisDriverPlugin/RedisSentinelResolver.swift

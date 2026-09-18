@@ -91,6 +91,20 @@ struct MySQLSessionFootprintTests {
         #expect(result.isClean)
     }
 
+    /// The driver reports the text it sent, not the statement inside it the server refused, and a
+    /// server runs a batch in order and stops at the first refusal. So the lock here was taken and
+    /// the `INSERT` is what failed. Clearing the flag for any `LOCK TABLES` in the text reported a
+    /// session holding nothing, and the idle release then handed the connection back and let the
+    /// next batch's `START TRANSACTION` release the user's lock.
+    @Test("A batch whose later statement failed keeps the lock its first statement took")
+    func aFailedBatchKeepsTheLockItAlreadyTook() {
+        let batch = "LOCK TABLES users WRITE; INSERT INTO users VALUES (bad)"
+        var result = footprint(after: batch)
+        result.observeFailure(of: batch)
+        #expect(result.hasLockedTables)
+        #expect(result.transactionState(isInTransaction: false) == .holdsSessionLocks)
+    }
+
     @Test("A failure takes back nothing but the lock, because a statement can fail after changing the session")
     func aFailureTakesBackOnlyTheLock() {
         var result = footprint(after: "CREATE TEMPORARY TABLE staging (a INT)", "LOCK TABLES users WRITE")

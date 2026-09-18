@@ -138,6 +138,65 @@ struct RedisCommandChannelRunTests {
     }
 }
 
+@Suite("Redis queued command policy")
+struct RedisQueuedCommandPolicyTests {
+    /// A one-row `QUEUED` status in the data grid reads as an empty table, so the two walks the app
+    /// builds for itself say the keyspace could not be read instead.
+    @Test("The app's own keyspace walks refuse a queued reply")
+    func appKeyspaceWalksRefuse() {
+        #expect(RedisOperation.keyBrowse(pattern: nil, typeScope: nil, limit: 100, offset: 0)
+            .queuedCommandAnswer == .refuse)
+        #expect(RedisOperation.keyTree(pattern: nil, limit: 100).queuedCommandAnswer == .refuse)
+    }
+
+    @Test("A command the user typed reports the acknowledgement the server gave it")
+    func userCommandsReportQueued() {
+        let operations: [RedisOperation] = [
+            .get(key: "k"),
+            .set(key: "k", value: Data("v".utf8), options: nil),
+            .del(keys: ["k"]),
+            .dbsize,
+            .exists(keys: ["k"]),
+        ]
+        for operation in operations {
+            #expect(operation.queuedCommandAnswer == .reportQueued)
+        }
+    }
+}
+
+/// The paged read and the streamed read both run an operation, and the streamed one used to run it
+/// without translating the queued reply: a command sent into the user's open block threw instead of
+/// answering `QUEUED`, and nothing recorded it, so `EXEC`'s replies paired with the recorded commands
+/// one position out. The translation therefore belongs to the one function that dispatches an
+/// operation, not to a route. The plugin imports CRedis, which this target cannot, so the guard is a
+/// source scan.
+@Suite("Redis queued translation source scan")
+struct RedisQueuedTranslationSourceScanTests {
+    private static let pluginDirectory: URL = {
+        var directory = URL(fileURLWithPath: #filePath)
+        for _ in 0 ..< 3 { directory.deleteLastPathComponent() }
+        return directory
+            .appendingPathComponent("Plugins")
+            .appendingPathComponent("RedisDriverPlugin")
+    }()
+
+    private static func source(_ name: String) throws -> String {
+        try String(contentsOf: pluginDirectory.appendingPathComponent(name), encoding: .utf8)
+    }
+
+    private static let queuedCatch = "catch let queued as RedisQueuedCommand"
+
+    @Test("The operation dispatcher is what translates a queued reply")
+    func theDispatcherTranslates() throws {
+        #expect(try Self.source("RedisPluginDriver+Operations.swift").contains(Self.queuedCatch))
+    }
+
+    @Test("No route translates a queued reply for itself")
+    func noRouteTranslatesOnItsOwn() throws {
+        #expect(!(try Self.source("RedisPluginDriver.swift").contains(Self.queuedCatch)))
+    }
+}
+
 @Suite("Redis command channel - the default keyspace walk")
 struct RedisCommandChannelScanTests {
     @Test("A queued SCAN is refused rather than read as an empty keyspace")

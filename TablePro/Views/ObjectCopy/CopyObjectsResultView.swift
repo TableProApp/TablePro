@@ -27,6 +27,20 @@ internal struct CopyObjectsResultView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     }
+                    if result.pendingInSessionTransaction {
+                        Label(
+                            String(
+                                localized: """
+                                    This copy ran inside the transaction already open on this \
+                                    connection. Commit it to keep the copy, or roll it back to \
+                                    discard it.
+                                    """
+                            ),
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    }
                     outcomes(result)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

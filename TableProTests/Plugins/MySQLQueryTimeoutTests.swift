@@ -112,6 +112,38 @@ struct MySQLQueryTimeoutTests {
         #expect(cause(errno: 1_064, waited: .seconds(31)) == .server)
     }
 
+    /// OceanBase sends two, and a server that takes `ob_query_timeout` and answers `ERROR 1193` to
+    /// `max_execution_time` is already enforcing a timeout of its own. A client-side deadline on top
+    /// of it stops the statement twice, and OceanBase absorbs no latched kill, so the second
+    /// `KILL QUERY` fails whatever the session runs next with `ERROR 1317`.
+    @Test("A refusal after the server has taken a statement leaves the server's timeout alone")
+    func refusalAfterAnAcceptedStatementKeepsTheServerTimeout() {
+        let flavor = MySQLServerFlavor.oceanbase(version: MySQLEngineVersion(major: 4, minor: 4, patch: 2))
+        #expect(flavor.queryTimeoutStatements(seconds: 30).count == 2)
+
+        var installation = MySQLQueryTimeoutInstallation(seconds: 30, flavor: flavor)
+        #expect(installation.accepted() == .sendNextStatement)
+        #expect(installation.refusedAsUnknownVariable() == .sendNextStatement)
+    }
+
+    @Test("A server that refuses the first statement is timed by the client instead")
+    func refusalOfTheFirstStatementAdoptsTheClientDeadline() {
+        var installation = MySQLQueryTimeoutInstallation(seconds: 30, flavor: .mysql)
+        #expect(installation.refusedAsUnknownVariable()
+            == .adopt(mysqlClientDeadline(seconds: 30, flavor: .mysql)))
+    }
+
+    /// Any other failure says nothing about whether the server has a timeout, so no client deadline
+    /// is installed. Returning without adopting left the deadline a previous call had built from
+    /// another `seconds` value stopping the user's statements.
+    @Test("A failure that is not ERROR 1193 clears the deadline rather than keeping an older one")
+    func otherFailuresAdoptNoDeadline() {
+        var installation = MySQLQueryTimeoutInstallation(seconds: 30, flavor: .mariadb)
+        #expect(installation.failed() == .adopt(nil))
+        #expect(installation.accepted() == .sendNextStatement)
+        #expect(installation.failed() == .adopt(nil))
+    }
+
     private func cause(
         errno: UInt32,
         deadlineExpired: Bool = false,

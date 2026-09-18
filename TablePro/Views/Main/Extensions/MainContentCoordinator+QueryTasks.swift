@@ -68,11 +68,19 @@ extension MainContentCoordinator {
     /// the same stretch of main-actor work, so a batch checking `isCurrent` before its commit sees
     /// both or neither. A claim whose commit is already on the wire is spared: `stop` keeps it, and
     /// `isStoppable` is what keeps the button from being offered over it in the first place.
+    ///
+    /// The task goes with the claim. A script-managed batch whose commit point leaves the phase and
+    /// runs on had its entry removed here while `stop` kept the claim, so the statements still to
+    /// come had nothing left to cancel them: Stop did nothing for the rest of the run, and the
+    /// execution ended as a `preparationAbandoned` anomaly.
     internal func stopExecution(for tabId: UUID) {
-        cancelQueryTask(for: tabId, delivery: .immediate)
+        let outcome = tabExecution.stop(tabId)
+        if !outcome.keptUninterruptibleClaim {
+            cancelQueryTask(for: tabId, delivery: .immediate)
+        }
         cancelRowCountTask(for: tabId)
         releaseExactCount(for: tabId)
-        reportEndedExecutions(tabExecution.stop(tabId))
+        reportEndedExecutions(outcome.ended)
         tabManager.mutate(tabId: tabId) { tab in
             tab.pagination.isLoadingMore = false
             tab.pagination.isCountingExact = false

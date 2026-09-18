@@ -8,7 +8,28 @@ import OSLog
 import TableProPluginKit
 
 extension RedisPluginDriver {
+    /// The one door into an operation, so the paged read and the streamed read cannot disagree about
+    /// a command the server queued.
+    ///
+    /// The translation lives here rather than at the call sites because it was missing from one of
+    /// them: a command routed through `executeBoundedQuery` threw the queued error instead of
+    /// answering `QUEUED`, and nothing recorded it, so `EXEC`'s replies paired with the commands one
+    /// position out.
     func executeOperation(
+        _ operation: RedisOperation,
+        connection conn: any RedisCommandChannel,
+        startTime: Date
+    ) async throws -> PluginQueryResult {
+        do {
+            return try await runOperation(operation, connection: conn, startTime: startTime)
+        } catch let queued as RedisQueuedCommand {
+            guard operation.queuedCommandAnswer == .reportQueued else { throw queued }
+            recordQueued(queued.command)
+            return buildStatusResult(Self.queuedStatus, startTime: startTime)
+        }
+    }
+
+    private func runOperation(
         _ operation: RedisOperation,
         connection conn: any RedisCommandChannel,
         startTime: Date

@@ -12,21 +12,6 @@ import os
 import OSLog
 import TableProPluginKit
 
-extension RedisOperation {
-    /// A keyspace walk the app built for a grid, rather than a command the user typed.
-    ///
-    /// Its reply has to say the keyspace could not be read, because a one-row `QUEUED` status in the
-    /// data grid reads as an empty table. `KEYBROWSE` and `KEYTREE` are also the two operations
-    /// that are paged through `execute(query:)` and streamed through `streamRows(query:)`, so
-    /// answering them differently on the two routes would make browsing disagree with itself.
-    var readsTheKeyspaceForTheApp: Bool {
-        switch self {
-        case .keyBrowse, .keyTree: return true
-        default: return false
-        }
-    }
-}
-
 extension Array where Element == String? {
     var asCells: [PluginCellValue] { map(PluginCellValue.fromOptional) }
 }
@@ -213,20 +198,14 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let operation = try RedisCommandParser.parse(trimmed)
-        do {
-            return try await executeOperation(operation, connection: conn, startTime: startTime)
-        } catch let queued as RedisQueuedCommand {
-            guard !operation.readsTheKeyspaceForTheApp else { throw queued }
-            recordQueued(queued.command)
-            return buildStatusResult(Self.queuedStatus, startTime: startTime)
-        }
+        return try await executeOperation(operation, connection: conn, startTime: startTime)
     }
 
     /// `+QUEUED` is the honest answer for a command the user sent into an open block, so it is the
     /// result rather than an error: the block is theirs to end, and `EXEC` will report every reply.
     static let queuedStatus = "QUEUED"
 
-    private func recordQueued(_ command: String) {
+    func recordQueued(_ command: String) {
         queuedCommandsLock.lock()
         if queuedCommands.count < Self.maxRecordedQueuedCommands { queuedCommands.append(command) }
         queuedCommandsLock.unlock()

@@ -221,6 +221,8 @@ every row back. **Skip and continue** promises no rollback, so there the clearin
 A stopped copy reports only what was committed. The table it was in the middle of counts as neither
 copied nor failed.
 
+When the target connection already holds a transaction, the copy runs inside it and opens none of its own. Nothing it wrote is committed until you commit that transaction, and the result says so.
+
 ## Duplicating a database
 
 **Duplicate Database…** creates the new database with the character set and collation the engine

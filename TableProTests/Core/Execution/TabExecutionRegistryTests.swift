@@ -266,9 +266,10 @@ struct TabExecutionRegistryTests {
         let marked = registry.enterUninterruptiblePhase(claim)
         #expect(marked)
 
-        let ended = registry.stop(tabId)
+        let outcome = registry.stop(tabId)
 
-        #expect(ended.isEmpty)
+        #expect(outcome.ended.isEmpty)
+        #expect(outcome.keptUninterruptibleClaim)
         #expect(registry.isExecuting(tabId))
         #expect(registry.isCurrent(claim))
         #expect(registry.contentEpoch(for: tabId) == contentEpoch)
@@ -289,10 +290,10 @@ struct TabExecutionRegistryTests {
         let stoppedEpoch = registry.contentEpoch(for: stopped)
         let otherEpoch = registry.contentEpoch(for: other)
 
-        let ended = registry.stop(stopped)
+        let outcome = registry.stop(stopped)
 
-        #expect(ended.map(\.tabId) == [stopped])
-        #expect(ended.first?.reason == .cancelledByUser)
+        #expect(outcome.ended.map(\.tabId) == [stopped])
+        #expect(outcome.ended.first?.reason == .cancelledByUser)
         #expect(registry.isCurrent(stoppedClaim) == false)
         #expect(registry.contentEpoch(for: stopped) != stoppedEpoch)
         #expect(registry.isCurrent(otherClaim))
@@ -307,9 +308,10 @@ struct TabExecutionRegistryTests {
         let marked = registry.enterUninterruptiblePhase(committingClaim)
         #expect(marked)
 
-        let ended = registry.stop(committing)
+        let outcome = registry.stop(committing)
 
-        #expect(ended.isEmpty)
+        #expect(outcome.ended.isEmpty)
+        #expect(outcome.keptUninterruptibleClaim)
         #expect(registry.isCurrent(committingClaim))
     }
 
@@ -366,8 +368,9 @@ struct TabExecutionRegistryTests {
         registry.leaveUninterruptiblePhase(claim)
 
         #expect(registry.isStoppable(tabId))
-        let ended = registry.stop(tabId)
-        #expect(ended.map(\.tabId) == [tabId])
+        let outcome = registry.stop(tabId)
+        #expect(outcome.ended.map(\.tabId) == [tabId])
+        #expect(!outcome.keptUninterruptibleClaim)
         #expect(registry.isExecuting(tabId) == false)
     }
 

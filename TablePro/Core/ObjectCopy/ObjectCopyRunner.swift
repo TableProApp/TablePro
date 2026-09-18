@@ -33,6 +33,26 @@ internal struct ObjectCopyRunResult: Sendable {
     internal let cancelled: Bool
     internal let createdDatabase: String?
 
+    /// The copy ran on a connection whose session already held a transaction, so what it wrote is
+    /// pending inside it and only the user can commit or roll it back. It reaches the target through
+    /// `withMetadataDriver`, which is a pooled connection of its own on most engines and the
+    /// connection's own session driver on the engines that opt out of pooling.
+    internal let pendingInSessionTransaction: Bool
+
+    internal init(
+        outcomes: [ObjectCopyObjectOutcome],
+        rowsCopied: Int,
+        cancelled: Bool,
+        createdDatabase: String?,
+        pendingInSessionTransaction: Bool = false
+    ) {
+        self.outcomes = outcomes
+        self.rowsCopied = rowsCopied
+        self.cancelled = cancelled
+        self.createdDatabase = createdDatabase
+        self.pendingInSessionTransaction = pendingInSessionTransaction
+    }
+
     /// Counted by object rather than by outcome. A table copied with its structure and its rows
     /// produces one outcome for each phase, and reporting "2 objects" for one table is how a
     /// summary comes to overstate what the run did.
@@ -70,12 +90,32 @@ internal struct ObjectCopyFailure: Identifiable, Sendable {
 internal struct ObjectCopyRunner {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "ObjectCopyRunner")
 
-    private let manager: DatabaseManager
+    private let manager: any ScopedMetadataProviding
     private let gate: ExecutionGate
 
-    internal init(manager: DatabaseManager = .shared, gate: ExecutionGate = ExecutionGateProvider.shared) {
+    internal init(
+        manager: any ScopedMetadataProviding = DatabaseManager.shared,
+        gate: ExecutionGate = ExecutionGateProvider.shared
+    ) {
         self.manager = manager
         self.gate = gate
+    }
+
+    /// Who owns the transaction this phase's statements run inside, asked of the target driver
+    /// inside the same lease that runs them so nothing can open one between the answer and the
+    /// first statement.
+    ///
+    /// The copy reaches its target through `withMetadataDriver`, which is a pooled connection of its
+    /// own on most engines and the connection's own session driver on the engines that opt out of
+    /// pooling (DuckDB, PGlite). On those the session can already hold the user's transaction, and a
+    /// `BEGIN` of the copy's own aborts it on DuckDB while a `COMMIT` of its own commits their
+    /// pending work. `DataWriteExecutor`, `DatabaseManager+Principals` and
+    /// `StructureRebuildPlanRunner` ask the same question for the same reason.
+    nonisolated private static func transactionOwner(of driver: DatabaseDriver) async -> WriteTransactionOwner {
+        WriteTransactionOwner.resolve(
+            supportsTransactions: driver.supportsTransactions,
+            sessionState: await driver.heldSessionTransactionState()
+        )
     }
 
     internal func run(_ plan: ObjectCopyPlan, progress: ObjectCopyProgress) async throws -> ObjectCopyRunResult {
@@ -109,13 +149,15 @@ internal struct ObjectCopyRunner {
         var outcomes: [ObjectCopyObjectOutcome] = []
         var cancelled = false
         var rowsCopied = 0
+        var pendingInSessionTransaction = false
 
         func finished() -> ObjectCopyRunResult {
             ObjectCopyRunResult(
                 outcomes: outcomes,
                 rowsCopied: rowsCopied,
                 cancelled: cancelled,
-                createdDatabase: createdDatabase
+                createdDatabase: createdDatabase,
+                pendingInSessionTransaction: pendingInSessionTransaction
             )
         }
 
@@ -131,6 +173,7 @@ internal struct ObjectCopyRunner {
             let result = try await runStructure(plan, request: request, progress: progress)
             outcomes += result.outcomes
             cancelled = cancelled || result.cancelled
+            pendingInSessionTransaction = pendingInSessionTransaction || result.joinedSessionTransaction
             if result.stopped { return finished() }
         }
 
@@ -146,6 +189,7 @@ internal struct ObjectCopyRunner {
             let result = try await runDDL(plan.clearGroups, request: request, progress: progress)
             outcomes += result.outcomes.filter { $0.error != nil }
             cancelled = cancelled || result.cancelled
+            pendingInSessionTransaction = pendingInSessionTransaction || result.joinedSessionTransaction
             if result.stopped { return finished() }
         }
 
@@ -154,6 +198,7 @@ internal struct ObjectCopyRunner {
             outcomes += dataOutcomes.outcomes
             cancelled = cancelled || dataOutcomes.cancelled
             rowsCopied = dataOutcomes.rowsCopied
+            pendingInSessionTransaction = pendingInSessionTransaction || dataOutcomes.joinedSessionTransaction
             if dataOutcomes.stopped { return finished() }
         }
 
@@ -164,6 +209,7 @@ internal struct ObjectCopyRunner {
             let result = try await runDDL(plan.afterDataGroups, request: request, progress: progress)
             outcomes += result.outcomes
             cancelled = cancelled || result.cancelled
+            pendingInSessionTransaction = pendingInSessionTransaction || result.joinedSessionTransaction
         }
 
         return finished()
@@ -183,6 +229,8 @@ internal struct ObjectCopyRunner {
         var cancelled = false
         /// True when the run must not go on to the rows, because the tables they need are missing.
         var stopped = false
+        /// True when the phase ran inside a transaction the session already held.
+        var joinedSessionTransaction = false
     }
 
     /// Every drop and every create, in one scoped call, wrapped where the engine allows it.
@@ -206,7 +254,8 @@ internal struct ObjectCopyRunner {
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            let usesTransaction = hasCleanup && plugin.supportsTransactionalDDL
+            let owner = await Self.transactionOwner(of: driver)
+            let usesTransaction = hasCleanup && plugin.supportsTransactionalDDL && owner.opensTransaction
             let relaxesForeignKeys = hasCleanup && !usesTransaction
             if usesTransaction { try await plugin.beginTransaction(mode: .readWrite) }
             if relaxesForeignKeys {
@@ -222,9 +271,10 @@ internal struct ObjectCopyRunner {
                 _ = try await plugin.execute(query: statement.sql)
             }
 
-            let result = await Self.execute(
+            var result = await Self.execute(
                 groups, on: plugin, errorHandling: errorHandling, progress: progress
             )
+            result.joinedSessionTransaction = owner == .session
 
             if relaxesForeignKeys {
                 for statement in plugin.foreignKeyEnableStatements() ?? [] {
@@ -302,9 +352,12 @@ internal struct ObjectCopyRunner {
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            return await Self.execute(
+            let owner = await Self.transactionOwner(of: driver)
+            var result = await Self.execute(
                 runnable, on: plugin, errorHandling: errorHandling, progress: progress
             )
+            result.joinedSessionTransaction = owner == .session
+            return result
         }
     }
 
@@ -314,6 +367,8 @@ internal struct ObjectCopyRunner {
         var outcomes: [ObjectCopyObjectOutcome] = []
         var cancelled = false
         var stopped = false
+        /// True when the rows went into a transaction the session already held.
+        var joinedSessionTransaction = false
         /// Only what was committed. A cancelled table rolls its rows back, so counting what the
         /// copier inserted reported rows the target never kept.
         var rowsCopied = 0
@@ -361,10 +416,12 @@ internal struct ObjectCopyRunner {
             guard let targetPlugin = CompareMetadataService.pluginDriver(from: targetDriver) else {
                 throw ObjectCopyError.refused(Self.noTargetDriver)
             }
-            let usesTransaction = targetPlugin.supportsTransactions
+            let owner = await Self.transactionOwner(of: targetDriver)
+            let usesTransaction = owner.opensTransaction
             if usesTransaction { try await targetPlugin.beginTransaction(mode: .readWrite) }
 
             var result = DataResult()
+            result.joinedSessionTransaction = owner == .session
             let cleared = await Self.execute(
                 clearGroups, on: targetPlugin, errorHandling: errorHandling, progress: progress
             )
@@ -416,7 +473,7 @@ internal struct ObjectCopyRunner {
         _ steps: [ObjectCopyTableStep],
         from sourceScope: DatabaseScope,
         into targetPlugin: any PluginDatabaseDriver,
-        manager: DatabaseManager,
+        manager: any ScopedMetadataProviding,
         targetType: DatabaseType,
         errorHandling: ImportErrorHandling,
         progress: ObjectCopyProgress
@@ -495,7 +552,7 @@ internal struct ObjectCopyRunner {
                 && request.errorHandling != .skipAndContinue
 
             do {
-                let outcome = try await copyRows(
+                let copied = try await copyRows(
                     step,
                     request: request,
                     targetType: targetType,
@@ -503,6 +560,9 @@ internal struct ObjectCopyRunner {
                     completedBefore: result.rowsCopied,
                     progress: progress
                 )
+                let outcome = copied.outcome
+                result.joinedSessionTransaction =
+                    result.joinedSessionTransaction || copied.joinedSessionTransaction
                 /// A cancelled table that rolled back neither counts as copied nor reads as an
                 /// object that succeeded. On a target without transactions nothing rolled back, so
                 /// the batches already flushed are in the target and saying otherwise hides them
@@ -546,6 +606,12 @@ internal struct ObjectCopyRunner {
         return result
     }
 
+    /// One table's rows, and whether they went into a transaction the session already held.
+    private struct CopiedRows: Sendable {
+        let outcome: ObjectCopyRowCopier.Outcome
+        let joinedSessionTransaction: Bool
+    }
+
     private func copyRows(
         _ step: ObjectCopyTableStep,
         request: ObjectCopyRequest,
@@ -553,7 +619,7 @@ internal struct ObjectCopyRunner {
         wrapsInTransaction: Bool,
         completedBefore: Int,
         progress: ObjectCopyProgress
-    ) async throws -> ObjectCopyRowCopier.Outcome {
+    ) async throws -> CopiedRows {
         let sourceScope = request.source.scope
         let targetScope = request.target.scope
         let copier = ObjectCopyRowCopier(step: step, targetDatabaseType: targetType)
@@ -572,7 +638,8 @@ internal struct ObjectCopyRunner {
                 guard let targetPlugin = CompareMetadataService.pluginDriver(from: targetDriver) else {
                     throw ObjectCopyError.refused(Self.noTargetDriver)
                 }
-                let usesTransaction = wrapsInTransaction && targetPlugin.supportsTransactions
+                let owner = await Self.transactionOwner(of: targetDriver)
+                let usesTransaction = wrapsInTransaction && owner.opensTransaction
                 if usesTransaction {
                     try await targetPlugin.beginTransaction(mode: .readWrite)
                 }
@@ -584,12 +651,16 @@ internal struct ObjectCopyRunner {
                         progress.setRowsForCurrentObject(rows, completedBefore: completedBefore)
                     }
                     guard usesTransaction else {
-                        /// Nothing to roll back, so every batch already flushed is in the target
+                        /// Nothing of the copy's own to roll back, so every batch already flushed is
+                        /// in the target, or pending in the transaction the session already held,
                         /// whether the user stopped or not.
-                        return ObjectCopyRowCopier.Outcome(
-                            inserted: outcome.inserted,
-                            cancelled: outcome.cancelled,
-                            committed: outcome.inserted
+                        return CopiedRows(
+                            outcome: ObjectCopyRowCopier.Outcome(
+                                inserted: outcome.inserted,
+                                cancelled: outcome.cancelled,
+                                committed: outcome.inserted
+                            ),
+                            joinedSessionTransaction: owner == .session
                         )
                     }
                     if outcome.cancelled {
@@ -597,7 +668,7 @@ internal struct ObjectCopyRunner {
                     } else {
                         try await targetPlugin.commitTransaction()
                     }
-                    return outcome
+                    return CopiedRows(outcome: outcome, joinedSessionTransaction: false)
                 } catch {
                     if usesTransaction {
                         if errorHandling == .stopAndCommit {

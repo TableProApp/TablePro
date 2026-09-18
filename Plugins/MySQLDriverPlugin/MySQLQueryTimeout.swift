@@ -54,6 +54,50 @@ internal func mysqlClientDeadline(seconds: Int, flavor: MySQLServerFlavor) -> My
     MySQLStatementDeadline(seconds: seconds, scope: flavor.isMariaDB ? .everyStatement : .selectStatements)
 }
 
+/// What the session ends up enforcing as the flavor's timeout statements are sent one at a time,
+/// and the single writer of the connection's client-side deadline.
+///
+/// A flavor can send more than one: OceanBase sends `ob_query_timeout` and then
+/// `max_execution_time = 0`. A server that takes the first and answers `ERROR 1193` to the second
+/// already has a working server-side timeout, so a client-side deadline on top of it stops the
+/// statement twice, and the second `KILL QUERY` lands on whatever the session runs next
+/// (`MySQLKillLatch.absorbsLatchedKill` is false for OceanBase, so nothing absorbs it and the next
+/// statement fails with `ERROR 1317`).
+///
+/// A statement the server refused for any other reason stops the run with no deadline at all, and
+/// the caller adopts that `nil` rather than returning: the deadline belongs to the timeout this call
+/// installed and never to the one a previous call did, and a bare return left a deadline built from
+/// an earlier `seconds` in force.
+internal struct MySQLQueryTimeoutInstallation {
+    internal enum Step: Equatable {
+        case sendNextStatement
+        case adopt(MySQLStatementDeadline?)
+    }
+
+    private let seconds: Int
+    private let flavor: MySQLServerFlavor
+    private var serverTookAStatement = false
+
+    internal init(seconds: Int, flavor: MySQLServerFlavor) {
+        self.seconds = seconds
+        self.flavor = flavor
+    }
+
+    internal mutating func accepted() -> Step {
+        serverTookAStatement = true
+        return .sendNextStatement
+    }
+
+    internal mutating func refusedAsUnknownVariable() -> Step {
+        guard !serverTookAStatement else { return .sendNextStatement }
+        return .adopt(mysqlClientDeadline(seconds: seconds, flavor: flavor))
+    }
+
+    internal func failed() -> Step {
+        .adopt(nil)
+    }
+}
+
 /// `ERROR 1193 Unknown system variable`, which is how every server without a statement timeout
 /// answers the `SET SESSION` that would install one. Any other failure is a server problem the
 /// driver reports rather than a missing feature it works around.

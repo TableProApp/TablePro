@@ -75,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Passwordless account created when a new user's connection limit was set before saving.
 - Connection held as "session settings changed" after a `SET PASSWORD`.
 - Rows saved, added or deleted on iPhone and iPad refused by a MySQL, MariaDB, PostgreSQL or Redshift server that starts sessions read-only.
+- Copying objects into a connection that already has a transaction open committing it.
+- Replace-copy into a remote libSQL target failing at `BEGIN`.
 
 ### Security
 
