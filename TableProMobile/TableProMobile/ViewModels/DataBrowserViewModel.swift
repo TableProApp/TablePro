@@ -75,10 +75,12 @@ final class DataBrowserViewModel {
         guard !legacyRows.isEmpty else { return "" }
         let start = pagination.currentOffset + 1
         let end = pagination.currentOffset + legacyRows.count
-        if let total = pagination.totalRows {
-            return "\(start)-\(end) of \(total)"
-        }
-        return "\(start)-\(end)"
+        guard let total = pagination.totalRows else { return "\(start)-\(end)" }
+        return Self.pageRangeLabel(start: start, end: end, total: total)
+    }
+
+    nonisolated static func pageRangeLabel(start: Int, end: Int, total: Int, bundle: Bundle = .main) -> String {
+        String(format: String(localized: "%1$lld-%2$lld of %3$lld", bundle: bundle), start, end, total)
     }
 
     // MARK: - Attach
