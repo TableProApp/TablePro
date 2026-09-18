@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
 - `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
 - 1 row affected reported for every Oracle PL/SQL block.
+- Oracle table and database metadata failing to load because its size query read `ALL_SEGMENTS`, a view Oracle does not have.
 - MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
@@ -136,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
 - SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
 - Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
+- Oracle and Dameng metadata reads and the Oracle server-side export captured by an object shadowing a `SYS` dictionary name or package in the current schema.
 
 ## [0.75.0] - 2026-09-18
 

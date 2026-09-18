@@ -363,12 +363,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func emptyResultColumns(for query: String) async throws -> OracleRawResult? {
         guard let table = Self.extractTableNameFromSelect(query) else { return nil }
-        let sql = """
-            SELECT COLUMN_NAME, DATA_TYPE FROM ALL_TAB_COLUMNS \
-            WHERE OWNER = '\(effectiveSchemaEscaped(nil))' \
-            AND TABLE_NAME = '\(OracleSchemaQueries.escapeLiteral(table))' \
-            ORDER BY COLUMN_ID
-            """
+        let sql = OracleSchemaQueries.columnNamesAndTypes(schema: effectiveSchema(nil), table: table)
         let columns = try await rawQuery(sql).rows.compactMap { row -> OracleColumnDescriptor? in
             guard let name = row.first?.stringValue else { return nil }
             let typeName = (row.count > 1 ? row[1].stringValue : nil)?.lowercased() ?? "varchar2"
@@ -534,28 +529,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
-        let escaped = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                c.TABLE_NAME,
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.DATA_LENGTH,
-                c.DATA_PRECISION,
-                c.DATA_SCALE,
-                c.NULLABLE,
-                CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
-            FROM ALL_TAB_COLUMNS c
-            LEFT JOIN (
-                SELECT acc.TABLE_NAME, acc.COLUMN_NAME
-                FROM ALL_CONS_COLUMNS acc
-                JOIN ALL_CONSTRAINTS ac ON acc.CONSTRAINT_NAME = ac.CONSTRAINT_NAME
-                    AND acc.OWNER = ac.OWNER
-                WHERE ac.CONSTRAINT_TYPE = 'P' AND ac.OWNER = '\(escaped)'
-            ) cc ON c.TABLE_NAME = cc.TABLE_NAME AND c.COLUMN_NAME = cc.COLUMN_NAME
-            WHERE c.OWNER = '\(escaped)'
-            ORDER BY c.TABLE_NAME, c.COLUMN_ID
-            """
+        let sql = OracleSchemaQueries.allColumns(schema: effectiveSchema(schema))
         let result = try await execute(query: sql)
         var columnsByTable: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -585,26 +559,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var providesBulkForeignKeyFetch: Bool { true }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let escaped = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                ac.TABLE_NAME,
-                ac.CONSTRAINT_NAME,
-                acc.COLUMN_NAME,
-                rc.TABLE_NAME AS REF_TABLE,
-                rcc.COLUMN_NAME AS REF_COLUMN,
-                ac.DELETE_RULE,
-                rc.OWNER AS REF_SCHEMA
-            FROM ALL_CONSTRAINTS ac
-            JOIN ALL_CONS_COLUMNS acc ON ac.CONSTRAINT_NAME = acc.CONSTRAINT_NAME
-                AND ac.OWNER = acc.OWNER
-            JOIN ALL_CONSTRAINTS rc ON ac.R_CONSTRAINT_NAME = rc.CONSTRAINT_NAME
-                AND ac.R_OWNER = rc.OWNER
-            JOIN ALL_CONS_COLUMNS rcc ON rc.CONSTRAINT_NAME = rcc.CONSTRAINT_NAME
-                AND rc.OWNER = rcc.OWNER AND acc.POSITION = rcc.POSITION
-            WHERE ac.CONSTRAINT_TYPE = 'R' AND ac.OWNER = '\(escaped)'
-            ORDER BY ac.TABLE_NAME, ac.CONSTRAINT_NAME, acc.POSITION
-            """
+        let sql = OracleSchemaQueries.allForeignKeys(schema: effectiveSchema(schema))
         let result = try await execute(query: sql)
         var fksByTable: [String: [PluginForeignKeyInfo]] = [:]
         for row in result.rows {
@@ -629,26 +584,28 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
-        let sql = """
-            SELECT u.USERNAME,
-                   NVL(t.table_count, 0) AS table_count,
-                   NVL(s.size_bytes, 0) AS size_bytes
-            FROM ALL_USERS u
-            LEFT JOIN (
-                SELECT OWNER, COUNT(*) AS table_count FROM ALL_TABLES GROUP BY OWNER
-            ) t ON u.USERNAME = t.OWNER
-            LEFT JOIN (
-                SELECT OWNER, SUM(BYTES) AS size_bytes FROM ALL_SEGMENTS GROUP BY OWNER
-            ) s ON u.USERNAME = s.OWNER
-            ORDER BY u.USERNAME
-            """
-        let result = try await execute(query: sql)
+        let result = try await execute(query: OracleSchemaQueries.databaseSummaries)
+        let sizesByOwner = await schemaSegmentSizes()
         return result.rows.compactMap { row -> PluginDatabaseMetadata? in
             guard let name = row[safe: 0]?.asText else { return nil }
             let tableCount = (row[safe: 1]?.asText).flatMap { Int($0) } ?? 0
-            let sizeBytes = (row[safe: 2]?.asText).flatMap { Int64($0) }
-            return PluginDatabaseMetadata(name: name, tableCount: tableCount, sizeBytes: sizeBytes)
+            return PluginDatabaseMetadata(name: name, tableCount: tableCount, sizeBytes: sizesByOwner[name])
         }
+    }
+
+    /// The per-schema segment sizes, or an empty map when the reader lacks the DBA privilege the view needs. It is a
+    /// separate best-effort read because a non-DBA cannot query `DBA_SEGMENTS` and joining it would fail the whole
+    /// summary; `ALL_SEGMENTS` cannot stand in for it because Oracle has no such view.
+    private func schemaSegmentSizes() async -> [String: Int64] {
+        guard let result = try? await execute(query: OracleSchemaQueries.schemaSegmentSizes) else { return [:] }
+        var sizes: [String: Int64] = [:]
+        for row in result.rows {
+            guard let owner = row[safe: 0]?.asText, let bytes = (row[safe: 1]?.asText).flatMap({ Int64($0) }) else {
+                continue
+            }
+            sizes[owner] = bytes
+        }
+        return sizes
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
@@ -673,12 +630,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let escapedView = view.replacingOccurrences(of: "'", with: "''")
-        let escaped = effectiveSchemaEscaped(schema)
         // ALL_VIEWS.TEXT is LONG (crashes OracleNIO). TEXT_VC is VARCHAR2(4000), safe.
         // Do NOT use DBMS_METADATA.GET_DDL — wrong object type triggers ORA-31603
         // which corrupts OracleNIO's connection state machine.
-        let sql = "SELECT TEXT_VC FROM ALL_VIEWS WHERE VIEW_NAME = '\(escapedView)' AND OWNER = '\(escaped)'"
+        let sql = OracleSchemaQueries.viewDefinition(schema: effectiveSchema(schema), view: view)
         let result = try await execute(query: sql)
         guard let body = result.rows.first?.first?.asText,
               !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -691,23 +646,12 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
-        let escapedTable = table.replacingOccurrences(of: "'", with: "''")
-        let escaped = effectiveSchemaEscaped(schema)
-        let sql = """
-            SELECT
-                t.NUM_ROWS,
-                s.BYTES,
-                tc.COMMENTS
-            FROM ALL_TABLES t
-            LEFT JOIN ALL_SEGMENTS s ON t.TABLE_NAME = s.SEGMENT_NAME AND t.OWNER = s.OWNER
-            LEFT JOIN ALL_TAB_COMMENTS tc ON t.TABLE_NAME = tc.TABLE_NAME AND t.OWNER = tc.OWNER
-            WHERE t.TABLE_NAME = '\(escapedTable)' AND t.OWNER = '\(escaped)'
-            """
-        let result = try await execute(query: sql)
+        let owner = effectiveSchema(schema)
+        let result = try await execute(query: OracleSchemaQueries.tableMetadata(schema: owner, table: table))
         if let row = result.rows.first {
             let rowCount = (row[safe: 0]?.asText).flatMap { Int64($0) }
-            let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) } ?? 0
-            let comment = row[safe: 2]?.asText
+            let comment = row[safe: 1]?.asText
+            let sizeBytes = await segmentSize(schema: owner, table: table) ?? 0
             return PluginTableMetadata(
                 tableName: table,
                 dataSize: sizeBytes,
@@ -718,18 +662,27 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         // Fallback for views: ALL_TABLES returns no rows for views
-        let viewSQL = """
-            SELECT tc.COMMENTS
-            FROM ALL_TAB_COMMENTS tc
-            WHERE tc.TABLE_NAME = '\(escapedTable)' AND tc.OWNER = '\(escaped)'
-            """
-        let viewResult = try await execute(query: viewSQL)
+        let viewResult = try await execute(query: OracleSchemaQueries.viewComment(schema: owner, view: table))
         if let row = viewResult.rows.first {
             let comment = row[safe: 0]?.asText
             return PluginTableMetadata(tableName: table, comment: comment)
         }
 
         return PluginTableMetadata(tableName: table)
+    }
+
+    /// The segment bytes of a table, or of the whole schema when `table` is nil, best-effort.
+    ///
+    /// The reader's own schema always answers through `USER_SEGMENTS`; another schema needs `DBA_SEGMENTS`, which a
+    /// non-DBA cannot read, so a refusal returns nil rather than failing the metadata read. `ALL_SEGMENTS` is never
+    /// used because Oracle has no such view (ORA-00942 even as `SYSTEM`).
+    private func segmentSize(schema: String, table: String?) async -> Int64? {
+        let ownedByCurrentSchema = schema.caseInsensitiveCompare(effectiveSchema(nil)) == .orderedSame
+        let sql = OracleSchemaQueries.segmentSize(
+            schema: schema, table: table, ownedByCurrentSchema: ownedByCurrentSchema
+        )
+        guard let result = try? await execute(query: sql) else { return nil }
+        return (result.rows.first?[safe: 0]?.asText).flatMap { Int64($0) }
     }
 
     func fetchDatabases() async throws -> [String] {
@@ -746,18 +699,11 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
-        let escapedDb = database.replacingOccurrences(of: "'", with: "''")
-        let sql = """
-            SELECT
-                (SELECT COUNT(*) FROM ALL_TABLES WHERE OWNER = '\(escapedDb)') AS table_count,
-                (SELECT NVL(SUM(BYTES), 0) FROM ALL_SEGMENTS WHERE OWNER = '\(escapedDb)') AS size_bytes
-            FROM DUAL
-            """
         do {
-            let result = try await execute(query: sql)
+            let result = try await execute(query: OracleSchemaQueries.databaseTableCount(schema: database))
             if let row = result.rows.first {
                 let tableCount = (row[safe: 0]?.asText).flatMap { Int($0) } ?? 0
-                let sizeBytes = (row[safe: 1]?.asText).flatMap { Int64($0) } ?? 0
+                let sizeBytes = await segmentSize(schema: database, table: nil)
                 return PluginDatabaseMetadata(
                     name: database,
                     tableCount: tableCount,
@@ -1142,17 +1088,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {
-        let s = schema ?? currentSchema ?? "SYSTEM"
-        return """
-        SELECT
-            OWNER as schema_name,
-            TABLE_NAME as name,
-            'TABLE' as kind,
-            NUM_ROWS as estimated_rows
-        FROM ALL_TABLES
-        WHERE OWNER = '\(s)'
-        ORDER BY TABLE_NAME
-        """
+        OracleSchemaQueries.allTablesMetadata(schema: schema ?? currentSchema ?? "SYSTEM")
     }
 
     // MARK: - Query Building
