@@ -55,20 +55,39 @@ struct RemoteDatabaseFileCorrectnessTests {
 
     // MARK: - Stale sidecar clearing
 
-    @Test("A snapshot fetch clears a stale write-ahead log and shared-memory index")
-    func snapshotClearsStaleSidecars() throws {
+    @Test("A fetch that downloaded no sidecar clears a stale rollback journal, write-ahead log and shared-memory index")
+    func fetchWithoutSidecarsClearsEveryStaleSidecar() throws {
         let directory = try temporaryDirectory()
         let fileName = "app.db"
-        for suffix in ["", "-wal", "-shm"] {
+        for suffix in ["", "-journal", "-wal", "-shm"] {
             try Data("x".utf8).write(to: directory.appendingPathComponent(fileName + suffix))
         }
         RemoteDatabaseFileTransfer.clearStaleSidecars(
             layout: .sqliteFamily,
-            plan: .remoteSnapshot(executable: "sqlite3"),
+            keeping: [],
             destinationDirectory: directory,
             fileName: fileName
         )
         #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName).path))
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-journal").path))
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-wal").path))
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-shm").path))
+    }
+
+    @Test("A direct copy keeps a rollback journal it fetched")
+    func directCopyKeepsFetchedJournal() throws {
+        let directory = try temporaryDirectory()
+        let fileName = "app.db"
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            try Data("x".utf8).write(to: directory.appendingPathComponent(fileName + suffix))
+        }
+        RemoteDatabaseFileTransfer.clearStaleSidecars(
+            layout: .sqliteFamily,
+            keeping: ["-journal"],
+            destinationDirectory: directory,
+            fileName: fileName
+        )
+        #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-journal").path))
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-wal").path))
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-shm").path))
     }
@@ -82,11 +101,44 @@ struct RemoteDatabaseFileCorrectnessTests {
         }
         RemoteDatabaseFileTransfer.clearStaleSidecars(
             layout: .sqliteFamily,
-            plan: .directCopy(sidecars: ["-wal"]),
+            keeping: ["-wal"],
             destinationDirectory: directory,
             fileName: fileName
         )
         #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-wal").path))
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-shm").path))
+    }
+
+    @Test("A direct copy clears a stale rollback journal its plan listed but the server had dropped by fetch time")
+    func directCopyClearsAJournalTheServerDroppedAfterPlanning() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fileName = "app.db"
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            try Data("stale".utf8).write(to: directory.appendingPathComponent(fileName + suffix))
+        }
+        let freshLog = Data("fresh log".utf8)
+        let server = StubRemoteFileSource(files: ["/srv/app.db-wal": freshLog])
+
+        let fetched = try RemoteDatabaseFileTransfer.fetchSidecars(
+            from: server,
+            remotePath: "/srv/app.db",
+            sidecars: ["-wal", "-journal"],
+            destinationDirectory: directory,
+            fileName: fileName,
+            isCancelled: { false }
+        )
+        RemoteDatabaseFileTransfer.clearStaleSidecars(
+            layout: .sqliteFamily,
+            keeping: fetched,
+            destinationDirectory: directory,
+            fileName: fileName
+        )
+
+        #expect(fetched == ["-wal"])
+        let log = try Data(contentsOf: directory.appendingPathComponent(fileName + "-wal"))
+        #expect(log == freshLog)
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-journal").path))
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(fileName + "-shm").path))
     }
 
@@ -121,5 +173,26 @@ struct RemoteDatabaseFileCorrectnessTests {
 
         #expect(FileManager.default.fileExists(atPath: fresh.path))
         #expect(!FileManager.default.fileExists(atPath: stale.path))
+    }
+}
+
+private struct StubRemoteFileSource: RemoteFileSource {
+    let files: [String: Data]
+
+    func exists(_ path: String) -> Bool {
+        files[path] != nil
+    }
+
+    func download(
+        remotePath: String,
+        to localURL: URL,
+        progress: (@Sendable (UInt64, UInt64) -> Void)?,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> (bytes: UInt64, sha256: String) {
+        guard let data = files[remotePath] else {
+            throw SFTPError.noSuchFile(path: remotePath)
+        }
+        try data.write(to: localURL)
+        return (bytes: UInt64(data.count), sha256: "")
     }
 }

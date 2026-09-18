@@ -58,6 +58,20 @@ struct RemoteFetchResult: Sendable {
     let plan: RemoteFetchPlan
 }
 
+internal protocol RemoteFileSource {
+    func exists(_ path: String) -> Bool
+
+    @discardableResult
+    func download(
+        remotePath: String,
+        to localURL: URL,
+        progress: (@Sendable (UInt64, UInt64) -> Void)?,
+        isCancelled: @escaping @Sendable () -> Bool
+    ) throws -> (bytes: UInt64, sha256: String)
+}
+
+extension LibSSH2SFTPSession: RemoteFileSource {}
+
 /// Copies a database file from a server into a local working copy.
 ///
 /// Every rule here comes from something that was measured rather than assumed. The three that
@@ -156,6 +170,7 @@ enum RemoteDatabaseFileTransfer {
         try? FileManager.default.removeItem(at: staging)
 
         let downloaded: (bytes: UInt64, sha256: String)
+        let fetchedSidecars: Set<String>
         switch plan {
         case .remoteSnapshot(let executable):
             downloaded = try fetchViaRemoteSnapshot(
@@ -166,12 +181,13 @@ enum RemoteDatabaseFileTransfer {
                 progress: progress,
                 isCancelled: isCancelled
             )
+            fetchedSidecars = []
         case .directCopy(let sidecars):
             downloaded = try session.download(
                 remotePath: remotePath, to: staging, progress: progress, isCancelled: isCancelled
             )
-            try fetchSidecars(
-                session: session,
+            fetchedSidecars = try fetchSidecars(
+                from: session,
                 remotePath: remotePath,
                 sidecars: sidecars,
                 destinationDirectory: destinationDirectory,
@@ -195,7 +211,7 @@ enum RemoteDatabaseFileTransfer {
         try replaceLocalItem(at: workingCopy, with: staging)
         clearStaleSidecars(
             layout: layout,
-            plan: plan,
+            keeping: fetchedSidecars,
             destinationDirectory: destinationDirectory,
             fileName: fileName
         )
@@ -224,25 +240,21 @@ enum RemoteDatabaseFileTransfer {
         return RemoteFetchResult(workingCopy: workingCopy, manifest: manifest, plan: plan)
     }
 
-    /// A reader that opens a working copy must not find a `-wal` or `-shm` left over from a previous
-    /// copy of a different file, because SQLite would replay it against bytes it no longer matches.
+    /// A reader that opens a working copy must not find a `-journal`, `-wal` or `-shm` left over from
+    /// a previous copy of a different file, because SQLite would roll it back or replay it against
+    /// bytes it no longer matches.
     ///
-    /// A snapshot is fully checkpointed and carries no log, so every stale sidecar goes. A direct
-    /// copy keeps the ones it just fetched (the server had them) and clears the rest, which is what
-    /// removes a `-wal` that the server has since checkpointed away.
+    /// Only a sidecar this fetch downloaded is kept, never one its plan merely listed. A snapshot is
+    /// fully checkpointed and downloads none. A `-wal` the server checkpoints away, or a `-journal`
+    /// whose transaction ends, between planning and fetching is never downloaded, and the local file
+    /// of that name still belongs to the previous copy.
     static func clearStaleSidecars(
         layout: DatabaseFileLayout,
-        plan: RemoteFetchPlan,
+        keeping fetchedSidecars: Set<String>,
         destinationDirectory: URL,
         fileName: String
     ) {
-        let kept: Set<String>
-        if case .directCopy(let sidecars) = plan {
-            kept = Set(sidecars)
-        } else {
-            kept = []
-        }
-        for suffix in layout.staleAfterReplaceSuffixes where !kept.contains(suffix) {
+        for suffix in layout.staleAfterReplaceSuffixes where !fetchedSidecars.contains(suffix) {
             try? FileManager.default.removeItem(
                 at: destinationDirectory.appendingPathComponent(fileName + suffix)
             )
@@ -286,22 +298,28 @@ enum RemoteDatabaseFileTransfer {
         )
     }
 
-    private static func fetchSidecars(
-        session: LibSSH2SFTPSession,
+    static func fetchSidecars(
+        from source: some RemoteFileSource,
         remotePath: String,
         sidecars: [String],
         destinationDirectory: URL,
         fileName: String,
         isCancelled: @escaping @Sendable () -> Bool
-    ) throws {
+    ) throws -> Set<String> {
+        var fetched: Set<String> = []
         for suffix in sidecars {
             if isCancelled() { throw SFTPError.cancelled }
-            let source = remotePath + suffix
-            guard session.exists(source) else { continue }
+            let remoteSidecar = remotePath + suffix
+            guard source.exists(remoteSidecar) else {
+                Self.logger.info("The \(suffix, privacy: .public) sidecar was gone before it was fetched")
+                continue
+            }
             let target = destinationDirectory.appendingPathComponent(fileName + suffix)
-            try session.download(remotePath: source, to: target, isCancelled: isCancelled)
+            try source.download(remotePath: remoteSidecar, to: target, progress: nil, isCancelled: isCancelled)
+            fetched.insert(suffix)
             Self.logger.info("Fetched the \(suffix, privacy: .public) sidecar")
         }
+        return fetched
     }
 
     // MARK: - Helpers

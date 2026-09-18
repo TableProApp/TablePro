@@ -86,6 +86,12 @@ struct RemoteDatabaseFileTests {
         #expect(!suffixes.contains("-shm"))
     }
 
+    @Test("Replacing a SQLite file clears its rollback journal, write-ahead log and shared-memory index")
+    func sqliteStaleSidecarsIncludeTheRollbackJournal() {
+        let suffixes = Set(DatabaseFileLayout.sqliteFamily.staleAfterReplaceSuffixes)
+        #expect(suffixes == ["-journal", "-wal", "-shm"])
+    }
+
     /// DuckDB writes `app.duckdb.wal`, with a dot. Taking SQLite's hyphen to it fetches nothing and
     /// leaves the real log behind to be replayed against a file it no longer matches.
     @Test("DuckDB's log is named with a dot, and SQLite's suffixes never reach it")

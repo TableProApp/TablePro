@@ -35,6 +35,7 @@ internal final class SampleDatabaseService {
     )
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SampleDatabaseService")
+    private static let installedFileName = "Chinook.sqlite"
 
     private let bundledFileResolver: () -> URL?
     private let fileManager: FileManager
@@ -58,7 +59,14 @@ internal final class SampleDatabaseService {
     }
 
     internal var installedFileURL: URL {
-        baseDirectoryProvider().appendingPathComponent("Chinook.sqlite", isDirectory: false)
+        baseDirectoryProvider().appendingPathComponent(Self.installedFileName, isDirectory: false)
+    }
+
+    private var installedSidecarURLs: [URL] {
+        let directory = baseDirectoryProvider()
+        return DatabaseFileLayout.sqliteFamily.staleAfterReplaceSuffixes.map { suffix in
+            directory.appendingPathComponent(Self.installedFileName + suffix, isDirectory: false)
+        }
     }
 
     internal func installIfNeeded() throws {
@@ -79,6 +87,8 @@ internal final class SampleDatabaseService {
         if fileManager.fileExists(atPath: installed.path) {
             return
         }
+
+        try removeInstalledDatabaseFiles()
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
@@ -105,19 +115,24 @@ internal final class SampleDatabaseService {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
         }
 
-        if fileManager.fileExists(atPath: installed.path) {
-            do {
-                try fileManager.removeItem(at: installed)
-            } catch {
-                throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
-            }
-        }
+        try removeInstalledDatabaseFiles()
 
         do {
             try fileManager.copyItem(at: bundled, to: installed)
             Self.logger.info("Reset sample database at \(installed.path, privacy: .private(mask: .hash))")
         } catch {
             throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
+        }
+    }
+
+    private func removeInstalledDatabaseFiles() throws {
+        for url in [installedFileURL] + installedSidecarURLs where fileManager.fileExists(atPath: url.path) {
+            do {
+                try fileManager.removeItem(at: url)
+            } catch {
+                throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
+            }
+            Self.logger.info("Removed sample database file \(url.lastPathComponent, privacy: .public)")
         }
     }
 
