@@ -44,20 +44,40 @@ private final class LayoutProbe {
     var markerFrame: CGRect = .zero
     var listInsets = EdgeInsets()
     private var unseenChanges = 0
-    private var waiter: CheckedContinuation<Void, Never>?
+    private var waiter: CheckedContinuation<Bool, Never>?
+    private var quietTimer: Task<Void, Never>?
 
     func record() {
         unseenChanges += 1
-        waiter?.resume()
-        waiter = nil
+        resumeWaiter(changed: true)
     }
 
-    func nextChange() async {
-        if unseenChanges == 0 {
-            await withCheckedContinuation { waiter = $0 }
+    func nextChange(quietLimit: Duration) async -> Bool {
+        guard unseenChanges == 0 else {
+            unseenChanges = 0
+            return true
+        }
+        let changed = await withCheckedContinuation { continuation in
+            waiter = continuation
+            quietTimer = Task { [weak self] in
+                try? await Task.sleep(for: quietLimit)
+                self?.resumeWaiter(changed: false)
+            }
         }
         unseenChanges = 0
+        return changed
     }
+
+    private func resumeWaiter(changed: Bool) {
+        quietTimer?.cancel()
+        quietTimer = nil
+        waiter?.resume(returning: changed)
+        waiter = nil
+    }
+}
+
+private struct UnsettledLayout: Error, CustomStringConvertible {
+    let description: String
 }
 
 @MainActor
@@ -82,13 +102,23 @@ private struct HostedTree {
     }
 
     func settledTabBar() async throws -> UITabBar {
-        while true {
+        repeat {
             window.layoutIfNeeded()
             if let tabBar = visibleTabBar(in: window), isSettled(against: tabBar) {
                 return tabBar
             }
-            await probe.nextChange()
+        } while await probe.nextChange(quietLimit: .seconds(10))
+        throw UnsettledLayout(description: layoutReport())
+    }
+
+    private func layoutReport() -> String {
+        guard let tabBar = visibleTabBar(in: window) else {
+            return "No visible tab bar. List insets \(probe.listInsets), marker \(probe.markerFrame)"
         }
+        let tabBarFrame = tabBar.convert(tabBar.bounds, to: window)
+        return "The list's bottom inset \(probe.listInsets.bottom) never covered the tab bar band "
+            + "\(window.bounds.maxY - tabBarFrame.minY). Window \(window.bounds), tab bar \(tabBarFrame), "
+            + "marker \(probe.markerFrame), list insets \(probe.listInsets)"
     }
 
     func tearDown() {
