@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProSync
@@ -16,8 +17,8 @@ struct AppStateLibraryTests {
         fixture = try AppStateFixture()
     }
 
-    private func makeState(syncEnabled: Bool) -> AppState {
-        fixture.makeState(syncEnabled: syncEnabled)
+    private func makeState(syncEnabled: Bool, secureStore: any SecureStore = MockSecureStore()) -> AppState {
+        fixture.makeState(syncEnabled: syncEnabled, secureStore: secureStore)
     }
 
     @Test("A library that failed to load refuses every write and leaves the file alone")
@@ -379,7 +380,7 @@ struct AppStateLibraryTests {
         viewModel.newDatabaseName = "scratch"
         viewModel.createNewDatabase()
 
-        await viewModel.testConnection(appState: state, secureStore: MockSecureStore())
+        await viewModel.testConnection()
         #expect(viewModel.testResult?.success == true)
         #expect(!FileManager.default.fileExists(atPath: fixture.documentsFile("scratch.db").path))
 
@@ -399,7 +400,7 @@ struct AppStateLibraryTests {
         viewModel.newDatabaseName = "analytics"
         viewModel.createNewDatabase()
 
-        await viewModel.testConnection(appState: state, secureStore: MockSecureStore())
+        await viewModel.testConnection()
 
         #expect(viewModel.testResult?.success == true)
         #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.documentsDirectory.path).isEmpty)
@@ -427,5 +428,169 @@ struct AppStateLibraryTests {
         #expect(fixture.bookmarkStore.bookmark(for: stored.id) == nil)
         #expect(state.connections.first { $0.id == stored.id }?.database == fixture.documentsFile("local.duckdb").path)
         #expect(FileManager.default.fileExists(atPath: fixture.documentsFile("local.duckdb").path))
+    }
+
+    // MARK: - Pasted SSH keys
+
+    private let keyMarker = "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU"
+
+    private func legacyKey(for id: UUID) -> String {
+        "-----BEGIN OPENSSH PRIVATE KEY-----\n\(keyMarker)\(id.uuidString)\n-----END OPENSSH PRIVATE KEY-----"
+    }
+
+    private func writeLegacyLibrary(id: UUID) throws -> Data {
+        try writeLegacyLibrary(ids: [id])
+    }
+
+    private func writeLegacyLibrary(ids: [UUID]) throws -> Data {
+        let connections = ids.map { id in
+            DatabaseConnection(
+                id: id,
+                name: "Bastion",
+                type: .postgresql,
+                host: "10.0.0.5",
+                sshEnabled: true,
+                sshConfiguration: SSHConfiguration(
+                    host: "bastion.example.com",
+                    username: "deploy",
+                    authMethod: .privateKey
+                )
+            )
+        }
+        let encoded = try JSONEncoder().encode(connections)
+        var entries = try #require(JSONSerialization.jsonObject(with: encoded) as? [[String: Any]])
+        for index in entries.indices {
+            var ssh = try #require(entries[index]["sshConfiguration"] as? [String: Any])
+            ssh["privateKeyData"] = legacyKey(for: ids[index])
+            entries[index]["sshConfiguration"] = ssh
+        }
+        let legacy = try JSONSerialization.data(withJSONObject: entries)
+        try legacy.write(to: fixture.connectionsFile)
+        return legacy
+    }
+
+    private func keysInFile() throws -> [UUID: String] {
+        PastedSSHKeyMigration.pendingKeys(inLibraryFile: try Data(contentsOf: fixture.connectionsFile))
+    }
+
+    private func fileNumber() throws -> Int {
+        let attributes = try FileManager.default.attributesOfItem(atPath: fixture.connectionsFile.path)
+        return try #require(attributes[.systemFileNumber] as? Int)
+    }
+
+    @Test("A key pasted on an older build moves into the secure store and out of the file, without a sync upload")
+    func legacyKeyMoves() throws {
+        let id = UUID()
+        _ = try writeLegacyLibrary(id: id)
+        let store = MockSecureStore()
+
+        let state = makeState(syncEnabled: true, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.connections.map(\.id) == [id])
+        let stored = try #require(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)"))
+        #expect(stored.contains(keyMarker))
+        let rewritten = try #require(String(data: Data(contentsOf: fixture.connectionsFile), encoding: .utf8))
+        #expect(!rewritten.contains("privateKeyData"))
+        #expect(!rewritten.contains(keyMarker))
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
+    }
+
+    @Test("A migrated file is left alone on the next launch")
+    func secondLaunchWritesNothing() throws {
+        _ = try writeLegacyLibrary(id: UUID())
+        let store = MockSecureStore()
+        _ = makeState(syncEnabled: true, secureStore: store)
+        let migrated = try Data(contentsOf: fixture.connectionsFile)
+        let migratedFile = try fileNumber()
+
+        let relaunched = makeState(syncEnabled: true, secureStore: store)
+
+        #expect(relaunched.loadStatus == .ready)
+        #expect(try Data(contentsOf: fixture.connectionsFile) == migrated)
+        #expect(try fileNumber() == migratedFile)
+    }
+
+    @Test("A key the store already holds for that connection is kept over the file's copy")
+    func existingStoredKeyWins() throws {
+        let id = UUID()
+        _ = try writeLegacyLibrary(id: id)
+        let store = MockSecureStore()
+        store.seed("com.TablePro.sshkeydata.\(id.uuidString)", "KEY FROM ANOTHER DEVICE")
+
+        let state = makeState(syncEnabled: false, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)") == "KEY FROM ANOTHER DEVICE")
+        #expect(!(try String(contentsOf: fixture.connectionsFile, encoding: .utf8)).contains(keyMarker))
+    }
+
+    @Test("A key the store refuses stays in the file, and the library still loads and takes writes")
+    func refusedKeyStaysInFile() throws {
+        let id = UUID()
+        let legacy = try writeLegacyLibrary(id: id)
+        let store = MockSecureStore()
+        store.refusesStores = true
+
+        let state = makeState(syncEnabled: true, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(state.connections.map(\.id) == [id])
+        #expect(try Data(contentsOf: fixture.connectionsFile) == legacy)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)") == nil)
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
+    }
+
+    @Test("A key still waiting for the store survives a later library write and moves on the next launch")
+    func waitingKeySurvivesWrites() throws {
+        let id = UUID()
+        _ = try writeLegacyLibrary(id: id)
+        let store = MockSecureStore()
+        store.refusesStores = true
+        let state = makeState(syncEnabled: false, secureStore: store)
+        let added = DatabaseConnection(name: "New", type: .mysql)
+
+        #expect(state.addConnection(added))
+
+        #expect(try keysInFile() == [id: legacyKey(for: id)])
+        let written = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
+        #expect(written.map(\.id) == [id, added.id])
+
+        store.refusesStores = false
+        let relaunched = makeState(syncEnabled: false, secureStore: store)
+
+        #expect(relaunched.loadStatus == .ready)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(id.uuidString)") == legacyKey(for: id))
+        #expect(try keysInFile().isEmpty)
+        #expect(!(try String(contentsOf: fixture.connectionsFile, encoding: .utf8)).contains(keyMarker))
+    }
+
+    @Test("Deleting a connection takes its waiting key out of the file")
+    func deletingDropsWaitingKey() throws {
+        let kept = UUID()
+        let deleted = UUID()
+        _ = try writeLegacyLibrary(ids: [kept, deleted])
+        let store = MockSecureStore()
+        store.refusesStores = true
+        let state = makeState(syncEnabled: false, secureStore: store)
+
+        state.removeConnections([deleted])
+
+        #expect(try keysInFile() == [kept: legacyKey(for: kept)])
+    }
+
+    @Test("Keys the store takes leave the file while a refused one stays")
+    func partialMoveKeepsRefusedKey() throws {
+        let ids = [UUID(), UUID()].sorted { $0.uuidString < $1.uuidString }
+        _ = try writeLegacyLibrary(ids: ids)
+        let store = MockSecureStore()
+        store.failNextStore = true
+
+        let state = makeState(syncEnabled: true, secureStore: store)
+
+        #expect(state.loadStatus == .ready)
+        #expect(try keysInFile() == [ids[0]: legacyKey(for: ids[0])])
+        #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(ids[1].uuidString)") == legacyKey(for: ids[1]))
+        #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
 }

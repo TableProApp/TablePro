@@ -3,12 +3,7 @@ import os
 import TableProDatabase
 
 nonisolated struct ConnectionSecrets: Sendable {
-    static let secureStoreKeyPrefixes = [
-        "com.TablePro.password.",
-        "com.TablePro.sshpassword.",
-        "com.TablePro.keypassphrase.",
-        "com.TablePro.sshkeydata.",
-    ]
+    static let secureStoreKeyPrefixes = ConnectionSecretKind.allCases.map(\.prefix)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionSecrets")
 
@@ -52,6 +47,25 @@ nonisolated struct ConnectionSecrets: Sendable {
             bookmarkStore.save(bookmark, for: targetId)
         }
         return copiedEverything
+    }
+
+    func storeMissingPrivateKeys(_ keys: [UUID: String]) -> [UUID: String] {
+        var unstored: [UUID: String] = [:]
+        for (connectionId, key) in keys.sorted(by: { $0.key.uuidString < $1.key.uuidString }) {
+            let account = ConnectionSecretKind.sshPrivateKey.account(for: connectionId)
+            do {
+                if let existing = try secureStore.retrieve(forKey: account), !existing.isEmpty {
+                    continue
+                }
+                try secureStore.store(key, forKey: account)
+            } catch {
+                Self.logger.error(
+                    "Storing the pasted SSH key of \(connectionId.uuidString, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                )
+                unstored[connectionId] = key
+            }
+        }
+        return unstored
     }
 
     func delete(for connectionId: UUID) {

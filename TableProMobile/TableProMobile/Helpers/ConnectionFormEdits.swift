@@ -9,7 +9,6 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var username: String
         var authMethod: SSHConfiguration.SSHAuthMethod
         var privateKeyPath: String?
-        var privateKeyData: String?
     }
 
     nonisolated struct OracleOptions: Equatable, Sendable {
@@ -87,7 +86,6 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         configuration.username = sshTunnel.username
         configuration.authMethod = sshTunnel.authMethod
         configuration.privateKeyPath = sshTunnel.privateKeyPath
-        configuration.privateKeyData = sshTunnel.privateKeyData
         if configuration.macEnabled != nil {
             configuration.macEnabled = true
         }

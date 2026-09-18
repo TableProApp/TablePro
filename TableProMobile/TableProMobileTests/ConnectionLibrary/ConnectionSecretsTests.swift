@@ -88,6 +88,75 @@ struct ConnectionSecretsTests {
         #expect(bookmarks.bookmark(for: copy) == Data([1, 2, 3]))
     }
 
+    @Test("Every secret a connection owns is covered, under the account names the Keychain already holds")
+    func prefixesMatchStoredAccounts() {
+        #expect(ConnectionSecrets.secureStoreKeyPrefixes == [
+            "com.TablePro.password.",
+            "com.TablePro.sshpassword.",
+            "com.TablePro.keypassphrase.",
+            "com.TablePro.sshkeydata."
+        ])
+        let id = UUID()
+        #expect(ConnectionSecretKind.sshPrivateKey.account(for: id) == "com.TablePro.sshkeydata.\(id.uuidString)")
+    }
+
+    @Test("The orphan sweep never takes a pasted private key")
+    func sweepSparesPrivateKeys() {
+        #expect(!ConnectionSecretKind.orphanSweepPrefixes.contains(ConnectionSecretKind.sshPrivateKey.prefix))
+        #expect(ConnectionSecretKind.orphanSweepPrefixes == [
+            "com.TablePro.password.",
+            "com.TablePro.sshpassword.",
+            "com.TablePro.keypassphrase."
+        ])
+    }
+
+    @Test("Moving keys out of the file stores each one the store does not hold yet")
+    func storesMissingKeys() throws {
+        let first = UUID()
+        let second = UUID()
+
+        #expect(secrets.storeMissingPrivateKeys([first: "KEY A", second: "KEY B"]).isEmpty)
+
+        #expect(try secureStore.retrieve(forKey: ConnectionSecretKind.sshPrivateKey.account(for: first)) == "KEY A")
+        #expect(try secureStore.retrieve(forKey: ConnectionSecretKind.sshPrivateKey.account(for: second)) == "KEY B")
+    }
+
+    @Test("A key the store already holds is never replaced by the file's copy")
+    func keepsExistingKey() throws {
+        let id = UUID()
+        let account = ConnectionSecretKind.sshPrivateKey.account(for: id)
+        try secureStore.store("SYNCED KEY", forKey: account)
+
+        #expect(secrets.storeMissingPrivateKeys([id: "FILE KEY"]).isEmpty)
+
+        #expect(try secureStore.retrieve(forKey: account) == "SYNCED KEY")
+    }
+
+    @Test("An empty stored key is filled from the file")
+    func fillsEmptyKey() throws {
+        let id = UUID()
+        let account = ConnectionSecretKind.sshPrivateKey.account(for: id)
+        try secureStore.store("", forKey: account)
+
+        #expect(secrets.storeMissingPrivateKeys([id: "FILE KEY"]).isEmpty)
+
+        #expect(try secureStore.retrieve(forKey: account) == "FILE KEY")
+    }
+
+    @Test("A refused write hands that key back and the other keys still move")
+    func refusedWriteReturnsKey() throws {
+        let ids = [UUID(), UUID()].sorted { $0.uuidString < $1.uuidString }
+        let refusing = MockSecureStore()
+        refusing.failNextStore = true
+        let secrets = ConnectionSecrets(secureStore: refusing, certificateStore: certificates, bookmarkStore: bookmarks)
+
+        let unstored = secrets.storeMissingPrivateKeys([ids[0]: "KEY A", ids[1]: "KEY B"])
+
+        #expect(unstored == [ids[0]: "KEY A"])
+        #expect(try refusing.retrieve(forKey: ConnectionSecretKind.sshPrivateKey.account(for: ids[0])) == nil)
+        #expect(try refusing.retrieve(forKey: ConnectionSecretKind.sshPrivateKey.account(for: ids[1])) == "KEY B")
+    }
+
     @Test("Deleting one connection's secrets leaves its duplicate's alone")
     func deleteIsScoped() throws {
         let source = UUID()

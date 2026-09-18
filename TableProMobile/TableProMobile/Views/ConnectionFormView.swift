@@ -534,7 +534,7 @@ struct ConnectionFormView: View {
     // MARK: - Actions
 
     private func handleTest() async {
-        await viewModel.testConnection(appState: appState, secureStore: appState.secureStore)
+        await viewModel.testConnection()
         if let result = viewModel.testResult {
             if result.success { hapticSuccess.toggle() } else { hapticError.toggle() }
         }

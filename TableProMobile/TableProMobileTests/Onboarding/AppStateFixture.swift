@@ -1,5 +1,5 @@
-import CloudKit
 import Foundation
+import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProSync
@@ -46,17 +46,18 @@ struct AppStateFixture {
         try Data("sample".utf8).write(to: bundledSample)
     }
 
-    func makeState(syncEnabled: Bool) -> AppState {
+    func makeState(syncEnabled: Bool, secureStore: any SecureStore = MockSecureStore()) -> AppState {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
-            makeTransport: { UnreachableTransport() },
+            makeTransport: { UnreachableSyncTransport() },
             isEnabled: { syncEnabled },
             notificationCenter: NotificationCenter()
         )
         return AppState(
             libraryDirectory: libraryDirectory,
             defaults: defaults,
+            secureStore: secureStore,
             syncCoordinator: coordinator,
             sampleInstaller: SampleDatabaseInstaller(
                 bundledURL: bundledSample,
@@ -98,29 +99,5 @@ struct AppStateFixture {
 
     func documentsFile(_ name: String) -> URL {
         documentsDirectory.appendingPathComponent(name)
-    }
-}
-
-private struct UnreachableTransport: IOSSyncTransport {
-    var currentZoneID: CKRecordZone.ID {
-        get async { CKRecordZone.ID(zoneName: "Unused", ownerName: CKCurrentUserDefaultName) }
-    }
-
-    func accountStatus() async throws -> CKAccountStatus {
-        .noAccount
-    }
-
-    func currentAccountId() async throws -> String {
-        throw CKError(.notAuthenticated)
-    }
-
-    func ensureZoneExists() async throws {}
-
-    func pull(since token: CKServerChangeToken?) async throws -> PullResult {
-        PullResult(changedRecords: [], deletedRecordIDs: [], newToken: nil)
-    }
-
-    func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
-        PushOutcome(savedRecords: [:], deletedRecordIDs: [])
     }
 }

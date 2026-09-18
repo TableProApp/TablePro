@@ -58,6 +58,39 @@ struct SSHConfigurationTests {
         #expect(fields["totpMode"] as? String == "totp")
     }
 
+    @Test("A configuration never encodes a private key field")
+    func neverEncodesPrivateKey() throws {
+        let config = SSHConfiguration(
+            host: "prod-1",
+            username: "deploy",
+            authMethod: .privateKey,
+            privateKeyPath: "/keys/id_ed25519"
+        )
+        let fields = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any]
+        )
+        #expect(fields["privateKeyData"] == nil)
+        #expect(fields["privateKeyPath"] as? String == "/keys/id_ed25519")
+    }
+
+    @Test("JSON an older build wrote with a pasted key still decodes, and re-encodes without the key")
+    func legacyPastedKeyIsDropped() throws {
+        let keyText = "-----BEGIN OPENSSH PRIVATE KEY-----\\nb3BlbnNzaC1rZXktdjE\\n-----END OPENSSH PRIVATE KEY-----"
+        let legacyJSON = """
+        {"host":"prod-1","port":2222,"username":"deploy","authMethod":"privateKey",
+         "privateKeyData":"\(keyText)","jumpHosts":[]}
+        """
+        let decoded = try JSONDecoder().decode(SSHConfiguration.self, from: Data(legacyJSON.utf8))
+        #expect(decoded.host == "prod-1")
+        #expect(decoded.port == 2_222)
+        #expect(decoded.authMethod == .privateKey)
+
+        let reencoded = try JSONEncoder().encode(decoded)
+        let text = try #require(String(data: reencoded, encoding: .utf8))
+        #expect(!text.contains("privateKeyData"))
+        #expect(!text.contains("b3BlbnNzaC1rZXktdjE"))
+    }
+
     @Test("A configuration this model creates omits the macOS-only keys, so the host inference is unchanged")
     func iosCreatedConfigOmitsMacKeys() throws {
         let config = SSHConfiguration(host: "prod-1", username: "deploy")

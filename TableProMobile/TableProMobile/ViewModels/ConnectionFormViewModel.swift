@@ -80,6 +80,7 @@ final class ConnectionFormViewModel {
     var sshKeyContent = ""
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
+    @ObservationIgnored private var storedPrivateKey: String?
 
     // File picker output
     var selectedFileURL: URL?
@@ -98,9 +99,9 @@ final class ConnectionFormViewModel {
     private(set) var saveFailure: LibraryWriteFailure?
 
     @ObservationIgnored let existingConnection: DatabaseConnection?
+    @ObservationIgnored let connectionId: UUID
     @ObservationIgnored private(set) var openingEdits: ConnectionFormEdits?
     @ObservationIgnored private var createdFileURL: URL?
-    @ObservationIgnored private let newConnectionId = UUID()
     @ObservationIgnored private var addedNewConnection = false
     private let localFiles: LocalDatabaseFileLocator
     private let fileCreator: any LocalDatabaseFileCreating
@@ -113,6 +114,7 @@ final class ConnectionFormViewModel {
         bookmarkStore: FileBookmarkStore = FileBookmarkStore()
     ) {
         self.existingConnection = editing
+        self.connectionId = editing?.id ?? UUID()
         self.localFiles = localFiles
         self.fileCreator = fileCreator
         self.bookmarkStore = bookmarkStore
@@ -148,8 +150,7 @@ final class ConnectionFormViewModel {
             sshUsername = ssh.username
             sshAuthMethod = ssh.authMethod
             sshKeyPath = ssh.privateKeyPath ?? ""
-            sshKeyContent = ssh.privateKeyData ?? ""
-            if let keyData = ssh.privateKeyData, !keyData.isEmpty {
+            if ssh.authMethod == .privateKey, sshKeyPath.isEmpty {
                 sshKeyInputMode = .paste
             }
         }
@@ -188,6 +189,12 @@ final class ConnectionFormViewModel {
 
     var isEditing: Bool { existingConnection != nil }
 
+    var pastedPrivateKey: String? {
+        guard sshEnabled, sshAuthMethod == .privateKey, sshKeyInputMode == .paste,
+              !sshKeyContent.isEmpty else { return nil }
+        return sshKeyContent
+    }
+
     var edits: ConnectionFormEdits {
         ConnectionFormEdits(
             name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? host) : name,
@@ -221,8 +228,7 @@ final class ConnectionFormViewModel {
             port: Int(sshPort) ?? 22,
             username: sshUsername,
             authMethod: sshAuthMethod,
-            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath,
-            privateKeyData: sshKeyContent.isEmpty ? nil : sshKeyContent
+            privateKeyPath: sshKeyPath.isEmpty ? nil : sshKeyPath
         )
     }
 
@@ -241,16 +247,30 @@ final class ConnectionFormViewModel {
 
     func loadStoredCredentials(secureStore: any SecureStore) async {
         guard let conn = existingConnection else { return }
-        let connKey = "com.TablePro.password.\(conn.id.uuidString)"
-        if let stored = try? secureStore.retrieve(forKey: connKey), !stored.isEmpty {
+        if let stored = Self.storedSecret(.password, for: conn.id, in: secureStore) {
             password = stored
         }
-        if let sshPwd = try? secureStore.retrieve(forKey: "com.TablePro.sshpassword.\(conn.id.uuidString)"), !sshPwd.isEmpty {
+        if let sshPwd = Self.storedSecret(.sshPassword, for: conn.id, in: secureStore) {
             sshPassword = sshPwd
         }
-        if let passphrase = try? secureStore.retrieve(forKey: "com.TablePro.keypassphrase.\(conn.id.uuidString)"), !passphrase.isEmpty {
+        if let passphrase = Self.storedSecret(.keyPassphrase, for: conn.id, in: secureStore) {
             sshKeyPassphrase = passphrase
         }
+        if let privateKey = Self.storedSecret(.sshPrivateKey, for: conn.id, in: secureStore) {
+            sshKeyContent = privateKey
+            storedPrivateKey = privateKey
+            sshKeyInputMode = .paste
+        }
+    }
+
+    private static func storedSecret(
+        _ kind: ConnectionSecretKind,
+        for connectionId: UUID,
+        in secureStore: any SecureStore
+    ) -> String? {
+        guard let value = try? secureStore.retrieve(forKey: kind.account(for: connectionId)),
+              !value.isEmpty else { return nil }
+        return value
     }
 
     // MARK: - Type Change
@@ -374,7 +394,25 @@ final class ConnectionFormViewModel {
 
     // MARK: - Test Connection
 
-    func testConnection(appState: AppState, secureStore: any SecureStore) async {
+    func testSecrets(for connectionId: UUID) -> [String: String] {
+        var secrets: [String: String] = [:]
+        if !password.isEmpty {
+            secrets[ConnectionSecretKind.password.account(for: connectionId)] = password
+        }
+        guard sshEnabled else { return secrets }
+        if !sshPassword.isEmpty {
+            secrets[ConnectionSecretKind.sshPassword.account(for: connectionId)] = sshPassword
+        }
+        if !sshKeyPassphrase.isEmpty {
+            secrets[ConnectionSecretKind.keyPassphrase.account(for: connectionId)] = sshKeyPassphrase
+        }
+        if let pastedPrivateKey {
+            secrets[ConnectionSecretKind.sshPrivateKey.account(for: connectionId)] = pastedPrivateKey
+        }
+        return secrets
+    }
+
+    func testConnection() async {
         isTesting = true
         testResult = nil
         defer { isTesting = false }
@@ -385,9 +423,17 @@ final class ConnectionFormViewModel {
         let scratchDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ConnectionTest-\(tempId.uuidString)", isDirectory: true)
 
-        storeTestSecrets(for: tempId, appState: appState, secureStore: secureStore)
+        let secrets = EphemeralSecureStore(testSecrets(for: tempId))
+        let manager = ConnectionManager(
+            driverFactory: IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localFiles),
+            secureStore: secrets,
+            sshProvider: IOSSSHProvider(secureStore: secrets, container: localFiles.container)
+        )
+        if let bookmark = bookmarkForTest {
+            bookmarkStore.save(bookmark, for: tempId)
+        }
         defer {
-            deleteTestSecrets(for: tempId, appState: appState, secureStore: secureStore)
+            bookmarkStore.delete(for: tempId)
             removeScratchDirectory(scratchDirectory)
         }
 
@@ -395,8 +441,8 @@ final class ConnectionFormViewModel {
             if let scratchPath = try await scratchDatabasePath(in: scratchDirectory) {
                 testConn.database = scratchPath
             }
-            _ = try await appState.connectionManager.connect(testConn)
-            await appState.connectionManager.disconnect(tempId)
+            _ = try await manager.connect(testConn)
+            await manager.disconnect(tempId)
             testResult = TestResult(
                 success: true,
                 message: String(localized: "Connection successful"),
@@ -417,32 +463,6 @@ final class ConnectionFormViewModel {
                 suggestedOracleMode: classified.suggestedOracleMode
             )
         }
-    }
-
-    private func storeTestSecrets(for tempId: UUID, appState: AppState, secureStore: any SecureStore) {
-        if !password.isEmpty {
-            try? appState.connectionManager.storePassword(password, for: tempId)
-        }
-        if sshEnabled && !sshPassword.isEmpty {
-            try? secureStore.store(sshPassword, forKey: "com.TablePro.sshpassword.\(tempId.uuidString)")
-        }
-        if sshEnabled && !sshKeyPassphrase.isEmpty {
-            try? secureStore.store(sshKeyPassphrase, forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
-        }
-        if sshEnabled && !sshKeyContent.isEmpty {
-            try? secureStore.store(sshKeyContent, forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
-        }
-        if let bookmark = bookmarkForTest {
-            bookmarkStore.save(bookmark, for: tempId)
-        }
-    }
-
-    private func deleteTestSecrets(for tempId: UUID, appState: AppState, secureStore: any SecureStore) {
-        try? appState.connectionManager.deletePassword(for: tempId)
-        try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(tempId.uuidString)")
-        try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
-        try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
-        bookmarkStore.delete(for: tempId)
     }
 
     private var bookmarkForTest: Data? {
@@ -490,9 +510,9 @@ final class ConnectionFormViewModel {
             return nil
         }
         createdFileURL = nil
-        settleBookmark(for: draft.id)
-        guard storeSecrets(for: draft.id, appState: appState, secureStore: secureStore) else { return nil }
-        return draft.id
+        settleBookmark()
+        guard storeSecrets(appState: appState, secureStore: secureStore) else { return nil }
+        return connectionId
     }
 
     func applyingEdits(to current: DatabaseConnection) -> DatabaseConnection {
@@ -500,7 +520,7 @@ final class ConnectionFormViewModel {
     }
 
     func buildConnection() -> DatabaseConnection {
-        edits.applied(to: existingConnection ?? DatabaseConnection(id: newConnectionId), changedSince: nil)
+        edits.applied(to: existingConnection ?? DatabaseConnection(id: connectionId), changedSince: nil)
     }
 
     func dismissSaveFailure() {
@@ -531,7 +551,7 @@ final class ConnectionFormViewModel {
         return true
     }
 
-    private func settleBookmark(for connectionId: UUID) {
+    private func settleBookmark() {
         guard type == .duckdb else {
             if existingConnection?.type == .duckdb {
                 bookmarkStore.delete(for: connectionId)
@@ -559,7 +579,7 @@ final class ConnectionFormViewModel {
         }
     }
 
-    private func storeSecrets(for connectionId: UUID, appState: AppState, secureStore: any SecureStore) -> Bool {
+    private func storeSecrets(appState: AppState, secureStore: any SecureStore) -> Bool {
         var storageFailed = false
 
         persistCertificates(for: connectionId)
@@ -576,7 +596,7 @@ final class ConnectionFormViewModel {
         if sshEnabled {
             if !sshPassword.isEmpty {
                 do {
-                    try secureStore.store(sshPassword, forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
+                    try secureStore.store(sshPassword, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
                 } catch {
                     Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
                     storageFailed = true
@@ -584,20 +604,19 @@ final class ConnectionFormViewModel {
             }
             if !sshKeyPassphrase.isEmpty {
                 do {
-                    try secureStore.store(sshKeyPassphrase, forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
+                    try secureStore.store(sshKeyPassphrase, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
                 } catch {
                     Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
                     storageFailed = true
                 }
             }
-            if !sshKeyContent.isEmpty {
-                do {
-                    try secureStore.store(sshKeyContent, forKey: "com.TablePro.sshkeydata.\(connectionId.uuidString)")
-                } catch {
-                    Self.logger.error("Failed to store SSH key data: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
-            }
+        }
+
+        do {
+            try persistPrivateKey(secureStore: secureStore)
+        } catch {
+            Self.logger.error("Failed to store SSH private key: \(error.localizedDescription, privacy: .public)")
+            storageFailed = true
         }
 
         guard !storageFailed else {
@@ -605,6 +624,18 @@ final class ConnectionFormViewModel {
             return false
         }
         return true
+    }
+
+    func persistPrivateKey(secureStore: any SecureStore) throws {
+        let key = pastedPrivateKey
+        guard key != storedPrivateKey else { return }
+        let account = ConnectionSecretKind.sshPrivateKey.account(for: connectionId)
+        if let key {
+            try secureStore.store(key, forKey: account)
+        } else {
+            try secureStore.delete(forKey: account)
+        }
+        storedPrivateKey = key
     }
 
     func dismissCredentialError() {

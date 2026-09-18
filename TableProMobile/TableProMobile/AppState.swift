@@ -37,9 +37,10 @@ final class AppState {
     let syncCoordinator: IOSSyncCoordinator
 
     @ObservationIgnored private var automaticPresentationOwner: UUID?
+    @ObservationIgnored private var pastedSSHKeysAwaitingKeychain: [UUID: String] = [:]
     let libraryPreferences: ConnectionLibraryPreferences
     let sshProvider: IOSSSHProvider
-    let secureStore: KeychainSecureStore
+    let secureStore: any SecureStore
     let localDatabaseFiles: LocalDatabaseFileLocator
 
     private let sampleInstaller: SampleDatabaseInstaller
@@ -50,6 +51,7 @@ final class AppState {
     init(
         libraryDirectory: URL = LibraryStorage.defaultDirectory,
         defaults: UserDefaults = .standard,
+        secureStore: any SecureStore = KeychainSecureStore(),
         syncCoordinator injectedSyncCoordinator: IOSSyncCoordinator? = nil,
         sampleInstaller: SampleDatabaseInstaller = .live,
         localDatabaseFiles: LocalDatabaseFileLocator = .live,
@@ -65,7 +67,6 @@ final class AppState {
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory = IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
-        let secureStore = KeychainSecureStore()
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
@@ -81,7 +82,7 @@ final class AppState {
         guard !TestRuntime.isActive else { return }
 
         if loadStatus == .ready {
-            secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
+            KeychainSecureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
             Task {
                 publishLibrary()
             }
@@ -147,7 +148,9 @@ final class AppState {
 
     private func loadPersistedData() {
         do {
-            connectionsState = .loaded(try storage.load())
+            let stored = try storage.load()
+            connectionsState = .loaded(stored.connections)
+            movePastedSSHKeysToKeychain(from: stored)
         } catch {
             connectionsState = .failed(error)
             Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
@@ -168,12 +171,33 @@ final class AppState {
         }
     }
 
+    private func movePastedSSHKeysToKeychain(from stored: StoredConnections) {
+        guard !stored.pastedSSHKeys.isEmpty else { return }
+        let unstored = ConnectionSecrets(secureStore: secureStore).storeMissingPrivateKeys(stored.pastedSSHKeys)
+        pastedSSHKeysAwaitingKeychain = unstored
+        let movedCount = stored.pastedSSHKeys.count - unstored.count
+        guard movedCount > 0 else {
+            Self.logger.error("No pasted SSH key reached the Keychain; the connections file keeps them until the next launch")
+            return
+        }
+        Self.logger.info("Moved \(movedCount) pasted SSH keys out of the connections file, \(unstored.count) left for the next launch")
+        do {
+            try storage.save(stored.connections, keepingPastedSSHKeys: unstored)
+        } catch {
+            Self.logger.error("Rewriting connections without SSH keys failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - Persistence Bridges
 
     private func persist(connections: [DatabaseConnection]) {
         connectionsState = .loaded(connections)
+        pastedSSHKeysAwaitingKeychain = PastedSSHKeyMigration.keysStillHeld(
+            pastedSSHKeysAwaitingKeychain,
+            by: connections
+        )
         do {
-            try storage.save(connections)
+            try storage.save(connections, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
         } catch {
             Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
         }
@@ -556,6 +580,11 @@ nonisolated enum LibraryStorage {
     }
 }
 
+private struct StoredConnections {
+    let connections: [DatabaseConnection]
+    let pastedSSHKeys: [UUID: String]
+}
+
 private struct ConnectionPersistence {
     let directory: URL
 
@@ -564,18 +593,20 @@ private struct ConnectionPersistence {
         return directory.appendingPathComponent("connections.json")
     }
 
-    func save(_ connections: [DatabaseConnection]) throws {
+    func save(_ connections: [DatabaseConnection], keepingPastedSSHKeys pastedSSHKeys: [UUID: String]) throws {
         guard let fileURL else { return }
-        let data = try JSONEncoder().encode(connections)
+        let data = try PastedSSHKeyMigration.libraryFile(JSONEncoder().encode(connections), keeping: pastedSSHKeys)
         try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    func load() throws -> [DatabaseConnection] {
-        guard let fileURL else { return [] }
-        if !FileManager.default.fileExists(atPath: fileURL.path) {
-            return []
+    func load() throws -> StoredConnections {
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
+            return StoredConnections(connections: [], pastedSSHKeys: [:])
         }
         let data = try Data(contentsOf: fileURL)
-        return try JSONDecoder().decode([DatabaseConnection].self, from: data)
+        return StoredConnections(
+            connections: try JSONDecoder().decode([DatabaseConnection].self, from: data),
+            pastedSSHKeys: PastedSSHKeyMigration.pendingKeys(inLibraryFile: data)
+        )
     }
 }

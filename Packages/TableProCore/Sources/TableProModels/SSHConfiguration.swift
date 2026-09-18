@@ -6,7 +6,6 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
     public var username: String
     public var authMethod: SSHAuthMethod
     public var privateKeyPath: String?
-    public var privateKeyData: String?
     public var jumpHosts: [SSHJumpHost]
 
     /// Fields the macOS app stores inside `sshConfigJson` that this model does not use, kept only so
@@ -56,7 +55,6 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         username: String = "",
         authMethod: SSHAuthMethod = .password,
         privateKeyPath: String? = nil,
-        privateKeyData: String? = nil,
         jumpHosts: [SSHJumpHost] = []
     ) {
         self.host = host
@@ -64,13 +62,12 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         self.username = username
         self.authMethod = authMethod
         self.privateKeyPath = privateKeyPath
-        self.privateKeyData = privateKeyData
         self.jumpHosts = jumpHosts
     }
 
     // Custom Codable to handle macOS extra fields gracefully
     private enum CodingKeys: String, CodingKey {
-        case host, port, username, authMethod, privateKeyPath, privateKeyData, jumpHosts
+        case host, port, username, authMethod, privateKeyPath, jumpHosts
         // macOS fields this model does not use but must preserve through a sync round trip.
         case enabled, useSSHConfig, agentSocketPath, remoteFilePath, remoteFileAccess
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
@@ -83,7 +80,6 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         username = (try? container.decode(String.self, forKey: .username)) ?? ""
         authMethod = (try? container.decode(SSHAuthMethod.self, forKey: .authMethod)) ?? .password
         privateKeyPath = try? container.decode(String.self, forKey: .privateKeyPath)
-        privateKeyData = try? container.decode(String.self, forKey: .privateKeyData)
         jumpHosts = (try? container.decode([SSHJumpHost].self, forKey: .jumpHosts)) ?? []
         macEnabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
         macUseSSHConfig = try container.decodeIfPresent(Bool.self, forKey: .useSSHConfig)
@@ -103,7 +99,6 @@ public struct SSHConfiguration: Codable, Hashable, Sendable {
         try container.encode(username, forKey: .username)
         try container.encode(authMethod, forKey: .authMethod)
         try container.encodeIfPresent(privateKeyPath, forKey: .privateKeyPath)
-        try container.encodeIfPresent(privateKeyData, forKey: .privateKeyData)
         try container.encode(jumpHosts, forKey: .jumpHosts)
         try container.encodeIfPresent(macEnabled, forKey: .enabled)
         try container.encodeIfPresent(macUseSSHConfig, forKey: .useSSHConfig)

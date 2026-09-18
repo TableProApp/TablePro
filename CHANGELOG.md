@@ -119,6 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A chat tool registered at runtime could take the name of a tool TablePro ships.
 - An open connection, a sheet and the app switcher preview left usable or visible behind the iOS app lock.
 - **Require Face ID** turned off on iPhone and iPad without authenticating.
+- SSH private keys pasted or picked on iPhone and iPad saved in plain text in the connections file.
+- Test Connection on iPhone and iPad saving its credentials to the Keychain, synced with Sync Passwords on.
 
 ## [0.75.0] - 2026-09-18
 

@@ -70,9 +70,7 @@ public enum SyncRecordMapper {
 
         if let sshConfig = connection.sshConfiguration {
             do {
-                var syncSafe = sshConfig
-                syncSafe.privateKeyData = nil
-                let data = try encoder.encode(syncSafe)
+                let data = try encoder.encode(sshConfig)
                 fields[.sshConfigJson] = data as CKRecordValue
             } catch {
                 logger.warning("Failed to encode SSH config for sync: \(error.localizedDescription)")
@@ -230,9 +228,7 @@ public enum SyncRecordMapper {
         fields[.queryTimeoutSeconds] = connection.queryTimeoutSeconds.map { Int64($0) } as CKRecordValue?
 
         if let sshConfig = connection.sshConfiguration {
-            var syncSafe = sshConfig
-            syncSafe.privateKeyData = nil
-            if let data = try? encoder.encode(syncSafe) {
+            if let data = try? encoder.encode(sshConfig) {
                 fields[.sshConfigJson] = data as CKRecordValue
             }
         } else {

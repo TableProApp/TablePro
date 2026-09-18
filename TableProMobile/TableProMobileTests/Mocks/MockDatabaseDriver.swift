@@ -90,8 +90,12 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 final class MockSecureStore: SecureStore, @unchecked Sendable {
     private var storage: [String: String] = [:]
     var failNextStore = false
+    var refusesStores = false
 
     func store(_ value: String, forKey key: String) throws {
+        if refusesStores {
+            throw MockDatabaseDriver.MockError.scripted
+        }
         if failNextStore {
             failNextStore = false
             throw MockDatabaseDriver.MockError.scripted

@@ -19,24 +19,13 @@ final class IOSSSHProvider: SSHProvider, @unchecked Sendable {
         remotePort: Int
     ) async throws -> TableProDatabase.SSHTunnel {
         var resolvedConfig = config
-
-        let sshPassword = try? secureStore.retrieve(
-            forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)")
-        let keyPassphrase = try? secureStore.retrieve(
-            forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)")
-
-        if resolvedConfig.privateKeyData == nil || resolvedConfig.privateKeyData?.isEmpty == true {
-            resolvedConfig.privateKeyData = try? secureStore.retrieve(
-                forKey: "com.TablePro.sshkeydata.\(connectionId.uuidString)")
-        }
-        resolvedConfig.privateKeyPath = resolvedConfig.privateKeyPath.map(container.localPath(forStoredPath:))
+        resolvedConfig.privateKeyPath = config.privateKeyPath.map(container.localPath(forStoredPath:))
 
         let tunnel = try await SSHTunnelFactory.create(
             config: resolvedConfig,
             remoteHost: remoteHost,
             remotePort: remotePort,
-            sshPassword: sshPassword,
-            keyPassphrase: keyPassphrase
+            credentials: SSHTunnelCredentials(connectionId: connectionId, secureStore: secureStore)
         )
 
         let tunnelId = UUID()
