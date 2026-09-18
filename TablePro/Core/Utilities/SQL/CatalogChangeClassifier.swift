@@ -45,6 +45,9 @@ enum CatalogChangeClassifier {
             let tier = QueryClassifier.classifyTier(trimmed, databaseType: databaseType)
             return tier == .safe ? .none : opaque
         }
+        if QueryClassifier.runsPLSQL(trimmed, databaseType: databaseType) {
+            return opaque
+        }
         return sqlEffect(trimmed)
     }
 

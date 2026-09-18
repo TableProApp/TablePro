@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Oracle PL/SQL blocks split at their inner semicolons and sent as fragments, failing with PLS-00103. (#2984)
+- Oracle procedures, packages and triggers created from the editor stored INVALID while the run reported success.
+- SQL*Plus `/` lines, `q'[…]'` literals and backslashes in strings misread in Oracle scripts.
+- `:NEW` and `:OLD` in an Oracle trigger body opening the parameter panel.
+- 1 row affected reported for every Oracle PL/SQL block.
+- MySQL procedures with a `CASE` statement swallowing the statements after them in the editor.
 - Icon-only buttons announced as nothing by VoiceOver across the data grid, row inspector, editor find bar, filter bar, structure, dashboard and settings.
 - Status icons that carried a result only as a symbol and a colour, silent to VoiceOver, in the AWS and app import steps and the plugin lists.
 - Foreign key picker rows that could only be chosen with a mouse.

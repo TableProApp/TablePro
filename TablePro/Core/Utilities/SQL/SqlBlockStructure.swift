@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// The word level rules for the blocks a semicolon does not end.
 ///
@@ -18,10 +19,22 @@ import Foundation
 /// This sits beside ``SqlLexer`` rather than inside it because these rules are about words, not characters.
 enum SqlBlockStructure {
     /// What a keyword does to the block nesting around it.
-    enum Effect {
+    enum Effect: Equatable {
         case opensBlock
-        case closesBlock
+        /// Closes a block and swallows the keyword that follows up to `resumeAt`, which is how `END CASE` reads: the
+        /// `CASE` names what is closing rather than opening another.
+        case closesBlock(resumeAt: Int)
         case none
+    }
+
+    /// What an `END` means, given the word after it.
+    enum EndFollower: Equatable {
+        /// `END IF`, `END LOOP` and their kin close a construct that never opened a block, and the word is theirs.
+        case closesControlFlow
+        /// `END CASE` closes the `CASE` that opened a block, and the word is theirs.
+        case closesCaseStatement
+        /// Anything else closes a block and leaves the word to be read on its own, as the name in `END proc_name` is.
+        case closesBlock
     }
 
     /// The keywords that follow `BEGIN` when it starts a transaction rather than a block.
@@ -36,16 +49,19 @@ enum SqlBlockStructure {
 
     /// The keywords that follow `END` when it closes a construct nothing here opened.
     ///
-    /// `END CASE` is absent on purpose: `CASE` opens a block, so its `END` has to close one.
+    /// `END CASE` is absent on purpose: `CASE` opens a block, so its `END` has to close one, and ``endingFollowedBy(_:)``
+    /// gives it its own answer so the `CASE` after it is not read as a second opener.
     private static let controlFlowFollowers: Set<String> = ["IF", "LOOP", "WHILE", "FOR", "REPEAT"]
 
     /// The keywords a statement has to open with before a `BEGIN` inside it is read as a routine body.
     ///
-    /// Only ``SQLStatementScanner`` consults this, and the reason is safety rather than grammar. An anonymous
-    /// `BEGIN ... END` block is real SQL, and folding one is right. Splitting on one is not: a `BEGIN` that swallowed
-    /// the statements after it would hand the execution gate a single statement whose first word is `BEGIN`, and
-    /// `QueryClassifier` tiers a statement by its leading keyword, so a swallowed `DROP` would be classified safe and
-    /// run under Read-Only with no confirmation. Folding cannot execute anything, so it takes every block.
+    /// Only ``SQLRoutineBodyTracker`` consults this, and the reason is safety rather than grammar. An anonymous
+    /// `BEGIN ... END` block is real SQL on some engines, and folding one is right. Splitting on one is not where the
+    /// engine has no such block: a `BEGIN` that swallowed the statements after it would hand the execution gate a
+    /// single statement whose first word is `BEGIN`, and `QueryClassifier` tiers a statement by its leading keyword,
+    /// so a swallowed `DROP` would be tiered a plain write and skip the destructive confirmation. Folding cannot
+    /// execute anything, so it takes every block. Oracle, whose anonymous blocks are the everyday form, has its own
+    /// grammar in ``PLSQLUnitTracker`` and a classifier that reads the whole block.
     private static let routineDefinitionOpeners: Set<String> = ["CREATE", "ALTER", "REPLACE", "DECLARE"]
 
     /// Whether a statement opening with `keyword` can carry a `BEGIN ... END` body.
@@ -58,23 +74,50 @@ enum SqlBlockStructure {
         return transactionFollowers.contains(keyword)
     }
 
+    static func endingFollowedBy(_ keyword: String) -> EndFollower {
+        if keyword == "CASE" { return .closesCaseStatement }
+        return controlFlowFollowers.contains(keyword) ? .closesControlFlow : .closesBlock
+    }
+
     /// The keyword at `offset`, uppercased, and the offset just past it.
     ///
     /// Returns an empty string when `offset` does not start an identifier, along with the next offset, so a caller can
     /// advance one character and carry on without a second bounds check.
     static func readKeyword(_ text: NSString, at offset: Int, length: Int) -> (text: String, end: Int) {
-        guard offset < length, SqlDollarQuote.isIdentifierStart(text.character(at: offset)) else {
+        readKeyword(text, at: offset, length: length, dialect: .generic)
+    }
+
+    /// The keyword at `offset` as `dialect` spells identifiers.
+    ///
+    /// Oracle continues an identifier with `$` and `#`, so `V$SESSION` is one word, and starts a conditional
+    /// compilation directive with `$`, so `$END` is one word that ``PLSQLUnitTracker`` can tell apart from `END`.
+    static func readKeyword(
+        _ text: NSString,
+        at offset: Int,
+        length: Int,
+        dialect: SqlDialect
+    ) -> (text: String, end: Int) {
+        guard offset < length, startsWord(text, at: offset, length: length, dialect: dialect) else {
             return ("", offset + 1)
         }
-        var cursor = offset
-        var scalars = String.UnicodeScalarView()
-        while cursor < length, SqlDollarQuote.isIdentifierPart(text.character(at: cursor)) {
-            if let scalar = UnicodeScalar(text.character(at: cursor)) {
-                scalars.append(scalar)
-            }
+        var cursor = offset + 1
+        while cursor < length, continuesWord(text.character(at: cursor), dialect: dialect) {
             cursor += 1
         }
-        return (String(scalars).uppercased(), cursor)
+        let word = text.substring(with: NSRange(location: offset, length: cursor - offset))
+        return (word.uppercased(), cursor)
+    }
+
+    static func startsWord(_ text: NSString, at offset: Int, length: Int, dialect: SqlDialect) -> Bool {
+        let character = text.character(at: offset)
+        if SqlDollarQuote.isIdentifierStart(character) { return true }
+        guard dialect == .oracle, character == SqlDollarQuote.dollar, offset + 1 < length else { return false }
+        return SqlDollarQuote.isIdentifierStart(text.character(at: offset + 1))
+    }
+
+    static func continuesWord(_ character: UInt16, dialect: SqlDialect) -> Bool {
+        if SqlDollarQuote.isIdentifierPart(character) { return true }
+        return dialect == .oracle && (character == SqlDollarQuote.dollar || character == SqlLexer.hash)
     }
 
     /// What `keyword`, which ends at `wordEnd`, does to the block nesting.
@@ -97,7 +140,7 @@ enum SqlBlockStructure {
         case "CASE":
             return .opensBlock
         case "END":
-            return closesControlFlow(after: wordEnd, in: text, length: length) ? .none : .closesBlock
+            return endEffect(after: wordEnd, in: text, length: length)
         default:
             return .none
         }
@@ -112,10 +155,18 @@ enum SqlBlockStructure {
         return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
     }
 
-    private static func closesControlFlow(after offset: Int, in text: NSString, length: Int) -> Bool {
+    private static func endEffect(after offset: Int, in text: NSString, length: Int) -> Effect {
         let cursor = skipTrivia(from: offset, in: text, length: length)
-        guard cursor < length else { return false }
-        return controlFlowFollowers.contains(readKeyword(text, at: cursor, length: length).text)
+        guard cursor < length else { return .closesBlock(resumeAt: offset) }
+        let follower = readKeyword(text, at: cursor, length: length)
+        switch endingFollowedBy(follower.text) {
+        case .closesControlFlow:
+            return .none
+        case .closesCaseStatement:
+            return .closesBlock(resumeAt: follower.end)
+        case .closesBlock:
+            return .closesBlock(resumeAt: offset)
+        }
     }
 
     private static func skipTrivia(from offset: Int, in text: NSString, length: Int) -> Int {

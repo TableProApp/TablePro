@@ -1133,7 +1133,7 @@ final class MainContentCoordinator: ObservableObject {
                 QueryStatementScanner.executableStatements(in: sql, model: statementModel, dialect: sqlDialect)
             )
             guard !paramStatements.isEmpty else { return false }
-            let combinedSQL = paramStatements.map(\.sql).joined(separator: "; ")
+            let combinedSQL = SQLParameterExtractor.parameterSource(of: paramStatements)
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
             if !detectedNames.isEmpty {

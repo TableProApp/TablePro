@@ -18,6 +18,7 @@ final class SQLFileParser: Sendable {
         case inDoubleQuotedString
         case inBacktickQuotedString
         case inDollarQuote
+        case inAlternativeQuote
     }
 
     private static let kSemicolon: unichar = 0x3B
@@ -49,6 +50,9 @@ final class SQLFileParser: Sendable {
         case .normal:
             var result = char == kDash || char == kSlash || char == kBackslash || char == kStar
                 || char == kSingleQuote || char == kDoubleQuote || char == kBacktick
+            if dialect == .oracle && char == kDollar {
+                result = true
+            }
             if dialect.supportsDollarQuotes && char == kDollar {
                 result = true
             }
@@ -71,6 +75,8 @@ final class SQLFileParser: Sendable {
             return false
         case .inDollarQuote:
             return char == kDollar
+        case .inAlternativeQuote:
+            return false
         }
     }
 
@@ -125,6 +131,26 @@ final class SQLFileParser: Sendable {
         var dollarTag: String = ""
         var backslashEscapesActive = false
         var collected: [(statement: String, lineNumber: Int)] = []
+
+        /// Oracle's statement grammar, so a PL/SQL unit arrives whole with its own `;`. Every other dialect has
+        /// always split an import at each `;` and relies on `DELIMITER` or dollar quoting for a routine body, and
+        /// keeps doing so.
+        var boundaries: PLSQLUnitTracker?
+        var word: [unichar] = []
+        var alternativeQuoteCloser: unichar = 0
+        var lineHasCode = false
+        var pendingSlashLine = false
+        var pendingSlashTrailing: [unichar] = []
+
+        /// Set for the last pass over the buffer, once the file has nothing more to give. A character held back for
+        /// the one after it is settled with nothing after it, instead of being left in the buffer and dropped.
+        var atEndOfInput = false
+
+        init(dialect: SqlDialect, currentStatement: NSMutableString?) {
+            self.dialect = dialect
+            self.currentStatement = currentStatement
+            self.boundaries = dialect == .oracle ? PLSQLUnitTracker() : nil
+        }
     }
 
     private static func trimmedStatement(_ ctx: ParserContext) -> String {
@@ -135,6 +161,112 @@ final class SQLFileParser: Sendable {
     private static func resetStatement(_ ctx: inout ParserContext) {
         ctx.currentStatement?.setString("")
         ctx.hasStatementContent = false
+        ctx.boundaries?.reset()
+        ctx.word.removeAll(keepingCapacity: true)
+    }
+
+    private static func isLineBlank(_ char: unichar) -> Bool {
+        char == kSpace || char == kTab || char == kCarriageReturn
+    }
+
+    /// Hands the word that just ended to the tracker. A word is only assembled while the tracker still reads words,
+    /// so a statement it has already classified as plain SQL costs nothing per character.
+    private static func flushWord(_ ctx: inout ParserContext) {
+        guard !ctx.word.isEmpty else { return }
+        let word = String(utf16CodeUnits: ctx.word, count: ctx.word.count).uppercased()
+        ctx.word.removeAll(keepingCapacity: true)
+        ctx.boundaries?.observeWord(word)
+    }
+
+    /// Tracks the word `char` belongs to and returns whether `char` starts an Oracle `q'...'` literal, which it does
+    /// only at the start of a word.
+    private static func observeWordCharacter(
+        _ ctx: inout ParserContext,
+        char: unichar,
+        i: Int,
+        nsBuffer: NSString,
+        bufLen: Int
+    ) -> WordStep {
+        guard ctx.boundaries != nil else { return .none }
+        if !ctx.word.isEmpty {
+            if SqlBlockStructure.continuesWord(char, dialect: ctx.dialect) {
+                ctx.word.append(char)
+                return .continues
+            }
+            flushWord(&ctx)
+        }
+        guard SqlBlockStructure.startsWord(nsBuffer, at: i, length: bufLen, dialect: ctx.dialect) else { return .none }
+        if let quoteLength = alternativeQuotePrefixLength(nsBuffer, at: i, bufLen: bufLen) {
+            if quoteLength > 0 {
+                return .opensAlternativeQuote(prefixLength: quoteLength)
+            }
+            guard ctx.atEndOfInput else { return .needsMoreData }
+        }
+        if ctx.boundaries?.needsWords == true {
+            ctx.word.append(char)
+        }
+        return .continues
+    }
+
+    private enum WordStep {
+        case none
+        case continues
+        case needsMoreData
+        case opensAlternativeQuote(prefixLength: Int)
+    }
+
+    /// The length of `q'<delim>` or `nq'<delim>` at `i`, zero when the buffer ends before the delimiter, or nil
+    /// when `i` does not start one.
+    private static func alternativeQuotePrefixLength(_ buffer: NSString, at i: Int, bufLen: Int) -> Int? {
+        var cursor = i
+        let first = buffer.character(at: cursor)
+        if first == SqlLexer.smallN || first == SqlLexer.capitalN {
+            cursor += 1
+        }
+        guard cursor < bufLen else { return 0 }
+        let prefix = buffer.character(at: cursor)
+        guard prefix == SqlLexer.smallQ || prefix == SqlLexer.capitalQ else { return nil }
+        guard cursor + 1 < bufLen else { return 0 }
+        guard buffer.character(at: cursor + 1) == kSingleQuote else { return nil }
+        guard cursor + 2 < bufLen else { return 0 }
+        guard !isWhitespace(buffer.character(at: cursor + 2)) else { return nil }
+        return cursor + 3 - i
+    }
+
+    private static func alternativeQuoteCloser(for opener: unichar) -> unichar {
+        switch opener {
+        case 0x5B: return 0x5D
+        case 0x28: return 0x29
+        case 0x7B: return 0x7D
+        case 0x3C: return 0x3E
+        default: return opener
+        }
+    }
+
+    /// Settles a `/` held back at the start of a line once the line's end shows whether it stood alone.
+    ///
+    /// Returns true when `char` was consumed as trailing whitespace on the `/` line.
+    private static func settlePendingSlashLine(_ ctx: inout ParserContext, char: unichar) -> Bool {
+        guard ctx.pendingSlashLine else { return false }
+        if isLineBlank(char) {
+            ctx.pendingSlashTrailing.append(char)
+            return true
+        }
+        ctx.pendingSlashLine = false
+        if char == kNewline {
+            ctx.pendingSlashTrailing.removeAll()
+            yieldAndReset(&ctx)
+            return false
+        }
+        (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+            ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+        appendChar(kSlash, to: ctx.currentStatement)
+        for trailing in ctx.pendingSlashTrailing {
+            appendChar(trailing, to: ctx.currentStatement)
+        }
+        ctx.pendingSlashTrailing.removeAll()
+        ctx.boundaries?.observeSymbol(kSlash)
+        return false
     }
 
     private static func processDelimiterChange(_ ctx: inout ParserContext, char: unichar) {
@@ -162,6 +294,31 @@ final class SQLFileParser: Sendable {
         nsBuffer: NSString,
         bufLen: Int
     ) -> StepResult {
+        if settlePendingSlashLine(&ctx, char: char) {
+            return StepResult(advanced: false, deferred: false)
+        }
+
+        switch observeWordCharacter(&ctx, char: char, i: i, nsBuffer: nsBuffer, bufLen: bufLen) {
+        case .continues:
+            (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+                ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+            appendChar(char, to: ctx.currentStatement)
+            return StepResult(advanced: false, deferred: false)
+        case .needsMoreData:
+            return StepResult(advanced: false, deferred: true)
+        case let .opensAlternativeQuote(prefixLength):
+            (ctx.hasStatementContent, ctx.statementStartLine) = markContent(
+                ctx.hasStatementContent, ctx.statementStartLine, ctx.currentLine)
+            appendRange(&ctx, from: i, to: i + prefixLength, in: nsBuffer)
+            ctx.alternativeQuoteCloser = alternativeQuoteCloser(for: nsBuffer.character(at: i + prefixLength - 1))
+            ctx.state = .inAlternativeQuote
+            ctx.boundaries?.observeOpaqueToken()
+            i += prefixLength
+            return StepResult(advanced: true, deferred: false)
+        case .none:
+            break
+        }
+
         processDelimiterChange(&ctx, char: char)
 
         if char == kDash && nextChar == kDash {
@@ -215,20 +372,26 @@ final class SQLFileParser: Sendable {
                 ctx.dollarTag = tag
                 i += length
                 return StepResult(advanced: true, deferred: false)
-            case .needsMoreData:
+            case .needsMoreData where !ctx.atEndOfInput:
                 return StepResult(advanced: false, deferred: true)
-            case .notOpener:
+            case .needsMoreData, .notOpener:
                 break
             }
         }
 
         if let advanced = processQuoteOpen(&ctx, char: char, nextChar: nextChar) {
+            ctx.boundaries?.observeOpaqueToken()
             if advanced { i += 2 }
             return StepResult(advanced: advanced, deferred: false)
         }
 
         if ctx.isSingleCharDelimiter && char == kSemicolon {
-            yieldAndReset(&ctx)
+            processSemicolon(&ctx)
+            return StepResult(advanced: false, deferred: false)
+        }
+
+        if ctx.dialect.endsStatementsAtSlashLines && char == kSlash && !ctx.lineHasCode {
+            ctx.pendingSlashLine = true
             return StepResult(advanced: false, deferred: false)
         }
 
@@ -243,8 +406,68 @@ final class SQLFileParser: Sendable {
             ctx.statementStartLine = ctx.currentLine
             ctx.hasStatementContent = true
         }
+        if !isWhitespace(char) {
+            ctx.boundaries?.observeSymbol(char)
+        }
         appendChar(char, to: ctx.currentStatement)
         return StepResult(advanced: false, deferred: false)
+    }
+
+    /// A `;` ends the statement unless Oracle's grammar holds it inside a PL/SQL unit, and a unit keeps the `;` that
+    /// ends it.
+    private static func processSemicolon(_ ctx: inout ParserContext) {
+        guard ctx.boundaries != nil else {
+            yieldAndReset(&ctx)
+            return
+        }
+        flushWord(&ctx)
+        let endsStatement = ctx.boundaries?.observeSemicolon() ?? true
+        guard endsStatement else {
+            appendChar(kSemicolon, to: ctx.currentStatement)
+            return
+        }
+        if ctx.boundaries?.terminator == .partOfStatement, ctx.hasStatementContent {
+            appendChar(kSemicolon, to: ctx.currentStatement)
+        }
+        yieldAndReset(&ctx)
+    }
+
+    private static func processAlternativeQuote(
+        _ ctx: inout ParserContext,
+        i: inout Int,
+        nsBuffer: NSString,
+        bufLen: Int
+    ) -> StepResult {
+        let start = i
+        var pos = i
+        while pos < bufLen {
+            let ch = nsBuffer.character(at: pos)
+            if pos > start && ch == kNewline {
+                ctx.currentLine += 1
+            }
+            if ch == ctx.alternativeQuoteCloser {
+                if pos + 1 >= bufLen {
+                    if ctx.atEndOfInput {
+                        pos += 1
+                        continue
+                    }
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: true)
+                }
+                if nsBuffer.character(at: pos + 1) == kSingleQuote {
+                    pos += 2
+                    ctx.state = .normal
+                    appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+                    i = pos
+                    return StepResult(advanced: true, deferred: false)
+                }
+            }
+            pos += 1
+        }
+        appendRange(&ctx, from: start, to: pos, in: nsBuffer)
+        i = pos
+        return StepResult(advanced: true, deferred: false)
     }
 
     private static func processQuoteOpen(
@@ -341,6 +564,10 @@ final class SQLFileParser: Sendable {
 
             if escapesActive && ch == kBackslash {
                 if pos + 1 >= bufLen {
+                    if ctx.atEndOfInput {
+                        pos += 1
+                        continue
+                    }
                     appendRange(&ctx, from: start, to: pos, in: nsBuffer)
                     i = pos
                     return StepResult(advanced: true, deferred: true)
@@ -352,12 +579,12 @@ final class SQLFileParser: Sendable {
             }
 
             if ch == quoteChar {
-                if pos + 1 >= bufLen {
+                if pos + 1 >= bufLen && !ctx.atEndOfInput {
                     appendRange(&ctx, from: start, to: pos, in: nsBuffer)
                     i = pos
                     return StepResult(advanced: true, deferred: true)
                 }
-                let next = nsBuffer.character(at: pos + 1)
+                let next: unichar? = pos + 1 < bufLen ? nsBuffer.character(at: pos + 1) : nil
                 if next == quoteChar {
                     pos += 2
                     continue
@@ -396,6 +623,10 @@ final class SQLFileParser: Sendable {
 
             if ch == kDollar {
                 if pos + closeLen > bufLen {
+                    if ctx.atEndOfInput {
+                        pos += 1
+                        continue
+                    }
                     appendRange(&ctx, from: start, to: pos, in: nsBuffer)
                     i = pos
                     return StepResult(advanced: true, deferred: true)
@@ -492,6 +723,8 @@ final class SQLFileParser: Sendable {
             let rawData = handle.readData(ofLength: chunkSize)
 
             if rawData.isEmpty && !decoder.hasPendingBytes {
+                ctx.atEndOfInput = true
+                processBuffer()
                 emitTrailingStatement()
                 finished = true
                 closeFile()
@@ -523,7 +756,7 @@ final class SQLFileParser: Sendable {
                 let char = nsBuffer.character(at: i)
                 let nextChar: unichar? = (i + 1 < bufLen) ? nsBuffer.character(at: i + 1) : nil
 
-                if nextChar == nil && SQLFileParser.needsLookahead(
+                if nextChar == nil && !ctx.atEndOfInput && SQLFileParser.needsLookahead(
                     char,
                     state: ctx.state,
                     dialect: dialect,
@@ -581,9 +814,21 @@ final class SQLFileParser: Sendable {
                         nsBuffer: nsBuffer, bufLen: bufLen)
                     didManuallyAdvance = result.advanced
                     shouldDefer = result.deferred
+
+                case .inAlternativeQuote:
+                    let result = SQLFileParser.processAlternativeQuote(
+                        &ctx, i: &i,
+                        nsBuffer: nsBuffer, bufLen: bufLen)
+                    didManuallyAdvance = result.advanced
+                    shouldDefer = result.deferred
                 }
 
                 if shouldDefer { break }
+                if char == SQLFileParser.kNewline {
+                    ctx.lineHasCode = false
+                } else if !SQLFileParser.isLineBlank(char) && !ctx.pendingSlashLine {
+                    ctx.lineHasCode = true
+                }
                 if !didManuallyAdvance { i += 1 }
             }
 
@@ -595,6 +840,8 @@ final class SQLFileParser: Sendable {
         }
 
         private func emitTrailingStatement() {
+            ctx.pendingSlashLine = false
+            ctx.pendingSlashTrailing.removeAll()
             guard ctx.hasStatementContent else { return }
             let text = SQLFileParser.trimmedStatement(ctx)
             if SQLFileParser.extractDelimiterChange(text) == nil {

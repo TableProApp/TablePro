@@ -73,9 +73,32 @@ The database has to accept TLS without mutual TLS: set **Mutual TLS (mTLS) authe
 
 Table info carries columns, types, nullability, primary keys, indexes, foreign keys, and CREATE TABLE DDL. The structure editor writes `ALTER TABLE` with double-quoted identifiers for case-sensitive names: ADD, RENAME COLUMN, MODIFY, DROP, and CREATE INDEX.
 
-The editor runs SQL and anonymous PL/SQL blocks, and grid paging is written as `OFFSET … ROWS FETCH NEXT … ROWS ONLY`. Import and export work as they do elsewhere, and a remote server reaches through an [SSH tunnel](/connections/ssh-tunneling).
+The editor runs SQL and PL/SQL, and grid paging is written as `OFFSET … ROWS FETCH NEXT … ROWS ONLY`. Import and export work as they do elsewhere, and a remote server reaches through an [SSH tunnel](/connections/ssh-tunneling).
 
 A partitioned table shows its partition count and lists the partitions under it, each with its position. `ALL_TAB_PARTITIONS.HIGH_VALUE` is a `LONG` column the driver cannot decode, so an Oracle partition row carries the position rather than the bound. Subpartitions nest under their partition. An interval-partitioned table reports no count: the server's figure there is the range it will extend into, not the partitions that exist. Query one with `SELECT * FROM orders PARTITION (p2024)`.
+
+## PL/SQL
+
+A block or a stored unit is one statement, however many semicolons are inside it. Put the cursor anywhere in it and press `Cmd+Enter`, or click its run button in the gutter.
+
+```sql
+DECLARE
+  total NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO total FROM orders;
+  DBMS_OUTPUT.PUT_LINE(total);
+END;
+```
+
+The semicolon after a unit's last `END` is sent with it. A plain SQL statement is sent without its semicolon.
+
+Scripts written for SQL*Plus or SQL Developer run unchanged: a line holding only `/` ends the statement above it and is never sent. Between units the slash is optional, except after `CREATE JAVA SOURCE`, `CREATE MLE MODULE` and a `WRAPPED` unit, which each run to the next `/` line or to the end of the script.
+
+A `CREATE` whose unit does not compile fails with Oracle's own errors, one per line with its position, instead of reporting success. The unit stays in the schema as INVALID until a version that compiles replaces it.
+
+In a trigger body, `:NEW` and `:OLD` are left as written. In an anonymous block, `:name` is a [query parameter](/features/query-parameters) filled from the panel.
+
+An anonymous block, or a query whose `WITH` clause declares a function, runs code on the server. One that drops or truncates, including through `EXECUTE IMMEDIATE '…'`, raises the [dangerous query warning](/features/safe-mode) before it runs, and a Read-Only connection refuses it like any write. [MCP clients](/external-api/mcp-tools) and the AI assistant cannot send either.
 
 ## Column type support
 
@@ -109,10 +132,13 @@ The Oracle driver is compiled into TablePro Mobile, with no plugin to install. B
 
 - No OS auth, wallets, Kerberos, or LDAP. Create a database user with a password and connect as that.
 - BFILE columns show the locator, never the file. There is no path to the contents from the app.
-- PL/SQL runs as anonymous blocks. Create a procedure or package with a `CREATE OR REPLACE` statement in the editor.
+- SQL*Plus commands such as `SET SERVEROUTPUT ON`, `SHOW ERRORS` and `EXEC` are not SQL and fail when sent. Delete them, and write `EXEC p` as `BEGIN p; END;`.
+- `DBMS_OUTPUT` lines are not shown. Return the value from a query instead, or write it to a table.
 - No Users & Roles pane. Manage accounts with `CREATE USER` and `GRANT` in the editor.
 
 ## Troubleshooting
+
+**PROCEDURE … was created with compilation errors**: the unit is stored but does not compile. Each line after the first gives the line and column in the unit's source and the `PLS-` error there. Fix the source and run the `CREATE OR REPLACE` again.
 
 **Connection refused**: check the listener is up with `lsnrctl status`, that port 1521 is open, and, on Docker, that the container is running (`docker start oracle-xe`).
 

@@ -185,10 +185,19 @@ internal actor CompareSyncExecutor {
                 mode: mode,
                 settings: settings,
                 driver: driver,
+                dialect: SqlDialect.from(databaseTypeId: target.databaseType.rawValue),
                 progress: progress,
                 nonTransactionalObjects: nonTransactionalObjects
             )
         }
+    }
+
+    /// The script text a statement is shown with ends in `;`, and on Oracle that `;` belongs to some statements and
+    /// breaks others: a trigger whose body is a `CALL` is stored INVALID with one. Oracle's statements therefore go out
+    /// the way the editor sends them. Every other engine takes the script text as written.
+    private static func driverText(of statement: SyncStatement, dialect: SqlDialect) -> String {
+        guard dialect == .oracle else { return statement.sql }
+        return SQLStatementScanner.executableText(of: statement.sql, dialect: dialect)
     }
 
     private func run(
@@ -197,6 +206,7 @@ internal actor CompareSyncExecutor {
         mode: CompareSyncMode,
         settings: CompareSyncExecutionSettings,
         driver: any PluginDatabaseDriver,
+        dialect: SqlDialect,
         progress: Progress,
         nonTransactionalObjects: Set<String>
     ) async throws -> CompareSyncRunResult {
@@ -220,7 +230,7 @@ internal actor CompareSyncExecutor {
             }
             var didExecute = false
             do {
-                let result = try await driver.execute(query: statement.sql)
+                let result = try await driver.execute(query: Self.driverText(of: statement, dialect: dialect))
                 didExecute = true
                 try Self.verify(statement, rowsAffected: result.rowsAffected)
                 /// A scope is only closed once its closing statement has actually run. Dropping it

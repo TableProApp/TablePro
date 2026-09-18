@@ -36,6 +36,9 @@ enum SQLNonCodeSpan {
         if let end = endOfEscapeString(at: index, in: text, rules: rules) {
             return end
         }
+        if let end = endOfAlternativeQuotedString(at: index, in: text, rules: rules) {
+            return end
+        }
         if rules.bracketsDelimitIdentifiers, character == openBracket {
             return endOfBracketedIdentifier(at: index, in: text)
         }
@@ -79,6 +82,15 @@ enum SQLNonCodeSpan {
             length: length,
             backslashEscapes: true
         ).next
+    }
+
+    private static func endOfAlternativeQuotedString(at index: Int, in text: NSString, rules: SQLLexicalRules) -> Int? {
+        guard rules.dialect.supportsAlternativeQuoting,
+              index == 0 || !isWordUnit(text.character(at: index - 1))
+        else {
+            return nil
+        }
+        return SqlLexer.skipAlternativeQuotedString(text, at: index, length: text.length)?.next
     }
 
     private static func endOfBracketedIdentifier(at index: Int, in text: NSString) -> Int {

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// How the app treats the transaction around a multi-statement run, decided from the text alone
 /// before any driver is leased.
@@ -72,6 +73,7 @@ internal enum BatchTransactionPolicy {
         guard let keyword = cursor.next()?.word else { return false }
         switch keyword {
         case "BEGIN":
+            guard rules.dialect != .oracle else { return false }
             return SqlBlockStructure.beginStartsTransaction(followedBy: cursor.next()?.word)
         case "START":
             return cursor.next()?.word == "TRANSACTION"

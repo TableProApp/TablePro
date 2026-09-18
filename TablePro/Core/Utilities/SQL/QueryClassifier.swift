@@ -53,6 +53,9 @@ enum QueryClassifier {
         if let redis = redisClassification(trimmed, databaseType: databaseType) { return redis }
         if let ledger = beancountClassification(trimmed, databaseType: databaseType) { return ledger }
         if let document = documentStoreClassification(trimmed, databaseType: databaseType) { return document }
+        if runsPLSQL(trimmed, databaseType: databaseType) {
+            return plsqlBlockClassification(trimmed, databaseType: databaseType)
+        }
         return sqlClassification(trimmed)
     }
 
@@ -65,6 +68,9 @@ enum QueryClassifier {
         if classification.tier == .destructive { return true }
         guard databaseType != .redis else { return false }
         let trimmed = StatementBlank.trimming(strippingLeadingComments(sql))
+        if runsPLSQL(trimmed, databaseType: databaseType) {
+            return plsqlBlockDeletesEverything(trimmed)
+        }
         guard leadingKeyword(of: trimmed) == "DELETE" else { return false }
         return !hasWhereClause(trimmed)
     }
