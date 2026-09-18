@@ -12,6 +12,7 @@ import os
 import SwiftUI
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Discard action types for unified alert handling
 enum DiscardAction {

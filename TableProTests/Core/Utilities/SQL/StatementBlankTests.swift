@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 

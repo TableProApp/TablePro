@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Finds the foldable regions of a SQL document in a single pass.
 ///

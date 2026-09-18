@@ -17,6 +17,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 @MainActor
 internal struct ObjectCopyPlanner {

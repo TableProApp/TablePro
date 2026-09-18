@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 struct CatalogStatementEffect: Sendable, Equatable {
     let kinds: CatalogObjectKinds

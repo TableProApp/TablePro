@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// The statement a result set was produced by, as something that can be found again.
 ///

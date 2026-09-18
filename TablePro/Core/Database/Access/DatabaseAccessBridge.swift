@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Connecting, switching container and running one statement, for a caller that is not a person
 /// clicking in the app.

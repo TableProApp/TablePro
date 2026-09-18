@@ -12,6 +12,7 @@ import Foundation
 import TableProEditorKit
 import TableProGrammars
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 import Testing
 

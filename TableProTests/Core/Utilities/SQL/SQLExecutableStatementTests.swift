@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 @testable import TablePro
 

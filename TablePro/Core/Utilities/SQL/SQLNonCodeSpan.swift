@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum SQLNonCodeSpan {
     private static let openBracket = UInt16(UnicodeScalar("[").value)

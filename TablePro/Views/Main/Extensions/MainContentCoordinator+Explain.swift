@@ -10,6 +10,7 @@
 import Foundation
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     func runExplain(variant: ExplainVariant? = nil) {

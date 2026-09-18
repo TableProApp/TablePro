@@ -1,24 +1,19 @@
-//
-//  SqlDollarQuote.swift
-//  TablePro
-//
-
 import Foundation
 
-enum SqlDollarQuote {
-    enum Opener {
+public enum SqlDollarQuote {
+    public enum Opener: Sendable {
         case opener(length: Int, tag: String)
         case notOpener
         case needsMoreData
     }
 
-    static let dollar: unichar = 0x24
+    public static let dollar: unichar = 0x24
 
-    static func isIdentifierStart(_ ch: unichar) -> Bool {
+    public static func isIdentifierStart(_ ch: unichar) -> Bool {
         (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) || ch == 0x5F
     }
 
-    static func isIdentifierPart(_ ch: unichar) -> Bool {
+    public static func isIdentifierPart(_ ch: unichar) -> Bool {
         isIdentifierStart(ch) || (ch >= 0x30 && ch <= 0x39)
     }
 
@@ -26,7 +21,7 @@ enum SqlDollarQuote {
     /// per PostgreSQL's rule that a dollar quote must be separated from a
     /// preceding identifier by whitespace (so `a$$b` is one identifier, not an
     /// opener).
-    static func isIdentifierContinuation(_ ch: unichar) -> Bool {
+    public static func isIdentifierContinuation(_ ch: unichar) -> Bool {
         isIdentifierPart(ch) || ch == dollar
     }
 
@@ -34,7 +29,7 @@ enum SqlDollarQuote {
     /// like `$1`, or a non-tag dollar. A `$` glued to a preceding identifier is
     /// not an opener. Returns `needsMoreData` when the buffer ends mid-tag; a
     /// whole-string caller treats that as `notOpener`.
-    static func scanOpener(at pos: Int, in buffer: NSString, bufLen: Int) -> Opener {
+    public static func scanOpener(at pos: Int, in buffer: NSString, bufLen: Int) -> Opener {
         if pos > 0, isIdentifierContinuation(buffer.character(at: pos - 1)) {
             return .notOpener
         }
@@ -62,7 +57,7 @@ enum SqlDollarQuote {
 
     /// Whether the closing delimiter for `tag` starts at `pos`. The tag match is
     /// exact and case-sensitive, per PostgreSQL.
-    static func matchesClose(at pos: Int, tag: String, in buffer: NSString, bufLen: Int) -> Bool {
+    public static func matchesClose(at pos: Int, tag: String, in buffer: NSString, bufLen: Int) -> Bool {
         let closeLen = (tag as NSString).length + 2
         guard pos + closeLen <= bufLen else { return false }
         if buffer.character(at: pos) != dollar { return false }

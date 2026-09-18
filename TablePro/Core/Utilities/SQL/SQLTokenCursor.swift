@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A lazy reader over the head of one statement, in the vocabulary a rule about that statement
 /// needs: words, quoted identifiers, literals and single symbols.

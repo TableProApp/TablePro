@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum QueryTier: Sendable, Equatable {
     case safe

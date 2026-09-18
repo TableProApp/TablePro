@@ -28,7 +28,8 @@ let package = Package(
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
         .library(name: "TableProDocumentPath", targets: ["TableProDocumentPath"]),
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
-        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"])
+        .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
+        .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"])
     ],
     targets: [
         .target(
@@ -130,6 +131,11 @@ let package = Package(
             name: "TableProConnectionLibrary",
             dependencies: [],
             path: "Sources/TableProConnectionLibrary"
+        ),
+        .target(
+            name: "TableProSQLGrammar",
+            dependencies: [],
+            path: "Sources/TableProSQLGrammar"
         ),
         .testTarget(
             name: "TableProConnectionLibraryTests",

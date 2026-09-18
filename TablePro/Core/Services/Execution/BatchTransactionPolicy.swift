@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// How the app treats the transaction around a multi-statement run, decided from the text alone
 /// before any driver is leased.

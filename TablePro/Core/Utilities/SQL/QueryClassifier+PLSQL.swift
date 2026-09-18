@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Tiering Oracle statements that run PL/SQL by what they run rather than by their first word.
 ///

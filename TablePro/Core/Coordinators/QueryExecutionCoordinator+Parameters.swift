@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 private let paramLog = Logger(subsystem: "com.TablePro", category: "QueryParameters")
 

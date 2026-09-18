@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProSQLGrammar
 
 private let regexLogger = Logger(subsystem: "com.TablePro", category: "SQLContextAnalyzer.Regex")
 

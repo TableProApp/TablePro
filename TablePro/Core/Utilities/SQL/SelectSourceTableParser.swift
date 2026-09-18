@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// Resolves the one table a `SELECT` reads from, or nothing.
 ///

@@ -5,6 +5,7 @@
 
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 @Suite("Batch transaction policy")

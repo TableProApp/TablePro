@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 import Testing
 
 @testable import TablePro

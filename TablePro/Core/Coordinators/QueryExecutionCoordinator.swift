@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProSQLGrammar
 
 @MainActor
 final class QueryExecutionCoordinator: ObservableObject {

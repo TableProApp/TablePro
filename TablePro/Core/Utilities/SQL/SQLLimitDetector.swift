@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 enum SQLLimitDetector {
     static func hasExplicitRowLimit(

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// A read sent to an engine that returns only its leading rows, with the LIMIT stated.
 ///

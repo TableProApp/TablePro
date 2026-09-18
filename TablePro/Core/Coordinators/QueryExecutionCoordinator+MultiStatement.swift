@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension QueryExecutionCoordinator {
     func executeMultipleStatements(

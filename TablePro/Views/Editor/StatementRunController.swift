@@ -6,6 +6,7 @@
 import AppKit
 import TableProEditorKit
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTextEngine
 
 /// Which way a statement navigation command moves the caret.

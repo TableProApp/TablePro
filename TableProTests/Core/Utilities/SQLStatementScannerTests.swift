@@ -5,6 +5,7 @@
 
 @testable import TablePro
 import TableProPluginKit
+import TableProSQLGrammar
 import XCTest
 
 final class SQLStatementScannerTests: XCTestCase {
