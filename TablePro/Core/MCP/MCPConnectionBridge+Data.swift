@@ -370,7 +370,7 @@ extension MCPConnectionBridge {
         } else {
             prefix = analyze ? "EXPLAIN ANALYZE" : "EXPLAIN"
         }
-        let trimmed = stripTrailingSemicolons(query)
+        let trimmed = statementText(query, databaseType: databaseType)
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }

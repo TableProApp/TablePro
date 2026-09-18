@@ -15,12 +15,12 @@ struct DatabaseAccessBridgeStatementTests {
         arguments: ["\u{FEFF}\u{0008}SELECT 1;\u{00A0};\u{200B}", "\u{3000}SELECT 1\u{2028}", " SELECT 1 ; "]
     )
     func trimsInvisibleCharacters(sql: String) {
-        #expect(DatabaseAccessBridge.stripTrailingSemicolons(sql) == "SELECT 1")
+        #expect(DatabaseAccessBridge.statementText(sql, dialect: .generic) == "SELECT 1")
     }
 
     @Test("A statement of nothing but invisible characters is empty")
     func invisibleOnlyStatementIsEmpty() {
-        #expect(DatabaseAccessBridge.stripTrailingSemicolons("\u{FEFF}\u{0008};\u{200B}").isEmpty)
+        #expect(DatabaseAccessBridge.statementText("\u{FEFF}\u{0008};\u{200B}", dialect: .generic).isEmpty)
     }
 
     @Test(
@@ -42,7 +42,7 @@ struct DatabaseAccessBridgeStatementTests {
 
     @Test("The text an external client sends is the text that was classified")
     func sentTextMatchesClassifiedText() {
-        let sent = DatabaseAccessBridge.stripTrailingSemicolons("\u{0008}SELECT 1;")
+        let sent = DatabaseAccessBridge.statementText("\u{0008}SELECT 1;", dialect: .postgres)
         #expect(sent == "SELECT 1")
         #expect(QueryClassifier.classifyTier(sent, databaseType: .postgresql) == .safe)
     }

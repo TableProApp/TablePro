@@ -7,6 +7,14 @@ import Foundation
 import TableProPluginKit
 
 enum SQLParameterExtractor {
+    /// The text the parameter panel reads names from: every statement that can bind one, joined.
+    ///
+    /// A definition is left out, because its `:name` is never a bind parameter: `:NEW` in a trigger body is a
+    /// pseudo-record, and rewriting it into a placeholder stores a broken trigger.
+    static func parameterSource(of statements: [SQLStatementScanner.ExecutableStatement]) -> String {
+        statements.filter(\.acceptsBindParameters).map(\.sql).joined(separator: "; ")
+    }
+
     static func extractParameters(from sql: String) -> [String] {
         var result: [String] = []
         var seen = Set<String>()

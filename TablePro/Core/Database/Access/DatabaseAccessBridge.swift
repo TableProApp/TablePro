@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// Connecting, switching container and running one statement, for a caller that is not a person
 /// clicking in the app.
@@ -174,11 +175,17 @@ internal actor DatabaseAccessBridge {
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> StatementOutcome {
-        let normalizedQuery = Self.stripTrailingSemicolons(query)
-        guard !normalizedQuery.isEmpty else {
+        guard !Self.statementText(query, dialect: .generic).isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
         let databaseType = try await ensureConnected(scope.connectionId)
+        let normalizedQuery = Self.statementText(
+            query,
+            dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue)
+        )
+        guard !normalizedQuery.isEmpty else {
+            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
+        }
         let classification = QueryClassifier.classify(normalizedQuery, databaseType: databaseType)
         let hasReturning = normalizedQuery.range(
             of: #"\bRETURNING\b"#,
@@ -295,12 +302,14 @@ internal actor DatabaseAccessBridge {
         }
     }
 
-    internal static func stripTrailingSemicolons(_ query: String) -> String {
-        var result = StatementBlank.trimming(query)
-        while result.hasSuffix(";") {
-            result = StatementBlank.trimming(String(result.dropLast()))
-        }
-        return result
+    /// The text an external client's statement reaches the driver as.
+    ///
+    /// Trailing separators come off and a terminator that belongs to the statement stays, as the editor decides it:
+    /// a PL/SQL unit sent without the `;` after its `END` fails, or is stored INVALID, on Oracle. The emptiness of a
+    /// statement does not depend on the dialect for anything but an Oracle `/` line, so a caller may check it with
+    /// `.generic` before it knows the engine and again once it does.
+    internal static func statementText(_ query: String, dialect: SqlDialect) -> String {
+        SQLStatementScanner.executableText(of: query, dialect: dialect)
     }
 }
 

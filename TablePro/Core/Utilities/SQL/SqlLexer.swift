@@ -14,7 +14,8 @@ import TableProPluginKit
 ///
 /// ``skipQuotedString`` gates backslash escapes on the dialect, which is what PostgreSQL requires.
 /// `SQLStatementScanner` deliberately keeps its own ungated handling, because splitting a script for execution is
-/// safer when a backslash never ends a string early; `SQLStatementScannerTests` pins that behaviour.
+/// safer when a backslash never ends a string early; `SQLStatementScannerTests` pins that behaviour. Oracle is the
+/// exception there: a backslash is never an escape in Oracle, and scripts written for it routinely quote Windows paths.
 enum SqlLexer {
     static let space = UInt16(UnicodeScalar(" ").value)
     static let tab = UInt16(UnicodeScalar("\t").value)
@@ -32,6 +33,16 @@ enum SqlLexer {
     static let openParen = UInt16(UnicodeScalar("(").value)
     static let closeParen = UInt16(UnicodeScalar(")").value)
     static let exclamationMark = UInt16(UnicodeScalar("!").value)
+    static let smallQ = UInt16(UnicodeScalar("q").value)
+    static let capitalQ = UInt16(UnicodeScalar("Q").value)
+    static let smallN = UInt16(UnicodeScalar("n").value)
+    static let capitalN = UInt16(UnicodeScalar("N").value)
+    private static let openBracket = UInt16(UnicodeScalar("[").value)
+    private static let closeBracket = UInt16(UnicodeScalar("]").value)
+    private static let openBrace = UInt16(UnicodeScalar("{").value)
+    private static let closeBrace = UInt16(UnicodeScalar("}").value)
+    private static let lessThan = UInt16(UnicodeScalar("<").value)
+    private static let greaterThan = UInt16(UnicodeScalar(">").value)
 
     /// How far a scan ran, and how many lines it crossed. A caller that does not track lines ignores `newlines`.
     struct Span {
@@ -161,6 +172,49 @@ enum SqlLexer {
             cursor += 1
         }
         return Span(next: length, newlines: newlines)
+    }
+
+    /// Runs past an Oracle `q'<delim>...<delim>'` literal, or its national form `nq'...'`, when one starts at
+    /// `offset`.
+    ///
+    /// The body ends at the closing delimiter followed by a quote, so `q'[it's]'` is one literal although a plain scan
+    /// would end it at `it'`. Bracket-like delimiters close with their partner. Returns nil when `offset` does not
+    /// start one; a caller must only ask at the start of a word, because `xq'` is an identifier followed by a string.
+    static func skipAlternativeQuotedString(_ text: NSString, at offset: Int, length: Int) -> Span? {
+        var cursor = offset
+        let first = text.character(at: cursor)
+        if first == smallN || first == capitalN {
+            cursor += 1
+        }
+        guard cursor + 2 < length else { return nil }
+        let prefix = text.character(at: cursor)
+        guard prefix == smallQ || prefix == capitalQ, text.character(at: cursor + 1) == singleQuote else { return nil }
+        let opener = text.character(at: cursor + 2)
+        guard !isWhitespace(opener) else { return nil }
+        let closer = alternativeQuoteCloser(for: opener)
+        cursor += 3
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            if character == closer, cursor + 1 < length, text.character(at: cursor + 1) == singleQuote {
+                return Span(next: cursor + 2, newlines: newlines)
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: newlines)
+    }
+
+    private static func alternativeQuoteCloser(for opener: UInt16) -> UInt16 {
+        switch opener {
+        case openBracket: return closeBracket
+        case openParen: return closeParen
+        case openBrace: return closeBrace
+        case lessThan: return greaterThan
+        default: return opener
+        }
     }
 
     /// Runs to the closing `$tag$`. `bodyEnd` is where the body stops, `next` is past the closing tag.

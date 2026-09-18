@@ -305,6 +305,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // Health monitor sends "SELECT 1" as a ping; Oracle requires FROM DUAL.
         let isBareSelectOne = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "select 1"
         var result = try await rawQuery(isBareSelectOne ? OracleSchemaQueries.ping : query)
+        try await reportCompilationErrors(of: query)
         let executionTime = Date().timeIntervalSince(startTime)
 
         // OracleNIO may not populate column metadata for empty result sets.
@@ -312,8 +313,23 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            let recovered = try? await emptyResultColumns(for: query) {
             result = recovered
         }
+        if OraclePLSQLUnit.isAnonymousBlock(query) {
+            result = OracleRawResult(columns: result.columns, rows: result.rows, affectedRows: 0, isTruncated: false)
+        }
 
         return result.toPluginResult(executionTime: executionTime)
+    }
+
+    /// Turns a `CREATE` that stored an INVALID unit into the failure it is.
+    ///
+    /// Oracle accepts the statement and flags the compile failure only as a warning, which oracle-nio drops, so the
+    /// unit's own errors are read back from `ALL_ERRORS`. A unit the header does not name, or one that compiled, adds
+    /// nothing.
+    func reportCompilationErrors(of query: String) async throws {
+        guard let unit = OraclePLSQLUnit.definition(in: query) else { return }
+        let errors = try await rawQuery(unit.errorsQuery).rows.compactMap(OracleCompilationError.init(row:))
+        guard !errors.isEmpty else { return }
+        throw OraclePluginError(core: .queryFailed(unit.compilationFailureMessage(errors: errors)))
     }
 
     internal func rawQuery(_ query: String) async throws -> OracleRawResult {
@@ -345,7 +361,9 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
-        try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        let result = try await boundedQueryFromStream(query: query, rowCap: rowCap)
+        try await reportCompilationErrors(of: query)
+        return result
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

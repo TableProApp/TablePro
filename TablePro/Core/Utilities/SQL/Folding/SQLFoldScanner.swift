@@ -41,10 +41,15 @@ private struct Scan {
     private var index = 0
     private var line = 0
 
+    /// The statement scanner's own grammar, asked whether a `;` ends the statement so the fold and the run control
+    /// in the same gutter agree about where a statement stops.
+    private var boundaries: any SQLStatementBoundaryTracking
+
     init(text: NSString, dialect: SqlDialect) {
         self.text = text
         self.length = text.length
         self.dialect = dialect
+        self.boundaries = SQLStatementBoundaries.makeTracker(for: dialect)
     }
 
     // MARK: - Pass
@@ -63,6 +68,8 @@ private struct Scan {
         if consumeComment(character) { return }
         if consumeQuotedString(character) { return }
         if consumeDollarQuotedBody(character) { return }
+        if consumeAlternativeQuotedString() { return }
+        if consumeSlashLine(character) { return }
 
         openStatementIfNeeded()
         consumeStructure(character)
@@ -99,9 +106,13 @@ private struct Scan {
     /// Closes the innermost frame when it is the kind being closed. A `)` that does not match an open group, or an
     /// `END` with no `BEGIN`, belongs to structure this scanner does not track and is left alone.
     private mutating func popFrame(_ kind: SQLFoldRegion.Kind, end: Int) {
+        popFrame(kind, end: end, endLine: line)
+    }
+
+    private mutating func popFrame(_ kind: SQLFoldRegion.Kind, end: Int, endLine: Int) {
         guard let frame = frames.last, frame.kind == kind else { return }
         frames.removeLast()
-        complete(frame, end: end, endLine: line)
+        complete(frame, end: end, endLine: endLine)
     }
 
     private mutating func complete(_ frame: Frame, end: Int, endLine: Int) {
@@ -137,34 +148,58 @@ private struct Scan {
     private mutating func consumeStructure(_ character: UInt16) {
         switch character {
         case SqlLexer.openParen:
+            boundaries.observeSymbol(character)
             pushFrame(.parenGroup, openingToken: index, startLine: line)
             index += 1
         case SqlLexer.closeParen:
+            boundaries.observeSymbol(character)
             popFrame(.parenGroup, end: index)
             index += 1
         case SqlLexer.semicolon:
             consumeSemicolon()
         default:
-            consumeKeyword()
+            consumeKeyword(character)
         }
     }
 
-    /// A semicolon only ends the statement when the statement is the innermost open frame. Inside a `BEGIN` block or
-    /// a parenthesised group it separates something nested instead.
+    /// A semicolon only ends the statement when the statement grammar says it does and the statement is the innermost
+    /// open frame. Inside a `BEGIN` block or a parenthesised group it separates something nested instead.
+    ///
+    /// Oracle's grammar is authoritative in both directions, because a PL/SQL unit's `IS` and `AS` bodies open no fold
+    /// frame of their own: when it ends the unit, whatever the fold still holds open ends with it.
     private mutating func consumeSemicolon() {
-        if frames.last?.kind == .statement {
+        let endsStatement = boundaries.observeSemicolon()
+        if endsStatement {
+            boundaries.reset()
+            if dialect == .oracle {
+                closeFramesThroughStatement(end: index)
+            }
+        }
+        if endsStatement, frames.last?.kind == .statement {
             popFrame(.statement, end: index)
         }
         index += 1
     }
 
-    private mutating func consumeKeyword() {
-        let word = SqlBlockStructure.readKeyword(text, at: index, length: length)
+    private mutating func closeFramesThroughStatement(end: Int, endLine: Int? = nil) {
+        guard frames.contains(where: { $0.kind == .statement }) else { return }
+        while let frame = frames.last, frame.kind != .statement {
+            frames.removeLast()
+            complete(frame, end: end, endLine: endLine ?? line)
+        }
+    }
+
+    private mutating func consumeKeyword(_ character: UInt16) {
+        let word = SqlBlockStructure.readKeyword(text, at: index, length: length, dialect: dialect)
         guard !word.text.isEmpty else {
+            if !SqlLexer.isWhitespace(character) {
+                boundaries.observeSymbol(character)
+            }
             index += 1
             return
         }
 
+        boundaries.observeWord(word.text)
         switch SqlBlockStructure.effect(
             of: word.text,
             endingAt: word.end,
@@ -174,12 +209,13 @@ private struct Scan {
         ) {
         case .opensBlock:
             pushFrame(.keywordBlock, openingToken: word.end, startLine: line)
-        case .closesBlock:
+            index = word.end
+        case let .closesBlock(resumeAt):
             popFrame(.keywordBlock, end: index)
+            index = max(word.end, resumeAt)
         case .none:
-            break
+            index = word.end
         }
-        index = word.end
     }
 
     // MARK: - Trivia
@@ -214,9 +250,49 @@ private struct Scan {
 
     private mutating func consumeQuotedString(_ character: UInt16) -> Bool {
         guard SqlLexer.isQuote(character) else { return false }
+        boundaries.observeOpaqueToken()
         let span = SqlLexer.skipQuotedString(text, from: index, quote: character, length: length, dialect: dialect)
         line += span.newlines
         index = span.next
+        return true
+    }
+
+    /// An Oracle `q'[...]'` literal, which only starts where a word could, so `xq'` stays an identifier and a string.
+    private mutating func consumeAlternativeQuotedString() -> Bool {
+        guard dialect.supportsAlternativeQuoting,
+              index == 0 || !SqlBlockStructure.continuesWord(text.character(at: index - 1), dialect: dialect),
+              let span = SqlLexer.skipAlternativeQuotedString(text, at: index, length: length)
+        else {
+            return false
+        }
+        boundaries.observeOpaqueToken()
+        line += span.newlines
+        index = span.next
+        return true
+    }
+
+    /// A `/` alone on its line ends whatever statement is open, as SQL*Plus reads it. The statement ends where its own
+    /// text does, on a line above the slash, so a one-line statement stays unfoldable.
+    private mutating func consumeSlashLine(_ character: UInt16) -> Bool {
+        guard dialect.endsStatementsAtSlashLines, character == SqlLexer.slash,
+              SQLStatementScanner.isSlashLine(text, at: index, length: length)
+        else {
+            return false
+        }
+        var end = index
+        var endLine = line
+        while end > 0, SqlLexer.isWhitespace(text.character(at: end - 1)) {
+            end -= 1
+            if text.character(at: end) == SqlLexer.newline {
+                endLine -= 1
+            }
+        }
+        closeFramesThroughStatement(end: end, endLine: endLine)
+        if frames.last?.kind == .statement {
+            popFrame(.statement, end: end, endLine: endLine)
+        }
+        boundaries.reset()
+        index += 1
         return true
     }
 
@@ -233,6 +309,7 @@ private struct Scan {
         }
 
         openStatementIfNeeded()
+        boundaries.observeOpaqueToken()
         let start = SqlLexer.endOfLine(text, from: index, length: length)
         let startLine = line
         let result = SqlLexer.skipDollarQuotedBody(text, from: index + openerLength, tag: tag, length: length)

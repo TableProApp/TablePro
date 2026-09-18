@@ -53,11 +53,11 @@ private final class RecordingDriver: PluginDatabaseDriver, @unchecked Sendable {
 }
 
 final class CompareSyncExecutorTests: XCTestCase {
-    private func endpoint() -> DatabaseEndpoint {
+    private func endpoint(databaseType: DatabaseType = .mysql) -> DatabaseEndpoint {
         DatabaseEndpoint(
             scope: DatabaseScope(connectionId: UUID(), database: "app", schema: nil),
             connectionName: "staging",
-            databaseType: .mysql,
+            databaseType: databaseType,
             safeModeLevel: .silent,
             color: .blue
         )
@@ -78,16 +78,40 @@ final class CompareSyncExecutorTests: XCTestCase {
         statements: [SyncStatement],
         settings: CompareSyncExecutionSettings = CompareSyncExecutionSettings(),
         driver: RecordingDriver,
-        gate: any ExecutionGate = AlwaysAllowGate()
+        gate: any ExecutionGate = AlwaysAllowGate(),
+        databaseType: DatabaseType = .mysql
     ) async throws -> CompareSyncRunResult {
         try await CompareSyncExecutor(gate: gate).apply(
             statements: statements,
             mode: .structure,
             settings: settings,
-            target: endpoint(),
+            target: endpoint(databaseType: databaseType),
             driver: driver,
             progress: Progress()
         )
+    }
+
+    // MARK: - Oracle terminators
+
+    /// The script shows every statement ending in `;`, and Oracle stores a CALL-bodied trigger sent with that `;` as
+    /// INVALID while a PL/SQL unit sent without its own is INVALID too.
+    func testOracleStatementsGoOutAsTheEditorSendsThem() async throws {
+        let driver = RecordingDriver()
+        _ = try await run(
+            statements: [
+                statement("CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;"),
+                statement("CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a);"),
+                statement("CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual;"),
+            ],
+            driver: driver,
+            databaseType: .oracle
+        )
+
+        XCTAssertEqual(driver.executed, [
+            "CREATE OR REPLACE PROCEDURE p IS BEGIN NULL; END;",
+            "CREATE OR REPLACE TRIGGER t BEFORE INSERT ON x FOR EACH ROW CALL p(:NEW.a)",
+            "CREATE OR REPLACE VIEW v AS SELECT 1 AS a FROM dual",
+        ])
     }
 
     // MARK: - Held back statements

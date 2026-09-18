@@ -218,8 +218,8 @@ public actor MCPConnectionBridge {
         try await access.resolveConnection(connectionId)
     }
 
-    static func stripTrailingSemicolons(_ query: String) -> String {
-        DatabaseAccessBridge.stripTrailingSemicolons(query)
+    static func statementText(_ query: String, databaseType: DatabaseType) -> String {
+        DatabaseAccessBridge.statementText(query, dialect: SqlDialect.from(databaseTypeId: databaseType.rawValue))
     }
 }
 

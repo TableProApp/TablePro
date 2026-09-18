@@ -286,6 +286,36 @@ struct SQLFoldScannerTests {
     func unterminatedDollarQuote() {
         _ = regions("SELECT $$abc\ndef", dialect: .postgres)
     }
+
+    // MARK: - Oracle PL/SQL units
+
+    /// A fold never reaches past the unit the run control beside it would send, and never stops inside one.
+    @Test("Every Oracle statement fold lies inside the unit the scanner sends", arguments: PLSQLScriptCorpus.cases)
+    func oracleFoldsAgreeWithStatements(example: PLSQLScriptCase) {
+        let statements = SQLStatementScanner.navigableStatements(in: example.script, dialect: .oracle)
+        for region in regions(example.script, dialect: .oracle) where region.kind == .statement {
+            let contained = statements.contains { statement in
+                region.range.lowerBound >= statement.contentRange.location
+                    && region.range.upperBound <= statement.contentRange.location + statement.contentRange.length
+            }
+            #expect(contained, "fold \(region.range) in \(example.name)")
+        }
+    }
+
+    @Test("A declaration section does not end an Oracle statement fold")
+    func oracleDeclarationSectionStaysInsideTheFold() throws {
+        let sql = "DECLARE\n  v NUMBER;\nBEGIN\n  v := 1;\nEND;\nSELECT 1 FROM dual;"
+        let statement = try #require(regions(sql, dialect: .oracle).first { $0.kind == .statement })
+        #expect(statement.startLine == 0)
+        #expect(statement.endLine == 4)
+    }
+
+    @Test("END CASE closes the CASE fold and opens nothing")
+    func endCaseClosesItsFold() {
+        let sql = "BEGIN\n  CASE x\n    WHEN 1 THEN NULL;\n  END CASE;\n  y := 2;\nEND;"
+        let blocks = regions(sql, dialect: .oracle).filter { $0.kind == .keywordBlock }
+        #expect(blocks.map(\.endLine).sorted() == [3, 5])
+    }
 }
 
 @Suite("SQL fold event ordering")

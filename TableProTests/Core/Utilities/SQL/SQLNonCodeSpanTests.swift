@@ -62,4 +62,12 @@ struct SQLNonCodeSpanTests {
         #expect(end("$$a b$$ x", rules: SQLLexicalRules(dialect: .postgres)) == 7)
         #expect(end("$$a b$$ x") == nil)
     }
+
+    @Test("An Oracle q-quote is one literal on Oracle only")
+    func alternativeQuoteIsOracleOnly() {
+        let oracle = SQLLexicalRules(dialect: .oracle)
+        #expect(end("q'[it's]' x", rules: oracle) == 9)
+        #expect(end("xq'[a]'", at: 1, rules: oracle) == nil)
+        #expect(end("q'[it's]' x", rules: SQLLexicalRules(dialect: .generic)) == nil)
+    }
 }

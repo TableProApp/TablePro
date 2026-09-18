@@ -27,7 +27,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         guard !statements.isEmpty else { return }
 
         if AppSettingsManager.shared.editor.queryParametersEnabled, parent.statementModel == .sql {
-            let combinedSQL = statements.map(\.sql).joined(separator: "; ")
+            let combinedSQL = SQLParameterExtractor.parameterSource(of: statements)
             let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
 
             if !detectedNames.isEmpty {

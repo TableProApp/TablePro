@@ -130,4 +130,10 @@ struct SQLTokenCursorTests {
         #expect(cursor.peek()?.word == "TRANSACTION")
         #expect(cursor.next()?.word == "TRANSACTION")
     }
+
+    @Test("An Oracle q-quote reads as one literal")
+    func alternativeQuoteIsOneLiteral() {
+        let tokens = Self.tokens("SELECT q'[it's; ok]' FROM dual", rules: SQLLexicalRules(dialect: .oracle))
+        #expect(tokens == [.word("SELECT"), .literal, .word("FROM"), .word("DUAL")])
+    }
 }

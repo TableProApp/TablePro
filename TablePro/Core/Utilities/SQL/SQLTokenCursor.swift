@@ -152,6 +152,11 @@ internal struct SQLTokenCursor {
 
     private func startsLiteralSpan(at offset: Int) -> Bool {
         let character = text.character(at: offset)
+        if rules.dialect.supportsAlternativeQuoting,
+           offset == 0 || !SQLNonCodeSpan.isWordUnit(text.character(at: offset - 1)),
+           SqlLexer.skipAlternativeQuotedString(text, at: offset, length: length) != nil {
+            return true
+        }
         if rules.dialect.supportsEscapeStringPrefix,
            character == Self.capitalE || character == Self.smallE,
            offset + 1 < length, text.character(at: offset + 1) == SqlLexer.singleQuote,

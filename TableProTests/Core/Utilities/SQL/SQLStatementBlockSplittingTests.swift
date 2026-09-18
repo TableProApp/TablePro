@@ -155,6 +155,23 @@ struct SQLStatementBlockSplittingTests {
         #expect(statements.last == "SELECT 3")
     }
 
+    /// `END CASE` closes the `CASE` that opened a block. Reading its `CASE` as a second opener left the routine one
+    /// level deep for good, so it swallowed every statement after it.
+    @Test("END CASE closes the CASE statement and nothing else")
+    func endCaseClosesTheCaseStatement() {
+        let sql = """
+        CREATE PROCEDURE p(x INT)
+        BEGIN
+          CASE x WHEN 1 THEN SELECT 1; ELSE SELECT 2; END CASE;
+          SELECT 3;
+        END;
+        SELECT 4;
+        """
+        let statements = SQLStatementScanner.allStatements(in: sql, dialect: .mysql)
+        #expect(statements.count == 2, "got \(statements)")
+        #expect(statements.last == "SELECT 4")
+    }
+
     /// The routine flag is per statement. Leaking it forward lets a later statement whose first content is
     /// punctuation inherit permission to open a block, which is the swallow this file exists to prevent.
     @Test("The routine flag does not leak into the next statement")

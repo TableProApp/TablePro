@@ -277,7 +277,8 @@ struct SQLFileParserTests {
         #expect(SqlDialect.from(databaseTypeId: "SQLite") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "DuckDB") == .sqlite)
         #expect(SqlDialect.from(databaseTypeId: "Cloudflare D1") == .sqlite)
-        #expect(SqlDialect.from(databaseTypeId: "Oracle") == .generic)
+        #expect(SqlDialect.from(databaseTypeId: "Oracle") == .oracle)
+        #expect(SqlDialect.from(databaseTypeId: "Dameng") == .generic)
         #expect(SqlDialect.from(databaseTypeId: "Unknown Whatever") == .generic)
     }
 

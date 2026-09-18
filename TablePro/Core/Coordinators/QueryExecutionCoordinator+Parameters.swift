@@ -395,7 +395,9 @@ extension QueryExecutionCoordinator {
         rules: SQLLexicalRules
     ) -> PreparedStatement {
         let sql = statement.sql
-        let parameterNames = parameters.isEmpty ? [] : SQLParameterExtractor.extractParameters(from: sql)
+        let parameterNames = parameters.isEmpty || !statement.acceptsBindParameters
+            ? []
+            : SQLParameterExtractor.extractParameters(from: sql)
         let conversion = parameterNames.isEmpty
             ? nil
             : SQLParameterExtractor.convertToNativeStyle(sql: sql, parameters: parameters, style: style)
