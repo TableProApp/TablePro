@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 struct ConnectionFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
+    @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
 
     @State private var viewModel: ConnectionFormViewModel
     @State private var activeFilePicker: ActiveFilePicker?
@@ -119,6 +120,8 @@ struct ConnectionFormView: View {
                 testSection
             }
             .scrollDismissesKeyboard(.interactively)
+            .interactiveDismissDisabled(viewModel.hasChanges)
+            .holdsScene(withUnsavedChanges: viewModel.hasChanges)
             .task {
                 viewModel.loadCertificateSummaries()
                 await viewModel.loadStoredCredentials(secureStore: appState.secureStore)
@@ -127,7 +130,7 @@ struct ConnectionFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: viewModel.hasChanges) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: handleSave)
@@ -541,9 +544,13 @@ struct ConnectionFormView: View {
     }
 
     private func handleSave() {
+        let reconnects = viewModel.reconnectsAfterSave
         Task {
             guard let savedId = await viewModel.save(appState: appState, secureStore: appState.secureStore) else {
                 return
+            }
+            if reconnects {
+                coordinatorStore.invalidate(savedId)
             }
             onSaved(savedId)
         }

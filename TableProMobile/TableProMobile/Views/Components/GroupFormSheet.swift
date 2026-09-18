@@ -11,13 +11,22 @@ struct GroupFormSheet: View {
     @State private var parentId: UUID?
     @State private var failure: LibraryWriteFailure?
     private let existingGroup: ConnectionGroup?
+    private let opening: GroupFormEdits
 
     init(editing group: ConnectionGroup? = nil, parentId: UUID? = nil) {
+        let opening = GroupFormEdits(opening: group, parentId: parentId)
         self.existingGroup = group
-        _name = State(initialValue: group?.name ?? "")
-        _color = State(initialValue: group?.color ?? .none)
-        _parentId = State(initialValue: group?.parentId ?? parentId)
+        self.opening = opening
+        _name = State(initialValue: opening.name)
+        _color = State(initialValue: opening.color)
+        _parentId = State(initialValue: opening.parentId)
     }
+
+    private var edits: GroupFormEdits {
+        GroupFormEdits(name: name, color: color, parentId: parentId)
+    }
+
+    private var hasChanges: Bool { edits != opening }
 
     private var placementGroupId: UUID {
         existingGroup?.id ?? UUID()
@@ -51,15 +60,16 @@ struct GroupFormSheet: View {
                     ConnectionColorPicker(selection: $color)
                 }
             }
+            .interactiveDismissDisabled(hasChanges)
             .navigationTitle(existingGroup != nil ? String(localized: "Edit Group") : String(localized: "New Group"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: hasChanges) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: save)
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(edits.name.isEmpty)
                 }
             }
             .libraryWriteFailureAlert(failure, onDismiss: { failure = nil }, closeForm: { dismiss() })
@@ -67,8 +77,7 @@ struct GroupFormSheet: View {
     }
 
     private func save() {
-        let outcome = GroupFormEdits(name: name, color: color, parentId: parentId)
-            .save(editing: existingGroup, in: appState)
+        let outcome = edits.save(editing: existingGroup, in: appState)
         failure = LibraryWriteFailure(outcome, kind: .group)
         guard failure == nil else { return }
         dismiss()

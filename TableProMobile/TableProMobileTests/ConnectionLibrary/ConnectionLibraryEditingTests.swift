@@ -216,4 +216,63 @@ struct ConnectionLibraryEditingTests {
 
         #expect(ConnectionLibraryEditing.mutatingGroup(one.id, in: groups) { $0.parentId = two.id } == nil)
     }
+
+    @Test("Deleting a tag drops it and strips it from exactly the connections that carry it")
+    func deletingTagStripsCarriers() throws {
+        let doomed = ConnectionTag(name: "Staging")
+        let other = ConnectionTag(name: "Billing")
+        let carrier = DatabaseConnection(name: "Carrier", type: .mysql, tagIds: [doomed.id])
+        let sharer = DatabaseConnection(name: "Sharer", type: .mysql, tagIds: [other.id, doomed.id])
+        let bystander = DatabaseConnection(name: "Bystander", type: .mysql, tagIds: [other.id])
+
+        let change = try #require(ConnectionLibraryEditing.deletingTag(
+            doomed.id,
+            tags: [doomed, other],
+            connections: [carrier, sharer, bystander]
+        ))
+
+        #expect(change.tags == [other])
+        #expect(change.removedTagId == doomed.id)
+        #expect(change.connections.map(\.tagIds) == [[], [other.id], [other.id]])
+        #expect(change.connections[2] == bystander)
+        #expect(change.changedConnectionIds == [carrier.id, sharer.id])
+    }
+
+    @Test("A built-in or unknown tag cannot be deleted or offered for deletion")
+    func presetAndUnknownTagsAreRefused() throws {
+        let preset = try #require(ConnectionTag.presets.first)
+        let tags = ConnectionTag.presets
+        let carrier = DatabaseConnection(name: "Carrier", type: .mysql, tagIds: [preset.id])
+
+        #expect(ConnectionLibraryEditing.deletingTag(preset.id, tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.tagDeletionRequest(preset.id, tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.deletingTag(UUID(), tags: tags, connections: [carrier]) == nil)
+        #expect(ConnectionLibraryEditing.tagDeletionRequest(UUID(), tags: tags, connections: [carrier]) == nil)
+    }
+
+    @Test("The prompt counts exactly the connections the delete rewrites, a repeated tag once")
+    func promptCountMatchesTheChange() throws {
+        let doomed = ConnectionTag(name: "Staging")
+        let connections = [
+            DatabaseConnection(name: "Twice", type: .mysql, tagIds: [doomed.id, doomed.id]),
+            DatabaseConnection(name: "Once", type: .mysql, tagIds: [doomed.id]),
+            DatabaseConnection(name: "None", type: .mysql)
+        ]
+
+        let change = try #require(ConnectionLibraryEditing.deletingTag(doomed.id, tags: [doomed], connections: connections))
+        let request = try #require(ConnectionLibraryEditing.tagDeletionRequest(doomed.id, tags: [doomed], connections: connections))
+
+        #expect(request.tag == doomed)
+        #expect(request.connectionCount == 2)
+        #expect(request.connectionCount == change.changedConnectionIds.count)
+    }
+
+    @Test("The prompt names the tag and how many connections lose it")
+    func promptMessages() {
+        let tag = ConnectionTag(name: "Staging")
+
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 0).message == "“Staging” is not on any connection.")
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 1).message == "“Staging” will be removed from 1 connection.")
+        #expect(TagDeletionRequest(tag: tag, connectionCount: 3).message == "“Staging” will be removed from 3 connections.")
+    }
 }

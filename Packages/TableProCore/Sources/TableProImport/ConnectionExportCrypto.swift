@@ -33,7 +33,8 @@ public enum ConnectionExportCrypto {
         data.count > headerLength && data.prefix(4) == magic
     }
 
-    public static func encrypt(data: Data, passphrase: String) throws -> Data {
+    @concurrent
+    public static func encrypt(data: Data, passphrase: String) async throws -> Data {
         var salt = Data(count: saltLength)
         let saltStatus = salt.withUnsafeMutableBytes { buffer -> OSStatus in
             guard let baseAddress = buffer.baseAddress else { return errSecParam }
@@ -57,7 +58,8 @@ public enum ConnectionExportCrypto {
         return result
     }
 
-    public static func decrypt(data: Data, passphrase: String) throws -> Data {
+    @concurrent
+    public static func decrypt(data: Data, passphrase: String) async throws -> Data {
         guard data.count > headerLength else {
             throw ConnectionExportCryptoError.corruptData
         }

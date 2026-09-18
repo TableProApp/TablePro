@@ -17,6 +17,7 @@ struct ConnectionExportOptionsSheet: View {
     @State private var confirmPassphrase = ""
     @State private var exportDocument: ConnectionExportDocument?
     @State private var isExporting = false
+    @State private var isPreparingExport = false
     @State private var exportError: String?
 
     private var isProAvailable: Bool {
@@ -44,6 +45,7 @@ struct ConnectionExportOptionsSheet: View {
 
             options
                 .padding(20)
+                .disabled(isPreparingExport)
 
             Spacer(minLength: 0)
 
@@ -53,6 +55,11 @@ struct ConnectionExportOptionsSheet: View {
                 .padding(16)
         }
         .frame(width: 440, height: 300)
+        .task(id: isPreparingExport) {
+            guard isPreparingExport else { return }
+            await performExport()
+            isPreparingExport = false
+        }
         .fileExporter(
             isPresented: $isExporting,
             document: exportDocument,
@@ -159,26 +166,39 @@ struct ConnectionExportOptionsSheet: View {
 
     private var footer: some View {
         DialogFooter {
+            if isPreparingExport {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        } actions: {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button("Export…") { performExport() }
+            Button("Export…") { isPreparingExport = true }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(!canExport)
+                .disabled(!canExport || isPreparingExport)
         }
     }
 
-    private func performExport() {
+    private func performExport() async {
         do {
-            let data = includeCredentials && isProAvailable
-                ? try ConnectionExportService.exportEncryptedData(connections, passphrase: passphrase)
-                : try ConnectionExportService.exportData(connections)
+            let data = try await exportPayload()
+            try Task.checkCancellation()
             passphrase = ""
             confirmPassphrase = ""
             exportDocument = ConnectionExportDocument(data: data)
             isExporting = true
+        } catch is CancellationError {
+            return
         } catch {
             exportError = error.localizedDescription
         }
+    }
+
+    private func exportPayload() async throws -> Data {
+        guard includeCredentials, isProAvailable else {
+            return try ConnectionExportService.exportData(connections)
+        }
+        return try await ConnectionExportService.exportEncryptedData(connections, passphrase: passphrase)
     }
 }

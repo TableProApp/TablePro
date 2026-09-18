@@ -1,11 +1,9 @@
-import CoreSpotlight
 import Foundation
 import Observation
 import os
 import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
-import WidgetKit
 
 @MainActor @Observable
 final class AppState {
@@ -44,6 +42,7 @@ final class AppState {
     let localDatabaseFiles: LocalDatabaseFileLocator
 
     private let sampleInstaller: SampleDatabaseInstaller
+    private let libraryPublisher: ConnectionLibraryPublisher
     private let storage: ConnectionPersistence
     private let groupStorage: GroupPersistence
     private let tagStorage: TagPersistence
@@ -55,9 +54,11 @@ final class AppState {
         syncCoordinator injectedSyncCoordinator: IOSSyncCoordinator? = nil,
         sampleInstaller: SampleDatabaseInstaller = .live,
         localDatabaseFiles: LocalDatabaseFileLocator = .live,
-        bookmarkStore: FileBookmarkStore = FileBookmarkStore()
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        libraryPublisher: ConnectionLibraryPublisher? = nil
     ) {
         self.sampleInstaller = sampleInstaller
+        self.libraryPublisher = libraryPublisher ?? .live()
         self.localDatabaseFiles = localDatabaseFiles
         localDatabaseFiles.container.recordCurrentContainer()
         onboarding = OnboardingPreferences(defaults: defaults)
@@ -89,11 +90,7 @@ final class AppState {
         }
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
-            guard let self else { return }
-            guard merged != self.connections else { return }
-            self.persist(connections: merged)
-            self.updateWidgetData()
-            self.updateSpotlightIndex()
+            self?.applySyncedConnections(merged)
         }
 
         syncCoordinator.onGroupsChanged = { [weak self] merged in
@@ -138,8 +135,14 @@ final class AppState {
 
     private func publishLibrary() {
         guard loadStatus == .ready else { return }
-        updateWidgetData()
-        updateSpotlightIndex()
+        libraryPublisher.publish(connections)
+    }
+
+    func applySyncedConnections(_ merged: [DatabaseConnection]) {
+        guard !refuseWriteIfNotReady() else { return }
+        guard merged != connections else { return }
+        persist(connections: merged)
+        publishLibrary()
     }
 
     private func syncsConnection(_ id: UUID) -> Bool {
@@ -237,6 +240,14 @@ final class AppState {
     }
 
     // MARK: - Connections
+
+    func isConnectionRemoved(_ id: UUID) -> Bool {
+        loadStatus == .ready && !connections.contains { $0.id == id }
+    }
+
+    func offersHandoff(for connection: DatabaseConnection) -> Bool {
+        !connection.isSample && !isConnectionRemoved(connection.id)
+    }
 
     @discardableResult
     func addConnection(_ connection: DatabaseConnection) -> Bool {
@@ -418,26 +429,22 @@ final class AppState {
         return .applied
     }
 
-    func deleteTag(_ tagId: UUID) {
-        guard !refuseWriteIfNotReady() else { return }
-        guard let tag = tags.first(where: { $0.id == tagId }), !tag.isPreset else { return }
-
-        var updatedTags = tags
-        updatedTags.removeAll { $0.id == tagId }
-        persist(tags: updatedTags)
-
-        var updatedConnections = connections
-        for index in updatedConnections.indices where updatedConnections[index].tagIds.contains(tagId) {
-            updatedConnections[index].tagIds.removeAll { $0 == tagId }
-            if updatedConnections[index].participatesInSync {
-                syncCoordinator.markDirty(updatedConnections[index].id)
-            }
+    @discardableResult
+    func deleteTag(_ tagId: UUID) -> Bool {
+        guard !refuseWriteIfNotReady() else { return false }
+        guard let change = ConnectionLibraryEditing.deletingTag(tagId, tags: tags, connections: connections) else {
+            return false
         }
-        persist(connections: updatedConnections)
+        persist(connections: change.connections)
+        persist(tags: change.tags)
         publishLibrary()
 
-        syncCoordinator.markDeletedTag(tagId)
+        for id in change.changedConnectionIds where syncsConnection(id) {
+            syncCoordinator.markDirty(id)
+        }
+        syncCoordinator.markDeletedTag(change.removedTagId)
         syncCoordinator.scheduleSyncAfterChange()
+        return true
     }
 
     // MARK: - First Run
@@ -517,44 +524,6 @@ final class AppState {
         }
         try sampleInstaller.reset()
         sampleResetRevision += 1
-    }
-
-    // MARK: - Spotlight
-
-    private func updateSpotlightIndex() {
-        let items = connections.map { conn in
-            let attributes = CSSearchableItemAttributeSet(contentType: .item)
-            attributes.title = conn.name.isEmpty ? conn.host : conn.name
-            attributes.contentDescription = [conn.type.mobileDisplayName, ConnectionDetailFormatter.detail(for: conn)]
-                .joined(separator: ", ")
-            return CSSearchableItem(
-                uniqueIdentifier: conn.id.uuidString,
-                domainIdentifier: "com.TablePro.connections",
-                attributeSet: attributes
-            )
-        }
-        if items.isEmpty {
-            CSSearchableIndex.default().deleteAllSearchableItems()
-        } else {
-            CSSearchableIndex.default().indexSearchableItems(items)
-        }
-    }
-
-    // MARK: - Widget
-
-    private func updateWidgetData() {
-        let items = connections
-            .sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }
-            .map { conn in
-                WidgetConnectionItem(
-                    id: conn.id,
-                    name: conn.name.isEmpty ? conn.host : conn.name,
-                    type: conn.type.rawValue,
-                    sortOrder: conn.sortOrder
-                )
-            }
-        SharedConnectionStore.write(items)
-        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: - Helpers

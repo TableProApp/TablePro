@@ -15,6 +15,13 @@ nonisolated struct GroupLibraryChange: Equatable, Sendable {
     let changedConnectionIds: [UUID]
 }
 
+nonisolated struct TagLibraryChange: Equatable, Sendable {
+    let tags: [ConnectionTag]
+    let connections: [DatabaseConnection]
+    let removedTagId: UUID
+    let changedConnectionIds: [UUID]
+}
+
 nonisolated enum ConnectionLibraryEditing {
     static func effectiveGroupId(of connection: DatabaseConnection, validGroupIds: Set<UUID>) -> UUID? {
         connection.groupId.flatMap { validGroupIds.contains($0) ? $0 : nil }
@@ -268,6 +275,33 @@ nonisolated enum ConnectionLibraryEditing {
             removedGroupIds: groups.map(\.id).filter(removed.contains),
             changedConnectionIds: placed.changedConnectionIds
         )
+    }
+
+    static func deletingTag(
+        _ tagId: UUID,
+        tags: [ConnectionTag],
+        connections: [DatabaseConnection]
+    ) -> TagLibraryChange? {
+        guard let tag = tags.first(where: { $0.id == tagId }), !tag.isPreset else { return nil }
+        let stripped = applying(to: connections) { connection in
+            connection.tagIds.removeAll { $0 == tagId }
+        }
+        return TagLibraryChange(
+            tags: tags.filter { $0.id != tagId },
+            connections: stripped.connections,
+            removedTagId: tagId,
+            changedConnectionIds: stripped.changedConnectionIds
+        )
+    }
+
+    static func tagDeletionRequest(
+        _ tagId: UUID,
+        tags: [ConnectionTag],
+        connections: [DatabaseConnection]
+    ) -> TagDeletionRequest? {
+        guard let change = deletingTag(tagId, tags: tags, connections: connections),
+              let tag = tags.first(where: { $0.id == tagId }) else { return nil }
+        return TagDeletionRequest(tag: tag, connectionCount: change.changedConnectionIds.count)
     }
 
     static func tagUsageCounts(in connections: [DatabaseConnection]) -> [UUID: Int] {

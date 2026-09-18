@@ -15,7 +15,7 @@ final class RowDetailViewModel {
     let session: ConnectionSession?
     let databaseType: DatabaseType
     let schema: String?
-    let safeModeLevel: SafeModeLevel
+    @ObservationIgnored private let readSafeModeLevel: () -> SafeModeLevel
 
     private(set) var rows: [Row]
     var currentIndex: Int
@@ -43,7 +43,7 @@ final class RowDetailViewModel {
         columnDetails: [ColumnInfo] = [],
         databaseType: DatabaseType = .sqlite,
         schema: String? = nil,
-        safeModeLevel: SafeModeLevel = .off,
+        safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
         loadFullValue: ((CellRef) async throws -> String?)? = nil
@@ -56,7 +56,7 @@ final class RowDetailViewModel {
         self.columnDetails = columnDetails
         self.databaseType = databaseType
         self.schema = schema
-        self.safeModeLevel = safeModeLevel
+        self.readSafeModeLevel = safeModeLevel
         self.foreignKeys = foreignKeys
         self.onSaved = onSaved
         self.loadFullValueProvider = loadFullValue
@@ -67,6 +67,8 @@ final class RowDetailViewModel {
     }
 
     // MARK: - Computed
+
+    var safeModeLevel: SafeModeLevel { readSafeModeLevel() }
 
     /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
     /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
@@ -115,6 +117,22 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
+    // MARK: - Row Navigation
+
+    var showsRowNavigator: Bool { !isEditing }
+    var canGoToPreviousRow: Bool { !isEditing && currentIndex > 0 }
+    var canGoToNextRow: Bool { !isEditing && currentIndex < rows.count - 1 }
+
+    func goToPreviousRow() {
+        guard canGoToPreviousRow else { return }
+        currentIndex -= 1
+    }
+
+    func goToNextRow() {
+        guard canGoToNextRow else { return }
+        currentIndex += 1
+    }
+
     // MARK: - Edit Lifecycle
 
     func startEditing() {
@@ -143,6 +161,23 @@ final class RowDetailViewModel {
         }
     }
 
+    var hasUnsavedEdits: Bool {
+        isEditing && !editedChanges.isEmpty
+    }
+
+    private var editedChanges: [(column: String, value: String?)] {
+        let original = currentRow
+        var changes: [(column: String, value: String?)] = []
+        for (index, column) in columns.enumerated() {
+            guard !isPrimaryKey(at: index), index < editedValues.count else { continue }
+            let oldValue = index < original.count ? original[index] : nil
+            let newValue = editedValues[index]
+            guard oldValue != newValue else { continue }
+            changes.append((column: column.name, value: newValue))
+        }
+        return changes
+    }
+
     // MARK: - Save
 
     func saveChanges() async -> Bool {
@@ -169,16 +204,7 @@ final class RowDetailViewModel {
             return false
         }
 
-        var changes: [(column: String, value: String?)] = []
-        for (index, column) in columns.enumerated() {
-            if isPrimaryKey(at: index) { continue }
-            guard index < editedValues.count else { continue }
-            let oldValue = index < currentRow.count ? currentRow[index] : nil
-            let newValue = editedValues[index]
-            if oldValue != newValue {
-                changes.append((column: column.name, value: newValue))
-            }
-        }
+        let changes = editedChanges
 
         guard !changes.isEmpty else {
             isEditing = false
@@ -211,6 +237,7 @@ final class RowDetailViewModel {
         pendingWriteConfirmation = false
         guard let session, let sql = pendingSaveSQL else { return false }
         pendingSaveSQL = nil
+        guard !safeModeLevel.blocksWrites else { return false }
         return await execute(sql: sql, session: session)
     }
 

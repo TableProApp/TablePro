@@ -9,13 +9,7 @@ struct OnboardingPageLayout<Header: View, Content: View, Actions: View>: View {
     @ViewBuilder let actions: Actions
 
     var body: some View {
-        if #available(iOS 26.0, *) {
-            scrollContent.safeAreaBar(edge: .bottom) { actionBar }
-        } else {
-            scrollContent.safeAreaInset(edge: .bottom) {
-                actionBar.background(.bar)
-            }
-        }
+        scrollContent.bottomSafeAreaBar(spacing: nil) { actionBar }
     }
 
     private var scrollContent: some View {

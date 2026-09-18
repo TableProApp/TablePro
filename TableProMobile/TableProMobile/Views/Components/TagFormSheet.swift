@@ -9,12 +9,21 @@ struct TagFormSheet: View {
     @State private var color: ConnectionColor
     @State private var failure: LibraryWriteFailure?
     private let existingTag: ConnectionTag?
+    private let opening: TagFormEdits
 
     init(editing tag: ConnectionTag? = nil) {
+        let opening = TagFormEdits(opening: tag)
         self.existingTag = tag
-        _name = State(initialValue: tag?.name ?? "")
-        _color = State(initialValue: tag?.color ?? .gray)
+        self.opening = opening
+        _name = State(initialValue: opening.name)
+        _color = State(initialValue: opening.color)
     }
+
+    private var edits: TagFormEdits {
+        TagFormEdits(name: name, color: color)
+    }
+
+    private var hasChanges: Bool { edits != opening }
 
     var body: some View {
         NavigationStack {
@@ -28,11 +37,12 @@ struct TagFormSheet: View {
                     ConnectionColorPicker(selection: $color)
                 }
             }
+            .interactiveDismissDisabled(hasChanges)
             .navigationTitle(existingTag != nil ? String(localized: "Edit Tag") : String(localized: "New Tag"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: hasChanges) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmButton(title: "Save", action: save)
@@ -44,7 +54,7 @@ struct TagFormSheet: View {
     }
 
     private func save() {
-        let outcome = TagFormEdits(name: name, color: color).save(editing: existingTag, in: appState)
+        let outcome = edits.save(editing: existingTag, in: appState)
         failure = LibraryWriteFailure(outcome, kind: .tag)
         guard failure == nil else { return }
         dismiss()

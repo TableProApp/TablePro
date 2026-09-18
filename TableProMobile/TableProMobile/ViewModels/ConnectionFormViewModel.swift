@@ -54,10 +54,11 @@ final class ConnectionFormViewModel {
     var certificateError: String?
     var pastedCertificate = ""
     var pkcs12Password = ""
-    @ObservationIgnored var pendingCertificates: [CertificateRole: String] = [:]
-    @ObservationIgnored var removedCertificates: Set<CertificateRole> = []
+    var pendingCertificates: [CertificateRole: String] = [:]
+    var removedCertificates: Set<CertificateRole> = []
+    var storedCertificateRoles: Set<CertificateRole> = []
     @ObservationIgnored var pendingPKCS12: Data?
-    @ObservationIgnored let certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
+    @ObservationIgnored let certificateStore: any CertificateMaterialStoring
     var oracleConnectionType: OracleConnectionOptions.IdentifierMode = .service
     var oracleServiceName = ""
     var oracleSID = ""
@@ -80,7 +81,6 @@ final class ConnectionFormViewModel {
     var sshKeyContent = ""
     var sshKeyPassphrase = ""
     var sshKeyInputMode: KeyInputMode = .file
-    @ObservationIgnored private var storedPrivateKey: String?
 
     // File picker output
     var selectedFileURL: URL?
@@ -100,9 +100,10 @@ final class ConnectionFormViewModel {
 
     @ObservationIgnored let existingConnection: DatabaseConnection?
     @ObservationIgnored let connectionId: UUID
-    @ObservationIgnored private(set) var openingEdits: ConnectionFormEdits?
     @ObservationIgnored private var createdFileURL: URL?
     @ObservationIgnored private var addedNewConnection = false
+    private(set) var baseline: ConnectionFormSnapshot?
+    private(set) var storedSecrets = ConnectionFormSecrets()
     private let localFiles: LocalDatabaseFileLocator
     private let fileCreator: any LocalDatabaseFileCreating
     private let bookmarkStore: FileBookmarkStore
@@ -111,13 +112,16 @@ final class ConnectionFormViewModel {
         editing: DatabaseConnection? = nil,
         localFiles: LocalDatabaseFileLocator = .live,
         fileCreator: any LocalDatabaseFileCreating = DriverDatabaseFileCreator(),
-        bookmarkStore: FileBookmarkStore = FileBookmarkStore()
+        bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
+        certificateStore: any CertificateMaterialStoring = CertificateMaterialStore()
     ) {
         self.existingConnection = editing
         self.connectionId = editing?.id ?? UUID()
         self.localFiles = localFiles
         self.fileCreator = fileCreator
         self.bookmarkStore = bookmarkStore
+        self.certificateStore = certificateStore
+        defer { baseline = snapshot }
         guard let conn = editing else {
             safeModeLevel = AppPreferences.defaultSafeMode
             return
@@ -155,7 +159,6 @@ final class ConnectionFormViewModel {
             }
         }
         hydrateDatabaseFile(from: conn)
-        openingEdits = edits
     }
 
     private func hydrateDatabaseFile(from connection: DatabaseConnection) {
@@ -249,18 +252,22 @@ final class ConnectionFormViewModel {
         guard let conn = existingConnection else { return }
         if let stored = Self.storedSecret(.password, for: conn.id, in: secureStore) {
             password = stored
+            storedSecrets.password = stored
         }
         if let sshPwd = Self.storedSecret(.sshPassword, for: conn.id, in: secureStore) {
             sshPassword = sshPwd
+            storedSecrets.sshPassword = sshPwd
         }
         if let passphrase = Self.storedSecret(.keyPassphrase, for: conn.id, in: secureStore) {
             sshKeyPassphrase = passphrase
+            storedSecrets.sshKeyPassphrase = passphrase
         }
         if let privateKey = Self.storedSecret(.sshPrivateKey, for: conn.id, in: secureStore) {
             sshKeyContent = privateKey
-            storedPrivateKey = privateKey
+            storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
         }
+        baseline?.secrets = storedSecrets
     }
 
     private static func storedSecret(
@@ -580,35 +587,34 @@ final class ConnectionFormViewModel {
     }
 
     private func storeSecrets(appState: AppState, secureStore: any SecureStore) -> Bool {
+        let writes = secretWrites
         var storageFailed = false
 
         persistCertificates(for: connectionId)
 
-        if !password.isEmpty {
+        if let changed = writes.password {
             do {
-                try appState.connectionManager.storePassword(password, for: connectionId)
+                try appState.connectionManager.storePassword(changed, for: connectionId)
             } catch {
                 Self.logger.error("Failed to store password: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
             }
         }
 
-        if sshEnabled {
-            if !sshPassword.isEmpty {
-                do {
-                    try secureStore.store(sshPassword, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
-                } catch {
-                    Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
+        if let changed = writes.sshPassword {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
+            } catch {
+                Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
             }
-            if !sshKeyPassphrase.isEmpty {
-                do {
-                    try secureStore.store(sshKeyPassphrase, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
-                } catch {
-                    Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
-                    storageFailed = true
-                }
+        }
+        if let changed = writes.sshKeyPassphrase {
+            do {
+                try secureStore.store(changed, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
+            } catch {
+                Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
+                storageFailed = true
             }
         }
 
@@ -628,14 +634,14 @@ final class ConnectionFormViewModel {
 
     func persistPrivateKey(secureStore: any SecureStore) throws {
         let key = pastedPrivateKey
-        guard key != storedPrivateKey else { return }
+        guard key != storedSecrets.privateKey else { return }
         let account = ConnectionSecretKind.sshPrivateKey.account(for: connectionId)
         if let key {
             try secureStore.store(key, forKey: account)
         } else {
             try secureStore.delete(forKey: account)
         }
-        storedPrivateKey = key
+        storedSecrets.privateKey = key
     }
 
     func dismissCredentialError() {

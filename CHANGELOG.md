@@ -111,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Edits on iPhone and iPad closing as if saved after the connection, group or tag changed or was deleted on another device.
 - iCloud sync failing on iPhone and iPad after signing in to a different Apple Account.
 - SQLite and DuckDB connections on iPhone and iPad losing their file after a restore, or opening an empty database.
+- Table page arrows and row arrows hidden under the tab bar on iPhone and iPad with iOS 26 and later.
+- App unresponsive while a connection file is encrypted or decrypted with a passphrase.
+- Unsaved changes in the connection, group, tag and row forms discarded without asking on iPhone and iPad.
+- Open connection on iPhone and iPad jumping back to the table list after a rename, reorder or synced change.
+- Deleted connections still showing in Spotlight, Siri, Shortcuts and Handoff on iPhone and iPad.
+- No confirmation before deleting a tag on iPhone and iPad.
 
 ### Security
 

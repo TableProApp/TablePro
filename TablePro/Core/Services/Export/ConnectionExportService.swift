@@ -316,24 +316,9 @@ enum ConnectionExportService {
         )
     }
 
-    static func exportEncryptedData(_ connections: [DatabaseConnection], passphrase: String) throws -> Data {
+    static func exportEncryptedData(_ connections: [DatabaseConnection], passphrase: String) async throws -> Data {
         let jsonData = try encode(buildEnvelopeWithCredentials(for: connections))
-        return try ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
-    }
-
-    static func exportConnectionsEncrypted(
-        _ connections: [DatabaseConnection],
-        to url: URL,
-        passphrase: String
-    ) throws {
-        let encryptedData = try exportEncryptedData(connections, passphrase: passphrase)
-
-        do {
-            try encryptedData.write(to: url, options: .atomic)
-            logger.info("Exported \(connections.count) encrypted connections to \(url.path)")
-        } catch {
-            throw ConnectionExportError.fileWriteFailed(url.path)
-        }
+        return try await ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
     }
 
     // MARK: - Import

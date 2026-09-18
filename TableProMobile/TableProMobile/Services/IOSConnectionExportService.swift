@@ -6,6 +6,17 @@ import TableProModels
 
 @MainActor
 enum IOSConnectionExportService {
+    nonisolated enum ExportError: LocalizedError, Equatable {
+        case credentialsNeedPassphrase
+
+        var errorDescription: String? {
+            switch self {
+            case .credentialsNeedPassphrase:
+                String(localized: "Set a passphrase to include passwords.")
+            }
+        }
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "IOSConnectionExport")
     private static let currentFormatVersion = 1
 
@@ -14,16 +25,23 @@ enum IOSConnectionExportService {
         appState: AppState,
         includeCredentials: Bool,
         passphrase: String?
-    ) throws -> Data {
+    ) async throws -> Data {
         let envelope = includeCredentials
             ? buildEnvelopeWithCredentials(connections, appState: appState)
             : buildEnvelope(connections, appState: appState)
-        let json = try ConnectionImportDecoder.encode(envelope)
+        return try await fileData(for: envelope, passphrase: includeCredentials ? passphrase : nil)
+    }
 
-        guard includeCredentials, let passphrase, !passphrase.isEmpty else {
+    static func fileData(for envelope: ConnectionExportEnvelope, passphrase: String?) async throws -> Data {
+        let json = try ConnectionImportDecoder.encode(envelope)
+        guard let passphrase, !passphrase.isEmpty else {
+            guard envelope.credentials == nil else {
+                logger.error("Refusing to write saved passwords to a connection file without a passphrase")
+                throw ExportError.credentialsNeedPassphrase
+            }
             return json
         }
-        return try ConnectionExportCrypto.encrypt(data: json, passphrase: passphrase)
+        return try await ConnectionExportCrypto.encrypt(data: json, passphrase: passphrase)
     }
 
     static func suggestedFilename(for connections: [DatabaseConnection]) -> String {

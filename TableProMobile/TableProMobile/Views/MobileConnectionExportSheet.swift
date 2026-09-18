@@ -18,6 +18,7 @@ struct MobileConnectionExportSheet: View {
     @State private var error: String?
     @State private var shareItem: IdentifiableURL?
     @State private var exportedURL: URL?
+    @State private var isExporting = false
 
     private var canExport: Bool {
         guard includePasswords else { return true }
@@ -57,6 +58,7 @@ struct MobileConnectionExportSheet: View {
                     }
                 }
             }
+            .disabled(isExporting)
             .navigationTitle(Text("Export Connections"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -64,9 +66,18 @@ struct MobileConnectionExportSheet: View {
                     Button(String(localized: "Cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "Export")) { export() }
-                        .disabled(!canExport || connections.isEmpty)
+                    if isExporting {
+                        ProgressView()
+                    } else {
+                        Button(String(localized: "Export")) { isExporting = true }
+                            .disabled(!canExport || connections.isEmpty)
+                    }
                 }
+            }
+            .task(id: isExporting) {
+                guard isExporting else { return }
+                await export()
+                isExporting = false
             }
             .sheet(item: $shareItem, onDismiss: {
                 if let exportedURL {
@@ -85,19 +96,23 @@ struct MobileConnectionExportSheet: View {
             : String(format: String(localized: "%d connections will be exported."), connections.count)
     }
 
-    private func export() {
+    private func export() async {
+        error = nil
         do {
-            let data = try IOSConnectionExportService.exportData(
+            let data = try await IOSConnectionExportService.exportData(
                 connections: connections,
                 appState: appState,
                 includeCredentials: includePasswords,
                 passphrase: includePasswords ? passphrase : nil
             )
+            try Task.checkCancellation()
             let filename = IOSConnectionExportService.suggestedFilename(for: connections)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
             try data.write(to: url, options: .atomic)
             exportedURL = url
             shareItem = IdentifiableURL(url: url)
+        } catch is CancellationError {
+            return
         } catch {
             self.error = error.localizedDescription
         }

@@ -26,6 +26,7 @@ struct InsertRowView: View {
     @State private var hapticError = false
 
     private var columnNames: [String] { columnDetails.map(\.name) }
+    private var hasChanges: Bool { !fields.isEmpty }
 
     private var canSave: Bool {
         guard let driver = session?.driver else { return false }
@@ -54,12 +55,14 @@ struct InsertRowView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .interactiveDismissDisabled(isSaving || hasChanges)
+            .holdsScene(withUnsavedChanges: isSaving || hasChanges)
             .formStyle(.grouped)
             .navigationTitle("Insert Row")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    CancelButton { dismiss() }
+                    DiscardChangesCancelButton(hasChanges: hasChanges) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {

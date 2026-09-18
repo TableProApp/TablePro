@@ -68,13 +68,27 @@ final class ConnectionImportDecoderTests: XCTestCase {
         XCTAssertThrowsError(try ConnectionImportDecoder.decodeData(data))
     }
 
-    func testEncryptedRoundTripThroughDecoder() throws {
+    func testEncryptedRoundTripThroughDecoder() async throws {
         let envelope = makeEnvelope(connections: [makeConnection()])
         let json = try ConnectionImportDecoder.encode(envelope)
-        let encrypted = try ConnectionExportCrypto.encrypt(data: json, passphrase: "hunter2")
+        let encrypted = try await ConnectionExportCrypto.encrypt(data: json, passphrase: "hunter2")
 
-        let decoded = try ConnectionImportDecoder.decodeEncryptedData(encrypted, passphrase: "hunter2")
+        let decoded = try await ConnectionImportDecoder.decodeEncryptedData(encrypted, passphrase: "hunter2")
         XCTAssertEqual(decoded.connections.count, 1)
+    }
+
+    func testWrongPassphraseThroughDecoderThrowsDecryptionFailed() async throws {
+        let json = try ConnectionImportDecoder.encode(makeEnvelope(connections: [makeConnection()]))
+        let encrypted = try await ConnectionExportCrypto.encrypt(data: json, passphrase: "hunter2")
+
+        do {
+            _ = try await ConnectionImportDecoder.decodeEncryptedData(encrypted, passphrase: "hunter3")
+            XCTFail("A wrong passphrase was expected to throw")
+        } catch ConnectionExportError.decryptionFailed(let detail) {
+            XCTAssertEqual(detail, ConnectionExportCryptoError.invalidPassphrase.localizedDescription)
+        } catch {
+            XCTFail("Expected decryptionFailed, got \(error)")
+        }
     }
 
     func testPathPortabilityRoundTrips() {

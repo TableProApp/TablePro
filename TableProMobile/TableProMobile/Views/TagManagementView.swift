@@ -6,6 +6,7 @@ struct TagManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editingTag: ConnectionTag?
     @State private var showingAddTag = false
+    @State private var tagPendingDeletion: TagDeletionRequest?
 
     var body: some View {
         let usage = ConnectionLibraryEditing.tagUsageCounts(in: appState.connections)
@@ -40,18 +41,47 @@ struct TagManagementView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         if !tag.isPreset {
-                            Button(role: .destructive) {
-                                appState.deleteTag(tag.id)
+                            Button {
+                                requestDeletion(of: tag)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
-                    .accessibilityAction(named: Text("Delete tag")) {
-                        guard !tag.isPreset else { return }
-                        appState.deleteTag(tag.id)
+                    .contextMenu {
+                        if !tag.isPreset {
+                            Button {
+                                editingTag = tag
+                            } label: {
+                                Label("Edit Tag", systemImage: "pencil")
+                            }
+                            Divider()
+                            Button(role: .destructive) {
+                                requestDeletion(of: tag)
+                            } label: {
+                                Label("Delete Tag", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .accessibilityActions {
+                        if !tag.isPreset {
+                            Button("Delete Tag") { requestDeletion(of: tag) }
+                        }
                     }
                 }
+            }
+            .confirmationDialog(
+                String(localized: "Delete Tag"),
+                isPresented: deletionPresented,
+                titleVisibility: .visible,
+                presenting: tagPendingDeletion
+            ) { request in
+                Button(String(localized: "Delete"), role: .destructive) {
+                    appState.deleteTag(request.tag.id)
+                }
+            } message: { request in
+                Text(request.message)
             }
             .overlay {
                 if appState.tags.isEmpty {
@@ -85,5 +115,20 @@ struct TagManagementView: View {
                 TagFormSheet(editing: tag)
             }
         }
+    }
+
+    private var deletionPresented: Binding<Bool> {
+        Binding(
+            get: { tagPendingDeletion != nil },
+            set: { if !$0 { tagPendingDeletion = nil } }
+        )
+    }
+
+    private func requestDeletion(of tag: ConnectionTag) {
+        tagPendingDeletion = ConnectionLibraryEditing.tagDeletionRequest(
+            tag.id,
+            tags: appState.tags,
+            connections: appState.connections
+        )
     }
 }

@@ -46,7 +46,11 @@ struct AppStateFixture {
         try Data("sample".utf8).write(to: bundledSample)
     }
 
-    func makeState(syncEnabled: Bool, secureStore: any SecureStore = MockSecureStore()) -> AppState {
+    func makeState(
+        syncEnabled: Bool,
+        secureStore: any SecureStore = MockSecureStore(),
+        libraryPublisher: ConnectionLibraryPublisher? = nil
+    ) -> AppState {
         let coordinator = IOSSyncCoordinator(
             metadata: metadata,
             recordCache: SyncRecordCache(directory: root.appendingPathComponent("Cache"), defaults: nil),
@@ -64,16 +68,25 @@ struct AppStateFixture {
                 directory: root.appendingPathComponent("Samples", isDirectory: true)
             ),
             localDatabaseFiles: localFiles,
-            bookmarkStore: bookmarkStore
+            bookmarkStore: bookmarkStore,
+            libraryPublisher: libraryPublisher ?? ConnectionLibraryPublisher(
+                searchIndex: RecordingSearchIndex(),
+                writeWidgetItems: { _ in },
+                refreshShortcutParameters: {}
+            )
         )
     }
 
-    func makeFormViewModel(editing connection: DatabaseConnection? = nil) -> ConnectionFormViewModel {
+    func makeFormViewModel(
+        editing connection: DatabaseConnection? = nil,
+        certificateStore: any CertificateMaterialStoring = InMemoryCertificateStore()
+    ) -> ConnectionFormViewModel {
         ConnectionFormViewModel(
             editing: connection,
             localFiles: localFiles,
             fileCreator: DriverDatabaseFileCreator(),
-            bookmarkStore: bookmarkStore
+            bookmarkStore: bookmarkStore,
+            certificateStore: certificateStore
         )
     }
 

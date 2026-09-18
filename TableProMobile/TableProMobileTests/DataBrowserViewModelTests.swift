@@ -279,4 +279,86 @@ struct DataBrowserViewModelTests {
         #expect(vm.pagination.pageSize == 50)
         #expect(vm.pagination.currentPage == 0)
     }
+
+    private func emptyResult() -> Result<QueryResult, Error> {
+        .success(QueryResult(columns: makeColumns(), rows: [], rowsAffected: 0, executionTime: 0))
+    }
+
+    @Test("The page bar stays hidden for an empty table and shows once rows load")
+    func pageBarFollowsRows() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        #expect(vm.showsPaginationBar == false)
+
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.load(isInitial: true)
+        #expect(vm.showsPaginationBar == false)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.load(isInitial: true)
+        #expect(vm.showsPaginationBar)
+    }
+
+    @Test("The page bar stays up when a search finds nothing, so the search can be paged back out of")
+    func pageBarSurvivesEmptySearch() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.load(isInitial: true)
+
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.applySearch("nobody")
+
+        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.showsPaginationBar)
+    }
+
+    @Test("The page bar stays up when an enabled filter matches nothing")
+    func pageBarSurvivesEmptyFilter() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.load(isInitial: true)
+
+        vm.filters = [TableFilter(columnName: "name", value: "nobody")]
+        driver.scriptedExecuteResults = [emptyResult()]
+        await vm.applyFilters()
+
+        #expect(vm.legacyRows.isEmpty)
+        #expect(vm.showsPaginationBar)
+    }
+
+    @Test("Page steps are offered only where a page exists")
+    func pageStepsFollowPosition() async {
+        let driver = MockDatabaseDriver()
+        driver.scriptedColumns = makeColumns()
+        let vm = DataBrowserViewModel()
+        vm.attach(session: makeSession(driver: driver), table: TableInfo(name: "users"), databaseType: .mysql, host: "localhost")
+        #expect(vm.canGoToPreviousPage == false)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["1", "Alice"], ["2", "Bob"]], rowsAffected: 0, executionTime: 0)),
+            .success(QueryResult(columns: [], rows: [["3"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.changePageSize(2)
+        #expect(vm.pagination.totalRows == 3)
+        #expect(vm.canGoToPreviousPage == false)
+        #expect(vm.canGoToNextPage)
+
+        driver.scriptedExecuteResults = [
+            .success(QueryResult(columns: makeColumns(), rows: [["3", "Carol"]], rowsAffected: 0, executionTime: 0))
+        ]
+        await vm.goToNextPage()
+        #expect(vm.pagination.currentPage == 1)
+        #expect(vm.canGoToPreviousPage)
+        #expect(vm.canGoToNextPage == false)
+    }
 }

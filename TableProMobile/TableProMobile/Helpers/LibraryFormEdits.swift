@@ -16,6 +16,14 @@ nonisolated struct GroupFormEdits: Equatable, Sendable {
         self.init(name: group.name, color: group.color, parentId: group.parentId)
     }
 
+    init(opening group: ConnectionGroup?, parentId: UUID?) {
+        guard let group else {
+            self.init(name: "", color: .none, parentId: parentId)
+            return
+        }
+        self.init(group: group)
+    }
+
     func applied(to base: ConnectionGroup, changedSince opening: GroupFormEdits?) -> ConnectionGroup {
         func changed<Value: Equatable>(_ field: KeyPath<GroupFormEdits, Value>) -> Bool {
             guard let opening else { return true }
@@ -41,6 +49,14 @@ nonisolated struct TagFormEdits: Equatable, Sendable {
 
     init(tag: ConnectionTag) {
         self.init(name: tag.name, color: tag.color)
+    }
+
+    init(opening tag: ConnectionTag?) {
+        guard let tag else {
+            self.init(name: "", color: .gray)
+            return
+        }
+        self.init(tag: tag)
     }
 
     func applied(to base: ConnectionTag, changedSince opening: TagFormEdits?) -> ConnectionTag {

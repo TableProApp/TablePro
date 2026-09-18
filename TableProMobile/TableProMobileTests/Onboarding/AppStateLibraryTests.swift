@@ -10,6 +10,8 @@ import Testing
 @Suite("App state library writes")
 struct AppStateLibraryTests {
     private let fixture: AppStateFixture
+    private let searchIndex = RecordingSearchIndex()
+    private let widgetWrites = WidgetWriteCounter()
 
     private var metadata: SyncMetadataStorage { fixture.metadata }
 
@@ -17,8 +19,25 @@ struct AppStateLibraryTests {
         fixture = try AppStateFixture()
     }
 
-    private func makeState(syncEnabled: Bool, secureStore: any SecureStore = MockSecureStore()) -> AppState {
-        fixture.makeState(syncEnabled: syncEnabled, secureStore: secureStore)
+    private func makePublisher() -> ConnectionLibraryPublisher {
+        let widgetWrites = widgetWrites
+        return ConnectionLibraryPublisher(
+            searchIndex: searchIndex,
+            writeWidgetItems: { _ in widgetWrites.total += 1 },
+            refreshShortcutParameters: {}
+        )
+    }
+
+    private func makeState(
+        syncEnabled: Bool,
+        secureStore: any SecureStore = MockSecureStore(),
+        publisher: ConnectionLibraryPublisher? = nil
+    ) -> AppState {
+        fixture.makeState(
+            syncEnabled: syncEnabled,
+            secureStore: secureStore,
+            libraryPublisher: publisher ?? makePublisher()
+        )
     }
 
     @Test("A library that failed to load refuses every write and leaves the file alone")
@@ -94,6 +113,159 @@ struct AppStateLibraryTests {
         state.finishFirstRun(pages: [.welcome, .usageData])
 
         #expect(state.onboarding.usageDataChoice == true)
+    }
+
+    // MARK: - Spotlight, tags and Handoff
+
+    @Test("Deleting a connection takes it out of Spotlight and leaves the rest")
+    func deletionLeavesTheIndex() async {
+        let publisher = makePublisher()
+        let state = makeState(syncEnabled: false, publisher: publisher)
+        let kept = DatabaseConnection(name: "Kept", type: .postgresql)
+        let deleted = DatabaseConnection(name: "Deleted", type: .postgresql)
+        #expect(state.addConnection(kept))
+        #expect(state.addConnection(deleted))
+
+        state.removeConnections([deleted.id])
+        await publisher.settle()
+
+        #expect(searchIndex.indexedIds == [kept.id])
+    }
+
+    @Test("A connection deleted on another device leaves Spotlight when sync merges")
+    func syncedDeletionLeavesTheIndex() async throws {
+        let publisher = makePublisher()
+        let state = makeState(syncEnabled: false, publisher: publisher)
+        let kept = DatabaseConnection(name: "Kept", type: .postgresql)
+        let deleted = DatabaseConnection(name: "Deleted", type: .postgresql)
+        #expect(state.addConnection(kept))
+        #expect(state.addConnection(deleted))
+
+        let merged = state.connections.filter { $0.id != deleted.id }
+        state.applySyncedConnections(merged)
+        await publisher.settle()
+
+        #expect(state.connections.map(\.id) == [kept.id])
+        #expect(searchIndex.indexedIds == [kept.id])
+    }
+
+    @Test("Deleting a group keeps its connections searchable at the top level")
+    func groupDeletionKeepsConnectionsIndexed() async {
+        let publisher = makePublisher()
+        let state = makeState(syncEnabled: false, publisher: publisher)
+        let group = ConnectionGroup(name: "Team")
+        #expect(state.addGroup(group) == .applied)
+        let member = DatabaseConnection(name: "Member", type: .postgresql, groupId: group.id)
+        #expect(state.addConnection(member))
+
+        state.deleteGroup(group.id)
+        await publisher.settle()
+
+        #expect(state.connections.first?.groupId == nil)
+        #expect(searchIndex.indexedIds == [member.id])
+    }
+
+    @Test("A library that failed to load refuses a sync merge and publishes nothing until it loads")
+    func failedLoadPublishesNothing() async throws {
+        let file = fixture.connectionsFile
+        let unreadable = Data("{ not json".utf8)
+        try unreadable.write(to: file)
+        let publisher = makePublisher()
+        let state = makeState(syncEnabled: false, publisher: publisher)
+
+        state.applySyncedConnections([DatabaseConnection(name: "Merged", type: .postgresql)])
+        await publisher.settle()
+
+        #expect(try Data(contentsOf: file) == unreadable)
+        #expect(searchIndex.replacements.isEmpty)
+        #expect(widgetWrites.total == 0)
+
+        let repaired = DatabaseConnection(name: "Repaired", type: .postgresql)
+        try JSONEncoder().encode([repaired]).write(to: file)
+        state.retryLoadIfFailed()
+        await publisher.settle()
+
+        #expect(searchIndex.indexedIds == [repaired.id])
+    }
+
+    @Test("Deleting the sample and opening it again leaves only the new sample in Spotlight")
+    func reopenedSampleReplacesTheOld() async throws {
+        let publisher = makePublisher()
+        let state = makeState(syncEnabled: false, publisher: publisher)
+
+        let first = try state.openSampleDatabase()
+        state.removeConnections([first])
+        let second = try state.openSampleDatabase()
+        await publisher.settle()
+
+        #expect(first != second)
+        #expect(searchIndex.indexedIds == [second])
+    }
+
+    @Test("Deleting a tag strips it from the connections that carry it and syncs only those")
+    func tagDeletionStripsCarriers() throws {
+        let state = makeState(syncEnabled: true)
+        let tag = ConnectionTag(name: "Staging", color: .orange)
+        state.addTag(tag)
+        let carrier = DatabaseConnection(name: "Carrier", type: .postgresql, tagIds: [tag.id])
+        let bystander = DatabaseConnection(name: "Bystander", type: .postgresql)
+        #expect(state.addConnection(carrier))
+        #expect(state.addConnection(bystander))
+        let sample = try state.openSampleDatabase()
+        #expect(state.mutateConnection(sample) { $0.tagIds = [tag.id] } == .applied)
+        metadata.clearDirty(type: .connection)
+
+        #expect(state.deleteTag(tag.id))
+
+        #expect(!state.tags.contains { $0.id == tag.id })
+        #expect(state.connections.allSatisfy { !$0.tagIds.contains(tag.id) })
+        #expect(metadata.dirtyIds(for: .connection) == [carrier.id.uuidString])
+        #expect(metadata.tombstones(for: .tag).map(\.id) == [tag.id.uuidString])
+
+        let reloaded = makeState(syncEnabled: true)
+        #expect(!reloaded.tags.contains { $0.id == tag.id })
+        #expect(reloaded.connections.allSatisfy { !$0.tagIds.contains(tag.id) })
+    }
+
+    @Test("A built-in tag cannot be deleted")
+    func presetTagIsKept() throws {
+        let state = makeState(syncEnabled: true)
+        let preset = try #require(ConnectionTag.presets.first)
+        let carrier = DatabaseConnection(name: "Carrier", type: .postgresql, tagIds: [preset.id])
+        #expect(state.addConnection(carrier))
+
+        #expect(state.deleteTag(preset.id) == false)
+
+        #expect(state.tags.contains { $0.id == preset.id })
+        #expect(state.connections.first?.tagIds == [preset.id])
+        #expect(metadata.tombstones(for: .tag).isEmpty)
+    }
+
+    @Test("Handoff is offered for a saved connection until it is deleted, and never for the sample")
+    func handoffFollowsTheLibrary() throws {
+        let state = makeState(syncEnabled: false)
+        let saved = DatabaseConnection(name: "Prod", type: .postgresql, host: "db.example.com", port: 5_432)
+        #expect(state.addConnection(saved))
+        let sampleId = try state.openSampleDatabase()
+        let sample = try #require(state.connections.first { $0.id == sampleId })
+
+        #expect(state.offersHandoff(for: saved))
+        #expect(state.offersHandoff(for: sample) == false)
+        #expect(state.isConnectionRemoved(saved.id) == false)
+
+        state.removeConnections([saved.id])
+
+        #expect(state.isConnectionRemoved(saved.id))
+        #expect(state.offersHandoff(for: saved) == false)
+    }
+
+    @Test("A library that failed to load reports no connection as deleted")
+    func unloadedLibraryDeletesNothing() throws {
+        try Data("{ not json".utf8).write(to: fixture.connectionsFile)
+        let state = makeState(syncEnabled: false)
+
+        #expect(state.loadStatus == .failed)
+        #expect(state.isConnectionRemoved(UUID()) == false)
     }
 
     // MARK: - Editing through the form
@@ -593,4 +765,9 @@ struct AppStateLibraryTests {
         #expect(try store.retrieve(forKey: "com.TablePro.sshkeydata.\(ids[1].uuidString)") == legacyKey(for: ids[1]))
         #expect(metadata.dirtyIds(for: .connection).isEmpty)
     }
+}
+
+@MainActor
+private final class WidgetWriteCounter {
+    var total = 0
 }

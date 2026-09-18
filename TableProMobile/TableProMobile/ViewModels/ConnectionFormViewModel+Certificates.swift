@@ -14,6 +14,7 @@ extension ConnectionFormViewModel {
         guard let connectionId = existingConnection?.id else { return }
         for role in CertificateRole.allCases {
             guard let pem = certificateStore.pem(role: role, for: connectionId) else { continue }
+            storedCertificateRoles.insert(role)
             certificateSummaries[role] = summary(for: role, pem: pem)
         }
     }
