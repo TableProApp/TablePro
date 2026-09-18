@@ -176,10 +176,10 @@ internal enum BatchStatementRun {
             try await TaskCancellationShield.run { @Sendable in try await driver.rollbackTransaction() }
         } catch {
             guard opensTransaction else {
-                batchLog.debug("No open script transaction to roll back: \(error.localizedDescription, privacy: .public)")
+                batchLog.debug("No open script transaction to roll back: \(error.publicLogShape, privacy: .public)")
                 return
             }
-            batchLog.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+            batchLog.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 }

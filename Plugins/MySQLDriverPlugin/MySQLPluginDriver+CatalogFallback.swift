@@ -99,7 +99,11 @@ internal extension MySQLPluginDriver {
     /// Base tables only: `SHOW CREATE TABLE` answers for a view with its `SELECT` and for a MariaDB
     /// sequence with the sequence's own table, neither of which can carry a constraint.
     func showForeignKeysByTable(database: String) async throws -> [String: [PluginForeignKeyInfo]] {
-        let omittedAction = MySQLServerVersion.omittedForeignKeyAction(banner: _serverVersion, flavor: flavor)
+        let identity = serverIdentity
+        let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
+            banner: identity.banner,
+            flavor: identity.flavor
+        )
         return try await degradedRead(database: database, baseTablesOnly: true) { table in
             try await self.ddlForeignKeys(table: table.name, database: database, omittedAction: omittedAction)
         }

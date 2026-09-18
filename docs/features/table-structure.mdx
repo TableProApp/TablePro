@@ -153,6 +153,8 @@ Renaming a constraint runs a single `RENAME CONSTRAINT` where the engine has one
 
 The tab is hidden on engines with no check constraints. SQL Server lists and edits them, but has computed columns rather than generated ones, so it gets this tab and not the two column fields.
 
+It is hidden on MySQL before 8.0.16, MariaDB before 10.2.1, TiDB before 7.2 and OceanBase before 4.0 as well. Those servers accept a `CHECK` clause, answer `Query OK`, and throw the rule away, so there is nothing to list and nothing a save could keep. Upgrade, or enforce the rule with a trigger.
+
 SQLite is the one engine where listing and editing part company. The tab appears on every version, but **+** and **-** need SQLite 3.53.0 or later, the release that added `ADD CONSTRAINT` and `DROP CONSTRAINT` to `ALTER TABLE`. The driver links the system SQLite, so the version is the one macOS ships. On an older one the constraints still list, read-only.
 
 ## Saving changes

@@ -71,7 +71,9 @@ Safe Mode runs inside TablePro. It cannot make a server accept a write the serve
 - The server runs with `read_only` or `super_read_only` turned on.
 - The server or the session opens new transactions read-only.
 
-TablePro opens its write transactions as read-write, so a server that only defaults new transactions to read-only accepts the save anyway. On MySQL and MariaDB this narrows down the rest:
+TablePro opens its write transactions as read-write, on the Mac and on iPhone and iPad alike, so a server that only defaults new transactions to read-only accepts the save anyway. Truncate and Drop are the exception on MySQL and MariaDB. Both commit whatever is open before they run, so they land outside that read-write transaction and under the session's own default, and the server refuses them. Run those two on a connection whose sessions start read-write.
+
+On MySQL and MariaDB this narrows down the rest:
 
 ```sql
 SHOW SESSION VARIABLES WHERE Variable_name IN

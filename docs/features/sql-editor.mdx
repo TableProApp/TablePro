@@ -37,10 +37,50 @@ To run the whole tab, press `Cmd+Shift+Enter`, choose **Run All Statements** fro
 
 A batch runs top to bottom and stops at the first statement that fails. The error names its place in the run: "Statement 3/5 failed: …". Each statement gets its own result, and each is recorded separately in [query history](/features/query-history).
 
-On engines with transactions, the batch runs inside one, and a failure rolls back the statements before it. Engines without transactions run each statement as-is, with nothing to roll back. Two cases leave earlier statements in place:
+### Which transaction the batch runs in
 
-- MySQL and MariaDB commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it. A later failure cannot undo any of that.
-- A script containing `BEGIN`, `START TRANSACTION`, `XA START` or `SET autocommit` runs exactly as written, with no transaction around it. On MySQL, MariaDB, TiDB and OceanBase, so does one containing `SET TRANSACTION`. What it commits stays committed. When it fails or you stop it, the transaction it still has open is rolled back.
+| The batch | Runs in | A failure or Stop |
+|---|---|---|
+| Ordinary statements | A transaction TablePro opens and commits | Everything rolls back |
+| One that manages its own: `BEGIN`, `START TRANSACTION`, `XA START`, `SET autocommit`, `SET IMPLICIT_TRANSACTIONS ON` on SQL Server, `SAVEPOINT` on SQLite | The script's own transaction | The transaction it left open is rolled back |
+| One holding a [statement a transaction cannot hold](#statements-a-transaction-cannot-hold) | No transaction | Each statement that ran stays applied, and the banner counts them |
+| Anything, on a connection that already has a transaction open | That transaction | The transaction stays open and the message says so |
+
+The last row wins over the other three. The open transaction comes from a `BEGIN` you ran with `Cmd+Enter`, a `SET autocommit = 0`, `LOCK TABLES` on MySQL or MariaDB, or an [MCP client's](/external-api/mcp-tools) `begin`, and a batch that joins it sends no `BEGIN`, `COMMIT` or `ROLLBACK` at all: the script's own text decides, so a script ending in `COMMIT` commits. Where a failed statement has left the transaction unable to commit, the message says to roll it back rather than offering the choice. A `BEGIN` left running here reaches the rest of the window too, so a grid save and a **Users & Roles** apply land inside it.
+
+PostgreSQL, Redshift, CockroachDB, MySQL, MariaDB, TiDB, SQLite, DuckDB and SQL Server report what their session holds. Anywhere else there is no answer to be had, so a plain batch is wrapped as it always was and a self-managed script is left alone after a failure, since the transaction its text opened may well predate the run.
+
+Two things survive a rollback in any of those four cases. MySQL and MariaDB commit a `CREATE`, `ALTER` or `DROP` the moment it runs, along with everything before it, and CockroachDB commits the open transaction before it processes any DDL at all.
+
+### Statements a transaction cannot hold
+
+One of these anywhere in the batch leaves the whole of it unwrapped. The engine either refuses the statement inside a block, as PostgreSQL refuses `VACUUM`, or applies it and quietly throws it away, as SQLite does with `PRAGMA foreign_keys`.
+
+| Engine | Statements |
+|---|---|
+| PostgreSQL, Redshift, CockroachDB | `VACUUM`, `CREATE INDEX CONCURRENTLY`, `REINDEX SCHEMA`, `ALTER SYSTEM`, `CREATE DATABASE`, `DISCARD ALL`, `ALTER TYPE … ADD VALUE` |
+| MySQL, MariaDB, TiDB, OceanBase | `SET TRANSACTION`, `SET sql_log_bin`, `SET binlog_format`, `SET GLOBAL gtid_mode`, `STOP REPLICA` |
+| SQLite, libSQL | `VACUUM`, `DETACH`, `PRAGMA journal_mode`, `PRAGMA foreign_keys`, `PRAGMA wal_checkpoint` |
+| DuckDB | `CHECKPOINT`, `FORCE CHECKPOINT`, `DETACH` |
+| SQL Server | `CREATE`, `ALTER` and `DROP DATABASE`, `BACKUP`, `RESTORE`, `RECONFIGURE` |
+
+The MySQL row covers the preamble a `mysqldump` or `mariadb-dump` file carries, so a dump pasted into the editor runs the way `mysql` runs it. CockroachDB adds `SET CLUSTER SETTING`, `BACKUP`, `RESTORE` and `IMPORT`, and Redshift adds `CREATE EXTERNAL TABLE`, `CREATE LIBRARY` and `ALTER TABLE … APPEND`.
+
+A `CLUSTER` or `REINDEX` naming one table, and a `CALL` of a procedure that commits inside itself, depend on the object rather than on the text, so the batch around them keeps its transaction. Run those on their own.
+
+Redis has no transaction TablePro can open, so every command runs and answers as sent. A `MULTI` in the script opens a block of its own: each command after it answers `QUEUED` until `EXEC`, and a batch that fails or is stopped inside the block discards it. See [Redis](/databases/redis).
+
+### Stopping a batch
+
+Stop (`Cmd+.`) acts between statements. The run halts before the next one goes out, and a transaction TablePro or the script opened is rolled back. A batch running outside a transaction keeps what it already wrote and shows no result for it, so refresh the table to see where it stands.
+
+The commit is the point of no return. While it is on the wire Stop is dimmed and says why, and nothing else reaches it either: closing the tab releases the tab and nothing more, and disconnecting queues behind the commit, so the server finishes it either way. A script's own `COMMIT` counts the same, and the statements after it become stoppable again.
+
+If the connection dies while the commit is in flight, the result says the statements may or may not be saved and query history records them the same way. There is nothing left to ask, so no rollback is sent. Check the table before running them again.
+
+### Each tab runs its own queries
+
+Stop and `Cmd+.` act on the tab you are looking at. A query started in another tab, or on the same connection in another window, waits for the running one rather than stopping it: the waiting tab shows the ordinary **Executing…** spinner and a live Stop for as long as the other one runs, and a table opened in a new tab shows an empty grid with a spinner. Stopping the waiting tab leaves the running batch alone.
 
 ## Statement markers
 

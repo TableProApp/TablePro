@@ -40,6 +40,8 @@ How many seconds a query runs before it is cancelled. The default is 60; the pic
 
 Where the engine can enforce it, the timeout becomes a server-side setting: `statement_timeout` on PostgreSQL, `max_execution_time` on MySQL and ClickHouse, `max_statement_time` on MariaDB, `ob_query_timeout` on OceanBase. On SQLite it bounds how long a statement waits for a locked database instead. Drivers that talk HTTP (BigQuery, Spanner, Cloudflare D1, LibSQL, Etcd, DynamoDB, Elasticsearch, Typesense, and ClickHouse) bound the request at the timeout plus 30 seconds, and Oracle enforces it in the client: the connection is closed to unblock the call, and the next query reconnects and restores your current schema.
 
+Older servers have neither: MySQL before 5.7.8, MariaDB before 10.1.1. A statement that passes the timeout there is stopped with `KILL QUERY` from a second connection, which reaches a `SELECT` on MySQL and any statement at all on MariaDB. A server behind a proxy that reports a version it does not have still gets the right one of the two.
+
 **No limit** still caps an HTTP request at one hour, because the transport needs a ceiling.
 
 ## Command line tool

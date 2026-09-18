@@ -17,7 +17,11 @@ extension MySQLPluginDriver {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
         guard !flavor.isDatabend else { return [] }
         let database = effectiveSchema(schema)
-        let omittedAction = MySQLServerVersion.omittedForeignKeyAction(banner: _serverVersion, flavor: flavor)
+        let identity = serverIdentity
+        let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
+            banner: identity.banner,
+            flavor: identity.flavor
+        )
         let byTable = try await catalogOrShow(
             database: database,
             catalog: { try await self.catalogForeignKeys(database: database, table: table) },
@@ -85,7 +89,10 @@ extension MySQLPluginDriver {
         return MySQLForeignKeyCatalog.group(
             columnRows: columnRows,
             actionRows: actionRows.filter { !$0.onDelete.isEmpty && !$0.onUpdate.isEmpty },
-            defaultAction: MySQLServerVersion.omittedForeignKeyAction(banner: _serverVersion, flavor: flavor)
+            defaultAction: MySQLServerVersion.omittedForeignKeyAction(
+                banner: serverIdentity.banner,
+                flavor: serverIdentity.flavor
+            )
         )
     }
 }

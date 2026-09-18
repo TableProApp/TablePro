@@ -48,13 +48,17 @@ Toggling a checkbox stages a change, marked on the account, the object, and the 
 
 The **Privileges / Attributes** switch opens a form for the account itself: whether it can log in, role attributes such as `SUPERUSER` or `CREATEDB` on PostgreSQL, role membership (**Member of**, with **Edit…** for a checklist), and the connection limit. These stage and apply with everything else.
 
-**Change Password**, in the context menu and on the Attributes form, sets a new one. Statements that carry a password, `CREATE USER` and `ALTER USER` among them, are never written to [query history](/features/query-history), which is stored unencrypted on disk.
+**Change Password**, in the context menu and on the Attributes form, sets a new one. Statements that carry a password are never written to [query history](/features/query-history), which is stored unencrypted on disk. The review sheet still shows every one of them.
+
+`ALTER USER` does not exist on MySQL before 5.7.6 or MariaDB before 10.2. A password and a connection limit go in there as `GRANT USAGE ON *.* … IDENTIFIED BY` and `GRANT USAGE ON *.* … WITH MAX_USER_CONNECTIONS`, which needs `GRANT OPTION` as well as write access to `mysql.*`.
 
 ## Applying changes
 
 The bar at the bottom counts staged changes. **Discard** throws the set away; **Review & Apply…** shows every statement, including the ones that remove access, with **Copy All**, **Open in Query Editor**, and **Execute**.
 
 PostgreSQL runs them in one transaction, so a failure rolls the set back. MySQL commits user management statements implicitly, so a failure there leaves the earlier ones applied and reports how many. A successful apply re-reads the server. Changes take the same guards as any other write: a read-only connection blocks them, and [Safe Mode](/features/safe-mode) asks for confirmation or authentication as configured.
+
+An apply made while a transaction is already open on the connection joins it instead of opening one of its own. The statements are pending in that transaction until you commit or roll it back, and the failure sheet counts them as pending rather than as written.
 
 <Danger>
 Dropping the account this connection uses, altering it, or revoking every privilege from it is called out in the review sheet before the SQL runs. It is not blocked: revoking your own admin rights can be deliberate.

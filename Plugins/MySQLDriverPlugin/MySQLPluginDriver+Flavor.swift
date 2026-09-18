@@ -108,7 +108,7 @@ extension MySQLPluginDriver {
             let result = try await connection.executeQuery(statement)
             return result.rows.first?.first?.asText
         } catch {
-            Self.logger.debug("Flavor probe failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.debug("Flavor probe failed: \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }

@@ -133,7 +133,9 @@ Formats are `csv`, `json` and `sql`; pass exactly one of `query` or `tables[]`. 
 
 `confirm_destructive_operation` runs one `DROP`, `TRUNCATE` or `ALTER … DROP`. Anything that is not destructive is rejected; use `execute_query` for those. The user approves it first, through your elicitation prompt if your client supports elicitation, otherwise through TablePro's own dialog on their Mac.
 
-`transaction_control` takes `action` as `begin`, `commit` or `rollback`. The transaction stays open across calls until it is committed or rolled back, and it runs on the same session as the user's own tabs. Leave nothing open.
+`transaction_control` takes `action` as `begin`, `commit` or `rollback`. The transaction stays open across calls until it is committed or rolled back, and it runs on the same session as the user's own tabs, so their editor runs and their grid saves land inside it while it is open. Leave nothing open.
+
+On Redis the three actions are `MULTI`, `EXEC` and `DISCARD`. Every command between `begin` and `commit` answers `QUEUED` and does nothing until `commit` runs them, and `commit` fails naming each command the server then refused. `rollback` drops the block whole.
 
 ## Databases and objects
 

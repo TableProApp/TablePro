@@ -57,6 +57,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Inspector toolbar button was permanently dimmed on macOS 13.
 - A connection's status on the welcome window stopped updating once the window was open.
 - The Compare & Sync licence notice froze the app instead of opening as a sheet.
+- `VACUUM`, `CREATE INDEX CONCURRENTLY`, `SET sql_log_bin` and `PRAGMA foreign_keys` failing or ignored when running several statements.
+- A batch committing, discarding or aborting a transaction already open on the connection.
+- Grid saves, structure changes and a Users & Roles apply committing a transaction already open on the connection.
+- Stopping a multi-statement run committing the batch anyway, or leaving its transaction open on the connection.
+- A lost connection during a commit reported as a clean rollback.
+- Query in one tab cancelled and rolled back when another tab or window on the connection starts or stops a query.
+- Stop on MySQL 5.5, 5.6 or MariaDB 5.5 interrupting the next statement on the connection.
+- `QUEUED` results and hidden command errors when running several Redis commands or saving Redis grid edits.
+- Query timeout ignored on MySQL before 5.7.8 and MariaDB before 10.1.1.
+- MySQL query run a second time, and left running on the server, after the connection timed out.
+- Empty error when a parameterized MySQL query timed out.
+- Check constraints reported as added on MySQL before 8.0.16 and MariaDB before 10.2.1, which discard them.
+- `Unknown table 'CHECK_CONSTRAINTS'` opening a table's structure on MariaDB 10.2 before 10.2.22 and 10.3 before 10.3.10.
+- Syntax error removing a check constraint on MySQL 8.0.16 to 8.0.18.
+- Syntax error setting a password or connection limit in Users & Roles on MySQL before 5.7.6 and MariaDB before 10.2.
+- Passwordless account created when a new user's connection limit was set before saving.
+- Connection held as "session settings changed" after a `SET PASSWORD`.
+- Rows saved, added or deleted on iPhone and iPad refused by a MySQL, MariaDB, PostgreSQL or Redshift server that starts sessions read-only.
 
 ### Security
 

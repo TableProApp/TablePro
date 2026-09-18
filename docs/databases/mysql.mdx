@@ -86,6 +86,8 @@ A read that fails because the server closed the connection is run once more on a
 
 A connection with startup commands that run `SET` is holding a changed session setting from the moment it opens, so it reports the error rather than retrying. **Database > Reconnect** takes a new connection and puts back the database and the startup commands.
 
+Waiting has its own limit, and reaching it is a different case. The socket gives the server the [query timeout](/customization/general-settings#query-timeout) plus 30 seconds, and a statement that outlasts that is never sent again: the first copy is almost certainly still running there. It is stopped with `KILL QUERY` from a second connection, and the error comes back after that.
+
 ## Garbled non-Latin text
 
 A comment or value that reads `ãƒ¡ãƒ¼ãƒ«` where `メール` belongs was written by a client that sent UTF-8 while telling the server it was sending Latin 1. A `mysql` command-line client without a UTF-8 locale does that, and so does a MySQL 5.7 container loading its `docker-entrypoint-initdb.d` scripts, and so does any client on a server whose `init_connect` runs `SET NAMES latin1`. The server stored the garbled form, so every UTF-8 client shows the same thing.
