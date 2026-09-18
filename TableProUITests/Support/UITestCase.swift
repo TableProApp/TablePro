@@ -136,25 +136,32 @@ internal class UITestCase: XCTestCase {
     /// at a window that had no connection yet, and every one of those misses cost an XCUITest
     /// retry. The object browser having rows is the cheapest proof the connection is live.
     ///
-    /// The query is built once and asks only whether a first match exists. Rebuilding
-    /// `app.windows.firstMatch.outlines.firstMatch` inside the poll re-resolves the chain from the
-    /// application element on every iteration, and `staticTexts.count` enumerates every static text
-    /// under the outline rather than stopping at the first. Together they cost seconds per
-    /// iteration once the window holds a loaded grid, so the timeout expires against the query
-    /// instead of against the app, and the failure reads as a launch that never finished.
-    /// The timeout is contention headroom, not a guess at how long opening takes. Three UI shards
-    /// share a runner with the unit job and both arch builds, and the tests that miss the window
-    /// are different on every run: this release's tag build lost `testTheBannerCanBeDismissed`,
-    /// `testSwitchConnectionOpensWithTheToolbarHidden` and
-    /// `testToggleFoldRunsWithTheCursorInsideAStatement`, and earlier runs lost an unrelated set.
-    /// A suite that reports a launch failure because a sibling shard had the CPU is measuring the
-    /// runner. Locally the wait settles in about two seconds, so the extra ceiling costs nothing
-    /// on a machine that is not starved.
-    internal func waitForSampleDatabaseWindow(in app: XCUIApplication, timeout: TimeInterval = 90) -> Bool {
-        let firstObject = app.children(matching: .window).firstMatch
-            .descendants(matching: .outline).firstMatch
+    /// The query is built once, asks only whether a first match exists, and never leaves the
+    /// sidebar. `objectBrowser(in:)` says why the last part matters: the sample opens `Track`, and
+    /// its 1,000 rows usually reach the grid before the table list reaches the sidebar. A search
+    /// for the outline that starts at the window walks the whole grid while the sidebar is still a
+    /// spinner, three to six seconds on the app's main thread per check, and the table list it was
+    /// waiting for could not load under that. The runs that reported this as "never finished
+    /// opening" had the sidebar spinning and the grid full, a different test each time. Locally the
+    /// wait settles in about two seconds.
+    internal func waitForSampleDatabaseWindow(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        let firstObject = objectBrowser(in: app.children(matching: .window).firstMatch)
             .descendants(matching: .staticText).firstMatch
         return waitForPredicate(timeout: timeout) { firstObject.exists }
+    }
+
+    /// The connection window's object browser, found without searching the rest of the window.
+    ///
+    /// The sidebar is the first group directly under the window's split group, ahead of the
+    /// splitter and the detail pane: `SplitGroup > Group > ScrollView > Outline` once the tables
+    /// have loaded and `SplitGroup > Group > ActivityIndicator` before. A descendants search from
+    /// the window reaches the outline first when it exists, but when it does not yet exist the
+    /// search goes on into the data grid, which publishes about 12,000 elements for `Track`.
+    /// Stepping through direct children keeps a miss as cheap as a hit.
+    internal func objectBrowser(in window: XCUIElement) -> XCUIElement {
+        window.children(matching: .splitGroup).firstMatch
+            .children(matching: .group).firstMatch
+            .descendants(matching: .outline).firstMatch
     }
 
     /// Opens the sample database the way a person does. Only the menu contract suite needs this;
