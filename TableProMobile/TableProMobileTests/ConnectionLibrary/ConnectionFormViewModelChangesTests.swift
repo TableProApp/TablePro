@@ -1,4 +1,5 @@
 import Foundation
+import TableProDatabase
 @testable import TableProMobile
 import TableProModels
 import TableProOracleCore
@@ -43,6 +44,14 @@ struct ConnectionFormViewModelChangesTests {
                 clientCertificatePath: "/client.pem",
                 clientKeyPath: "/client.key"
             )
+        )
+    }
+
+    private func tunnel(authMethod: SSHConfiguration.SSHAuthMethod, enabled: Bool = true) -> DatabaseConnection {
+        DatabaseConnection(
+            name: "Tunnelled", type: .mysql, host: "10.0.0.5", port: 3_306, username: "app",
+            database: "shop", sshEnabled: enabled,
+            sshConfiguration: SSHConfiguration(host: "bastion", port: 22, username: "deploy", authMethod: authMethod)
         )
     }
 
@@ -157,6 +166,110 @@ struct ConnectionFormViewModelChangesTests {
         viewModel.password = "rotated"
         #expect(viewModel.hasChanges)
         #expect(viewModel.changesSecrets)
+    }
+
+    @Test("A key an older build left in the Keychain is not a change while the connection does not use it")
+    func unusedStoredKeyIsClean() async {
+        let unused = [tunnel(authMethod: .password), tunnel(authMethod: .privateKey, enabled: false)]
+        for connection in unused {
+            let store = seededStore(for: connection)
+            store.seed("com.TablePro.sshkeydata.\(connection.id.uuidString)", "LEFTOVER KEY")
+            let viewModel = form(editing: connection)
+
+            await viewModel.loadStoredCredentials(secureStore: store)
+
+            #expect(viewModel.hasChanges == false, "SSH on: \(connection.sshEnabled)")
+            #expect(viewModel.changesSecrets == false, "SSH on: \(connection.sshEnabled)")
+            #expect(viewModel.reconnectsAfterSave == false, "SSH on: \(connection.sshEnabled)")
+        }
+    }
+
+    @Test("Saving an edit drops a leftover key the connection does not use")
+    func saveDropsUnusedStoredKey() async throws {
+        let connection = tunnel(authMethod: .password)
+        let keyAccount = "com.TablePro.sshkeydata.\(connection.id.uuidString)"
+        let store = seededStore(for: connection)
+        store.seed(keyAccount, "LEFTOVER KEY")
+        let viewModel = form(editing: connection)
+        await viewModel.loadStoredCredentials(secureStore: store)
+
+        viewModel.name = "Renamed"
+        let appState = makeAppState(holding: connection)
+        _ = try #require(await viewModel.save(appState: appState, secureStore: store))
+
+        #expect(try store.retrieve(forKey: keyAccount) == nil)
+        #expect(try store.retrieve(forKey: "com.TablePro.sshpassword.\(connection.id.uuidString)") == "tunnel")
+    }
+
+    @Test("A save whose Keychain write fails leaves only that secret to discard, and saving again stores it")
+    func partialSaveKeepsOnlyTheFailedSecretDirty() async throws {
+        let connection = postgres()
+        let passwordAccount = "com.TablePro.password.\(connection.id.uuidString)"
+        let store = seededStore(for: connection)
+        let appState = fixture.makeState(syncEnabled: false, secureStore: store)
+        #expect(appState.addConnection(connection))
+        let viewModel = form(editing: connection)
+        await viewModel.loadStoredCredentials(secureStore: store)
+        viewModel.name = "Renamed"
+        viewModel.password = "rotated"
+        store.failNextStore = true
+
+        #expect(await viewModel.save(appState: appState, secureStore: store) == nil)
+
+        #expect(viewModel.credentialError != nil)
+        #expect(appState.connections.first?.name == "Renamed")
+        #expect(try store.retrieve(forKey: passwordAccount) == "stored")
+        #expect(viewModel.hasChanges)
+        #expect(viewModel.changesSecrets)
+
+        viewModel.password = ""
+        #expect(viewModel.hasChanges == false)
+
+        viewModel.password = "rotated"
+        let retriedId = try #require(await viewModel.save(appState: appState, secureStore: store))
+        #expect(retriedId == connection.id)
+        #expect(try store.retrieve(forKey: passwordAccount) == "rotated")
+        #expect(viewModel.hasChanges == false)
+        #expect(appState.connections.first?.name == "Renamed")
+    }
+
+    @Test("A secret that saved is not offered for discard when a later one fails")
+    func savedSecretIsCleanAfterLaterFailure() async throws {
+        let connection = tunnel(authMethod: .password)
+        let tunnelStore = seededStore(for: connection)
+        let appState = makeAppState(holding: connection)
+        let viewModel = form(editing: connection)
+        await viewModel.loadStoredCredentials(secureStore: tunnelStore)
+        viewModel.password = "rotated"
+        viewModel.sshPassword = "rotated-tunnel"
+        tunnelStore.failNextStore = true
+
+        #expect(await viewModel.save(appState: appState, secureStore: tunnelStore) == nil)
+
+        #expect(try appState.secureStore.retrieve(forKey: "com.TablePro.password.\(connection.id.uuidString)") == "rotated")
+        #expect(viewModel.hasChanges)
+
+        viewModel.sshPassword = ""
+        #expect(viewModel.hasChanges == false)
+    }
+
+    @Test("A certificate the store refuses stays a change once the rest is saved")
+    func refusedCertificateStaysStaged() async {
+        let connection = postgres()
+        let appState = makeAppState(holding: connection)
+        let viewModel = form(editing: connection)
+        viewModel.name = "Renamed"
+        viewModel.pastedCertificate = PEMDocument.encode(Data([1, 2, 3]), as: .certificate)
+        viewModel.importPastedCertificate(role: .certificateAuthority)
+        certificates.refusesStores = true
+
+        #expect(await viewModel.save(appState: appState, secureStore: MockSecureStore()) == nil)
+
+        #expect(viewModel.credentialError != nil)
+        #expect(viewModel.changesSecrets)
+
+        viewModel.removeCertificate(.certificateAuthority)
+        #expect(viewModel.hasChanges == false)
     }
 
     @Test("Switching a new form to another engine and back is not a change")

@@ -1,7 +1,10 @@
 import Foundation
+import os
 import TableProModels
 
 extension ConnectionFormViewModel {
+    private static let certificateLogger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
+
     var usesCertificateSection: Bool {
         !isFileBased && type != .oracle && type != .mssql
     }
@@ -75,15 +78,26 @@ extension ConnectionFormViewModel {
         removedCertificates.insert(role)
     }
 
-    func persistCertificates(for connectionId: UUID) {
+    func persistCertificates(for connectionId: UUID) -> Bool {
         for role in removedCertificates where pendingCertificates[role] == nil {
             certificateStore.delete(role: role, for: connectionId)
-        }
-        for (role, pem) in pendingCertificates {
-            try? certificateStore.store(pem, role: role, for: connectionId)
+            storedCertificateRoles.remove(role)
         }
         removedCertificates.removeAll()
-        pendingCertificates.removeAll()
+        var storedEvery = true
+        for (role, pem) in pendingCertificates {
+            do {
+                try certificateStore.store(pem, role: role, for: connectionId)
+                storedCertificateRoles.insert(role)
+                pendingCertificates[role] = nil
+            } catch {
+                Self.certificateLogger.error(
+                    "Failed to store the \(role.rawValue, privacy: .public) certificate: \(error.localizedDescription, privacy: .public)"
+                )
+                storedEvery = false
+            }
+        }
+        return storedEvery
     }
 
     func cancelPKCS12() {

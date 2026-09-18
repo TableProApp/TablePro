@@ -267,7 +267,7 @@ final class ConnectionFormViewModel {
             storedSecrets.privateKey = privateKey
             sshKeyInputMode = .paste
         }
-        baseline?.secrets = storedSecrets
+        baseline?.secrets = snapshot.secrets
     }
 
     private static func storedSecret(
@@ -518,7 +518,9 @@ final class ConnectionFormViewModel {
         }
         createdFileURL = nil
         settleBookmark()
-        guard storeSecrets(appState: appState, secureStore: secureStore) else { return nil }
+        let storedEverySecret = storeSecrets(appState: appState, secureStore: secureStore)
+        advanceBaselineToSavedState()
+        guard storedEverySecret else { return nil }
         return connectionId
     }
 
@@ -588,13 +590,12 @@ final class ConnectionFormViewModel {
 
     private func storeSecrets(appState: AppState, secureStore: any SecureStore) -> Bool {
         let writes = secretWrites
-        var storageFailed = false
-
-        persistCertificates(for: connectionId)
+        var storageFailed = !persistCertificates(for: connectionId)
 
         if let changed = writes.password {
             do {
                 try appState.connectionManager.storePassword(changed, for: connectionId)
+                storedSecrets.password = changed
             } catch {
                 Self.logger.error("Failed to store password: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
@@ -604,6 +605,7 @@ final class ConnectionFormViewModel {
         if let changed = writes.sshPassword {
             do {
                 try secureStore.store(changed, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
+                storedSecrets.sshPassword = changed
             } catch {
                 Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
@@ -612,6 +614,7 @@ final class ConnectionFormViewModel {
         if let changed = writes.sshKeyPassphrase {
             do {
                 try secureStore.store(changed, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
+                storedSecrets.sshKeyPassphrase = changed
             } catch {
                 Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
                 storageFailed = true
@@ -630,6 +633,15 @@ final class ConnectionFormViewModel {
             return false
         }
         return true
+    }
+
+    private func advanceBaselineToSavedState() {
+        baseline = ConnectionFormSnapshot(
+            edits: edits,
+            secrets: storedSecrets,
+            stagedCertificates: [:],
+            removedStoredCertificates: []
+        )
     }
 
     func persistPrivateKey(secureStore: any SecureStore) throws {
