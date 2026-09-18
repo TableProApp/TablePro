@@ -143,6 +143,7 @@ final class WelcomeViewModel: ObservableObject {
     private var linkedFoldersCancellable: AnyCancellable?
     private var teamLibraryCancellable: AnyCancellable?
     private var licenseCancellable: AnyCancellable?
+    private var connectionStatusCancellable: AnyCancellable?
     private var welcomeRouterTask: Task<Void, Never>?
     private var searchDebounceTask: Task<Void, Never>?
     private let importableAppDetector: @MainActor () -> Bool
@@ -419,6 +420,16 @@ final class WelcomeViewModel: ObservableObject {
                 self?.teamLibraryConnections = Self.buildTeamLibraryConnections()
             }
 
+        /// A row's status badge reads `DatabaseManager.activeSessions`, which is not observable, and
+        /// the row is only rewritten when the outline revision moves. Nothing here listened for a
+        /// connection coming up or going away, so a row that said Connected went on saying it after
+        /// a Disconnect, for as long as the window stayed open.
+        connectionStatusCancellable = services.appEvents.connectionStatusChanged
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.outlineRevision += 1
+            }
+
         loadConnections()
         linkedConnections = services.linkedFolderWatcher.linkedConnections
         teamLibraryConnections = Self.buildTeamLibraryConnections()
@@ -619,7 +630,7 @@ final class WelcomeViewModel: ObservableObject {
 
     // MARK: - Connection Errors
 
-    private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
+    func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
             Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
             return
@@ -627,7 +638,7 @@ final class WelcomeViewModel: ObservableObject {
 
         if !WindowManager.shared.hasOpenWindow(for: connection.id) {
             Self.logger.info(
-                "Connection failed after window was closed: \(error.localizedDescription, privacy: .public)")
+                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
             return
         }
 
@@ -638,7 +649,7 @@ final class WelcomeViewModel: ObservableObject {
             return
         }
 
-        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
         WindowManager.shared.closeWindow(for: connection.id)
         presentConnectionFailure(error, connection: connection)
     }

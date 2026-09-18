@@ -57,6 +57,42 @@ struct FilterSettingsStorageTests {
         #expect(loaded.map(\.columnName) == ["id", "name", "age"])
     }
 
+    /// The delete runs on the storage's IO queue, so a load that arrives first used to read the file
+    /// still on disk and hand back what the reader had just cleared.
+    @Test("Clearing hides the saved filters before the file is gone")
+    func clearHidesFiltersBeforeTheDeleteLands() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
+        storage.clearLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+    }
+
+    @Test("Saving no filters hides them before the file is gone")
+    func savingNoFiltersHidesThemBeforeTheDeleteLands() {
+        let (storage, directory) = makeStorage()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let connectionId = UUID()
+        let filters = [TestFixtures.makeTableFilter(column: "id", value: "1")]
+
+        storage.saveLastFilters(filters, for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+        storage.waitForPendingDiskWrites()
+        storage.saveLastFilters([], for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+
+        #expect(
+            storage.loadLastFilters(for: "users", connectionId: connectionId, databaseName: "db", schemaName: nil)
+                .isEmpty
+        )
+    }
+
     @Test("Loading an unsaved table returns no filters")
     func loadReturnsEmptyForMissing() {
         let (storage, directory) = makeStorage()

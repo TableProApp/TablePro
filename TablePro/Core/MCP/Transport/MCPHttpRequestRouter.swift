@@ -98,7 +98,7 @@ struct MCPHttpRequestRouter: Sendable {
         do {
             data = try JSONEncoder().encode(envelope)
         } catch {
-            Self.logger.error("Encode error envelope failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Encode error envelope failed: \(error.publicLogShape, privacy: .public)")
             data = Self.staticInternalErrorEnvelope
         }
         await context.writeJsonResponse(data: data, status: error.httpStatus, extraHeaders: error.extraHeaders)

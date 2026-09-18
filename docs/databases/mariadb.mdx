@@ -21,6 +21,9 @@ See [Connection URL Reference](/connections/urls).
 - MariaDB stores JSON in a LONGTEXT column. The driver reads MariaDB's extended field attributes and types those columns as JSON, so their values open in the JSON editor instead of as plain text.
 - Virtual and persistent columns are detected on every version, including the bare `VIRTUAL` and `PERSISTENT` spelling that 10.1 and older report, and are left out of generated INSERT and UPDATE statements.
 - A query timeout goes in as `SET SESSION max_statement_time`, counted in seconds. MySQL takes `max_execution_time` in milliseconds.
+- Sequences appear in the sidebar's Tables section as their own kind, read-only, with **Drop Sequence** on the menu. See [Sequences and system-versioned tables](/features/table-operations#sequences-and-system-versioned-tables).
+- A table declared `WITH SYSTEM VERSIONING` is listed as an ordinary table and loses **Truncate** alone, which the server refuses with error 4137.
+- A temporary table shadowing a base table of the same name is left out of the listing, so the name appears once.
 
 <Frame caption="A JSON value open in the JSON editor">
   <img className="block dark:hidden" src="/images/json-editor-popover.png" alt="JSON cell editor popover" />

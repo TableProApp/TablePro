@@ -20,12 +20,22 @@ import Foundation
 internal enum TrailingPaneSurface: String, CaseIterable, Hashable {
     case inspector
     case assistant
+    /// What the agent session proposed, ran and changed. Agent mode forces it for as long as the
+    /// mode is on, and never writes it over the surface the user chose for browsing.
+    case agentResult
 
     internal var localizedTitle: String {
         switch self {
         case .inspector: String(localized: "Inspector")
         case .assistant: String(localized: "Assistant")
+        case .agentResult: String(localized: "Result")
         }
+    }
+
+    /// Whether the user may choose this surface for themselves. The result pane belongs to a mode
+    /// rather than to a command, so it never lands in the stored per-connection preference.
+    internal var isUserSelectable: Bool {
+        self != .agentResult
     }
 
     /// The assistant is the only surface a setting can take away, so a stored value naming it has
@@ -33,6 +43,9 @@ internal enum TrailingPaneSurface: String, CaseIterable, Hashable {
     /// per connection without asking whether the surface still exists, and no change notification
     /// ever reaches that restore.
     internal static func resolved(_ surface: TrailingPaneSurface, isAIEnabled: Bool) -> TrailingPaneSurface {
-        surface == .assistant && !isAIEnabled ? .inspector : surface
+        guard isAIEnabled else {
+            return surface == .inspector ? surface : .inspector
+        }
+        return surface
     }
 }

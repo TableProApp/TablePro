@@ -28,6 +28,7 @@ struct MongoScriptDocumentBatch: Sendable {
 
 #if canImport(CLibMongoc)
 import CLibMongoc
+import os
 
 extension MongoDBConnection {
     func scriptRunCommand(client: OpaquePointer, command: String, database: String?) throws -> String {

@@ -256,7 +256,14 @@ final class QueryTabManager: ObservableObject {
         }
     }
 
-    @Published var onTableOpened: ((_ tableName: String, _ schemaName: String?, _ databaseName: String, _ isView: Bool, _ isPreview: Bool) -> Void)?
+    @Published var onTableOpened: ((
+        _ tableName: String,
+        _ schemaName: String?,
+        _ databaseName: String,
+        _ isView: Bool,
+        _ objectType: TableInfo.TableType?,
+        _ isPreview: Bool
+    ) -> Void)?
 
     /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
     /// listens here rather than at the navigation call sites, because a retarget that forgets to
@@ -265,10 +272,14 @@ final class QueryTabManager: ObservableObject {
 
     @Published var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
 
+    /// `objectType` carries what the object is, where the caller knew it, alongside the `isView`
+    /// the callers that know only that much pass. Whoever records the open needs the kind: a
+    /// MariaDB sequence recorded as "not a table" came back as a view and was offered Drop View.
     private func notifyTableOpened(
-        tableName: String, schemaName: String?, databaseName: String, isView: Bool, isPreview: Bool
+        tableName: String, schemaName: String?, databaseName: String,
+        isView: Bool, objectType: TableInfo.TableType?, isPreview: Bool
     ) {
-        onTableOpened?(tableName, schemaName, databaseName, isView, isPreview)
+        onTableOpened?(tableName, schemaName, databaseName, isView, objectType, isPreview)
     }
 
     /// A table tab opened before its schema was known was reported without one, so whoever recorded
@@ -321,7 +332,7 @@ final class QueryTabManager: ObservableObject {
             selectedTabId = existingTab.id
             notifyTableOpened(
                 tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-                isView: isView, isPreview: isPreview
+                isView: isView, objectType: objectType, isPreview: isPreview
             )
             return false
         }
@@ -349,7 +360,7 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
         notifyTableOpened(
             tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: isPreview
+            isView: isView, objectType: objectType, isPreview: isPreview
         )
         return true
     }
@@ -519,7 +530,7 @@ final class QueryTabManager: ObservableObject {
         tabStructureVersion += 1
         notifyTableOpened(
             tableName: tableName, schemaName: schemaName, databaseName: databaseName,
-            isView: isView, isPreview: isPreview
+            isView: isView, objectType: objectType, isPreview: isPreview
         )
         return true
     }

@@ -62,7 +62,7 @@ internal final class RecentConnectionsStore {
             let data = try JSONEncoder().encode(updated)
             defaults.set(data, forKey: PreferenceKeys.recentConnections.name)
         } catch {
-            Self.logger.error("Failed to save recent connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save recent connections: \(error.publicLogShape, privacy: .public)")
         }
         appEvents.connectionListStateChanged.send(())
     }
@@ -74,7 +74,7 @@ internal final class RecentConnectionsStore {
         do {
             return try JSONDecoder().decode(RecentConnectionsLedger.self, from: data)
         } catch {
-            logger.error("Discarding unreadable recent connections: \(error.localizedDescription, privacy: .public)")
+            logger.error("Discarding unreadable recent connections: \(error.publicLogShape, privacy: .public)")
             return RecentConnectionsLedger()
         }
     }

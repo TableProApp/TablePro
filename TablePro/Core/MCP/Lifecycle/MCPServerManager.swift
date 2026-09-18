@@ -276,7 +276,7 @@ internal final class MCPServerManager: ObservableObject {
                 expiresAt: expiresAt
             )
         } catch {
-            Self.logger.error("Bridge credential minting failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Bridge credential minting failed: \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }

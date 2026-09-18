@@ -673,7 +673,15 @@ struct ExportDialog: View {
             databaseItems = normalizedForCurrentFormat(items)
             isLoading = false
             applyDefaultFileName()
+        } catch is CancellationError {
+            isLoading = false
         } catch {
+            /// A dismissed dialog cancels this task, and a driver may report that as its own error
+            /// type rather than as `CancellationError`, so a closed dialog must not raise an alert.
+            guard !Task.isCancelled else {
+                isLoading = false
+                return
+            }
             isLoading = false
             AlertHelper.showErrorSheet(
                 title: String(localized: "Export Error"),

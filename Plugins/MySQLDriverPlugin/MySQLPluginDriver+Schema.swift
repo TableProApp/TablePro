@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal extension MySQLPluginDriver {
@@ -98,7 +99,16 @@ internal extension MySQLPluginDriver {
     /// Merged into the `SHOW FULL COLUMNS` rows by column name alone, so this has to read the same
     /// database that statement did. Reading the session's instead grafts one table's generation
     /// expressions onto another's columns wherever the two databases share a column name.
+    ///
+    /// Skipped entirely where the catalog is known not to describe the database: it would answer
+    /// nothing there, and the degraded whole-schema read runs this once per table.
+    ///
+    /// A catalog that refuses is not this read's to report either. One refused read does not mark a
+    /// database blind, so a proxy that answers `ERROR 1064` rather than answering nothing still
+    /// reaches this statement, and a throw here would take the whole `SHOW FULL COLUMNS` answer with
+    /// it. It degrades to no expressions instead, which is what the blind path returns anyway.
     private func fetchGenerationExpressions(table: String, schema: String?) async throws -> [String: String] {
+        guard catalogVisibility.visibility(of: effectiveSchema(schema)) != .blind else { return [:] }
         let identity = serverIdentity
         guard MySQLServerVersion.hasGenerationExpression(banner: identity.banner, flavor: identity.flavor) else {
             return [:]
@@ -110,14 +120,22 @@ internal extension MySQLPluginDriver {
                 AND TABLE_NAME = \'\(mysqlEscapeStringLiteral(table))\'
                 AND GENERATION_EXPRESSION <> \'\'
             """
-        let result = try await execute(query: query)
-        var expressions: [String: String] = [:]
-        for row in result.rows {
-            guard let name = row[safe: 0]?.asText,
-                  let expression = row[safe: 1]?.asText?.nilIfEmpty else { continue }
-            expressions[name] = expression
+        do {
+            let result = try await execute(query: query)
+            var expressions: [String: String] = [:]
+            for row in result.rows {
+                guard let name = row[safe: 0]?.asText,
+                      let expression = row[safe: 1]?.asText?.nilIfEmpty else { continue }
+                expressions[name] = expression
+            }
+            return expressions
+        } catch let error as MariaDBPluginError
+            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
+            Self.logger.warning(
+                "generation expression read refused code=\(error.code, privacy: .public) message=\(error.message)"
+            )
+            return [:]
         }
-        return expressions
     }
 
     /// MySQL and MariaDB disagree on this catalog: MySQL 8 has no TABLE_NAME on CHECK_CONSTRAINTS
@@ -174,7 +192,12 @@ internal extension MySQLPluginDriver {
     /// the bulk read reports a changed generation expression as no difference at all.
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
-        return try await informationSchemaColumns(schema: schema, table: nil)
+        let database = effectiveSchema(schema)
+        return try await catalogOrShow(
+            database: database,
+            catalog: { try await self.informationSchemaColumns(schema: schema, table: nil) },
+            show: { try await self.showColumnsByTable(database: database) }
+        )
     }
 
     private func informationSchemaColumns(

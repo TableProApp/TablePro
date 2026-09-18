@@ -59,7 +59,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
                 throw CancellationError()
             } catch {
                 Self.logger.warning(
-                    "Metric \(definition.id, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                    "Metric \(definition.id, privacy: .public) failed: \(error.publicLogShape, privacy: .public)"
                 )
                 if firstFailure == nil { firstFailure = error }
             }

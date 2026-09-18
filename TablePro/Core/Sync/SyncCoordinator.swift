@@ -688,7 +688,7 @@ final class SyncCoordinator: ObservableObject {
         do {
             remoteConnection = try SyncRecordMapper.toConnection(record)
         } catch {
-            Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Skipping remote connection \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return .skipped
         }
 
@@ -837,7 +837,7 @@ final class SyncCoordinator: ObservableObject {
             remoteProfile = try SyncRecordMapper.toCredentialProfile(record)
         } catch {
             Self.logger.error(
-                "Skipping remote credential profile \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Skipping remote credential profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)"
             )
             return true
         }
@@ -896,7 +896,7 @@ final class SyncCoordinator: ObservableObject {
         do {
             remoteProfile = try SyncRecordMapper.toSSHProfile(record)
         } catch {
-            Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Skipping remote SSH profile \(record.recordID.recordName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             return
         }
         if tombstoneIds.contains(remoteProfile.id.uuidString) { return }

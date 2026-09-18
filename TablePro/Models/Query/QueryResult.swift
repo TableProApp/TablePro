@@ -128,6 +128,17 @@ struct TableInfo: Identifiable, Hashable, Sendable {
     /// the same table.
     let partitionCount: Int?
 
+    /// Set for a MariaDB table declared `WITH SYSTEM VERSIONING`.
+    ///
+    /// A trait rather than a kind, because MariaDB reports `SYSTEM VERSIONED` for a partitioned
+    /// table and an unpartitioned one alike, and the object is a plain table for every other
+    /// decision: it takes rows, indexes, comments, a rename and a drop. Only TRUNCATE is refused,
+    /// measured as ERROR 4137 on 11.4.13.
+    ///
+    /// Outside `==` and `hash` for the reason `comment` and `partitionCount` are: the same table
+    /// with versioning turned on is the same table.
+    let isSystemVersioned: Bool
+
     enum TableType: String, Sendable, CaseIterable {
         case table = "TABLE"
         case view = "VIEW"
@@ -136,25 +147,58 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         case systemTable = "SYSTEM TABLE"
         case partitionedTable = "PARTITIONED TABLE"
         case externalTable = "EXTERNAL TABLE"
+        case sequence = "SEQUENCE"
 
         /// Whether a foreign key may point at this object. A view has no rows of its own to
         /// constrain, so a key that names one is a statement the server refuses.
         var isForeignKeyTarget: Bool {
             switch self {
             case .table, .partitionedTable: true
-            case .view, .materializedView, .foreignTable, .systemTable, .externalTable: false
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence: false
             }
         }
 
         /// An external table lives in a catalog outside the database, has no
         /// primary key and no row identifier to target, and rejects UPDATE and
         /// DELETE, so the grid must not offer row editing for one.
+        ///
+        /// Measured on MariaDB 11.4.13: a sequence takes an INSERT but refuses UPDATE, DELETE and
+        /// TRUNCATE with ERROR 1031, so an editable grid over one offers two writes out of three
+        /// that the server always refuses.
         var allowsRowEditing: Bool {
             switch self {
-            case .view, .externalTable:
+            case .view, .externalTable, .sequence:
                 return false
             case .table, .materializedView, .foreignTable, .systemTable, .partitionedTable:
                 return true
+            }
+        }
+
+        /// Whether the Backup Dump sheet lists this kind as an object to narrow a dump to.
+        ///
+        /// Measured: `mysqldump 8.4.11` and `mariadb-dump 12.3.3` write a partitioned table's
+        /// `CREATE TABLE ... PARTITION BY` and all of its rows when handed the parent by name, and
+        /// `mariadb-dump` writes `CREATE SEQUENCE` plus `DO SETVAL` for a sequence. A view carries
+        /// no rows and its definition rides with the schema, which is the gap this does not close.
+        var isBackupSelectable: Bool {
+            switch self {
+            case .table, .partitionedTable, .sequence:
+                return true
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable:
+                return false
+            }
+        }
+
+        /// Whether the import sheet may offer this kind as an existing table to insert into.
+        ///
+        /// Narrower than `isBackupSelectable`: a sequence is worth dumping and is not worth
+        /// importing rows into, since MariaDB stores exactly one row in one.
+        var acceptsImportedRows: Bool {
+            switch self {
+            case .table, .partitionedTable:
+                return true
+            case .view, .materializedView, .foreignTable, .systemTable, .externalTable, .sequence:
+                return false
             }
         }
     }
@@ -165,7 +209,8 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         rowCount: Int?,
         schema: String? = nil,
         comment: String? = nil,
-        partitionCount: Int? = nil
+        partitionCount: Int? = nil,
+        isSystemVersioned: Bool = false
     ) {
         self.name = name
         self.type = type
@@ -173,6 +218,7 @@ struct TableInfo: Identifiable, Hashable, Sendable {
         self.schema = schema
         self.comment = comment
         self.partitionCount = partitionCount
+        self.isSystemVersioned = isSystemVersioned
     }
 
     static func == (lhs: TableInfo, rhs: TableInfo) -> Bool {
@@ -214,6 +260,13 @@ struct ColumnInfo: Identifiable, Hashable {
     let ddlDefault: String?
     let ddlGenerationExpression: String?
     let ddlCollation: String?
+    /// The name the column is classified by where `dataType` is the server's declared spelling and
+    /// says nothing about what the column holds. `PluginColumnInfo.classificationTypeName` says why.
+    let classificationTypeName: String?
+
+    /// What a classifier reads. Every display reads `dataType`, and these differ on PostgreSQL:
+    /// `status` is shown and `ENUM` is classified, `posint` is shown and `INTEGER` is classified.
+    var typeNameForClassification: String { classificationTypeName ?? dataType }
 
     init(
         name: String,
@@ -233,7 +286,8 @@ struct ColumnInfo: Identifiable, Hashable {
         ddlSpelling: String? = nil,
         ddlDefault: String? = nil,
         ddlGenerationExpression: String? = nil,
-        ddlCollation: String? = nil
+        ddlCollation: String? = nil,
+        classificationTypeName: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -253,6 +307,7 @@ struct ColumnInfo: Identifiable, Hashable {
         self.ddlDefault = ddlDefault
         self.ddlGenerationExpression = ddlGenerationExpression
         self.ddlCollation = ddlCollation
+        self.classificationTypeName = classificationTypeName
     }
 }
 

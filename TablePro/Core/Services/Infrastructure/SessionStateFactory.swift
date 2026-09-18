@@ -62,9 +62,10 @@ enum SessionStateFactory {
             },
             tabSessionRegistry: tabSessionRegistry
         )
-        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, isPreview in
+        tabMgr.onTableOpened = { tableName, schemaName, databaseName, isView, objectType, isPreview in
             SharedSidebarState.forConnection(connectionId).recordTableOpen(
-                database: databaseName, schema: schemaName, name: tableName, isView: isView, isPreview: isPreview
+                database: databaseName, schema: schemaName, name: tableName,
+                isView: isView, objectType: objectType, isPreview: isPreview
             )
         }
         tabMgr.onTableSchemaResolved = { tableName, databaseName, schemaName in

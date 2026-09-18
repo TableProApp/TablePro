@@ -186,6 +186,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func escapeStringLiteral(_ value: String) -> String {
+        Self.escapeStringLiteral(value)
+    }
+
+    /// The backslash goes first, or every escape written after it is escaped again.
+    static func escapeStringLiteral(_ value: String) -> String {
         var result = value
         result = result.replacingOccurrences(of: "\\", with: "\\\\")
         result = result.replacingOccurrences(of: "'", with: "''")

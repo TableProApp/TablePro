@@ -16,7 +16,7 @@ extension PostgreSQLPluginDriver {
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await execute(query: query)
+        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
         let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: table)[table] ?? [:]
         return result.rows.compactMap { row in
             mapPgColumnRow(row, tableNameOffset: 0, catalog: catalog, columnDDL: columnDDL)
@@ -32,7 +32,7 @@ extension PostgreSQLPluginDriver {
             capabilities: versionedCapabilities,
             includeMaterializedViews: includesMaterializedViews()
         )
-        let result = try await execute(query: query)
+        let result = try await executeSchemaRelativeRead(query, schema: resolvedSchema)
         let columnDDL = try await fetchColumnDDL(schema: resolvedSchema, table: nil)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
@@ -128,6 +128,8 @@ extension PostgreSQLPluginDriver {
         let generatedIdx = tableNameOffset + 9
         let udtSchemaIdx = tableNameOffset + 10
         let generationExpressionIdx = tableNameOffset + 11
+        let declaredTypeIdx = tableNameOffset + 12
+        let domainNameIdx = tableNameOffset + 13
 
         guard row.count > typeIdx,
               let name = row[nameIdx].asText,
@@ -144,7 +146,13 @@ extension PostgreSQLPluginDriver {
             arrayTypesByQualifiedName: catalog.arrayTypes
         )
         let allowedValues = resolution.allowedValues
-        let dataType = resolution.dataType
+        let spelling = PostgreSQLColumnTypeSpelling.resolve(
+            declaredType: row.count > declaredTypeIdx ? row[declaredTypeIdx].asText : nil,
+            informationSchemaType: rawDataType,
+            domainName: row.count > domainNameIdx ? row[domainNameIdx].asText : nil,
+            udtSchema: udtSchema,
+            resolved: resolution
+        )
 
         let isNullable = row.count > nullableIdx && row[nullableIdx].asText == "YES"
         let defaultValue = row.count > defaultIdx ? row[defaultIdx].asText : nil
@@ -161,7 +169,7 @@ extension PostgreSQLPluginDriver {
 
         return PluginColumnInfo(
             name: name,
-            dataType: dataType,
+            dataType: spelling.dataType,
             isNullable: isNullable,
             isPrimaryKey: isPk,
             defaultValue: defaultValue,
@@ -177,7 +185,8 @@ extension PostgreSQLPluginDriver {
             ddlSpelling: columnDDL[name]?.typeSpelling,
             ddlDefault: columnDDL[name]?.defaultExpression,
             ddlGenerationExpression: columnDDL[name]?.generationExpression,
-            ddlCollation: columnDDL[name]?.collation
+            ddlCollation: columnDDL[name]?.collation,
+            classificationTypeName: spelling.classificationTypeName
         )
     }
 

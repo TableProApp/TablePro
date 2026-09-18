@@ -245,6 +245,53 @@ enum MCPAuditLogger {
         )
     }
 
+    /// A call TablePro made to an MCP server somebody else runs.
+    ///
+    /// Every other entry in this log records something an outside client asked of TablePro. This one
+    /// records the opposite direction, which is the direction that can take the user's schema and
+    /// their query results off the machine, so it is the one worth keeping. It is written before the
+    /// request leaves rather than when it returns: a server that never answers has still been sent
+    /// the arguments.
+    ///
+    /// The payload is recorded as its size and its SHA-256, not its text. The arguments of a tool
+    /// call carry table names, filter values and anything the model copied out of a result, and an
+    /// audit log that stored them would be a second copy of the data the log exists to watch. The
+    /// digest still answers "was this the same call as that one".
+    static func logOutboundToolCall(
+        serverId: UUID,
+        serverName: String,
+        sessionId: UUID,
+        connectionId: UUID?,
+        toolName: String,
+        payload: Data
+    ) {
+        let digest = SHA256.hash(data: payload).compactMap { String(format: "%02x", $0) }.joined()
+        let fingerprint = String(digest.prefix(16))
+        serverTool.info(
+            """
+            Outbound tool: server=\(serverName, privacy: .public) \
+            tool=\(toolName, privacy: .public) \
+            connection=\(connectionId?.uuidString ?? "-", privacy: .public) \
+            bytes=\(payload.count, privacy: .public) \
+            payload=\(fingerprint, privacy: .public)
+            """
+        )
+
+        record(
+            category: .tool,
+            connectionId: connectionId,
+            action: "mcp.outbound.\(toolName)",
+            outcome: .success,
+            details: [
+                "server=\(serverId.uuidString)",
+                "serverName=\(truncate(serverName, to: messageExcerptLimit))",
+                "session=\(sessionId.uuidString)",
+                "bytes=\(payload.count)",
+                "payload=\(fingerprint)"
+            ].joined(separator: " ")
+        )
+    }
+
     static func logResourceRead(
         principal: MCPPrincipal,
         uri: String,

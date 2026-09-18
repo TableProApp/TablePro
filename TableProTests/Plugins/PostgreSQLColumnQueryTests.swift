@@ -85,13 +85,27 @@ struct PostgreSQLColumnsQueryTests {
         #expect(query.contains("AND a.attnum = c.ordinal_position"))
     }
 
-    @Test("a server without identity or generated columns never names pg_attribute")
+    /// Re-pinned deliberately: the join itself is no longer version-gated, because the declared
+    /// type is `format_type(a.atttypid, a.atttypmod)` and every server back to 9.1 has both. What
+    /// stays gated is the two attributes 9.1 does not have.
+    @Test("a server without identity or generated columns reads no attidentity or attgenerated")
     func legacyServerSkipsAttributes() {
         let query = allTables(schema: "s2")
-        #expect(!query.contains("pg_attribute"))
+        #expect(query.contains("pg_catalog.pg_attribute a"))
         #expect(!query.contains("a.attidentity"))
         #expect(!query.contains("a.attgenerated"))
         #expect(!query.contains("c.generation_expression"))
+    }
+
+    @Test("both the modern and the legacy query read the declared type and the domain name")
+    func everyServerReadsTheDeclaredType() {
+        for query in [singleTable(schema: "s2", table: "orders"), allTables(schema: "s2")] {
+            #expect(query.contains("pg_catalog.format_type(a.atttypid, a.atttypmod)"))
+            #expect(query.contains("AS declared_type"))
+            #expect(query.contains("c.domain_name AS domain_name"))
+            #expect(query.contains("ON a.attrelid = rel.oid"))
+            #expect(query.contains("AND a.attnum = c.ordinal_position"))
+        }
     }
 
     @Test("column comments are read through the relation's pg_class oid, not a statistics view")
@@ -120,7 +134,7 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         "UNION ALL",
         "mvc.relkind = 'm'",
         "pg_catalog.pg_attribute mva",
-        "pg_catalog.format_type"
+        "pg_catalog.format_type(mva.atttypid"
     ]
 
     private static let outerColumns = [
@@ -135,7 +149,9 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         "cols.identity_kind",
         "cols.generated_kind",
         "cols.udt_schema",
-        "cols.generation_expression"
+        "cols.generation_expression",
+        "cols.declared_type",
+        "cols.domain_name"
     ]
 
     private func query(
@@ -211,12 +227,19 @@ struct PostgreSQLMaterializedViewColumnsQueryTests {
         #expect(!legacyQuery.contains("mva.attgenerated"))
     }
 
-    @Test("type names are spelled the way information_schema spells them, without a typmod")
+    @Test("classified type names are spelled the way information_schema spells them, without a typmod")
     func armSpellsTypesLikeInformationSchema() {
         let rendered = query()
         #expect(rendered.contains("pg_catalog.format_type(mva.atttypid, NULL)"))
         #expect(rendered.contains("pg_catalog.format_type(mvt.typbasetype, NULL)"))
-        #expect(!rendered.contains("atttypmod"))
+    }
+
+    @Test("the declared type carries the modifier and the domain name comes from the type itself")
+    func armReadsTheDeclaredType() {
+        let rendered = query()
+        #expect(rendered.contains("pg_catalog.format_type(mva.atttypid, mva.atttypmod)"))
+        #expect(rendered.contains("AS declared_type"))
+        #expect(rendered.contains("CASE WHEN mvt.typtype = 'd' THEN mvt.typname END AS domain_name"))
     }
 
     @Test("a domain resolves to its base type, as information_schema does")

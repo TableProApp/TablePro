@@ -88,7 +88,7 @@ struct WelcomeMenuSpecTests {
         ))
         let all = titles(sections)
 
-        #expect(all.first == ["Connect"])
+        #expect(all.first == ["Connect", "Open in Agent Mode"])
         #expect(all.last == ["Delete…"])
         #expect(all.flatMap { $0 }.contains("Rename"))
         #expect(all.flatMap { $0 }.contains("Move to Group"))

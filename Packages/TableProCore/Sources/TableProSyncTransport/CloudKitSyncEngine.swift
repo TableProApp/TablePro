@@ -25,7 +25,6 @@ public actor CloudKitSyncEngine {
     public static let zoneName = "TableProSync"
     public static let defaultContainerID = "iCloud.com.TablePro"
 
-    private static let maxBatchSize = 400
     private static let maxRetries = 3
 
     public static func hasICloudEntitlement() -> Bool {
@@ -88,20 +87,18 @@ public actor CloudKitSyncEngine {
         let publishableDeletions = SyncSchemaGate.publishable(deletions: deletions)
         guard !publishableRecords.isEmpty || !publishableDeletions.isEmpty else { return PushOutcome() }
 
-        var remainingSaves = publishableRecords[...]
-        var remainingDeletions = publishableDeletions[...]
         var outcome = PushOutcome()
+        let plans = SyncPushBatchPlanner.plans(
+            saveCount: publishableRecords.count,
+            deletionCount: publishableDeletions.count
+        )
 
-        while !remainingSaves.isEmpty || !remainingDeletions.isEmpty {
-            let savesCount = min(remainingSaves.count, Self.maxBatchSize)
-            let batchSaves = Array(remainingSaves.prefix(savesCount))
-            remainingSaves = remainingSaves.dropFirst(savesCount)
-
-            let deletionsCount = min(remainingDeletions.count, Self.maxBatchSize - savesCount)
-            let batchDeletions = Array(remainingDeletions.prefix(deletionsCount))
-            remainingDeletions = remainingDeletions.dropFirst(deletionsCount)
-
-            outcome.merge(try await pushBatch(records: batchSaves, deletions: batchDeletions))
+        for plan in plans {
+            outcome.merge(try await push(
+                plan: plan,
+                records: publishableRecords,
+                deletions: publishableDeletions
+            ))
         }
 
         let saved = outcome.savedRecords.count
@@ -114,6 +111,34 @@ public actor CloudKitSyncEngine {
         }
 
         return outcome
+    }
+
+    private func push(
+        plan: SyncPushBatchPlan,
+        records: [CKRecord],
+        deletions: [CKRecord.ID]
+    ) async throws -> PushOutcome {
+        guard !plan.isEmpty else { return PushOutcome() }
+
+        do {
+            return try await pushBatch(
+                records: Array(records[plan.saves]),
+                deletions: Array(deletions[plan.deletions])
+            )
+        } catch let error as CKError where error.code == .limitExceeded {
+            let halves = SyncPushBatchPlanner.halves(of: plan)
+            guard !halves.isEmpty else { throw error }
+
+            Self.logger.notice(
+                "CloudKit refused a batch of \(plan.itemCount, privacy: .public) items, splitting it"
+            )
+
+            var outcome = PushOutcome()
+            for half in halves {
+                outcome.merge(try await push(plan: half, records: records, deletions: deletions))
+            }
+            return outcome
+        }
     }
 
     private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
@@ -275,7 +300,9 @@ public actor CloudKitSyncEngine {
                 Self.logger.warning(
                     "Transient CK error (attempt \(attempt + 1)/\(Self.maxRetries)): \(error.localizedDescription)"
                 )
-                try await Task.sleep(for: .seconds(delay))
+                /// A retry that waits out a rate limit has no deadline of its own, so it can
+                /// ride whichever wake the system was going to make anyway.
+                try await Task.sleep(for: .seconds(delay), tolerance: .seconds(delay / 2))
             } catch {
                 throw error
             }

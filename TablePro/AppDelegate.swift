@@ -196,6 +196,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         persistOpenConnectionsForRecovery()
+        /// Synchronously, because an actor hop at terminate may never be scheduled: a session killed
+        /// mid-reply used to come back with its last turn missing.
+        AgentSessionRegistry.shared.persistSynchronouslyForTermination()
         LinkedFolderWatcher.shared.stop()
         SQLFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
@@ -276,7 +279,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         original.draw(in: rect)
                         return true
                     }
-                    item.image = resized
+                    item.setInformativeImage(resized)
                 }
                 submenu.addItem(item)
             }

@@ -278,7 +278,7 @@ final class SchemaService: ObservableObject {
             return
         } catch {
             Self.logger.warning(
-                "[schema] per-schema route failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] per-schema route failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
             commitSchemaTables(.failed(error.localizedDescription), connectionId: connectionId, schema: schema)
         }
@@ -364,7 +364,7 @@ final class SchemaService: ObservableObject {
             tablesOutcome = .cancelled
         } catch {
             Self.logger.warning(
-                "[schema] per-schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] per-schema load failed connId=\(connectionId, privacy: .public) schema=\(schema, privacy: .private(mask: .hash)) error=\(error.publicLogShape, privacy: .public)"
             )
             tablesOutcome = .failed(error.localizedDescription)
         }
@@ -773,7 +773,7 @@ final class SchemaService: ObservableObject {
                 return
             }
             Self.logger.warning(
-                "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
             if settleTablesFailed(connectionId, message: error.localizedDescription, leftLoadedScope: scopeChanged) {
                 bumpGeneration(connectionId)
@@ -858,7 +858,7 @@ final class SchemaService: ObservableObject {
                 return
             }
             Self.logger.warning(
-                "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] hierarchical schema list failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
             commitSideObjects(
                 connectionId,
@@ -955,7 +955,7 @@ final class SchemaService: ObservableObject {
             return nil
         } catch {
             Self.logger.warning(
-                "[schema] fetchSchemas failed connId=\(key.connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] fetchSchemas failed connId=\(key.connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
             return nil
         }
@@ -978,7 +978,7 @@ final class SchemaService: ObservableObject {
             return .cancelled
         } catch {
             logger.warning(
-                "[schema] \(label, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                "[schema] \(label, privacy: .public) load failed connId=\(connectionId, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
             )
             return .failed(error.localizedDescription)
         }

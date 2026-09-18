@@ -24,6 +24,9 @@ extension MainWindowToolbar: NSToolbarItemValidation {
         let supportsServerDashboard: Bool
         let canNavigateBack: Bool
         let canNavigateForward: Bool
+        /// A connection is on screen, whether or not it has finished connecting. The mode control is
+        /// the one item that answers to this rather than to `connected`.
+        var hasSelectedWorkspace: Bool = false
     }
 
     /// Listed exhaustively so a new state has to choose a side instead of inheriting "alive".
@@ -56,8 +59,15 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             /// that sets it answers for as long as the session does. A window with no session has
             /// nothing to protect and nothing to write it to.
             return context.connected
+        case Self.inspector:
+            return context.connected
         case Self.refresh, Self.quickSwitcher, Self.newTab, Self.exportTables, Self.sidebarToggle:
             return context.connected
+        /// Reachable while a connection is still dialling, unlike the rest of these. Agent mode
+        /// draws the prompt the user typed, so a control gated on `connected` would be dead in the
+        /// one state that surface exists for.
+        case Self.contentModeItem:
+            return context.hasSelectedWorkspace && AppSettingsManager.shared.ai.enabled
         case Self.addRow:
             return context.connected && context.canAddRow
         case Self.restorePreviousValues:
@@ -82,7 +92,28 @@ extension MainWindowToolbar: NSToolbarItemValidation {
     }
 
     func validationContext() -> ValidationContext? {
-        guard let state = coordinator?.toolbarState else { return nil }
+        guard let state = coordinator?.toolbarState else {
+            /// A workspace that is still connecting has no coordinator, and returning nil here
+            /// disabled every item including the mode control, whose whole point is to be reachable
+            /// in exactly that state.
+            guard let host = windowController, host.hasSelectedWorkspace else { return nil }
+            return ValidationContext(
+                connected: false,
+                isTableTab: false,
+                canAddRow: false,
+                canRestorePreviousValues: false,
+                hasPendingChanges: false,
+                hasDataPendingChanges: false,
+                blocksAllWrites: false,
+                fileBased: false,
+                supportsContainerSwitching: false,
+                supportsImport: false,
+                supportsServerDashboard: false,
+                canNavigateBack: false,
+                canNavigateForward: false,
+                hasSelectedWorkspace: true
+            )
+        }
         return ValidationContext(
             connected: Self.hasLiveSession(state.connectionState),
             isTableTab: state.isTableTab,
@@ -96,7 +127,8 @@ extension MainWindowToolbar: NSToolbarItemValidation {
             supportsImport: PluginManager.shared.supportsImport(for: state.databaseType),
             supportsServerDashboard: coordinator?.commandActions?.supportsServerDashboard ?? false,
             canNavigateBack: coordinator?.canNavigateBack ?? false,
-            canNavigateForward: coordinator?.canNavigateForward ?? false
+            canNavigateForward: coordinator?.canNavigateForward ?? false,
+            hasSelectedWorkspace: modeHost?.hasSelectedWorkspace ?? false
         )
     }
 

@@ -143,8 +143,9 @@ struct BackupDatabaseFlow: View {
             items.append(
                 NativeDumpBatchItem(
                     database: entry.database,
-                    scope: expanded,
-                    destination: plan[index].url
+                    scope: expanded.scope,
+                    destination: plan[index].url,
+                    blockedReason: expanded.blockedReason
                 )
             )
         }

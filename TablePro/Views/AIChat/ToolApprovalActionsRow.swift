@@ -23,6 +23,7 @@ struct ToolApprovalActionsRow: View {
 
     @Environment(\.chatPrimaryPendingToolUseId) private var primaryPendingToolUseId
     @Environment(\.chatApprovalConnectionName) private var connectionName
+    @Environment(\.chatApprovalSessionId) private var sessionId
 
     private var takesDefaultAction: Bool {
         primaryPendingToolUseId == toolUseId
@@ -31,7 +32,7 @@ struct ToolApprovalActionsRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .run)
+                resolve(.run)
             } label: {
                 Text(String(localized: "Run"))
             }
@@ -41,7 +42,7 @@ struct ToolApprovalActionsRow: View {
 
             if allowsStandingGrant {
                 Button {
-                    ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .alwaysAllow)
+                    resolve(.alwaysAllow)
                 } label: {
                     Text(String(localized: "Always Allow"))
                 }
@@ -52,7 +53,7 @@ struct ToolApprovalActionsRow: View {
             }
 
             Button {
-                ToolApprovalCenter.shared.resolve(toolUseId: toolUseId, decision: .cancel)
+                resolve(.cancel)
             } label: {
                 Text(String(localized: "Reject"))
             }
@@ -71,6 +72,11 @@ struct ToolApprovalActionsRow: View {
             Spacer()
         }
         .padding(.top, 2)
+    }
+
+    private func resolve(_ decision: ToolApprovalDecision) {
+        guard let sessionId else { return }
+        ToolApprovalCenter.shared.resolve(sessionId: sessionId, toolUseId: toolUseId, decision: decision)
     }
 
     /// Each button names its own call. A turn proposing three writes otherwise hands assistive

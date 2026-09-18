@@ -85,6 +85,24 @@ extension WelcomeViewModel {
         }
     }
 
+    /// Opens a connection with its window already in Agent mode.
+    ///
+    /// Through the same chokepoint every other connection intent takes, so a connection already open
+    /// is switched where it stands rather than opened a second time. Nothing about the session is
+    /// held here: the welcome list is an outline built from storage, and a session is neither.
+    func startAgentSession(connectionId: UUID, prompt: String? = nil) {
+        Task {
+            do {
+                try await TabRouter.shared.route(
+                    .openAgentSession(connectionId: connectionId, prompt: prompt)
+                )
+            } catch {
+                guard let connection = connectionsById[connectionId] else { return }
+                handleConnectError(error, connection: connection)
+            }
+        }
+    }
+
     func deleteIntent(for rows: [LibraryRowID]) -> WelcomeDeleteIntent? {
         let resolved = resolve(rows)
         guard !resolved.hasSectionHeader,
@@ -395,6 +413,8 @@ extension WelcomeViewModel {
         switch command {
         case .connect(let rows):
             connect(rows: rows)
+        case .startAgentSession(let id):
+            startAgentSession(connectionId: id)
         case .disconnect(let id):
             let name = connectionsById[id]?.name ?? ""
             Task {

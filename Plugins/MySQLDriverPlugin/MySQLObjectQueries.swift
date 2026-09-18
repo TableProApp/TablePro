@@ -51,10 +51,15 @@ public enum MySQLObjectQueries {
     /// so `PARTITION_NAME IS NOT NULL` is what separates the two. A subpartitioned table repeats its
     /// partition name once per subpartition, so the count is over distinct names rather than rows.
     ///
-    /// The grouping and the join are both binary. `INFORMATION_SCHEMA` compares identifiers
-    /// case-insensitively, so on a server with `lower_case_table_names=0` a schema holding both
-    /// `orders` and `Orders` would merge their counts and could label the unpartitioned one
-    /// `PARTITIONED TABLE`.
+    /// The grouping and the join both compare the name as bytes. `INFORMATION_SCHEMA` collates its
+    /// identifiers case-insensitively on MySQL 5.7 and earlier and on every MariaDB measured, so on a
+    /// server with `lower_case_table_names=0` a schema holding both `orders` and `Orders` would merge
+    /// their counts and could label the unpartitioned one `PARTITIONED TABLE`.
+    ///
+    /// `CAST(... AS BINARY)` rather than the `BINARY` operator, which MySQL 8.0.27 deprecated: it
+    /// raises three of Warning 1287 on every read from 8.4 on. Measured warning-free with identical
+    /// rows on MySQL 5.5 to 9.7, MariaDB 5.5 to 11.4 and TiDB. `TABLE_NAME` stays in the `GROUP BY`,
+    /// or `ONLY_FULL_GROUP_BY` rejects the query with 1055.
     ///
     /// `includePartitions` is false for Databend, which answers the same wire protocol through the
     /// same driver without this catalog.
@@ -74,8 +79,8 @@ public enum MySQLObjectQueries {
                 SELECT TABLE_NAME AS P_TABLE_NAME, COUNT(DISTINCT PARTITION_NAME) AS PARTITION_COUNT
                 FROM information_schema.PARTITIONS
                 WHERE TABLE_SCHEMA = '\(schemaLiteral)' AND PARTITION_NAME IS NOT NULL
-                GROUP BY BINARY TABLE_NAME, TABLE_NAME
-            ) p ON BINARY p.P_TABLE_NAME = BINARY t.TABLE_NAME
+                GROUP BY CAST(TABLE_NAME AS BINARY), TABLE_NAME
+            ) p ON CAST(p.P_TABLE_NAME AS BINARY) = CAST(t.TABLE_NAME AS BINARY)
             WHERE t.TABLE_SCHEMA = '\(schemaLiteral)'
             """
     }
@@ -84,6 +89,54 @@ public enum MySQLObjectQueries {
     /// `information_schema`, it reports an account with no table privilege there as an access error.
     public static func showFullTables(schema: String) -> String {
         "SHOW FULL TABLES FROM \(quoteIdentifier(schema))"
+    }
+
+    /// Whether `information_schema` describes this database at all, in one scalar.
+    ///
+    /// A direct server always answers a scalar aggregate with one row. DBLE 3.23 answers it with no
+    /// row at all, which is the unambiguous signal that the catalog is the proxy's own and not the
+    /// database's.
+    public static func catalogTableCount(schema: String) -> String {
+        """
+        SELECT COUNT(*)
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+        """
+    }
+
+    /// The columns of every foreign key in a database, or of one table's.
+    ///
+    /// Read on its own rather than joined to `REFERENTIAL_CONSTRAINTS`, because ShardingSphere-Proxy
+    /// 5.5.3 answers any join of two `information_schema` tables with an OK packet carrying no
+    /// columns while answering either read correctly alone.
+    ///
+    /// `ORDINAL_POSITION` in the `ORDER BY` is what puts a composite key's columns in declaration
+    /// order. Without it, MariaDB 11.4.13 returns them reversed: measured on a two-column key,
+    /// ordering by `CONSTRAINT_NAME` alone answered `p_tenant` then `p_id`.
+    public static func foreignKeyColumns(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "AND TABLE_NAME = '\(escapeLiteral($0))'" } ?? ""
+        return """
+            SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME,
+                   REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = '\(escapeLiteral(schema))'
+                \(tablePredicate)
+                AND REFERENCED_TABLE_NAME IS NOT NULL
+            ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION
+            """
+    }
+
+    /// The two referential actions of every foreign key in a database, or of one table's.
+    /// `TABLE_NAME` is on this catalog from MySQL 5.5 and MariaDB 5.5, so the pair names one key
+    /// without a join.
+    public static func referentialActions(schema: String, table: String?) -> String {
+        let tablePredicate = table.map { "AND TABLE_NAME = '\(escapeLiteral($0))'" } ?? ""
+        return """
+            SELECT TABLE_NAME, CONSTRAINT_NAME, DELETE_RULE, UPDATE_RULE
+            FROM information_schema.REFERENTIAL_CONSTRAINTS
+            WHERE CONSTRAINT_SCHEMA = '\(escapeLiteral(schema))'
+                \(tablePredicate)
+            """
     }
 
     /// One table's partitions, subpartitions included. A subpartition arrives as its own row

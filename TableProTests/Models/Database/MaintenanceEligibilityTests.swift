@@ -75,6 +75,24 @@ struct MaintenanceEligibilityTests {
         }
     }
 
+    /// Measured on MariaDB 11.4.13: CHECK, ANALYZE and OPTIMIZE on a sequence each answer one note
+    /// row, "The storage engine for the table doesn't support check/analyze/optimize", and change
+    /// nothing. A sequence is in no driver's `appliesTo`, so the submenu is omitted rather than
+    /// filled with commands that no-op.
+    @Test("A sequence keeps no object-scoped operation")
+    func sequenceKeepsNothing() {
+        let offered = TableOperationEligibility.maintenanceOperations(postgresLike, for: .sequence).map(\.name)
+
+        #expect(offered.isEmpty)
+    }
+
+    @Test("A database-wide operation reached from a sequence row is still kept")
+    func sequenceKeepsDatabaseWideOperations() {
+        let wide = [operation("VACUUM", kinds: [], scope: .database)]
+
+        #expect(TableOperationEligibility.maintenanceOperations(wide, for: .sequence).map(\.name) == ["VACUUM"])
+    }
+
     @Test("A row with no known type is treated as a table")
     func unknownTypeFallsBackToTable() {
         let offered = TableOperationEligibility.maintenanceOperations(postgresLike, for: nil).map(\.name)
@@ -91,6 +109,7 @@ struct MaintenanceEligibilityTests {
         #expect(TableOperationEligibility.pluginKind(.foreignTable) == .foreignTable)
         #expect(TableOperationEligibility.pluginKind(.systemTable) == .systemTable)
         #expect(TableOperationEligibility.pluginKind(.externalTable) == .externalTable)
+        #expect(TableOperationEligibility.pluginKind(.sequence) == PluginObjectKind(rawValue: "SEQUENCE"))
         #expect(TableOperationEligibility.pluginKind(nil) == .table)
     }
 }

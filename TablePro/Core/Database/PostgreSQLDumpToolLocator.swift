@@ -120,7 +120,7 @@ enum PostgreSQLDumpToolLocator {
     ) -> NativeDumpToolSelection {
         logger.info(
             """
-            \(binary, privacy: .public) \(version.fullName, privacy: .public) at \(path, privacy: .public) \
+            \(binary, privacy: .public) \(version.fullName, privacy: .public) at \(path, privacy: .private(mask: .hash)) \
             for a PostgreSQL \(server.fullName, privacy: .public) server
             """
         )
@@ -154,7 +154,7 @@ enum PostgreSQLDumpToolLocator {
 
         if finished.wait(timeout: .now() + timeout) == .timedOut {
             process.terminate()
-            logger.warning("\(path, privacy: .public) did not answer --version within \(timeout, privacy: .public)s")
+            logger.warning("\(path, privacy: .private(mask: .hash)) did not answer --version within \(timeout, privacy: .public)s")
             return nil
         }
         guard process.terminationStatus == 0 else { return nil }

@@ -26,6 +26,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     internal var cachedPrivilegeCatalog: PluginPrivilegeCatalog?
 
+    /// One verdict per database about whether `information_schema` describes it, learned from the
+    /// reads the driver already makes. It survives a reconnect, because the server on the other end
+    /// is the same one, and `disconnect()` clears it because the next one may not be.
+    internal let catalogVisibility = MySQLCatalogVisibilityLedger()
+
     private var _flavor: MySQLServerFlavor
 
     var flavor: MySQLServerFlavor { sessionLock.withLock { _flavor } }
@@ -109,8 +114,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         mysqlEscapeStringLiteral(value)
     }
 
-    private static let tableNameRegex = try? NSRegularExpression(pattern: "(?i)\\bFROM\\s+[`\"']?([\\w]+)[`\"']?")
-
     init(config: DriverConnectionConfig) {
         self.config = config
         self._activeDatabase = config.database
@@ -167,6 +170,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         Task { await timer.stop() }
         mariadbConnection?.disconnect()
         mariadbConnection = nil
+        catalogVisibility.clear()
         let initialFlavor = Self.initialFlavor(for: config)
         let inFlight = sessionLock.withLock { () -> Task<Void, Error>? in
             _serverVersion = nil
@@ -328,25 +332,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         do {
             let result = try await conn.executeQuery(query, rowCap: rowCap)
-
-            if result.columns.isEmpty && result.rows.isEmpty {
-                let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                let isSelect = trimmed.uppercased().hasPrefix("SELECT")
-                if isSelect, let tableName = extractTableName(from: query) {
-                    let columns = try await fetchColumnNames(for: tableName)
-                    return PluginQueryResult(
-                        columns: columns,
-                        columnTypeNames: Array(repeating: "TEXT", count: columns.count),
-                        rows: [],
-                        rowsAffected: Int(result.affectedRows),
-                        timing: PluginQueryTiming(
-                            total: Date().timeIntervalSince(startTime),
-                            firstRow: result.firstRowTime
-                        ),
-                        isTruncated: result.isTruncated
-                    )
-                }
-            }
 
             return PluginQueryResult(
                 columns: result.columns,
@@ -550,26 +535,34 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         guard !database.isEmpty else { return [] }
 
-        if let catalogRows = try await catalogTableRows(database: database), !catalogRows.isEmpty {
-            return MySQLTableListing.tables(from: catalogRows, listsSequencesAsTables: listsSequencesAsTables)
-        }
-        let listed = try await execute(query: MySQLObjectQueries.showFullTables(schema: database))
-        return MySQLTableListing.tables(from: listed.rows, listsSequencesAsTables: listsSequencesAsTables)
+        let rows = try await MySQLCatalogFallback.list(
+            database: database,
+            ledger: catalogVisibility,
+            catalog: { try await self.catalogTableRows(database: database) },
+            settlesBlindness: Self.settlesBlindness,
+            show: { try await self.listedTableRows(database: database) }
+        )
+        return MySQLTableListing.tables(from: rows, listsSequencesAsTables: listsSequencesAsTables)
     }
 
-    /// Nil when the server refused the catalog read, which `SHOW FULL TABLES` then settles. A client
-    /// error still throws, because the connection that failed it would fail the second read too.
-    private func catalogTableRows(database: String) async throws -> [[PluginCellValue]]? {
+    /// Logged where the server refused, because the answer that stands instead comes from `SHOW` and
+    /// carries neither table comments nor partition counts. The error is rethrown either way: what a
+    /// refusal says about the database is `MySQLCatalogFallback.list`'s to decide, not this read's.
+    private func catalogTableRows(database: String) async throws -> [[PluginCellValue]] {
         do {
             let query = MySQLObjectQueries.tableList(schema: database, includePartitions: true)
             return try await execute(query: query).rows
         } catch let error as MariaDBPluginError
-            where MySQLTableListing.showFullTablesSettlesCatalogFailure(code: error.code) {
+            where MySQLCatalogVisibilityRule.settlesBlindness(code: error.code) {
             Self.logger.warning(
                 "information_schema table list refused code=\(error.code, privacy: .public) message=\(error.message)"
             )
-            return nil
+            throw error
         }
+    }
+
+    private func listedTableRows(database: String) async throws -> [[PluginCellValue]] {
+        try await execute(query: MySQLObjectQueries.showFullTables(schema: database)).rows
     }
 
     /// A subpartition arrives as its own row carrying its parent partition's name, so the list is
@@ -642,51 +635,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return MySQLIndexGrouping.group(rows)[table] ?? []
     }
 
-    func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        guard !flavor.isDatabend else { return [] }
-        let escapedDb = effectiveSchemaLiteral(schema)
-        let escapedTable = mysqlEscapeStringLiteral(table)
-
-        let query = """
-            SELECT
-                kcu.CONSTRAINT_NAME,
-                kcu.COLUMN_NAME,
-                kcu.REFERENCED_TABLE_NAME,
-                kcu.REFERENCED_COLUMN_NAME,
-                kcu.REFERENCED_TABLE_SCHEMA,
-                rc.DELETE_RULE,
-                rc.UPDATE_RULE
-            FROM information_schema.KEY_COLUMN_USAGE kcu
-            JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-                ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
-                AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
-            WHERE kcu.TABLE_SCHEMA = '\(escapedDb)'
-                AND kcu.TABLE_NAME = '\(escapedTable)'
-                AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-            ORDER BY kcu.CONSTRAINT_NAME
-            """
-
-        let result = try await execute(query: query)
-
-        let foreignKeys: [PluginForeignKeyInfo] = result.rows.compactMap { row in
-            guard let name = row[safe: 0]?.asText,
-                  let column = row[safe: 1]?.asText,
-                  let refTable = row[safe: 2]?.asText,
-                  let refColumn = row[safe: 3]?.asText
-            else { return nil }
-
-            return PluginForeignKeyInfo(
-                name: name, column: column,
-                referencedTable: refTable, referencedColumn: refColumn,
-                referencedSchema: row[safe: 4]?.asText,
-                onDelete: (row[safe: 5]?.asText) ?? "NO ACTION",
-                onUpdate: (row[safe: 6]?.asText) ?? "NO ACTION"
-            )
-        }
-        Self.logger.info("[fk] mysql fetchForeignKeys db=\(self.effectiveSchema(schema), privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
-        return foreignKeys
-    }
-
     /// The same builder the schema-wide list uses, with one more predicate.
     func fetchTriggers(table: String, schema: String?) async throws -> [PluginTriggerInfo] {
         guard !flavor.isDatabend else { return [] }
@@ -709,55 +657,6 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateDropTriggerSQL(name: String, table: String, schema: String?) -> String? {
         "DROP TRIGGER \(qualifiedName(name, schema: schema))"
-    }
-
-    var providesBulkForeignKeyFetch: Bool { true }
-
-    var tableDDLIncludesForeignKeys: Bool { true }
-
-    func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        guard !flavor.isDatabend else { return [:] }
-        let escapedDb = effectiveSchemaLiteral(schema)
-
-        let query = """
-            SELECT
-                kcu.TABLE_NAME,
-                kcu.CONSTRAINT_NAME,
-                kcu.COLUMN_NAME,
-                kcu.REFERENCED_TABLE_NAME,
-                kcu.REFERENCED_COLUMN_NAME,
-                kcu.REFERENCED_TABLE_SCHEMA,
-                rc.DELETE_RULE,
-                rc.UPDATE_RULE
-            FROM information_schema.KEY_COLUMN_USAGE kcu
-            JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-                ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
-                AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
-            WHERE kcu.TABLE_SCHEMA = '\(escapedDb)'
-                AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-            ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME
-            """
-        let result = try await execute(query: query)
-
-        var grouped: [String: [PluginForeignKeyInfo]] = [:]
-        for row in result.rows {
-            guard let tableName = row[safe: 0]?.asText,
-                  let name = row[safe: 1]?.asText,
-                  let column = row[safe: 2]?.asText,
-                  let refTable = row[safe: 3]?.asText,
-                  let refColumn = row[safe: 4]?.asText
-            else { continue }
-
-            let fk = PluginForeignKeyInfo(
-                name: name, column: column,
-                referencedTable: refTable, referencedColumn: refColumn,
-                referencedSchema: row[safe: 5]?.asText,
-                onDelete: (row[safe: 6]?.asText) ?? "NO ACTION",
-                onUpdate: (row[safe: 7]?.asText) ?? "NO ACTION"
-            )
-            grouped[tableName, default: []].append(fk)
-        }
-        return grouped
     }
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? {
@@ -1229,27 +1128,5 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         WHERE TABLE_SCHEMA = '\(effectiveSchemaLiteral(schema))'
         ORDER BY TABLE_NAME
         """
-    }
-
-    // MARK: - Private Helpers
-
-    private func extractTableName(from query: String) -> String? {
-        guard let regex = Self.tableNameRegex,
-              let match = regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)),
-              let range = Range(match.range(at: 1), in: query)
-        else { return nil }
-        return String(query[range])
-    }
-
-    private func fetchColumnNames(for tableName: String) async throws -> [String] {
-        let result = try await execute(query: "DESCRIBE \(quoteIdentifier(tableName))")
-
-        var columns: [String] = []
-        for row in result.rows {
-            if let columnName = row[safe: 0]?.asText {
-                columns.append(columnName)
-            }
-        }
-        return columns
     }
 }

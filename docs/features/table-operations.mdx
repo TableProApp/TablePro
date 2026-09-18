@@ -92,6 +92,12 @@ A materialized view holds stored rows, so refreshing it is a server operation. R
 
 Comments are edited per object. Right-click a table, view, materialized view or foreign table, choose **Edit Comment…**, and type the text; saving an empty field removes the comment. Column comments live in the [Columns tab](/features/table-structure#columns-tab). Both need an engine that writes comments, which today means PostgreSQL and PGlite.
 
+## Sequences and system-versioned tables
+
+A MariaDB sequence carries a number icon in the sidebar and reads as **Sequence**. It is a read-only kind, so its menu drops **Truncate** and **Import**, the drop item reads **Drop Sequence**, and the Structure tab offers no edit. MariaDB refuses `UPDATE`, `DELETE` and `TRUNCATE` on one with error 1031, and `ALTER TABLE … ADD COLUMN` with error 4086. Rename still works, through `RENAME TABLE`. Read the current value with `SELECT * FROM seq_name`, and change it with `SETVAL` in the query editor.
+
+A MariaDB table declared `WITH SYSTEM VERSIONING` stays an ordinary table: row editing, **Import**, index edits, comments, rename and drop all work. **Truncate** alone is withheld, because the server refuses it with error 4137. Delete the history with `DELETE HISTORY FROM table_name` instead. On iPhone and iPad the listing reports such a table as a plain one, so **Truncate** is offered there and the server's refusal comes back as an alert.
+
 ## Databases and schemas
 
 `Cmd+K` switches database, covered in [Managing Connections](/connections#switch-connections-and-databases). The switcher takes the engine's own vocabulary: Schema on Oracle and Spanner, Keyspace on Cassandra, Dataset on BigQuery, Namespace on SurrealDB. SQLite is file-based, so it points at the welcome window to open a different file.

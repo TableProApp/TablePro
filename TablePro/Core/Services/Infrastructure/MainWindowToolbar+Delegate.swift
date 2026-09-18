@@ -30,16 +30,23 @@ extension MainWindowToolbar {
             /// arm is dead on macOS 14. Below that the identifier is app-owned, and an identifier
             /// the delegate does not answer for simply never appears in the toolbar.
             guard #unavailable(macOS 14.0) else { return nil }
+            /// The action is the split controller's, so it is forwarded rather than named directly.
+            /// An `NSToolbarItem` whose explicit target does not respond to its selector is disabled
+            /// after `validateVisibleItems`, measured, even with a responder in the chain that does:
+            /// the item was drawn permanently dimmed on the app's minimum OS and never toggled
+            /// anything.
             return menuOnlyItem(
                 id: itemIdentifier,
                 label: String(localized: "Inspector"),
                 symbol: "sidebar.trailing",
-                action: #selector(MainSplitViewController.toggleInspector(_:)),
+                action: #selector(forwardToggleInspector(_:)),
                 shortcut: .toggleInspector,
                 description: String(localized: "Toggle Inspector")
             )
         case Self.sidebarToggle:
             return makeSidebarToggleItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
+        case Self.contentModeItem:
+            return makeContentModeToolbarItem(claimsSlot: Self.claimsItemSlot(willBeInsertedIntoToolbar: flag))
         case Self.backForwardGroup:
             /// `isNavigational` is what puts back and forward on the leading edge of the content
             /// title area, where Finder and Safari keep them, instead of in the slot the identifier

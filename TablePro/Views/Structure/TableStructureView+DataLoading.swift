@@ -78,7 +78,7 @@ extension TableStructureView {
                 do {
                     triggers = try await structureLoader.triggers()
                 } catch {
-                    Self.logger.error("Failed to load triggers: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Failed to load triggers: \(error.publicLogShape, privacy: .public)")
                     triggers = []
                 }
             case .parts:
@@ -86,7 +86,7 @@ extension TableStructureView {
             }
             tabData.markFetched(tab)
         } catch {
-            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load \(tab.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
@@ -206,7 +206,7 @@ extension TableStructureView {
                 tabData.markFetched(.foreignKeys)
             }
         } catch {
-            Self.logger.error("Failed to reload structure: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to reload structure: \(error.publicLogShape, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }

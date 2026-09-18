@@ -156,7 +156,7 @@ public actor MCPHttpServerTransport {
             resumeReady(with: .success(()))
 
         case .failed(let error):
-            Self.logger.error("MCP HTTP listener failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("MCP HTTP listener failed: \(error.publicLogShape, privacy: .public)")
             emitState(.failed(reason: error.localizedDescription))
             listener?.cancel()
             listener = nil

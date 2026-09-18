@@ -195,7 +195,7 @@ final class SchemaProviderRegistry: CatalogChangeTarget {
                 return
             } catch {
                 Self.logger.warning(
-                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.localizedDescription, privacy: .public)"
+                    "[schema] scope population failed scope=\(scope.qualifiedDescription, privacy: .public) error=\(error.publicLogShape, privacy: .public)"
                 )
                 /// Fenced like the commit is, and for the same reason. `notePopulatedExternally`
                 /// bumps the generation when `SchemaRefreshService` fills this scope with the

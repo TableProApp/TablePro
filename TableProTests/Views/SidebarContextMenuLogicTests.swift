@@ -188,6 +188,22 @@ struct SidebarContextMenuLogicTests {
         #expect(SidebarContextMenuLogic.deleteLabel(for: .externalTable) == "Drop External Table")
     }
 
+    // MARK: - Sequences
+
+    /// Measured on MariaDB 11.4.13: a sequence refuses UPDATE, DELETE and TRUNCATE with ERROR 1031,
+    /// and `DROP SEQUENCE` is the statement that removes one.
+    @Test("A sequence is read-only, offers no Import or Truncate, and drops as a sequence")
+    func sequenceIsReadOnly() {
+        let table = TableInfo(name: "order_ids", type: .sequence, rowCount: nil)
+
+        #expect(SidebarContextMenuLogic.isReadOnlyKind(.sequence))
+        #expect(!SidebarContextMenuLogic.importVisible(clickedTable: table, supportsImport: true))
+        #expect(!SidebarContextMenuLogic.truncateVisible(
+            targets: [Self.ref(table)], context: Self.expressible([Self.ref(table)])
+        ))
+        #expect(SidebarContextMenuLogic.deleteLabel(for: .sequence) == "Drop Sequence")
+    }
+
     /// The predicate now answers for every row a Truncate would act on, so the tests build refs.
     private static func ref(_ table: TableInfo) -> DatabaseTreeTableRef {
         DatabaseTreeTableRef(database: "app", schema: "public", table: table)

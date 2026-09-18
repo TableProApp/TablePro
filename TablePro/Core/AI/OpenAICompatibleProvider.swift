@@ -475,7 +475,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("OpenAI-compatible model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
         }
 
@@ -507,7 +507,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            Self.logger.warning("Ollama model fetch failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Ollama model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(
                 String(format: String(localized: "Failed to fetch models from %@"), endpoint)
             )

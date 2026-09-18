@@ -31,7 +31,8 @@ enum DatabaseObjectKind: String, Codable, Sendable, Hashable {
         switch tableType {
         case .view: self = .view
         case .materializedView: self = .materializedView
-        case .table, .foreignTable, .systemTable, .partitionedTable, .externalTable: return nil
+        case .table, .foreignTable, .systemTable, .partitionedTable, .externalTable, .sequence:
+            return nil
         }
     }
 

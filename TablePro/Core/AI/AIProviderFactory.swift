@@ -47,21 +47,24 @@ enum AIProviderFactory {
         cacheLock.withLock { $0.removeValue(forKey: configID) }
     }
 
-    static func resetCopilotConversation() {
+    /// Both of these name a session, because Copilot conversation state is per session even though
+    /// the provider is cached per configuration. Without the id, one session starting a new
+    /// conversation reset every other session sharing that configuration.
+    static func resetCopilotConversation(sessionId: UUID) {
         cacheLock.withLock { cache in
             for (_, entry) in cache {
                 if let copilot = entry.provider as? CopilotChatProvider {
-                    copilot.resetConversation()
+                    copilot.resetConversation(sessionId: sessionId)
                 }
             }
         }
     }
 
-    static func copilotDeleteLastTurn() {
+    static func copilotDeleteLastTurn(sessionId: UUID) {
         cacheLock.withLock { cache in
             for (_, entry) in cache {
                 if let copilot = entry.provider as? CopilotChatProvider {
-                    copilot.deleteLastTurn()
+                    copilot.deleteLastTurn(sessionId: sessionId)
                 }
             }
         }

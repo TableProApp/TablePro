@@ -21,6 +21,13 @@ internal struct WorkspacePaneRenderKey: Equatable {
     internal let pane: ConnectionWindowPane
     internal let connection: DatabaseConnection?
     internal let sessionRevision: Int
+    /// A mode toggle changes nothing else in this key: the phase holds, the connection holds, and
+    /// the session is the same one. Without it `syncPanes(of:)` compares equal and silently skips
+    /// the rebuild, so the window stays on the mode it was already drawing.
+    internal let contentMode: ConnectionWorkspaceContentMode
+    /// Which agent session the panes were built for. Switching session changes nothing else in this
+    /// key, so without it the conversation and result panes stay bound to the previous one.
+    internal let agentSessionId: UUID?
 }
 
 /// One connection's three panes, kept alive for as long as the window hosts that connection.
@@ -53,6 +60,11 @@ internal final class WorkspacePanes {
     /// only way it gets the `sizingOptions` firewall below, which is applied here and nowhere else.
     internal let assistant: NSHostingController<AnyView>
 
+    /// The agent session's result pane. It is a pane of its own for the same reason the assistant
+    /// is: it holds scroll position and a selected segment that must survive a workspace switch,
+    /// and it gets the `sizingOptions` firewall below by being here.
+    internal let agentResult: NSHostingController<AnyView>
+
     internal let sidebar: NSHostingController<AnyView>
     /// The editor tab strip. It is a pane like the other three, built and kept alive per
     /// connection, even though the window shows it in the titlebar accessory rather than in a
@@ -72,6 +84,7 @@ internal final class WorkspacePanes {
         detail = NSHostingController(rootView: AnyView(Color.clear))
         inspector = NSHostingController(rootView: AnyView(Color.clear))
         assistant = NSHostingController(rootView: AnyView(Color.clear))
+        agentResult = NSHostingController(rootView: AnyView(Color.clear))
         sidebar = NSHostingController(rootView: AnyView(Color.clear))
         tabStrip = EditorTabStripPaneController()
         for pane in panes {
@@ -80,7 +93,7 @@ internal final class WorkspacePanes {
     }
 
     private var panes: [NSHostingController<AnyView>] {
-        [detail, inspector, assistant, sidebar]
+        [detail, inspector, assistant, agentResult, sidebar]
     }
 
     /// The controller a trailing surface is drawn by. One split item hosts whichever of these the
@@ -89,6 +102,7 @@ internal final class WorkspacePanes {
         switch surface {
         case .inspector: inspector
         case .assistant: assistant
+        case .agentResult: agentResult
         }
     }
 

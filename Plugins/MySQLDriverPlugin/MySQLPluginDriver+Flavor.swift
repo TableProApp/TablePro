@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct MySQLFlavorMismatchError: Error, Equatable {

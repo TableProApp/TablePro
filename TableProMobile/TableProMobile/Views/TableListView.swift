@@ -57,18 +57,21 @@ struct TableListView: View {
         return filtered
     }
 
+    /// Grouped by the kind's own answer rather than by two `==` filters, so a kind this list does
+    /// not name cannot fall through both and disappear, which is what a MariaDB sequence did.
     private var tableSections: [(String, [TableInfo])] {
-        let tableItems = filteredTables.filter { $0.type == .table || $0.type == .systemTable }
-        let viewItems = filteredTables.filter { $0.type == .view || $0.type == .materializedView }
+        let grouped = Dictionary(grouping: filteredTables, by: \.type.listSection)
+        return TableInfo.TableKind.ListSection.allCases.compactMap { section in
+            guard let items = grouped[section], !items.isEmpty else { return nil }
+            return (Self.sectionTitle(section), items)
+        }
+    }
 
-        var sections: [(String, [TableInfo])] = []
-        if !tableItems.isEmpty {
-            sections.append(("Tables", tableItems))
+    private static func sectionTitle(_ section: TableInfo.TableKind.ListSection) -> String {
+        switch section {
+        case .tables: return String(localized: "Tables")
+        case .views: return String(localized: "Views")
         }
-        if !viewItems.isEmpty {
-            sections.append(("Views", viewItems))
-        }
-        return sections
     }
 
     var body: some View {
@@ -86,20 +89,24 @@ struct TableListView: View {
                                 Label("Copy Name", systemImage: "doc.on.doc")
                             }
 
-                            let isView = table.type == .view || table.type == .materializedView
-                            if !isView && !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL {
+                            let writesAllowed = !connection.safeModeLevel.blocksWrites && engineSpeaksSQLDDL
+                            if writesAllowed && (table.type.allowsTruncate || table.type.allowsDrop) {
                                 Divider()
 
-                                Button(role: .destructive) {
-                                    tableToTruncate = table
-                                } label: {
-                                    Label("Truncate Table", systemImage: "trash.slash")
+                                if table.type.allowsTruncate {
+                                    Button(role: .destructive) {
+                                        tableToTruncate = table
+                                    } label: {
+                                        Label("Truncate Table", systemImage: "trash.slash")
+                                    }
                                 }
 
-                                Button(role: .destructive) {
-                                    tableToDrop = table
-                                } label: {
-                                    Label("Drop Table", systemImage: "trash")
+                                if table.type.allowsDrop {
+                                    Button(role: .destructive) {
+                                        tableToDrop = table
+                                    } label: {
+                                        Label("Drop Table", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -208,7 +215,7 @@ struct TableListView: View {
 private struct TableRow: View {
     let table: TableInfo
 
-    private var isView: Bool { table.type == .view || table.type == .materializedView }
+    private var isView: Bool { table.type.listSection == .views }
 
     var body: some View {
         RowItemLabel(title: table.name) {

@@ -17,9 +17,24 @@ protocol ExportMetadataReading {
     func fetchSchemas() async throws -> [String]
     func fetchDatabases() async throws -> [String]
     func fetchTables(schema: String?) async throws -> [TableInfo]
-    func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]]
+    func fetchTablesGroupedByDatabase() async -> [String: [TableInfo]]
     func loadObjects(request: ExportObjectLoader.Request, tables: [TableInfo]) async -> [ExportObjectItem]
     func columnNames(table: String, schema: String?) async -> [String]
+}
+
+/// What the export tree calls a raw `information_schema.TABLES` row.
+///
+/// The driver's vocabulary with one deliberate difference. `SYSTEM VIEW` is a system table to the
+/// sidebar, which groups it with the catalog and withholds a drop, but `PluginExportObjectKind`
+/// reads `.systemTable` as a table that carries rows: MySQL's `information_schema` entries then
+/// export as `CREATE TABLE` plus a `SELECT *` of the catalog, where a view exports as its
+/// definition. So a view stays a view at this boundary, and nothing about the sidebar changes.
+nonisolated internal enum ExportCatalogTableType {
+    internal static func decode(_ declaredType: String) -> TableInfo.TableType {
+        let kind = PluginDriverAdapter.mapPluginTableType(declaredType) ?? .table
+        guard kind == .systemTable, declaredType.lowercased().contains("view") else { return kind }
+        return .view
+    }
 }
 
 /// Reads through the connection's metadata route.
@@ -59,31 +74,42 @@ struct ExportDriverMetadataReader: ExportMetadataReading {
         }
     }
 
-    /// One server-wide read for every database. The query carries no WHERE clause, so a
-    /// connection per database would return the same rows and only cost a connect, and a
-    /// database the user can list but not open becomes an empty group instead of an error
-    /// that fails the whole dialog.
-    func fetchTablesGroupedByDatabase() async throws -> [String: [TableInfo]] {
-        try await withDriver { driver in
-            let query = """
-                SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-                FROM information_schema.TABLES
-                ORDER BY TABLE_NAME
-                """
-            let result = try await driver.execute(query: query)
+    /// One server-wide read that describes every database at once, where the engine has a catalog
+    /// that answers it. It is an optimization and never the last word: the tree asks the driver
+    /// about any database this read did not describe.
+    ///
+    /// Engines with no `information_schema` refuse the statement outright (Kafka answers
+    /// "Unexpected TABLE_NAME in a CONSUME statement"), and a MySQL proxy answers it from its own
+    /// backend rather than from the databases it publishes: measured, DBLE returns no rows at all,
+    /// MyCat refuses it with 3000, and ShardingSphere-Proxy answers one data source's physical
+    /// catalog, whose names are not the logical ones. All of those come back as nothing described.
+    func fetchTablesGroupedByDatabase() async -> [String: [TableInfo]] {
+        do {
+            return try await withDriver { driver in
+                let query = """
+                    SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
+                    FROM information_schema.TABLES
+                    ORDER BY TABLE_NAME
+                    """
+                let result = try await driver.execute(query: query)
 
-            var grouped: [String: [TableInfo]] = [:]
-            for row in result.rows {
-                guard row.count >= 2,
-                      let rowSchema = row[0].asText,
-                      let name = row[1].asText else {
-                    continue
+                var grouped: [String: [TableInfo]] = [:]
+                for row in result.rows {
+                    guard row.count >= 2,
+                          let rowSchema = row[0].asText,
+                          let name = row[1].asText else {
+                        continue
+                    }
+                    let declaredType = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
+                    grouped[rowSchema, default: []].append(
+                        TableInfo(name: name, type: ExportCatalogTableType.decode(declaredType), rowCount: nil)
+                    )
                 }
-                let typeStr = row.count > 2 ? (row[2].asText ?? "BASE TABLE") : "BASE TABLE"
-                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
-                grouped[rowSchema, default: []].append(TableInfo(name: name, type: type, rowCount: nil))
+                return grouped
             }
-            return grouped
+        } catch {
+            Self.logger.warning("Export catalog read failed: \(error.localizedDescription, privacy: .public)")
+            return [:]
         }
     }
 
@@ -127,6 +153,8 @@ struct ExportRowSnapshot {
 /// reader.
 @MainActor
 struct ExportTreeBuilder {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportDialog")
+
     let connection: DatabaseConnection
     let exportDatabaseName: String
     let preselection: ExportPreselection
@@ -212,11 +240,15 @@ struct ExportTreeBuilder {
 
     private func buildByDatabase(priorRows: [String: ExportRowSnapshot]) async throws -> [ExportDatabaseItem] {
         let databases = try await reader.fetchDatabases()
-        let tablesByDatabase = try await reader.fetchTablesGroupedByDatabase()
+        let tablesByDatabase = await reader.fetchTablesGroupedByDatabase()
         var items: [ExportDatabaseItem] = []
         for dbName in databases {
-            let tables = tablesByDatabase[dbName] ?? []
             let isCurrentDB = dbName == connection.database
+            let tables = if let described = tablesByDatabase[dbName] {
+                described
+            } else {
+                await tables(in: dbName, isCurrentDatabase: isCurrentDB)
+            }
             let loaded = await loadObjects(
                 containerName: dbName,
                 schema: isCurrentDB ? nil : dbName,
@@ -245,6 +277,23 @@ struct ExportTreeBuilder {
             return item1.name < item2.name
         }
         return items
+    }
+
+    /// What the driver says a database holds, for a database the catalog read did not describe.
+    ///
+    /// A database the account can list but not open answers with the server's own refusal (MySQL
+    /// reports `1044 Access denied` for one it lists in `SHOW DATABASES`), and one engine's export
+    /// dialog must not close over another's privileges: the database becomes an empty group, the
+    /// way a database with no objects already does, and the rest of the tree is built.
+    private func tables(in database: String, isCurrentDatabase: Bool) async -> [TableInfo] {
+        do {
+            return try await reader.fetchTables(schema: isCurrentDatabase ? nil : database)
+        } catch {
+            Self.logger.warning(
+                "Export tree read no tables for \(database, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
     }
 
     private func buildFlatDatabaseItem(

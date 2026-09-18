@@ -57,13 +57,17 @@ internal extension StructureCompareOptions {
         return result.isEmpty ? nil : result
     }
 
+    /// Without the schema a type names, so a type both sides declare reads the same whether the
+    /// side that read it resolved it on its own path or qualified it: `public.geometry(Point,4326)`
+    /// against `extensions.geometry(Point,4326)`, and a type in one schema read from another.
     func normalizedType(_ dataType: String) -> String {
         let collapsed = Self.whitespaceRun.stringByReplacingMatches(
             in: dataType,
             range: NSRange(dataType.startIndex..., in: dataType),
             withTemplate: " "
         )
-        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+        return SchemaRelativeSpelling.unqualified(trimmed).lowercased()
     }
 
     func columnListKey(_ columns: [String]) -> String {

@@ -13,9 +13,7 @@
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
-# The app's floor, and the only place it is written down for these scripts. Configs/Base.xcconfig
-# holds the same number for the Xcode build.
-DEPLOY_TARGET="14.0"
+source "$TABLEPRO_LIB_DIR/deployment-target.sh"
 
 make_universal() {
     local lib

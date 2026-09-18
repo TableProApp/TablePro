@@ -187,4 +187,66 @@ struct SafeModeFloorTests {
 
         #expect(DatabaseManager.shared.session(for: connection.id)?.safeModeLevel == .alert)
     }
+
+    /// Agent mode is a fourth, independently-true condition, so the chain had to stop answering the
+    /// first match and start answering the strictest. A managed policy at Read-Only outranks it; a
+    /// managed policy at Alert ties with it and either reason is correct at that level.
+    @Test("Agent mode raises an unrestricted connection to Alert")
+    func agentModeRaisesToAlert() throws {
+        let floor = try #require(SafeModeFloor.resolve(
+            isEngineReadOnly: false,
+            opensRemoteDatabaseFile: false,
+            managedMinimum: nil,
+            isAgentModeActive: true
+        ))
+        #expect(floor.level == .alert)
+        #expect(floor.reason == .agentMode)
+    }
+
+    @Test("A read-only engine still outranks agent mode")
+    func readOnlyEngineOutranksAgentMode() throws {
+        let floor = try #require(SafeModeFloor.resolve(
+            isEngineReadOnly: true,
+            opensRemoteDatabaseFile: false,
+            managedMinimum: nil,
+            isAgentModeActive: true
+        ))
+        #expect(floor.level == .readOnly)
+        #expect(floor.reason == .readOnlyEngine)
+    }
+
+    @Test("A stricter managed policy outranks agent mode")
+    func managedPolicyOutranksAgentMode() throws {
+        let floor = try #require(SafeModeFloor.resolve(
+            isEngineReadOnly: false,
+            opensRemoteDatabaseFile: false,
+            managedMinimum: .readOnly,
+            isAgentModeActive: true
+        ))
+        #expect(floor.level == .readOnly)
+        #expect(floor.reason == .managedPolicy)
+    }
+
+    @Test("Agent mode never lowers a level the user set higher")
+    func agentModeNeverLowers() throws {
+        let floor = try #require(SafeModeFloor.resolve(
+            isEngineReadOnly: false,
+            opensRemoteDatabaseFile: false,
+            managedMinimum: nil,
+            isAgentModeActive: true
+        ))
+        #expect(floor.raising(.readOnly) == .readOnly)
+        #expect(floor.raising(.safeModeFull) == .safeModeFull)
+        #expect(floor.raising(.silent) == .alert)
+    }
+
+    @Test("Leaving agent mode leaves no floor behind")
+    func leavingAgentModeClearsTheFloor() {
+        #expect(SafeModeFloor.resolve(
+            isEngineReadOnly: false,
+            opensRemoteDatabaseFile: false,
+            managedMinimum: nil,
+            isAgentModeActive: false
+        ) == nil)
+    }
 }

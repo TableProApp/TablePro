@@ -158,7 +158,7 @@ internal extension MainSplitViewController {
                 self?.finishAttempt(token, for: connection.id, outcome: nil)
             } catch {
                 Self.connectionLogger.error(
-                    "Connect failed for \(connection.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Connect failed for \(connection.id, privacy: .public): \(error.publicLogShape, privacy: .public)"
                 )
                 if await self?.offerSignInAndReconnect(for: connection, error: error) == true {
                     return

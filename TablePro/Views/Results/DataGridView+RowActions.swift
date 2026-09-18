@@ -131,7 +131,7 @@ extension TableViewCoordinator {
             guard !typedRows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateInserts(rows: typedRows))
         } catch {
-            rowActionsLogger.error("copyRowsAsInsert failed: \(error.localizedDescription, privacy: .public)")
+            rowActionsLogger.error("copyRowsAsInsert failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -158,7 +158,7 @@ extension TableViewCoordinator {
             guard !typedRows.isEmpty else { return }
             ClipboardService.shared.writeText(converter.generateUpdates(rows: typedRows))
         } catch {
-            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.localizedDescription, privacy: .public)")
+            rowActionsLogger.error("copyRowsAsUpdate failed: \(error.publicLogShape, privacy: .public)")
         }
     }
 

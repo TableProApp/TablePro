@@ -19,6 +19,11 @@ struct ChatToolContext: Sendable {
     let bridge: MCPConnectionBridge
     let authPolicy: MCPAuthPolicy
 
+    /// The agent session this call belongs to. Only the audit entry for an outside MCP server reads
+    /// it, and it reads it because "which conversation sent this" is the first question asked of a
+    /// call that left the machine.
+    let sessionId: UUID?
+
     /// Whether the user answered this call's own approval card with Run or Always.
     ///
     /// Only an explicit answer pre-clears the execution gate's confirmation, because only then has
@@ -32,11 +37,13 @@ struct ChatToolContext: Sendable {
         connectionId: UUID?,
         bridge: MCPConnectionBridge,
         authPolicy: MCPAuthPolicy,
+        sessionId: UUID? = nil,
         approvalWasExplicit: Bool = false
     ) {
         self.connectionId = connectionId
         self.bridge = bridge
         self.authPolicy = authPolicy
+        self.sessionId = sessionId
         self.approvalWasExplicit = approvalWasExplicit
     }
 
@@ -49,6 +56,7 @@ struct ChatToolContext: Sendable {
             connectionId: connectionId,
             bridge: bridge,
             authPolicy: authPolicy,
+            sessionId: sessionId,
             approvalWasExplicit: approvalWasExplicit
         )
     }

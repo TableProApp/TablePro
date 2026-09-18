@@ -95,6 +95,43 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE CredentialProfile (
+        "___createTime"    TIMESTAMP,
+        "___createdBy"     REFERENCE,
+        "___etag"          STRING,
+        "___modTime"       TIMESTAMP,
+        "___modifiedBy"    REFERENCE,
+        "___recordID"      REFERENCE,
+        modifiedAtLocal    TIMESTAMP QUERYABLE SORTABLE,
+        name               STRING QUERYABLE SEARCHABLE SORTABLE,
+        passwordMode       STRING QUERYABLE SEARCHABLE SORTABLE,
+        profileId          STRING QUERYABLE SEARCHABLE SORTABLE,
+        schemaVersion      INT64 QUERYABLE SORTABLE,
+        secureFieldIdsJson BYTES QUERYABLE SORTABLE,
+        sortOrder          INT64 QUERYABLE SORTABLE,
+        username           STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE FavoriteDatabase (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        connectionId    STRING QUERYABLE SEARCHABLE SORTABLE,
+        database        STRING QUERYABLE SEARCHABLE SORTABLE,
+        environment     STRING QUERYABLE SEARCHABLE SORTABLE,
+        modifiedAtLocal TIMESTAMP QUERYABLE SORTABLE,
+        schemaVersion   INT64 QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE FavoriteTable (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

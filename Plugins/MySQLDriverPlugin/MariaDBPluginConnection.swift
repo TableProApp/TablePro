@@ -8,6 +8,7 @@
 
 import CMariaDB
 import Foundation
+import os
 import OSLog
 import TableProPluginKit
 
@@ -707,6 +708,13 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
         let resultPtr = mysql_use_result(mysql)
 
+        /// No result set, reported as the server sent it. A `SELECT` lands here when it projected
+        /// nothing to the client (`INTO @var`, `INTO OUTFILE`, `INTO DUMPFILE`) and when a proxy
+        /// answers the read with an OK packet, and an ordinary empty `SELECT` never does: measured on
+        /// MySQL 5.5 to 9.7, MariaDB 11.4 and TiDB, every result set carries its columns. The driver
+        /// used to guess the columns with a `DESCRIBE` of a name scraped out of the statement, which
+        /// turned a statement the server had accepted into `1146 Table 'db.information_schema'
+        /// doesn't exist`.
         if resultPtr == nil {
             let fieldCount = mysql_field_count(mysql)
             if fieldCount == 0 {

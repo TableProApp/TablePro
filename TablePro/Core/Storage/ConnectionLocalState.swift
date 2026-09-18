@@ -36,6 +36,7 @@ internal enum ConnectionLocalState {
             RecentTablesStore.shared.removeEntries(for: connectionId)
             HistoryPanelPreferencesStorage.remove(for: connectionId)
             QueryInsightsPreferencesStorage.remove(for: connectionId)
+            MCPServerStore.shared.forgetConnection(connectionId)
         }
 
         for store in tableScopedStores {

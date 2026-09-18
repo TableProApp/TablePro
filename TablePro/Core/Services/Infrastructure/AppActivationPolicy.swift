@@ -75,6 +75,7 @@ internal extension LaunchIntent {
         case .openConnection,
              .openTable,
              .openQuery,
+             .openAgentSession,
              .importConnection,
              .openSQLFile,
              .openDatabaseFile,

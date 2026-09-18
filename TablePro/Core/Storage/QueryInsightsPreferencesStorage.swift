@@ -56,7 +56,7 @@ enum QueryInsightsPreferencesStorage {
         do {
             return try JSONDecoder().decode(QueryInsightsPreferences.self, from: data)
         } catch {
-            logger.error("Failed to decode query insights preferences: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to decode query insights preferences: \(error.publicLogShape, privacy: .public)")
             return .default
         }
     }
@@ -66,7 +66,7 @@ enum QueryInsightsPreferencesStorage {
             let data = try JSONEncoder().encode(preferences)
             AppStorageEnvironment.shared.defaults.set(data, forKey: key(for: connectionId))
         } catch {
-            logger.error("Failed to encode query insights preferences: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to encode query insights preferences: \(error.publicLogShape, privacy: .public)")
         }
     }
 

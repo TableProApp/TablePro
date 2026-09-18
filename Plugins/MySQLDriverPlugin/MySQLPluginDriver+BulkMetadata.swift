@@ -28,7 +28,16 @@ extension MySQLPluginDriver {
     /// would depend on how the driver rendered an integer cell.
     func fetchAllIndexes(schema: String?) async throws -> [String: [PluginIndexInfo]] {
         guard !flavor.isDatabend else { return [:] }
-        let escapedDb = mysqlEscapeStringLiteral(routineSchema(schema))
+        let database = routineSchema(schema)
+        return try await catalogOrShow(
+            database: database,
+            catalog: { try await self.catalogIndexes(database: database) },
+            show: { try await self.showIndexesByTable(database: database) }
+        )
+    }
+
+    private func catalogIndexes(database: String) async throws -> [String: [PluginIndexInfo]] {
+        let escapedDb = mysqlEscapeStringLiteral(database)
         let query = """
             SELECT
                 TABLE_NAME, INDEX_NAME, COLUMN_NAME,

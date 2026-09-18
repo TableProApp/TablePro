@@ -131,6 +131,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case toggleTableBrowser
     case toggleInspector
     case toggleAssistant
+    case toggleAgentMode
     case toggleFilters
     case toggleHistory
     case toggleResults
@@ -171,7 +172,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .navigateBack, .navigateForward,
              .newTab, .closeTab, .closeOtherTabs, .closeTabsForOtherDatabases, .closeAllTabs,
              .reopenClosedTab, .quickSwitcher, .toggleTableBrowser,
-             .toggleInspector, .toggleAssistant, .toggleFilters, .toggleHistory, .toggleResults,
+             .toggleInspector, .toggleAssistant, .toggleAgentMode, .toggleFilters, .toggleHistory, .toggleResults,
              .previousResultTab,
              .nextResultTab, .pinResultTab, .closeResultTab, .focusSidebarSearch,
              .focusObjectList, .focusEditor, .focusResults, .focusInspector, .focusAssistant,
@@ -276,6 +277,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
         case .toggleInspector: return String(localized: "Toggle Inspector")
         case .toggleAssistant: return String(localized: "Toggle Assistant")
+        case .toggleAgentMode: return String(localized: "Toggle Agent Mode")
         case .toggleFilters: return String(localized: "Toggle Filters")
         case .toggleHistory: return String(localized: "Toggle History")
         case .toggleResults: return String(localized: "Toggle Results")
@@ -602,6 +604,9 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleTableBrowser: .character("0", command: true),
         .toggleInspector: .character("i", command: true, option: true),
         .toggleAssistant: .character("a", command: true, option: true),
+        /// Not Shift-Command-A, which Apple's own table assigns to Deselect All and which
+        /// `clearSelection` is waiting for. This keeps the "a is the assistant" family together.
+        .toggleAgentMode: .character("a", command: true, shift: true, option: true),
         .toggleFilters: .character("f", command: true, shift: true),
         .toggleHistory: .character("y", command: true),
         .toggleResults: .character("r", command: true, option: true),

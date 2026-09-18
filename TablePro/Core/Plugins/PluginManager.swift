@@ -67,7 +67,18 @@ final class PluginManager: ObservableObject {
     /// switch over it already carries `@unknown default`, so an already-built plugin keeps loading;
     /// the minimum stays where it is and no bulk re-release is needed.
     ///
-    /// 33 adds `checkConstraintRefusal`, which reports why the connected server has no check
+    /// 32 adds the spellings a catalog read carries for a DDL writer: `ddlSpelling`, `ddlDefault`,
+    /// `ddlGenerationExpression` and `ddlCollation` on `PluginColumnInfo`, and `expressions`,
+    /// `includedColumns`, `ddlMethodAndKeys` and `ddlWhereClause` on `PluginIndexInfo`, plus the open
+    /// `IndexType`. Each arrives through an added initializer while every published one stays
+    /// byte-identical and disfavoured.
+    ///
+    /// 33 adds `classificationTypeName` to `PluginColumnInfo`, the name the app classifies a column
+    /// by where its declared spelling names no kind: a PostgreSQL enum, a domain and a PostGIS
+    /// geometry all classify as text otherwise, which takes the value picker off an enum and the
+    /// spatial rendering off a geometry.
+    ///
+    /// 33 also adds `checkConstraintRefusal`, which reports why the connected server has no check
     /// constraints even though the engine does, and `sessionTransactionState()`, which reports what
     /// the session already has open so nothing the app owns wraps a transaction the user opened.
     /// Both have defaults (nil and `.unknown`), so an already-built plugin keeps loading and

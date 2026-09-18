@@ -807,7 +807,7 @@ final class MainContentCoordinator: ObservableObject {
         /// The gate comes first. Activating builds the view model, whose init reads the stored
         /// conversations, and the pane would then refuse to open it anyway.
         guard AppSettingsManager.shared.ai.enabled else { return }
-        trailingPaneState?.assistant.activate()
+        trailingPaneState?.assistant.activate(connection: connection)
         trailingPaneProxy?.showAssistant()
     }
 
@@ -1317,7 +1317,7 @@ final class MainContentCoordinator: ObservableObject {
         )
         if let tableName {
             Self.logger.info(
-                "[fk] metadata decision table=\(tableName, privacy: .public) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
+                "[fk] metadata decision table=\(tableName, privacy: .private(mask: .hash)) isEditable=\(isEditable) needsFetch=\(needsMetadataFetch)"
             )
         }
         guard let scope = scope(for: tab) else {

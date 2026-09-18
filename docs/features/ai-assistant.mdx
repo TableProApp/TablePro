@@ -101,6 +101,10 @@ Type `/` for **`/explain`**, **`/optimize`**, and **`/fix`**, which act on the a
 
 The cpu icon beside the mode picker lists every configured provider and its models. A pick there overrides the active provider for this chat panel until you change it, across turns.
 
+### The whole window
+
+A long job reads badly in a 270pt pane. [Agent mode](/features/agent-mode) (`Cmd+Option+Shift+A`) gives the same session the whole window: the sessions on this connection, the conversation, and a pane holding the SQL it proposed and the rows it read. It is one conversation shown two ways, so switching does not start another.
+
 ## Explain, optimize, and fix
 
 **Query > Explain with AI** (`Cmd+L`) and **Query > Optimize with AI** (`Cmd+Option+L`) act on the whole query tab; the editor's right-click menu has both and acts on the selection instead, appearing only when text is selected. When a query fails, **Fix with AI** on the inline error banner sends the query and the error. All three open a new conversation and send at once.

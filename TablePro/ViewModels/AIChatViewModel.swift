@@ -94,9 +94,61 @@ final class AIChatViewModel: ObservableObject {
 
     static let maxMessageCount = 200
 
-    init(services: AppServices = .live) {
+    /// The session this engine belongs to.
+    ///
+    /// Injected rather than minted here, because a restored session has to be the same session:
+    /// identity derived inside the engine cannot round-trip, so every guarantee keyed on it
+    /// (reopening by id, the rail's selection, per-session provider state) silently degraded to
+    /// "make another one".
+    let sessionId: UUID
+
+    /// The conversation to pull in when this engine is first looked at, if it is resuming one.
+    ///
+    /// Restore is lazy on purpose: reading every stored conversation at launch is quadratic in the
+    /// number of sessions, and `init` used to call `loadConversations()`, so opening any connection
+    /// window read the whole chat history off disk even with the assistant never revealed.
+    private var conversationToRestore: UUID?
+    private var didRestoreConversation = false
+
+    var pendingConversationToRestore: UUID? { conversationToRestore }
+    var hasRestoredConversation: Bool { didRestoreConversation }
+
+    /// Whether the connection this session names is still being opened.
+    ///
+    /// Agent mode draws its composer over a connect on purpose, so a turn can be submitted before
+    /// there is a session to run its tools against. Every such turn used to open a stream anyway,
+    /// which reached the tools with no connection behind them and answered the user's first
+    /// question with a row of failures. The turn is appended to the transcript as usual and the
+    /// stream is held until the connect lands, which is what a live composer during a connect
+    /// promises.
+    var isAwaitingConnection = false {
+        didSet {
+            guard oldValue, !isAwaitingConnection else { return }
+            releaseHeldTurn()
+        }
+    }
+
+    /// A turn that was submitted during a connect and has not been streamed yet.
+    var heldTurnAwaitsConnection = false
+
+    private func releaseHeldTurn() {
+        guard heldTurnAwaitsConnection else { return }
+        heldTurnAwaitsConnection = false
+        startStreaming()
+    }
+
+    func markConversationRestored() {
+        didRestoreConversation = true
+    }
+
+    init(
+        services: AppServices = .live,
+        sessionId: UUID = UUID(),
+        restoringConversation conversationId: UUID? = nil
+    ) {
         self.services = services
-        loadConversations()
+        self.sessionId = sessionId
+        self.conversationToRestore = conversationId
     }
 
     deinit {
@@ -188,7 +240,7 @@ final class AIChatViewModel: ObservableObject {
         prepTask = nil
         streamingTask?.cancel()
         streamingTask = nil
-        ToolApprovalCenter.shared.cancelAll()
+        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
 
         if case .streaming(let assistantID) = streamingState,
            let idx = messages.firstIndex(where: { $0.id == assistantID }) {
@@ -221,7 +273,7 @@ final class AIChatViewModel: ObservableObject {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
-        AIProviderFactory.copilotDeleteLastTurn()
+        AIProviderFactory.copilotDeleteLastTurn(sessionId: sessionId)
         messages.remove(at: lastAssistantIndex)
         clearError()
         startStreaming()
@@ -235,7 +287,7 @@ final class AIChatViewModel: ObservableObject {
     }
 
     func startNewConversation() {
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages.removeAll()
@@ -245,7 +297,7 @@ final class AIChatViewModel: ObservableObject {
 
     func switchConversation(to id: UUID) {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         cancelStream()
         persistCurrentConversation()
         messages = conversation.messages.map { ChatTurn(wire: $0) }
@@ -264,9 +316,9 @@ final class AIChatViewModel: ObservableObject {
     /// card: a `CheckedContinuation` is not resumed by cancellation, so the suspended turn held the
     /// provider and its open stream for the life of the process.
     func clearSessionData() {
-        ToolApprovalCenter.shared.cancelAll()
+        ToolApprovalCenter.shared.cancelAll(sessionId: sessionId)
         persistCurrentConversation()
-        AIProviderFactory.resetCopilotConversation()
+        AIProviderFactory.resetCopilotConversation(sessionId: sessionId)
         prepTask?.cancel()
         prepTask = nil
         streamingTask?.cancel()

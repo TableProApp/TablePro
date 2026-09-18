@@ -3,6 +3,8 @@ title: PostgreSQL
 description: Connect to PostgreSQL 9.1 and later with the libpq driver, including PostGIS display, AWS IAM auth, and pg_dump backups
 ---
 
+import DeclaredColumnType from "/snippets/declared-column-type.mdx";
+
 Unlike MySQL, PostgreSQL will not connect without a **Database**, and it changes database only by reconnecting. Everything else on the form is ordinary. The libpq driver ships inside the app and also serves [Amazon Redshift](/databases/redshift), [CockroachDB](/databases/cockroachdb), and [PGlite](/databases/pglite).
 
 ## Connection settings
@@ -73,6 +75,10 @@ A partition is a relation, so opening, truncating, renaming and dropping one wor
 Tables using the older `INHERITS` inheritance are listed normally, each child on its own. Turn partitions off with **Partitions** under **View Options**.
 
 ## Column types
+
+<DeclaredColumnType />
+
+That is what the [Structure tab](/features/table-structure) shows, what the [MCP tools](/external-api/mcp-tools) report as `data_type`, and what the AI context and autocomplete carry. An enum column keeps its value picker, and a domain column keeps the editor, formatting and sorting of the type underneath it.
 
 `jsonb` renders as formatted JSON, and `uuid`, `inet`, `timestamp with time zone`, `interval` and `bytea` display natively. PostGIS `geometry` and `geography` render as EWKT with the SRID kept, `SRID=4326;POINT(-73 40.7237)`, rather than raw EWKB hex; a value that fails to convert stays hex.
 

@@ -254,24 +254,16 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     /// One vocabulary for what a plugin calls an object, shared with the partition path so a
     /// foreign-table partition cannot arrive as a plain table and pick up Truncate on its way in.
     nonisolated internal static func mapPluginTableType(_ declaredType: String) -> TableInfo.TableType? {
-        switch declaredType.lowercased().replacingOccurrences(of: "_", with: " ") {
-        case "table", "base table", "prefix": return .table
-        case "partitioned table":             return .partitionedTable
-        case "view":                          return .view
-        case "materialized view":             return .materializedView
-        case "foreign table":                 return .foreignTable
-        case "system table", "system base table", "system view": return .systemTable
-        case "external table":                return .externalTable
-        default:                              return nil
-        }
+        PluginTableKindDecoder.decode(declaredType).kind
     }
 
     private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?) -> TableInfo {
+        let decoded = PluginTableKindDecoder.decode(table.type)
         let tableType: TableInfo.TableType
-        if let mapped = Self.mapPluginTableType(table.type) {
+        if let mapped = decoded.kind {
             tableType = mapped
         } else {
-            Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .public)\"; defaulting to .table")
+            Self.logger.warning("Unknown plugin table type \"\(table.type, privacy: .public)\" for \"\(table.name, privacy: .private(mask: .hash))\"; defaulting to .table")
             tableType = .table
         }
         return TableInfo(
@@ -280,7 +272,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             rowCount: table.rowCount,
             schema: table.schema ?? schemaFallback,
             comment: table.comment,
-            partitionCount: table.partitionCount
+            partitionCount: table.partitionCount,
+            isSystemVersioned: decoded.isSystemVersioned
         )
     }
 
@@ -461,7 +454,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             return pluginRoutines.map { RoutineInfo($0.adopting(kind: $0.kind, schema: resolvedSchema)) }
                 .sorted { ($0.kind.rawValue, $0.name) < ($1.kind.rawValue, $1.name) }
         } catch {
-            Self.logger.warning("fetchRoutines failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchRoutines failed: \(error.publicLogShape, privacy: .public)")
             throw error
         }
     }
@@ -480,7 +473,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
                 .map { UserDefinedTypeInfo($0.adoptingSchema(resolvedSchema)) }
                 .sorted { $0.name < $1.name }
         } catch {
-            Self.logger.warning("fetchUserDefinedTypes failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("fetchUserDefinedTypes failed: \(error.publicLogShape, privacy: .public)")
             throw error
         }
     }

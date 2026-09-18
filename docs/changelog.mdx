@@ -29,6 +29,7 @@ rss: true
   - **SQL Server types**: Alias, table and CLR types in the sidebar's **Types** section, each with its `CREATE TYPE` statement
   - **Delete for Kafka topics and DynamoDB tables**, and `DROP TOPIC` in the Kafka query editor
   - **No Database Selected**: The sidebar says so for a MySQL, MariaDB, TiDB or OceanBase connection opened without a database
+  - **Favorite databases sync**: The databases you star in the sidebar reach your other Macs, alongside credential profiles
 
   ### Improvements
 
@@ -90,6 +91,7 @@ rss: true
   - SP-GiST, HNSW, IVFFlat and BLOOM indexes shown as BTREE and rebuilt as B-tree by an index edit, SQL Server clustered indexes recreated as nonclustered, and ClickHouse data-skipping indexes dropped by an index edit
   - Compare & Sync rewriting a column's collation while collation differences are ignored, treating two indexes that differ only in type as the same, and refusing structure sync scripts for tables that had not changed since they were compared
   - A data race on the cached server version of a PostgreSQL, Redshift or CockroachDB connection while it closes
+  - Filters cleared on a table coming back the next time that table is read
 </Update>
 
 <Update label="v0.74.0" description="September 13, 2026">

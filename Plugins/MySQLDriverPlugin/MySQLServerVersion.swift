@@ -85,6 +85,29 @@ enum MySQLServerVersion {
         }
     }
 
+    /// What `REFERENTIAL_CONSTRAINTS` reports for a foreign key whose `CREATE TABLE` names no
+    /// `ON DELETE` or `ON UPDATE`, so a key parsed out of `SHOW CREATE TABLE` reads the same as the
+    /// catalog would have answered.
+    ///
+    /// Measured on a key declared with no action clause: MySQL 5.5.62, 5.6.51 and 5.7.44 and MariaDB
+    /// 5.5.64 and 11.4.13 all answer `RESTRICT`, while MySQL 8.0.11, 8.0.12, 8.0.13, 8.0.15, 8.0.16
+    /// and 8.4.11 answer `NO ACTION`.
+    ///
+    /// What the DDL prints was measured on one table carrying all three declarations. 5.7.44 and
+    /// MariaDB 11.4.13 print an explicit `NO ACTION` and omit an explicit `RESTRICT`; 8.0.13, 8.0.15,
+    /// 8.0.16 and 8.4.11 print an explicit `RESTRICT` and omit an explicit `NO ACTION`. Either way
+    /// the omitted spelling is the one this returns, so the parse is exact.
+    ///
+    /// 8.0.11 and 8.0.12 print neither spelling, so an explicit `RESTRICT` cannot be told from a key
+    /// that names no action at all and reads back as `NO ACTION`. It stays `NO ACTION` there: that is
+    /// what those servers report for the omitted clause, which is the common one, and `RESTRICT`
+    /// would mislabel it instead. Only the DDL path is affected, so a connection whose catalog
+    /// answers is exact on those versions too.
+    static func omittedForeignKeyAction(banner: String?, flavor: MySQLServerFlavor) -> String {
+        guard !flavor.isMariaDB else { return "RESTRICT" }
+        return isAtLeast((8, 0, 0), banner: banner) ? "NO ACTION" : "RESTRICT"
+    }
+
     /// Whether a literal default comes back from the catalog already quoted.
     ///
     /// MariaDB began quoting `COLUMN_DEFAULT` in 10.2.7, alongside expression defaults. Before that,

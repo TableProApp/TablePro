@@ -110,8 +110,9 @@ struct RowImportSheet: View {
     // MARK: - Derived catalog state
 
     /// Tables alone, because they are the only objects the existing-table branch can insert into.
+    /// A partitioned table is one of them: the server routes an INSERT to the right partition.
     private var availableTables: [TableInfo] {
-        databaseObjects.filter { $0.type == .table }
+        databaseObjects.filter(\.type.acceptsImportedRows)
     }
 
     /// A table this sheet created is not in the way of this sheet: a failed import leaves its table
@@ -687,7 +688,7 @@ struct RowImportSheet: View {
         } catch {
             catalogNameKeys = nil
             tableListError = error.localizedDescription
-            Self.logger.warning("Failed to load tables: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load tables: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -752,7 +753,7 @@ struct RowImportSheet: View {
             newColumnsLoaded = true
         } catch {
             loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
     }
 
@@ -777,7 +778,7 @@ struct RowImportSheet: View {
             }
         } catch {
             loadError = error.localizedDescription
-            Self.logger.warning("Failed to read import fields: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to read import fields: \(error.publicLogShape, privacy: .public)")
         }
     }
 

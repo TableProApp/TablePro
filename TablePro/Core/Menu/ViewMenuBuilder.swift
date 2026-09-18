@@ -37,6 +37,7 @@ enum ViewMenuBuilder {
                 shortcut: .toggleWorkspaceRail,
                 keyboard: keyboard
             ),
+            modeSubmenu(keyboard: keyboard),
             MenuItemFactory.separator,
             /// The segmented control in the toolbar was the only route to either of these, so a
             /// window whose toolbar was narrow, hidden or customized could not switch what the
@@ -168,6 +169,33 @@ enum ViewMenuBuilder {
                 modifiers: [.command, .control]
             )
         ])
+    }
+
+    /// Browse and Agent as a checked pair sharing one selector, the shape the Result View submenu
+    /// already uses. The toolbar control is the pointer affordance; the HIG asks that every toolbar
+    /// item also be a menu-bar command, and it is also the only route a UI test can drive, because a
+    /// synthetic click on a segment inside an `NSToolbarItemGroup` is measured not to select it.
+    private static func modeSubmenu(keyboard: KeyboardSettings) -> NSMenuItem {
+        let items = ConnectionWorkspaceContentMode.allCases.map { mode -> NSMenuItem in
+            let item = MenuItemFactory.item(
+                mode.localizedTitle,
+                action: #selector(MainSplitViewController.setContentModeFromMenu(_:))
+            )
+            item.representedObject = mode.rawValue
+            return item
+        }
+        /// The shortcut lives on the container so one chord toggles rather than naming one arm of a
+        /// radio pair, which would leave the other arm unreachable from the keyboard.
+        let container = MenuItemFactory.submenu(String(localized: "Mode"), items: items)
+        let toggle = MenuItemFactory.item(
+            String(localized: "Toggle Agent Mode"),
+            action: #selector(MainSplitViewController.toggleContentModeFromMenu(_:)),
+            shortcut: .toggleAgentMode,
+            keyboard: keyboard
+        )
+        container.submenu?.addItem(.separator())
+        container.submenu?.addItem(toggle)
+        return container
     }
 
     private static func resultViewSubmenu() -> NSMenuItem {

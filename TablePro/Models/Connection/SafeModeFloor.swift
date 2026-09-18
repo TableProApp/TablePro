@@ -18,21 +18,40 @@ internal struct SafeModeFloor: Equatable, Sendable {
         case remoteDatabaseFile
         /// A configuration profile sets a minimum level for every connection.
         case managedPolicy
+        /// A window is showing this connection in Agent mode, where every write the assistant
+        /// proposes waits for a person.
+        case agentMode
     }
 
     let level: SafeModeLevel
     let reason: Reason
 
-    /// A fact about the connection outranks the profile, because it already holds the strictest level.
+    /// The strictest floor that applies, not the first one found.
+    ///
+    /// Several of these can be true at once, and the old first-match chain was only correct while
+    /// they happened to be listed strictest first. Adding a fourth, independently-true condition
+    /// makes that accidental: an agent-mode floor listed before a managed policy would have been
+    /// answered instead of it. Taking the maximum by `strictness` says what is meant.
     static func resolve(
         isEngineReadOnly: Bool,
         opensRemoteDatabaseFile: Bool,
-        managedMinimum: SafeModeLevel?
+        managedMinimum: SafeModeLevel?,
+        isAgentModeActive: Bool = false
     ) -> SafeModeFloor? {
-        if isEngineReadOnly { return SafeModeFloor(level: .readOnly, reason: .readOnlyEngine) }
-        if opensRemoteDatabaseFile { return SafeModeFloor(level: .readOnly, reason: .remoteDatabaseFile) }
-        guard let managedMinimum, managedMinimum != .silent else { return nil }
-        return SafeModeFloor(level: managedMinimum, reason: .managedPolicy)
+        var candidates: [SafeModeFloor] = []
+        if isEngineReadOnly {
+            candidates.append(SafeModeFloor(level: .readOnly, reason: .readOnlyEngine))
+        }
+        if opensRemoteDatabaseFile {
+            candidates.append(SafeModeFloor(level: .readOnly, reason: .remoteDatabaseFile))
+        }
+        if let managedMinimum, managedMinimum != .silent {
+            candidates.append(SafeModeFloor(level: managedMinimum, reason: .managedPolicy))
+        }
+        if isAgentModeActive {
+            candidates.append(SafeModeFloor(level: .alert, reason: .agentMode))
+        }
+        return candidates.max { $0.level.strictness < $1.level.strictness }
     }
 
     func allows(_ candidate: SafeModeLevel) -> Bool {
@@ -55,6 +74,10 @@ internal struct SafeModeFloor: Equatable, Sendable {
             return String(
                 format: String(localized: "Your organization requires Safe Mode to be at least %@ on every connection."),
                 level.displayName
+            )
+        case .agentMode:
+            return String(
+                localized: "This connection is open in Agent mode, so every write the assistant proposes waits for you."
             )
         }
     }

@@ -179,6 +179,16 @@ struct TableRows: Sendable {
         return removeIndices(valid)
     }
 
+    /// Puts the rows in a new order and rebuilds the id index with them.
+    ///
+    /// The ids are the ones the rows already carry, so a reorder keeps every row's identity and
+    /// only `indexByID` has to move. Assigning `rows` on its own leaves that index pointing at the
+    /// old positions, which is what every lookup by `RowID` reads.
+    mutating func reorderRows(_ reordered: ContiguousArray<Row>) {
+        rows = reordered
+        indexByID = Self.buildIndex(for: reordered)
+    }
+
     @discardableResult
     mutating func replace(rows replacementRows: [[PluginCellValue]], offset: Int = 0) -> Delta {
         var rebuilt = ContiguousArray<Row>()

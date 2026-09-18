@@ -6,9 +6,10 @@ BRIDGE_DIR="$ROOT_DIR/Native/DamengBridge"
 # Not Libs/. That directory holds prebuilt slices downloaded and checksum-verified by
 # download-libs.sh, and publish-libs.sh treats anything unrecognised there as an error.
 # The bridge is compiled from in-tree Rust instead, so its output stays beside its source.
-LIBS_DIR="$BRIDGE_DIR/lib"
+LIBS_DIR="${LIBS_DIR:-$BRIDGE_DIR/lib}"
 ARCH="${1:-both}"
-MACOS_TARGET="14.0"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/deployment-target.sh"
+MACOS_TARGET="$DEPLOY_TARGET"
 RUST_TOOLCHAIN="1.91.1"
 
 if ! rustup toolchain list | grep -q "^${RUST_TOOLCHAIN}"; then

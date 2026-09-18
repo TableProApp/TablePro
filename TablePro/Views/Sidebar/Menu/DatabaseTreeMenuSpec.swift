@@ -507,7 +507,9 @@ internal enum DatabaseTreeMenuSpec {
         case .table, .partitionedTable: return .table
         case .view: return .view
         case .materializedView: return .materializedView
-        case .foreignTable, .systemTable, .externalTable: return nil
+        /// Copy Object reads sequences through `fetchSequences`, which the MySQL driver leaves at
+        /// the PluginKit default of `[]`, so a sequence offered here would copy nothing.
+        case .foreignTable, .systemTable, .externalTable, .sequence: return nil
         }
     }
 

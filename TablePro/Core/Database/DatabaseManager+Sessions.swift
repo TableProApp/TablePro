@@ -285,7 +285,7 @@ extension DatabaseManager {
                         try await adapter.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
-                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.publicLogShape, privacy: .public)")
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
@@ -316,7 +316,7 @@ extension DatabaseManager {
                         try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
                         activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
-                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.publicLogShape, privacy: .public)")
                     }
                 }
             }
@@ -375,7 +375,7 @@ extension DatabaseManager {
         Self.logger.info(
             """
             switchDatabase landed conn=\(connectionId, privacy: .public) \
-            database=\(database, privacy: .public) \
+            database=\(database, privacy: .private(mask: .hash)) \
             browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
             """
         )
@@ -453,7 +453,7 @@ extension DatabaseManager {
             try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
-                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.localizedDescription, privacy: .public)"
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -652,18 +652,40 @@ extension DatabaseManager {
         setSafeModeLevel(level, for: connectionId)
     }
 
+    /// Recomputes the level in force without touching the user's own choice.
+    ///
+    /// Agent mode raises a floor, and a floor is never written into the stored setting: leaving the
+    /// mode hands the user's level back with nothing to undo. The session's cached level is what the
+    /// execution gate reads, so it is the one thing that has to be refreshed.
+    func refreshSafeModeFloor(for connectionId: UUID) {
+        guard var session = activeSessions[connectionId] else { return }
+        let resolved = AgentModeSafeModeFloor.level(for: session.connection)
+        guard session.safeModeLevel != resolved else { return }
+        session.safeModeLevel = resolved
+        setSession(session, for: connectionId)
+    }
+
     func setSafeModeLevel(_ level: SafeModeLevel, for connectionId: UUID) {
         guard var session = activeSessions[connectionId] else { return }
         guard session.connection.preferredSafeModeLevel != level
             || session.safeModeLevel != session.connection.safeModeLevel
         else { return }
         session.connection.preferredSafeModeLevel = level
-        session.safeModeLevel = session.connection.safeModeLevel
+        session.safeModeLevel = AgentModeSafeModeFloor.level(for: session.connection)
         setSession(session, for: connectionId)
         _ = connectionStorage.updateSafeModeLevel(level, for: connectionId)
     }
 
     internal func setSession(_ session: ConnectionSession, for connectionId: UUID) {
+        /// A session created while a window is already in Agent mode takes the level stored on the
+        /// connection, which is the user's own and may be Silent. Applying the floor only when the
+        /// mode is toggled therefore missed every session that appeared after the toggle, which is
+        /// the ordinary case: Agent mode is reachable while the connection is still dialling.
+        var session = session
+        let floored = AgentModeSafeModeFloor.level(for: session.connection)
+        if session.safeModeLevel != floored {
+            session.safeModeLevel = floored
+        }
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
         AppEvents.shared.connectionStatusChanged.send(

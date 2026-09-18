@@ -69,7 +69,7 @@ extension QueryHistoryStorage {
             payload = try cipher.seal(record)
         } catch {
             Self.rewindLogger.error(
-                "Could not protect a save snapshot, so it was not kept: \(error.localizedDescription, privacy: .public)"
+                "Could not protect a save snapshot, so it was not kept: \(error.publicLogShape, privacy: .public)"
             )
             return false
         }
@@ -312,7 +312,7 @@ extension QueryHistoryStorage {
             return try cipher.open(payload)
         } catch {
             Self.rewindLogger.error(
-                "Could not read a save snapshot: \(error.localizedDescription, privacy: .public)"
+                "Could not read a save snapshot: \(error.publicLogShape, privacy: .public)"
             )
             return nil
         }

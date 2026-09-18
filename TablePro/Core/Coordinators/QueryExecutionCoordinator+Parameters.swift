@@ -91,7 +91,7 @@ extension QueryExecutionCoordinator {
             style: style
         )
 
-        paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .public) with \(conversion.values.count) parameters")
+        paramLog.info("Executing parameterized query: \(conversion.sql.prefix(100), privacy: .private) with \(conversion.values.count) parameters")
 
         executeQueryInternalParameterized(
             conversion.sql,

@@ -93,7 +93,7 @@ struct ClaudeAgentMCPBridge: ClaudeAgentMCPBridging {
             )
             return url.path
         } catch {
-            logger.error("Failed to write MCP config: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to write MCP config: \(error.publicLogShape, privacy: .public)")
             return nil
         }
     }

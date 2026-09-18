@@ -10,6 +10,8 @@ internal enum LaunchIntent: @unchecked Sendable {
     case openConnection(UUID)
     case openTable(connectionId: UUID, database: String?, schema: String?, table: String, isView: Bool)
     case openQuery(connectionId: UUID, sql: String)
+    /// Open a connection in Agent mode, optionally carrying the question the user already typed.
+    case openAgentSession(connectionId: UUID, prompt: String?)
     case importConnection(ExportableConnection)
     case openSQLFile(URL)
     case openDatabaseFile(URL, DatabaseType)
@@ -26,7 +28,8 @@ internal enum LaunchIntent: @unchecked Sendable {
         switch self {
         case .openConnection(let id),
              .openTable(let id, _, _, _, _),
-             .openQuery(let id, _):
+             .openQuery(let id, _),
+             .openAgentSession(let id, _):
             return id
         case .reopenClosedTab(let entry):
             return entry.connectionId

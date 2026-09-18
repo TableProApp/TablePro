@@ -70,6 +70,9 @@ internal final class TabRouter {
         case .openQuery(let id, let sql):
             try await openQuery(connectionId: id, sql: sql)
 
+        case .openAgentSession(let id, let prompt):
+            try await openAgentSession(connectionId: id, prompt: prompt)
+
         case .openDatabaseURL(let url):
             try await openDatabaseURL(url)
 
@@ -181,6 +184,32 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
+    }
+
+    /// Opens a connection and hands its window to the agent.
+    ///
+    /// The same reuse-or-open path every other connection intent takes, rather than a second route
+    /// into a window: a connection already open is switched into Agent mode where it stands, and one
+    /// that is not is opened the ordinary way and switched once its workspace exists.
+    private func openAgentSession(connectionId: UUID, prompt: String?) async throws {
+        try await openConnection(id: connectionId)
+        await MainActor.run {
+            let session = AgentSessionRegistry.shared.resolveSession(
+                for: connectionId,
+                startingIfNeeded: true
+            )
+            /// Held rather than sent. The connect may still be in flight, and what the user typed is
+            /// what they are waiting with; the conversation column sends it once the session can.
+            if let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                session?.pendingPrompt = prompt
+            }
+            /// Through the setter alone. Assigning `contentMode` first made the setter's
+            /// unchanged-mode guard skip the pane rebuild, the toolbar refresh and the floor, so a
+            /// connection that was already open stayed visibly in Browse with nothing to repair it.
+            guard let host = WindowManager.shared.window(for: connectionId)?
+                .contentViewController as? MainSplitViewController else { return }
+            host.setContentMode(.agent, for: connectionId)
+        }
     }
 
     // MARK: - Table
@@ -461,7 +490,7 @@ internal final class TabRouter {
                 try? String(contentsOf: url, encoding: .utf8)
             }.value
             guard let content else {
-                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .public)")
+                Self.logger.error("Failed to read SQL file: \(url.lastPathComponent, privacy: .private(mask: .hash))")
                 return
             }
             let payload = EditorTabPayload(

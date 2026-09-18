@@ -109,6 +109,15 @@ struct TableRowLogicTests {
         #expect(TableRowLogic.iconName(for: .externalTable) != TableRowLogic.iconName(for: .table))
     }
 
+    @Test("A sequence reads and draws as a sequence")
+    func sequenceRowNamesItsKind() {
+        let table = TestFixtures.makeTableInfo(name: "order_ids", type: .sequence)
+        let label = TableRowLogic.accessibilityLabel(table: table, isPendingDelete: false, isPendingTruncate: false)
+
+        #expect(label == "Sequence: order_ids")
+        #expect(TableRowLogic.iconName(for: .sequence) != TableRowLogic.iconName(for: .table))
+    }
+
     // MARK: - Leading Icon Visibility
 
     @Test("Leading icon shows when object icons are enabled")

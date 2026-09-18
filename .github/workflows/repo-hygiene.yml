@@ -86,12 +86,25 @@ jobs:
       - name: Check the plugin manifest against the plugin classes
         run: python3 scripts/ci/check-plugin-manifest.py
 
+      # A build script that writes the deployment target down itself goes stale the next time the
+      # app's floor moves, and the result is an archive built for a newer macOS than the app that
+      # links it. That shipped: #2874 moved the app to macOS 13 and five copies of "14.0" stayed.
+      - name: Check no build script hardcodes the deployment target
+        run: bash scripts/ci/check-deployment-target.sh
+
       # The iOS app compiles source files that belong to macOS plugin targets, and it alone sets
       # SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor, so one unmarked declaration in a shared file is
       # @MainActor on iOS and nonisolated in the plugin. The macOS suite cannot see it and the iOS
       # job reports it one symbol at a time, which took main red three times over one keyword.
       - name: Check shared plugin sources are explicitly isolated for iOS
         run: python3 scripts/ci/check-ios-shared-isolation.py
+
+      # The plugin targets build with MemberImportVisibility, so a file that logs needs the import
+      # that defines the log methods. Compiling every plugin catches it, but only once both sides
+      # are merged: the pull request that turned the feature on and the pull request that added the
+      # file were each green alone, and main broke on the merge of the second.
+      - name: Check plugin sources that log import the module that defines it
+        run: python3 scripts/ci/check-plugin-os-import.py
 
       - name: Validate the registry update script
         run: python3 .github/scripts/test_update_registry.py

@@ -54,6 +54,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private var menuFormIdentifiers: [Selector: NSToolbarItem.Identifier] = [:]
 
     private(set) var sidebarGroup: NSToolbarItemGroup?
+    internal var contentModeGroup: NSToolbarItemGroup?
 
     /// The throughput readout. One item per toolbar rather than one per vend: the ticker writes
     /// into it directly, so it has to be the instance the toolbar is actually showing.
@@ -252,7 +253,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                 /// The overflow entry carries the glyph too, and it is written once when the item
                 /// is vended, so without this a clipped item kept the previous engine's icon.
                 item.image = engineGlyph
-                item.menuFormRepresentation?.image = engineGlyph
+                item.menuFormRepresentation?.setInformativeImage(engineGlyph)
             case Self.database:
                 apply(label: containerEntityName, to: item)
                 updateShortcutDescription(
@@ -354,6 +355,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         var items: [NSToolbarItem.Identifier] = [
             sidebarToggle,
             .sidebarTrackingSeparator,
+            contentModeItem,
             backForwardGroup,
             .flexibleSpace,
             connectionGroup,
@@ -406,14 +408,19 @@ extension MainWindowToolbar {
     /// `defaultItemIdentifiers` listed it. Without the flag it lays out in the sidebar's own
     /// titlebar strip, and follows the divider when the sidebar collapses.
     internal static func makeSidebarSegmentGroup(target: AnyObject?, action: Selector) -> NSToolbarItemGroup {
-        let images = ["list.bullet", "star"].compactMap {
-            NSImage(systemSymbolName: $0, accessibilityDescription: nil)
+        /// Measured on macOS 27: an expanded `selectOne` group publishes a radio group whose buttons
+        /// take their name from each image's `accessibilityDescription` and never from `labels:`.
+        /// With nil, VoiceOver read the SF Symbol's own description, so these two announced as
+        /// "List" and "favorite".
+        let labels = [String(localized: "Tables"), String(localized: "Favorites")]
+        let images = zip(["list.bullet", "star"], labels).compactMap {
+            NSImage(systemSymbolName: $0, accessibilityDescription: $1)
         }
         let group = NSToolbarItemGroup(
             itemIdentifier: sidebarToggle,
             images: images,
             selectionMode: .selectOne,
-            labels: [String(localized: "Tables"), String(localized: "Favorites")],
+            labels: labels,
             target: target,
             action: action
         )
@@ -436,14 +443,28 @@ extension MainWindowToolbar {
         return group
     }
 
-    /// `@objc` does not type-check the sender, and this action is reachable from the overflow menu
-    /// as well as from the control, where AppKit sends an `NSMenuItem`. A typed parameter would
-    /// read `selectedIndex` off it and trap on `doesNotRecognizeSelector`.
+    /// Reachable from the control and from its overflow menu, and the two send different senders:
+    /// the group itself, and an `NSMenuItem`. Reading `selectedIndex` off whatever arrived and
+    /// giving up when it was not a group meant choosing Tables or Favorites from the overflow did
+    /// nothing at all, which is every ordinary window width where the control lives there.
+    ///
+    /// The group is read from `sidebarGroup` rather than from the sender, so both routes resolve the
+    /// same selection, and a menu item carries its segment in `tag`.
     @objc fileprivate func sidebarSegmentChanged(_ sender: Any?) {
-        guard let group = sender as? NSToolbarItemGroup else { return }
-        let index = group.selectedIndex
-        guard Self.sidebarSegmentTabs.indices.contains(index) else { return }
+        guard let index = Self.segmentIndex(from: sender, group: sidebarGroup),
+              Self.sidebarSegmentTabs.indices.contains(index) else { return }
         coordinator?.splitViewController?.setSidebarTab(Self.sidebarSegmentTabs[index])
+    }
+
+    /// Which segment a toolbar group's action is about, whichever route sent it.
+    internal static func segmentIndex(from sender: Any?, group: NSToolbarItemGroup?) -> Int? {
+        if let menuItem = sender as? NSMenuItem, menuItem.tag >= 0 {
+            return menuItem.tag
+        }
+        if let sent = sender as? NSToolbarItemGroup {
+            return sent.selectedIndex
+        }
+        return group?.selectedIndex
     }
 
     /// Pushed from the split view controller whenever the sidebar tab or its collapsed

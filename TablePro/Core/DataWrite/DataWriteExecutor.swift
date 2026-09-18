@@ -119,7 +119,7 @@ enum DataWriteExecutor {
                 sideStatements.append(statement)
             } catch {
                 logger.warning(
-                    "Prologue statement failed '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)"
+                    "Prologue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
                 )
             }
         }
@@ -139,7 +139,7 @@ enum DataWriteExecutor {
                     sideStatements.append(statement)
                 } catch {
                     logger.warning(
-                        "Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.localizedDescription, privacy: .public)"
+                        "Failed to re-enable foreign key checks with statement '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
                     )
                 }
             }
@@ -187,7 +187,7 @@ enum DataWriteExecutor {
                     try await driver.rollbackTransaction()
                 } catch {
                     rollbackSucceeded = false
-                    logger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                    logger.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
                 }
             }
             await drainEpilogue()
@@ -244,14 +244,14 @@ enum DataWriteExecutor {
 
         if KeyedWriteVerification.exceedsExpectation(rowsAffected: rowsAffected, expected: expected) {
             logger.error(
-                "Statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
+                "Statement on '\(table, privacy: .private(mask: .hash))' affected \(rowsAffected, privacy: .public) rows, expected at most \(expected, privacy: .public)"
             )
             throw tooManyRowsError(owner: owner, table: table, expected: expected, actual: rowsAffected)
         }
 
         guard step.matchesRowsWithoutKey, countsAreMeaningful, rowsAffected < expected else { return }
         logger.error(
-            "Keyless statement on '\(table, privacy: .public)' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
+            "Keyless statement on '\(table, privacy: .private(mask: .hash))' affected \(rowsAffected, privacy: .public) rows, expected \(expected, privacy: .public)"
         )
         throw DataWriteError.rowsNoLongerMatch(table: table, expected: expected, actual: rowsAffected)
     }

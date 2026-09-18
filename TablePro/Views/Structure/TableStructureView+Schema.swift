@@ -193,7 +193,7 @@ extension TableStructureView {
             do {
                 try ddlStatement.write(to: url, atomically: true, encoding: .utf8)
             } catch {
-                Self.logger.error("Failed to export: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to export: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Could not export the schema"),
                     message: error.localizedDescription,

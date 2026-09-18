@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OSLog
 import TableProOracleCore
 import TableProPluginKit

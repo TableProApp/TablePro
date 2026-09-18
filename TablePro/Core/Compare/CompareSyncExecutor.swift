@@ -238,7 +238,7 @@ internal actor CompareSyncExecutor {
                     id: statement.id, statement: statement, error: nil, wasSkipped: false, didExecute: true
                 ))
             } catch {
-                Self.logger.error("Sync statement failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Sync statement failed: \(error.publicLogShape, privacy: .public)")
                 outcomes.append(SyncStatementOutcome(
                     id: statement.id, statement: statement,
                     error: error.localizedDescription, wasSkipped: false, didExecute: didExecute
@@ -270,7 +270,7 @@ internal actor CompareSyncExecutor {
                 do {
                     try await driver.commitTransaction()
                 } catch {
-                    Self.logger.error("Sync commit failed: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.error("Sync commit failed: \(error.publicLogShape, privacy: .public)")
                     commitFailure = error.localizedDescription
                 }
             }
@@ -298,7 +298,7 @@ internal actor CompareSyncExecutor {
             do {
                 _ = try await driver.execute(query: scope.closingSQL)
             } catch {
-                Self.logger.error("Closing a sync session scope failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Closing a sync session scope failed: \(error.publicLogShape, privacy: .public)")
             }
         }
     }

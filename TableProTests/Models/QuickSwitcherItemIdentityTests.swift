@@ -31,7 +31,8 @@ struct QuickSwitcherItemIdentityTests {
         .foreignTable,
         .systemTable,
         .partitionedTable,
-        .externalTable
+        .externalTable,
+        .sequence
     ])
     func everyTypeAgrees(type: TableInfo.TableType) {
         let table = TableInfo(name: "sales", type: type, rowCount: nil, schema: "public")

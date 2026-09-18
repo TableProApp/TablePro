@@ -249,7 +249,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     ))
                 }
             } catch {
-                Self.logger.warning("Failed to fetch databases: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Failed to fetch databases: \(error.publicLogShape, privacy: .public)")
             }
         }
 
@@ -270,7 +270,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
                     ))
                 }
             } catch {
-                Self.logger.warning("Failed to fetch schemas: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Failed to fetch schemas: \(error.publicLogShape, privacy: .public)")
             }
         }
 
@@ -914,6 +914,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return (.table, String(localized: "Partitioned Table"))
         case .externalTable:
             return (.table, String(localized: "External Table"))
+        case .sequence:
+            return (.table, String(localized: "Sequence"))
         }
     }
 

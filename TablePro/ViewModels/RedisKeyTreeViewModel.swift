@@ -60,7 +60,7 @@ internal final class RedisKeyTreeViewModel: ObservableObject {
             allKeys = keys
             rootNodes = Self.buildTree(keys: keys, separator: separator)
         } catch {
-            Self.logger.error("Failed to load Redis keys: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to load Redis keys: \(error.publicLogShape, privacy: .public)")
             clear()
         }
     }

@@ -212,4 +212,41 @@ struct NativeDumpBatchTests {
         #expect(!service.startedScopes[0].isWholeDatabase)
         #expect(service.startedScopes[1].isWholeDatabase)
     }
+
+    /// A scope the app could not finish reading describes less than the user ticked, and running the
+    /// tool with it writes an archive that looks like a backup: a PostgreSQL partitioned parent whose
+    /// partition read failed dumps as `CREATE TABLE` and no rows, and pg_dump exits 0.
+    @Test("A blocked item is reported as failed and never reaches the tool")
+    func blockedItemsAreNotDumped() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let service = FakeDumpService()
+        let batch = NativeDumpBatch(makeService: { service }, estimateSize: { _, _ in nil })
+
+        let plan = NativeDumpDestination.plan(
+            databases: ["sales", "billing"], in: directory, timestamp: "t", fileExtension: "dump"
+        )
+        await batch.run(
+            connection: connection(),
+            items: [
+                NativeDumpBatchItem(
+                    database: "sales",
+                    scope: .objects([NativeDumpObject(name: "orders", schema: "app")]),
+                    destination: plan[0].url,
+                    blockedReason: "Could not read the partitions of app.orders."
+                ),
+                NativeDumpBatchItem(database: "billing", scope: .wholeDatabase, destination: plan[1].url)
+            ],
+            formatId: nil
+        )
+
+        #expect(service.startedDatabases == ["billing"])
+        #expect(batch.state.outcomes.map(\.database) == ["sales", "billing"])
+        #expect(batch.state.outcomes.first?.succeeded == false)
+        #expect(batch.state.outcomes.last?.succeeded == true)
+        #expect(
+            batch.state.outcomes.first?.result
+                == .failed(message: "Could not read the partitions of app.orders.")
+        )
+    }
 }

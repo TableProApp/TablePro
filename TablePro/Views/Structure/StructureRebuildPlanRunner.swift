@@ -145,7 +145,7 @@ enum StructureRebuildPlanRunner {
                     do {
                         try await driver.rollbackTransaction()
                     } catch {
-                        logger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                        logger.error("Rollback failed: \(error.publicLogShape, privacy: .public)")
                     }
                 } else if completed > 0 {
                     /// An engine whose DDL commits statement by statement has nothing to roll back,

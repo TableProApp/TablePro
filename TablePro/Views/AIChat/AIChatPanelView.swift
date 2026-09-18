@@ -61,6 +61,7 @@ struct AIChatPanelView: View {
         }
         .environment(\.chatPrimaryPendingToolUseId, primaryPendingToolUseId)
         .environment(\.chatApprovalConnectionName, connection.name)
+        .environment(\.chatApprovalSessionId, viewModel.sessionId)
         .onAppear {
             viewModel.connection = connection
         }

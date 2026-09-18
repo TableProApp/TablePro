@@ -236,7 +236,9 @@
             "icon": "sparkles",
             "pages": [
               "features/ai-assistant",
-              "features/mcp"
+              "features/agent-mode",
+              "features/mcp",
+              "features/mcp-outside-servers"
             ]
           },
           {

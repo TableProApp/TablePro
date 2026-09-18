@@ -348,7 +348,7 @@ actor CloudSQLProxyManager: TunnelManaging {
             let data = try JSONEncoder().encode(records)
             AppStorageEnvironment.shared.defaults.set(data, forKey: Self.stalePidsDefaultsKey)
         } catch {
-            Self.logger.error("Failed to persist cloud-sql-proxy PID records: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to persist cloud-sql-proxy PID records: \(error.publicLogShape, privacy: .public)")
         }
     }
 

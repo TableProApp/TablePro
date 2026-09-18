@@ -127,7 +127,10 @@ actor ConnectionHealthMonitor {
 
             while !Task.isCancelled {
                 guard let interval = await intervalForPass() else { break }
-                try? await Task.sleep(for: interval)
+                /// A tolerance lets the system coalesce the pings of every open connection into one
+                /// wake instead of N. A quarter of the interval keeps a 30s ping meaningful; the
+                /// monitor's own late-fire warning reads a 5s floor and is unaffected.
+                try? await Task.sleep(for: interval, tolerance: interval / 4)
                 guard !Task.isCancelled else { break }
                 /// Asked again after the sleep as well, so turning scheduled checks off during a
                 /// long interval stops the next one rather than the one after it.

@@ -96,7 +96,7 @@ final class ParquetExportPlugin: ObservableObject, ExportFormatPlugin, SettableP
         let columnInfo = (try? await dataSource.fetchColumns(
             table: table.name, databaseName: table.databaseName)) ?? []
         let declaredTypes = Dictionary(
-            columnInfo.map { ($0.name, $0.dataType) }, uniquingKeysWith: { first, _ in first })
+            columnInfo.map { ($0.name, $0.typeNameForClassification) }, uniquingKeysWith: { first, _ in first })
 
         let staging = try DuckDBStagingDatabase()
         var columns: [String] = []

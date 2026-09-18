@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Agent** mode, giving one session the whole connection window: its sessions, its conversation, and what it ran.
+- **View > Mode**, with **Toggle Agent Mode** on ⌥⇧⌘A.
+- Agent mode holds its connection at Safe Mode **Alert** while it is on, and hands back the level you set on the way out.
+- **Open in Agent Mode** on a connection in the welcome window.
+- **Outside MCP Servers** in Settings > Integrations, letting a session call tools on an MCP server you run.
+- Per-connection allowlist for an outside MCP server, with its token in the Keychain and neither synced.
+
+### Changed
+
+- Every plugin bundle compiled under the same concurrency settings as the app that loads it.
+- Release C optimization and link-time optimization scoped to the app, not to its Swift package dependencies.
+- Assistant conversations belong to one connection, and outlive the window that opened them.
+
+### Fixed
+
+- No columns, indexes or foreign keys listed for a MySQL server that answers `information_schema` with nothing or an error.
+- Composite foreign key columns listed out of order on MariaDB.
+- Export dialog listing no tables for a MySQL server behind a proxy, and failing to open at all on Kafka, Cassandra and Teradata.
+- ClickHouse object lists showing the connection's own database under every other database's name.
+- MySQL `SELECT ... INTO @var`, `INTO OUTFILE` and `INTO DUMPFILE` reported as an error or as an empty grid of another table's columns.
+- Schema sync scripts offering to drop the indexes and foreign keys of a table whose structure could not be read.
+- Schema sync scripts offering to drop a table the comparison could not read, as if the source no longer had it.
+- Truncate offered on MariaDB sequences, and on system-versioned tables on Mac.
+- MariaDB sequences, and OceanBase external, system and virtual tables, listed as ordinary tables.
+- Duplicate row for a MariaDB table that a temporary table of the same name shadows.
+- Partitioned tables and MariaDB sequences missing from the Backup Dump object list.
+- Partitioned tables missing from the import table picker.
+- PostgreSQL backup of a partitioned table writing an empty table.
+- System views, sequences and external tables listed as ordinary tables on iPhone and iPad.
+- PostgreSQL column types shown without their length, precision, enum name or domain name.
+- Compare & Sync missing a PostgreSQL column's length, precision or type change.
+- Compare & Sync missing a MySQL or MariaDB fractional seconds, enum label or precision change.
+- MySQL and MariaDB integer display width changes held back by Compare & Sync as data loss.
+- iCloud sync stopping for good once 250 records were waiting to upload.
+- Cassandra `date` values reading as a Buddhist or Japanese year in the grid, on the clipboard and in exports.
+- Menu rows that only a colour or a glyph tells apart reading as identical on macOS 27.
+- A UI test run writing sync bookkeeping into the real defaults instead of its sandbox.
+- Extra layout measurement on every sidebar, inspector, outline and field-list row.
+- Cut, Copy and Paste in the SQL editor's context menu were English in every language.
+- A statement count on a review sheet reading "1 statements".
+- Crash when a model proposed two tool calls carrying the same id in one turn.
+- Another connection's chat history appeared in a second connection's assistant, and could be deleted from there.
+- Two conversations on one Copilot configuration were answered with each other's context.
+- The sidebar toggle announced its SF Symbol names to VoiceOver instead of Tables and Favorites.
+- Choosing Tables or Favorites from the toolbar's overflow menu did nothing.
+- The Inspector toolbar button was permanently dimmed on macOS 13.
+- A connection's status on the welcome window stopped updating once the window was open.
+- The Compare & Sync licence notice froze the app instead of opening as a sheet.
+
+### Security
+
+- Code inside a plugin bundle, and its resource envelope, were not verified before the bundle was loaded.
+- The system log carried query text, schema and table names, file paths and driver error messages, which can hold row values.
+- A chat tool registered at runtime could take the name of a tool TablePro ships.
+
 ## [0.75.0] - 2026-09-18
 
 Runs on macOS 13 Ventura and later.
@@ -56,6 +113,7 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - **View > Focus** submenu: Object List `Ctrl+Option+Cmd+L`, Editor `+E`, Results `+R`, Inspector `+I`, Assistant `+A`. (#2904, #2916 by @datlechin)
 - **Network Encryption** on the Oracle connection form, matching `SQLNET.ENCRYPTION_CLIENT`. (#2919, #2935 by @datlechin)
 - **No Database Selected** in the sidebar for a MySQL, MariaDB, TiDB or OceanBase connection with no database open. (#2950 by @datlechin)
+- Favorite databases synced through iCloud.
 ### Changed
 
 - Pairing approval in a window of its own when no window can host it as a sheet. (#2933 by @datlechin)
@@ -91,6 +149,8 @@ Find and Replace in the SQL editor, a Run button with more ways to run, and part
 - `Escape` shortcut for Clear Selection in Settings > Keyboard. (#2918 by @datlechin)
 
 ### Fixed
+
+- Filters cleared on a table coming back the next time that table is read.
 
 - Oracle login hanging until the server gave up when it declined the network encryption negotiation. (#2919, #2935 by @datlechin)
 - Oracle login timeout that never fired, leaving the connecting spinner up past its deadline. (#2919, #2935 by @datlechin)

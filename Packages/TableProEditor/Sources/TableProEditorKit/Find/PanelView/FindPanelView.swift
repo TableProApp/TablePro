@@ -84,14 +84,6 @@ struct FindPanelView: View {
     }
 }
 
-/// A preference key used to track the width of the find mode picker
-private struct FindModePickerWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 /// A mock target for previews that implements the FindPanelTarget protocol
 class MockFindPanelTarget: FindPanelTarget {
     var textView: TextView!

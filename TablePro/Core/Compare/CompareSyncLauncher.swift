@@ -19,6 +19,14 @@ internal enum CompareSyncLauncher {
         WindowOpener.shared.openCompareSync(prefillSource: connectionId)
     }
 
+    /// A sheet on the window the user was working in, through the one presentation path every other
+    /// alert in the app uses.
+    ///
+    /// `runModal()` here held the whole main thread application-modally. Under `UITestCase` the
+    /// licence is always absent, because the suite launches into a throwaway container, so every UI
+    /// test that reached a Compare & Sync menu item froze the app and took the unrelated cases after
+    /// it in the same shard down with it, reporting as "not hittable" and "the sample database never
+    /// finished opening".
     private static func presentUpgradeAlert() {
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -26,7 +34,9 @@ internal enum CompareSyncLauncher {
         alert.informativeText = ProFeature.compareSync.featureDescription
         alert.addButton(withTitle: String(localized: "View License"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        WindowOpener.shared.openSettings(tab: .account)
+        AlertHelper.present(alert, in: NSApp.keyWindow) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            WindowOpener.shared.openSettings(tab: .account)
+        }
     }
 }

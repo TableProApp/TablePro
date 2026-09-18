@@ -23,7 +23,7 @@ internal extension MCPHttpRequestRouter {
         do {
             parsed = try JSONDecoder().decode(ExchangeBody.self, from: body)
         } catch {
-            Self.logger.warning("Integrations exchange decode failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Integrations exchange decode failed: \(error.publicLogShape, privacy: .public)")
             MCPAuditLogger.logPairingExchange(outcome: .denied, ip: ip, details: "invalid JSON body")
             await respondPairingFailure(context: context, status: .badRequest, message: "Invalid JSON body")
             return
