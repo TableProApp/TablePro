@@ -71,6 +71,7 @@ internal final class NavigationSidebarViewController: NSViewController {
         ])
 
         separator.isHidden = true
+        rail.isHidden = true
     }
 
     /// The width the sidebar needs on top of the object browser's own minimum. Read from the
@@ -81,10 +82,24 @@ internal final class NavigationSidebarViewController: NSViewController {
         railWidthConstraint.constant + separatorWidthConstraint.constant
     }
 
+    /// A collapsed strip is hidden, not only zero points wide. AppKit counts a zero-width view as
+    /// visible, so the strip's list stayed a key view: it was what the window focused when first
+    /// shown, Tab could land on it, and its own Close then took the whole connection on a Command W
+    /// meant for a tab. Hiding it takes it out of the key view loop, the responder chain and the
+    /// accessibility tree.
+    ///
+    /// It is shown before it grows and hidden once it has shrunk, so the animation stays visible.
+    /// The keyboard is let go of on the way down, because a list that is about to vanish must not
+    /// keep answering keys for the whole of the animation.
     internal func setRailVisible(_ visible: Bool, animated: Bool, alongside: (() -> Void)? = nil) {
         guard isRailVisible != visible else { return }
         isRailVisible = visible
         separator.isHidden = !visible
+        if visible {
+            railController.view.isHidden = false
+        } else {
+            resignFirstResponderInsideRail()
+        }
         applyRailWidth(animated: animated, alongside: alongside)
     }
 
@@ -96,12 +111,14 @@ internal final class NavigationSidebarViewController: NSViewController {
         let separatorWidth: CGFloat = isRailVisible ? 1 : 0
         guard railWidthConstraint.constant != width else {
             alongside?()
+            hideRailIfCollapsed()
             return
         }
         guard animated, view.window != nil else {
             railWidthConstraint.constant = width
             separatorWidthConstraint.constant = separatorWidth
             alongside?()
+            hideRailIfCollapsed()
             return
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -109,6 +126,23 @@ internal final class NavigationSidebarViewController: NSViewController {
             railWidthConstraint.animator().constant = width
             separatorWidthConstraint.animator().constant = separatorWidth
             alongside?()
+        } completionHandler: { [weak self] in
+            self?.hideRailIfCollapsed()
         }
+    }
+
+    /// Asked again when a collapse finishes, because the strip can have been shown again while it
+    /// was still shrinking.
+    private func hideRailIfCollapsed() {
+        guard !isRailVisible else { return }
+        railController.view.isHidden = true
+    }
+
+    private func resignFirstResponderInsideRail() {
+        guard let window = view.window,
+              let responder = window.firstResponder as? NSView,
+              responder.isDescendant(of: railController.view)
+        else { return }
+        window.makeFirstResponder(nil)
     }
 }

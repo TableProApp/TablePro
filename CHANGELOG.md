@@ -82,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rows saved, added or deleted on iPhone and iPad refused by a MySQL, MariaDB, PostgreSQL or Redshift server that starts sessions read-only.
 - Copying objects into a connection that already has a transaction open committing it.
 - Replace-copy into a remote libSQL target failing at `BEGIN`.
+- `Cmd+W` closing the whole connection instead of the current tab until something in the window was clicked.
 
 ### Security
 

@@ -17,6 +17,19 @@ import TableProTextEngine
 /// a window hosting several connections has several editors registered at once, and a window-wide
 /// registry cannot tell them apart.
 internal extension MainSplitViewController {
+    /// What the window names as its `initialFirstResponder`: the container the selected tab's content
+    /// is shown in.
+    ///
+    /// AppKit picks a first responder once, as the window is first placed on screen, and only from
+    /// the views that exist at that moment. The editor, the grid and the object list are SwiftUI and
+    /// do not exist yet, so left to itself AppKit took the first key view it could find, which was
+    /// the connections strip, and Command W then closed the connection instead of the tab. The
+    /// container takes no focus itself, so the window keeps it, and the content adopts it once it is
+    /// built (`SQLEditorCoordinator`, `SidebarOutlineView`), whatever else the window holds by then.
+    var initialFirstResponderContainer: NSView {
+        detailPaneHost.view
+    }
+
     @discardableResult
     func focusQueryEditor() -> Bool {
         guard let textView = mountedQueryEditor, let window = view.window else { return false }
